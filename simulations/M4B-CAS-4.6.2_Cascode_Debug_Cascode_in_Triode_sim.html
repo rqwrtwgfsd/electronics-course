@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CAS-4.6.2 — Cascode Debug: Triode</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#4d9fff;--green:#00cc66;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  select{background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:13px;width:100%;}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  .ro.warn span{color:#cc4400;}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CAS-4.6.2</div>
+  <h1>Cascode — Debug: Cascode in Triode</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Debug Scenario</h2>
+      <label>Fault mode: <select id="fault">
+        <option value="none">No fault (correct bias)</option>
+        <option value="vbias_low">V_bias too low (M1 in triode)</option>
+        <option value="vout_low">V_out too low (M2 in triode)</option>
+        <option value="ss_corner">SS corner (V_th +100 mV)</option>
+        <option value="m2_small">M2 sized too small (high V_ov)</option>
+      </select></label>
+      <label>g_m,M1 (mA/V): <b id="gm1_l">2.0</b> <input type="range" id="gm1" min="0.5" max="10" value="2.0" step="0.1"></label>
+      <label>r_o,M1 (kΩ): <b id="ro1_l">300</b> <input type="range" id="ro1" min="20" max="2000" value="300" step="10"></label>
+      <label>g_m,M2 (mA/V): <b id="gm2_l">1.5</b> <input type="range" id="gm2" min="0.5" max="10" value="1.5" step="0.1"></label>
+      <label>r_o,M2 (kΩ): <b id="ro2_l">250</b> <input type="range" id="ro2" min="20" max="2000" value="250" step="10"></label>
+      <label>V_ov,M1 (mV): <b id="vov1_l">200</b> <input type="range" id="vov1" min="50" max="400" value="200" step="10"></label>
+
+      <div class="ro" id="m1_ro">M1 status: <span id="m1_stat">--</span></div>
+      <div class="ro" id="m2_ro">M2 status: <span id="m2_stat">--</span></div>
+      <div class="ro">r_out (expected): <span id="rout_exp">--</span> GΩ</div>
+      <div class="ro" id="rout_ro">r_out (actual): <span id="rout_act">--</span></div>
+      <div class="ro">A_v (expected): <span id="av_exp">--</span> dB</div>
+      <div class="ro" id="av_ro">A_v (actual): <span id="av_act">--</span> dB</div>
+
+      <div class="insight" id="insight_box">Select a fault mode to see the debug scenario.</div>
+    </div>
+
+    <div class="card">
+      <h2>Gain Comparison: Expected vs Fault</h2>
+      <canvas id="cv" height="320"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  // Faults: modify transistor parameters or bias conditions
+  function compute(){
+    const fault = document.getElementById('fault').value;
+    const gm1_base = +document.getElementById('gm1').value * 1e-3;
+    const ro1_base = +document.getElementById('ro1').value * 1e3;
+    const gm2_base = +document.getElementById('gm2').value * 1e-3;
+    const ro2_base = +document.getElementById('ro2').value * 1e3;
+    const Vov1     = +document.getElementById('vov1').value / 1000;
+
+    document.getElementById('gm1_l').textContent = (gm1_base*1e3).toFixed(1);
+    document.getElementById('ro1_l').textContent = (ro1_base/1e3).toFixed(0);
+    document.getElementById('gm2_l').textContent = (gm2_base*1e3).toFixed(1);
+    document.getElementById('ro2_l').textContent = (ro2_base/1e3).toFixed(0);
+    document.getElementById('vov1_l').textContent = (Vov1*1000).toFixed(0);
+
+    // Ideal (no fault)
+    const r_out_ideal = gm2_base * ro2_base * ro1_base;
+    const Av_ideal    = 20 * Math.log10(gm1_base * r_out_ideal);
+
+    // Fault computation
+    let m1_ok = true, m2_ok = true, fault_desc = '';
+    let rout_actual = r_out_ideal;
+
+    if(fault === 'vbias_low'){
+      // M1 in triode: VDS,M1 = Vov1/3 (deep triode)
+      const Vds_M1 = Vov1 * 0.3;
+      // r_on,M1 ≈ 1/(gm1_base) * (Vov1 / Vds_M1) approximation or 1/(gm1*something)
+      // More carefully: in deep triode r_on = 1/(μCox(W/L)(VGS-Vth)) ≈ 1/gm when Vov small
+      // Using r_on ≈ Vds/ID = Vds_M1 / (gm1_base*Vov1/2) — rough
+      const r_on_M1 = Vds_M1 / (gm1_base * Vov1 / 2);
+      rout_actual = gm2_base * ro2_base * r_on_M1;
+      m1_ok = false;
+      fault_desc = 'V_bias too low: V_DS,M1 = ' + (Vds_M1*1000).toFixed(0) + ' mV < V_ov = ' + (Vov1*1000).toFixed(0) + ' mV. M1 in triode. r_on,M1 = ' + (r_on_M1).toFixed(0) + ' Ω.';
+    } else if(fault === 'vout_low'){
+      // M2 in triode: VDS,M2 = Vov2 * 0.2
+      const Vov2 = Vov1; // assume same
+      const Vds_M2 = Vov2 * 0.2;
+      const r_on_M2 = Vds_M2 / (gm2_base * Vov2 / 2);
+      // With M2 in triode: r_out ≈ r_on_M2 * (1 + gm2_base * ro1_base)... simplified:
+      rout_actual = ro1_base + r_on_M2 * (1 + gm2_base * ro1_base);
+      // But r_on_M2 is small, so rout ≈ r_on_M2 * gm2 * ro1 or just ro1
+      rout_actual = Math.min(rout_actual, ro1_base * 10); // cap at 10*ro1
+      m2_ok = false;
+      fault_desc = 'V_out too low: V_DS,M2 = ' + (Vds_M2*1000).toFixed(0) + ' mV < V_ov. M2 in triode. Output resistance collapses.';
+    } else if(fault === 'ss_corner'){
+      // V_th +100mV: V_GS,M2 larger → V_DS,M1 smaller
+      // Assume bias V_gate is fixed: V_DS,M1 = V_gate - V_GS,M2_SS
+      // If originally V_DS,M1 = Vov1, at SS corner V_GS,M2 = Vth + 100mV + Vov2
+      // New V_DS,M1 = original V_DS,M1 - 100mV
+      const dVth = 0.1;
+      const new_Vds_M1 = Vov1 - dVth;
+      if(new_Vds_M1 < Vov1 * 0.8){
+        // Partial triode
+        const ratio = Math.max(0.01, new_Vds_M1 / Vov1);
+        rout_actual = r_out_ideal * ratio;
+        m1_ok = new_Vds_M1 >= 0;
+        fault_desc = 'SS corner: V_th +' + (dVth*1000).toFixed(0) + ' mV → V_DS,M1 = ' + (new_Vds_M1*1000).toFixed(0) + ' mV.' + (new_Vds_M1 < Vov1 ? ' Approaching triode.' : ' Marginally in saturation.');
+      } else {
+        rout_actual = r_out_ideal;
+        fault_desc = 'SS corner with +100 mV V_th shift. V_DS,M1 still OK.';
+      }
+    } else if(fault === 'm2_small'){
+      // M2 width 10× smaller: Vov_M2 = sqrt(10) × Vov1 ≈ 3.16 × Vov1
+      const Vov2_fault = Vov1 * 3.16;
+      const Vgs_M2_fault = 0.5 + Vov2_fault; // V_th + Vov2_fault
+      // With original V_gate,M2, V_DS,M1 = V_gate - V_GS,M2_fault
+      // Originally V_DS,M1 = Vov1 (designed), so V_gate = Vov1 + V_th + Vov1
+      const Vgate = Vov1 + 0.5 + Vov1; // = Vov1+Vth+Vov1
+      const Vds_M1_fault = Vgate - Vgs_M2_fault; // = Vov1+Vth+Vov1 - (Vth+3.16*Vov1) = (2-3.16)*Vov1 = -1.16*Vov1
+      m1_ok = Vds_M1_fault >= Vov1;
+      // Very deep triode
+      const r_on_M1 = Math.max(10, Vov1 / (gm1_base * Vov1 / 2)); // approx
+      rout_actual = gm2_base * ro2_base * r_on_M1;
+      fault_desc = 'M2 sized 10× too small: V_ov,M2 = ' + (Vov2_fault*1000).toFixed(0) + ' mV. V_GS,M2 = ' + (Vgs_M2_fault*1000).toFixed(0) + ' mV. V_DS,M1 = ' + (Vds_M1_fault*1000).toFixed(0) + ' mV → deep triode.';
+    } else {
+      fault_desc = 'No fault. Both M1 and M2 in saturation. Cascode operating correctly.';
+    }
+
+    const Av_actual = 20 * Math.log10(gm1_base * Math.max(1, rout_actual));
+
+    document.getElementById('m1_stat').textContent = m1_ok ? 'Saturation' : 'TRIODE';
+    document.getElementById('m2_stat').textContent = m2_ok ? 'Saturation' : 'TRIODE';
+    document.getElementById('m1_ro').className = m1_ok ? 'ro g' : 'ro warn';
+    document.getElementById('m2_ro').className = m2_ok ? 'ro g' : 'ro warn';
+    document.getElementById('rout_exp').textContent = (r_out_ideal/1e9).toFixed(2);
+    document.getElementById('rout_act').textContent = (rout_actual >= 1e9 ? (rout_actual/1e9).toFixed(2)+' GΩ' : rout_actual >= 1e6 ? (rout_actual/1e6).toFixed(1)+' MΩ' : (rout_actual/1e3).toFixed(1)+' kΩ');
+    document.getElementById('rout_ro').className = (Math.abs(Av_actual - Av_ideal) < 3) ? 'ro g' : 'ro warn';
+    document.getElementById('av_exp').textContent = Av_ideal.toFixed(1);
+    document.getElementById('av_act').textContent = Av_actual.toFixed(1);
+    document.getElementById('av_ro').className = (Math.abs(Av_actual - Av_ideal) < 3) ? 'ro g' : 'ro warn';
+    document.getElementById('insight_box').textContent = fault_desc;
+
+    draw(gm1_base, r_out_ideal, rout_actual, Av_ideal, Av_actual, fault);
+  }
+
+  function draw(gm1, rout_ideal, rout_actual, Av_ideal_dB, Av_actual_dB, fault){
+    const cv  = document.getElementById('cv');
+    const W   = cv.parentElement.clientWidth - 36;
+    cv.width = W; cv.height = 320;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, W, 320);
+
+    const isDark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+    const axCol  = isDark ? '#8899bb' : '#8888aa';
+
+    const pL=52, pT=20, pB=44, pH=320-pT-pB, pW=W-pL-14;
+
+    const GBW_mock = 100e6; // fixed GBW for display
+    const CL = gm1 / (2 * Math.PI * GBW_mock);
+    const fp1_ideal  = GBW_mock / Math.pow(10, Av_ideal_dB/20);
+    const fp1_actual = GBW_mock / Math.max(1, Math.pow(10, Av_actual_dB/20));
+
+    const fMin_log = 0, fMax_log = 11;
+    const gMin = -30, gMax = Av_ideal_dB + 15;
+
+    function xPos(f){ return pL + ((Math.log10(f)-fMin_log)/(fMax_log-fMin_log))*pW; }
+    function yGain(dB){ return pT + pH - ((dB-gMin)/(gMax-gMin))*pH; }
+
+    // Axes
+    ctx.strokeStyle=axCol; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+pH); ctx.lineTo(pL+pW,pT+pH); ctx.stroke();
+
+    // Grid
+    for(let dB=Math.ceil(gMin/20)*20; dB<=Math.floor(gMax/20)*20; dB+=20){
+      const y=yGain(dB); if(y<pT||y>pT+pH) continue;
+      ctx.fillStyle=axCol; ctx.font='8px system-ui'; ctx.textAlign='right';
+      ctx.fillText(dB, pL-3, y+3);
+      ctx.strokeStyle=axCol+'22'; ctx.lineWidth=0.5;
+      ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pW,y); ctx.stroke();
+    }
+
+    function drawBode(Av_dB, fp1, col, dash){
+      const Av = Math.pow(10, Av_dB/20);
+      ctx.strokeStyle=col; ctx.lineWidth=2; ctx.setLineDash(dash||[]);
+      ctx.beginPath(); let first=true;
+      for(let px=0; px<=pW; px++){
+        const f = Math.pow(10, fMin_log+(px/pW)*(fMax_log-fMin_log));
+        const H = Av / Math.sqrt(1+(f/fp1)**2);
+        const dB = 20*Math.log10(Math.max(1e-10, H));
+        const y = yGain(dB);
+        if(y<pT-8||y>pT+pH+8){first=true;continue;}
+        first?ctx.moveTo(pL+px,y):ctx.lineTo(pL+px,y); first=false;
+      }
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+
+    drawBode(Av_ideal_dB, fp1_ideal, '#00994d', []);
+    drawBode(Av_actual_dB, fp1_actual, fault==='none'?'#00994d':'#cc4400', fault==='none'?[]:[5,4]);
+
+    // GBW line
+    const xGBW = xPos(GBW_mock);
+    ctx.strokeStyle='#ff880088'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(xGBW,pT); ctx.lineTo(xGBW,pT+pH); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#ff8800'; ctx.font='9px system-ui'; ctx.textAlign='center';
+    ctx.fillText('GBW', xGBW, pT+pH+28);
+
+    // 0 dB line
+    const y0=yGain(0);
+    if(y0>=pT&&y0<=pT+pH){
+      ctx.strokeStyle=axCol+'55'; ctx.lineWidth=0.5; ctx.setLineDash([4,4]);
+      ctx.beginPath(); ctx.moveTo(pL,y0); ctx.lineTo(pL+pW,y0); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Delta annotation
+    if(fault !== 'none'){
+      const delta = Av_ideal_dB - Av_actual_dB;
+      ctx.fillStyle='#cc4400'; ctx.font='bold 11px system-ui'; ctx.textAlign='center';
+      ctx.fillText('A_v drops ' + delta.toFixed(0) + ' dB', pL + pW * 0.3, pT + pH * 0.4);
+    }
+
+    // x labels
+    [1,1e3,1e6,1e9].forEach(f=>{
+      const x=xPos(f);
+      const lbl=f>=1e9?'1GHz':f>=1e6?'1MHz':f>=1e3?'1kHz':'1Hz';
+      ctx.fillStyle=axCol; ctx.font='8px system-ui'; ctx.textAlign='center';
+      ctx.fillText(lbl, x, pT+pH+14);
+    });
+
+    // Legend
+    ctx.strokeStyle='#00994d'; ctx.lineWidth=2; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(pL+pW-130,pT+12); ctx.lineTo(pL+pW-110,pT+12); ctx.stroke();
+    ctx.fillStyle=axCol; ctx.font='9px system-ui'; ctx.textAlign='left';
+    ctx.fillText('Expected gain', pL+pW-106, pT+16);
+    if(fault !== 'none'){
+      ctx.strokeStyle='#cc4400'; ctx.lineWidth=2; ctx.setLineDash([5,4]);
+      ctx.beginPath(); ctx.moveTo(pL+pW-130,pT+28); ctx.lineTo(pL+pW-110,pT+28); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillText('Fault gain', pL+pW-106, pT+32);
+    }
+
+    ctx.textAlign='center'; ctx.fillStyle=axCol; ctx.font='bold 10px system-ui';
+    ctx.fillText('AC Response: Expected vs Fault', pL+pW/2, pT-6);
+    ctx.textAlign='right'; ctx.font='9px system-ui';
+    ctx.save(); ctx.translate(12,pT+pH/2); ctx.rotate(-Math.PI/2); ctx.fillText('Gain (dB)',0,0); ctx.restore();
+  }
+
+  document.querySelectorAll('input[type=range],select').forEach(e => e.addEventListener('input', compute));
+  compute();
+  window.addEventListener('resize', compute);
+</script>
+</body>
+</html>

@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-SIM-9.1.2 Time Step Selection</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:10px;padding:10px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:230px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.warn{color:#ff4444;font-size:11px;margin-top:4px}
+.ok{color:#00ff88;font-size:11px;margin-top:4px}
+.formula{color:#ffaa00;font-size:11px;margin-top:8px;line-height:1.6}
+</style>
+</head>
+<body>
+<h1>P2-SIM-9.1.2 — tstep Selection: Staircasing vs Smooth</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="580" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>True RC Circuit</h2>
+<label>τ (ms)
+<input type="range" id="tau" min="0.1" max="10" step="0.05" value="1">
+<div class="readout" id="tau_v">τ = 1.00 ms</div>
+</label>
+<label>tstep relative to τ
+<input type="range" id="tstep_ratio" min="0.01" max="2" step="0.01" value="0.5">
+<div class="readout" id="tstep_v">tstep = 0.50 × τ</div>
+</label>
+<h2 style="margin-top:10px">Analysis</h2>
+<div class="readout" id="n_pts">Output points: —</div>
+<div class="readout" id="meas_err">τ measure error: —</div>
+<div class="readout" id="qual">Waveform quality: —</div>
+<div id="rec" class="ok"></div>
+<div class="formula">Good: tstep ≤ τ/100<br>Staircase: tstep &gt; τ/10<br>Error ≤ tstep/(2τ) × 100%</div>
+<h2 style="margin-top:10px">Comparison</h2>
+<div class="readout" id="smooth_tau">Smooth curve τ: (reference)</div>
+<div class="readout" id="sampled_tau">Sampled curve τ: —</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let tau=1,tstep_ratio=0.5;
+const W=580,H=380,pd={l:60,r:20,t:30,b:40};
+const CW=W-pd.l-pd.r,CH=H-pd.t-pd.b;
+const Vin=5;
+
+['tau','tstep_ratio'].forEach(id=>{
+  document.getElementById(id).oninput=function(){
+    const v=parseFloat(this.value);
+    if(id==='tau'){tau=v;document.getElementById('tau_v').textContent='τ = '+v.toFixed(2)+' ms';}
+    if(id==='tstep_ratio'){tstep_ratio=v;document.getElementById('tstep_v').textContent='tstep = '+v.toFixed(2)+' × τ';}
+    draw();
+  };
+});
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const tstep=tstep_ratio*tau;
+  const tstop=6*tau;
+  const npts=Math.round(tstop/tstep);
+  const tmax=tstop;
+  function toPx(t,v){return[pd.l+CW*(t/tmax),pd.t+CH*(1-v/(Vin*1.05))];}
+  // Grid
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=6;i++){const x=pd.l+CW*(i/6);ctx.beginPath();ctx.moveTo(x,pd.t);ctx.lineTo(x,pd.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=pd.t+CH*(i/5);ctx.beginPath();ctx.moveTo(pd.l,y);ctx.lineTo(pd.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pd.l,pd.t);ctx.lineTo(pd.l,pd.t+CH);ctx.moveTo(pd.l,pd.t+CH);ctx.lineTo(pd.l+CW,pd.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=6;i++){const t=tmax*i/6;ctx.fillText(t.toFixed(2)+'ms',pd.l+CW*(i/6),pd.t+CH+14);}
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){const v=Vin*1.05*(1-i/5);ctx.fillText(v.toFixed(1)+'V',pd.l-4,pd.t+CH*(i/5)+4);}
+  // True smooth curve
+  ctx.strokeStyle='#00ff8833';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=600;i++){const t=tmax*i/600;const v=Vin*(1-Math.exp(-t/tau));const[x,y]=toPx(t,v);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  ctx.fillStyle='#00ff8866';ctx.font='10px Courier New';ctx.textAlign='left';ctx.fillText('True curve (reference)',pd.l+4,pd.t+14);
+  // Sampled version with staircase
+  const pts=[];
+  for(let i=0;i<=npts;i++){const t=tstep*i;const v=Vin*(1-Math.exp(-t/tau));pts.push({t,v});}
+  const col=tstep_ratio<=0.1?'#00ff88':(tstep_ratio<=0.3?'#ffaa00':'#ff4444');
+  ctx.strokeStyle=col;ctx.lineWidth=2;
+  ctx.beginPath();
+  pts.forEach(({t,v},i)=>{
+    const[x,y]=toPx(t,v);
+    if(i===0){ctx.moveTo(x,y);}
+    else{
+      const[xp,yp]=toPx(pts[i-1].t,pts[i-1].v);
+      ctx.lineTo(x,yp); // horizontal step
+      ctx.lineTo(x,y);  // vertical step
+    }
+  });
+  ctx.stroke();
+  // Sample dots
+  ctx.fillStyle=col;
+  pts.forEach(({t,v})=>{const[x,y]=toPx(t,v);ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fill();});
+  ctx.font='11px Courier New';ctx.textAlign='left';
+  ctx.fillText('Sampled (tstep = '+tstep_ratio.toFixed(2)+'τ = '+tstep.toFixed(3)+'ms, '+npts+' pts)',pd.l+4,pd.t+28);
+  // τ error estimation
+  const meas_err=tstep/(2*tau)*100;
+  const qual=tstep_ratio<=0.01?'Excellent (≤1%)':tstep_ratio<=0.1?'Good (≤10%)':tstep_ratio<=0.5?'Poor — staircase visible':'Very poor — τ unmeasurable';
+  document.getElementById('n_pts').textContent='Output points: '+npts+' (over 6τ)';
+  document.getElementById('meas_err').textContent='Max τ meas. error: ±'+meas_err.toFixed(1)+'%';
+  document.getElementById('qual').textContent='Quality: '+qual;
+  const rec=document.getElementById('rec');
+  if(tstep_ratio<=0.01){rec.className='ok';rec.textContent='Recommended: tstep = τ/100';}
+  else if(tstep_ratio<=0.1){rec.className='ok';rec.textContent='Acceptable for visual inspection.';}
+  else{rec.className='warn';rec.textContent='Too coarse! Reduce tstep_ratio to 0.01 (τ/100).';}
+  document.getElementById('sampled_tau').textContent='Sampled τ ≈ '+tau.toFixed(3)+'ms ± '+( meas_err*tau/100).toFixed(3)+'ms';
+}
+draw();
+</script>
+</body>
+</html>

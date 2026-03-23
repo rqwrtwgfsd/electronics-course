@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-C-1.5.3 — Optimize: Noise Filtering</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+  h1 { color: #0066cc; font-size: 1.3em; margin-bottom: 4px; }
+  .subtitle { color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }
+  .layout { display: flex; gap: 20px; flex-wrap: wrap; }
+  .panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+  .controls { width: 290px; flex-shrink: 0; }
+  .plot-area { flex: 1; min-width: 360px; }
+  label { display: block; color: #8b949e; font-size: 0.8em; margin-bottom: 4px; margin-top: 12px; }
+  input[type=range] { width: 100%; accent-color: #0066cc; }
+  .val { color: #0066cc; font-weight: bold; }
+  canvas { background: #0d1117; border-radius: 6px; display: block; }
+  .readouts { margin-top: 14px; }
+  .readout-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #21262d; font-size: 0.82em; }
+  .readout-label { color: #8b949e; }
+  .readout-val { font-weight: bold; font-family: monospace; }
+  .toggle-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  button { background: #21262d; border: 1px solid #30363d; color: #8b949e; padding: 6px 10px; border-radius: 5px; cursor: pointer; font-size: 0.78em; }
+  button.active { border-color: currentColor; }
+  .c1-color { color: #e3b341; } .c2-color { color: #0066cc; } .c3-color { color: #3fb950; } .c4-color { color: #bc8cff; }
+  .sect-hdr { color: #8b949e; font-size: 0.75em; text-transform: uppercase; letter-spacing: 1px; margin-top: 14px; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<h1>P2-C-1.5.3 — Optimize: Noise Filtering (Multi-Cap Bank)</h1>
+<div class="subtitle">Impedance vs. frequency · self-resonance dips · add/remove caps to see combined response</div>
+<div class="layout">
+  <div class="panel controls">
+    <div class="sect-hdr">Source Impedance</div>
+    <label>R_source (for |H| calc): <span class="val" id="rsLabel">1 Ω</span></label>
+    <input type="range" id="rsSlider" min="1" max="100" value="10" step="1">
+
+    <div class="sect-hdr">Cap Bank (toggle each cap)</div>
+    <div class="toggle-row">
+      <button id="b1" class="active c1-color" style="border-color:#e3b341">10 µF</button>
+      <button id="b2" class="active c2-color" style="border-color:#0066cc">1 µF</button>
+      <button id="b3" class="active c3-color" style="border-color:#3fb950">100 nF</button>
+      <button id="b4" class="active c4-color" style="border-color:#bc8cff">10 nF</button>
+    </div>
+    <label>ESL per cap (package): <span class="val" id="eslLabel">0.5 nH</span></label>
+    <input type="range" id="eslSlider" min="1" max="50" value="5" step="1">
+    <label>ESR per cap: <span class="val" id="esrLabel">20 mΩ</span></label>
+    <input type="range" id="esrSlider" min="1" max="100" value="20" step="1">
+
+    <div class="readouts">
+      <div class="readout-row"><span class="readout-label c1-color">10 µF SRF</span><span class="readout-val c1-color" id="srf1">—</span></div>
+      <div class="readout-row"><span class="readout-label c2-color">1 µF SRF</span><span class="readout-val c2-color" id="srf2">—</span></div>
+      <div class="readout-row"><span class="readout-label c3-color">100 nF SRF</span><span class="readout-val c3-color" id="srf3">—</span></div>
+      <div class="readout-row"><span class="readout-label c4-color">10 nF SRF</span><span class="readout-val c4-color" id="srf4">—</span></div>
+      <div class="readout-row"><span class="readout-label">Combined Z_min</span><span class="readout-val" id="zmin" style="color:#39d353">—</span></div>
+    </div>
+  </div>
+  <div class="panel plot-area">
+    <canvas id="cv" width="600" height="420"></canvas>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'); const ctx=cv.getContext('2d');
+const W=600, H=420;
+const PAD={top:36,right:24,bottom:50,left:66};
+const PW=W-PAD.left-PAD.right, PH=H-PAD.top-PAD.bottom;
+
+const CAPS=[
+  {C:10e-6, color:'#e3b341', label:'10 µF'},
+  {C:1e-6,  color:'#0066cc', label:'1 µF'},
+  {C:100e-9,color:'#3fb950', label:'100 nF'},
+  {C:10e-9, color:'#bc8cff', label:'10 nF'}
+];
+const active=[true,true,true,true];
+['b1','b2','b3','b4'].forEach((id,i)=>{
+  document.getElementById(id).addEventListener('click',()=>{
+    active[i]=!active[i];
+    document.getElementById(id).classList.toggle('active',active[i]);
+    draw();
+  });
+});
+
+function fmtF(f){ return f>=1e9?(f/1e9).toFixed(2)+'GHz':f>=1e6?(f/1e6).toFixed(1)+'MHz':f>=1e3?(f/1e3).toFixed(0)+'kHz':f.toFixed(0)+'Hz'; }
+function fmtZ(z){ return z>=1?(z).toFixed(2)+'Ω':z>=0.001?(z*1000).toFixed(1)+'mΩ':(z*1e6).toFixed(0)+'µΩ'; }
+
+function getCapZ(C, ESL, ESR, f){
+  const w=2*Math.PI*f;
+  const Zre=ESR, Zim=w*ESL-1/(w*C);
+  return Math.sqrt(Zre*Zre+Zim*Zim);
+}
+
+function draw(){
+  const Rs=parseFloat(document.getElementById('rsSlider').value)/10;
+  const ESL=parseFloat(document.getElementById('eslSlider').value)*1e-10;
+  const ESR=parseFloat(document.getElementById('esrSlider').value)*1e-3;
+  document.getElementById('rsLabel').textContent=Rs.toFixed(1)+' Ω';
+  document.getElementById('eslLabel').textContent=(ESL*1e9).toFixed(1)+' nH';
+  document.getElementById('esrLabel').textContent=(ESR*1000).toFixed(0)+' mΩ';
+
+  const srfIds=['srf1','srf2','srf3','srf4'];
+  CAPS.forEach((cap,i)=>{
+    const srf=1/(2*Math.PI*Math.sqrt(ESL*cap.C));
+    document.getElementById(srfIds[i]).textContent=fmtF(srf);
+  });
+
+  ctx.clearRect(0,0,W,H);
+  const fMin=1e3, fMax=1e9;
+  const logMin=Math.log10(fMin), logMax=Math.log10(fMax);
+  const ZdBmin=-60, ZdBmax=20;
+  const fx=f=>PAD.left+(Math.log10(f)-logMin)/(logMax-logMin)*PW;
+  const fy=db=>PAD.top+PH-(db-ZdBmin)/(ZdBmax-ZdBmin)*PH;
+
+  // Grid
+  ctx.strokeStyle='#21262d'; ctx.lineWidth=1;
+  for(let db=ZdBmin;db<=ZdBmax;db+=20){const y=fy(db);ctx.beginPath();ctx.moveTo(PAD.left,y);ctx.lineTo(PAD.left+PW,y);ctx.stroke();}
+  for(let dec=3;dec<=9;dec++){const x=fx(Math.pow(10,dec));ctx.beginPath();ctx.moveTo(x,PAD.top);ctx.lineTo(x,PAD.top+PH);ctx.stroke();}
+
+  // Axes
+  ctx.strokeStyle='#484f58'; ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(PAD.left,PAD.top);ctx.lineTo(PAD.left,PAD.top+PH);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(PAD.left,PAD.top+PH);ctx.lineTo(PAD.left+PW,PAD.top+PH);ctx.stroke();
+
+  // Labels
+  ctx.fillStyle='#8b949e'; ctx.font='10px sans-serif'; ctx.textAlign='right';
+  for(let db=ZdBmin;db<=ZdBmax;db+=20){ctx.fillText(db>=0?'+'+db+'dB':db+'dB',PAD.left-5,fy(db)+4);}
+  ctx.textAlign='center';
+  for(let dec=3;dec<=9;dec++){ctx.fillText(fmtF(Math.pow(10,dec)),fx(Math.pow(10,dec)),PAD.top+PH+16);}
+
+  // Individual cap impedance curves
+  let allZarr=[];
+  CAPS.forEach((cap,i)=>{
+    if(!active[i]) return;
+    ctx.strokeStyle=cap.color; ctx.lineWidth=1.5; ctx.globalAlpha=0.6; ctx.beginPath();
+    for(let px=0;px<=PW;px++){
+      const f=Math.pow(10,logMin+(px/PW)*(logMax-logMin));
+      const Z=getCapZ(cap.C,ESL,ESR,f);
+      const db=20*Math.log10(Z);
+      const y=fy(Math.max(ZdBmin,Math.min(ZdBmax,db)));
+      px===0?ctx.moveTo(PAD.left+px,y):ctx.lineTo(PAD.left+px,y);
+    }
+    ctx.stroke();
+    ctx.globalAlpha=1;
+  });
+
+  // Combined impedance
+  const Npts=PW+1;
+  const Zarr=new Float64Array(Npts);
+  let minZ=1e9;
+  for(let px=0;px<=PW;px++){
+    const f=Math.pow(10,logMin+(px/PW)*(logMax-logMin));
+    let Ginv=0; // sum of 1/Z for active caps (parallel admittance)
+    let anyActive=false;
+    CAPS.forEach((cap,i)=>{
+      if(!active[i]) return;
+      anyActive=true;
+      const Z=getCapZ(cap.C,ESL,ESR,f);
+      Ginv+=1/Z;
+    });
+    Zarr[px]=anyActive?1/Ginv:1000;
+    if(Zarr[px]<minZ) minZ=Zarr[px];
+  }
+  document.getElementById('zmin').textContent=fmtZ(minZ);
+
+  ctx.strokeStyle='#ffffff'; ctx.lineWidth=2.5; ctx.beginPath();
+  for(let px=0;px<=PW;px++){
+    const db=20*Math.log10(Zarr[px]);
+    const y=fy(Math.max(ZdBmin,Math.min(ZdBmax,db)));
+    px===0?ctx.moveTo(PAD.left+px,y):ctx.lineTo(PAD.left+px,y);
+  }
+  ctx.stroke();
+
+  // RS line
+  const yRS=fy(20*Math.log10(Rs));
+  ctx.strokeStyle='#f78166'; ctx.lineWidth=1; ctx.setLineDash([5,4]);
+  ctx.beginPath();ctx.moveTo(PAD.left,yRS);ctx.lineTo(PAD.left+PW,yRS);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#f78166'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('R_source = '+Rs.toFixed(1)+'Ω (filtering when Z_cap < R_src)',PAD.left+4,yRS-4);
+
+  // Legend
+  ctx.font='11px sans-serif'; ctx.textAlign='left';
+  ctx.fillStyle='#8b949e';
+  ctx.fillText('IMPEDANCE vs FREQUENCY (Z in dBΩ)',PAD.left,PAD.top-12);
+  let lx=PAD.left;
+  CAPS.forEach((cap,i)=>{
+    if(!active[i]) return;
+    ctx.fillStyle=cap.color;
+    ctx.fillRect(lx,PAD.top+PH+30,12,3);
+    ctx.fillText(cap.label,lx+15,PAD.top+PH+36);
+    lx+=80;
+  });
+  ctx.fillStyle='#ffffff';
+  ctx.fillRect(lx,PAD.top+PH+30,12,3);
+  ctx.fillText('Combined',lx+15,PAD.top+PH+36);
+}
+
+['rsSlider','eslSlider','esrSlider'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+draw();
+</script>
+</body>
+</html>

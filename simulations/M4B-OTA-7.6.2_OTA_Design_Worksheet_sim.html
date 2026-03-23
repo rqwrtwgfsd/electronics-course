@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>M4B-OTA-7.6.2 — OTA Design Worksheet Simulator</title>
+<style>
+  body { font-family: 'Courier New', monospace; background: #0a0a0a; color: #e0e0e0; margin: 0; padding: 20px; }
+  h1 { color: #00bcd4; font-size: 1.1em; margin-bottom: 4px; }
+  .subtitle { color: #888; font-size: 0.85em; margin-bottom: 20px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .tab { padding: 8px 16px; background: #1a1a1a; border: 1px solid #333; cursor: pointer; font-family: inherit; font-size: 0.85em; color: #aaa; }
+  .tab.active { background: #00bcd4; color: #000; border-color: #00bcd4; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  canvas { background: #111; border: 1px solid #333; display: block; }
+  .ws-section { background: #111; border: 1px solid #333; padding: 14px; margin: 10px 0; }
+  .ws-section h3 { color: #ffeb3b; margin: 0 0 10px 0; font-size: 0.9em; border-bottom: 1px solid #333; padding-bottom: 6px; }
+  .ws-row { display: flex; align-items: center; margin: 6px 0; font-size: 0.82em; }
+  .ws-row label { width: 280px; color: #aaa; flex-shrink: 0; }
+  .ws-row input[type=number] { background: #1a1a2e; border: 1px solid #444; color: #00bcd4; padding: 3px 8px; width: 90px; font-family: inherit; font-size: 0.9em; }
+  .ws-row select { background: #1a1a2e; border: 1px solid #444; color: #e0e0e0; padding: 3px 8px; font-family: inherit; font-size: 0.9em; }
+  .ws-row .derived { color: #4caf50; margin-left: 12px; font-size: 0.85em; min-width: 160px; }
+  .ws-row .check { width: 18px; height: 18px; margin-right: 8px; }
+  .ws-row .check-label { color: #aaa; font-size: 0.82em; }
+  .compute-btn { background: #00bcd4; color: #000; border: none; padding: 10px 24px; font-family: inherit; font-size: 0.9em; cursor: pointer; margin: 10px 0; font-weight: bold; }
+  .compute-btn:hover { background: #00acc1; }
+  .result-panel { background: #0d2b0d; border: 2px solid #4caf50; padding: 12px; margin: 10px 0; }
+  .result-panel h3 { color: #4caf50; margin: 0 0 8px 0; font-size: 0.9em; }
+  .result-row { display: flex; justify-content: space-between; margin: 3px 0; font-size: 0.82em; }
+  .result-row .r-label { color: #aaa; }
+  .result-row .r-val { color: #00bcd4; }
+  .result-row .r-pass { color: #4caf50; }
+  .result-row .r-fail { color: #f44336; }
+  .warn { color: #ffeb3b; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+  .ctrl { background: #1a1a1a; border: 1px solid #333; padding: 8px 12px; min-width: 180px; }
+  .ctrl label { display: block; color: #aaa; font-size: 0.78em; margin-bottom: 4px; }
+  .ctrl input[type=range] { width: 100%; accent-color: #00bcd4; }
+  .ctrl .val { color: #00bcd4; font-size: 0.85em; }
+</style>
+</head>
+<body>
+<h1>M4B-OTA-7.6.2 — OTA Structured Design Worksheet</h1>
+<div class="subtitle">Interactive first-pass sizing tool: enter spec → get topology + device sizes</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab(0)">Design Worksheet</div>
+  <div class="tab" onclick="switchTab(1)">Verification Charts</div>
+  <div class="tab" onclick="switchTab(2)">Process Reference</div>
+</div>
+
+<!-- TAB 0: Design Worksheet -->
+<div class="panel active" id="tab0">
+
+  <div class="ws-section">
+    <h3>BLOCK 1 — Specification Capture</h3>
+    <div class="ws-row">
+      <label>Supply VDD (V):</label>
+      <input type="number" id="s_vdd" value="1.8" step="0.1" min="0.5" max="5.0" oninput="autoCompute()">
+      <span class="derived" id="d_vdd"></span>
+    </div>
+    <div class="ws-row">
+      <label>Required DC Gain (dB):</label>
+      <input type="number" id="s_gain" value="80" step="1" min="20" max="150" oninput="autoCompute()">
+    </div>
+    <div class="ws-row">
+      <label>Output Swing (%VDD):</label>
+      <input type="number" id="s_swing" value="70" step="1" min="10" max="100" oninput="autoCompute()">
+      <span class="derived" id="d_swing_v"></span>
+    </div>
+    <div class="ws-row">
+      <label>GBW Target (MHz):</label>
+      <input type="number" id="s_gbw" value="100" step="1" min="0.1" max="10000" oninput="autoCompute()">
+    </div>
+    <div class="ws-row">
+      <label>Load Cap CL (pF):</label>
+      <input type="number" id="s_cl" value="2.0" step="0.1" min="0.1" max="100" oninput="autoCompute()">
+    </div>
+    <div class="ws-row">
+      <label>IDD Budget (µA):</label>
+      <input type="number" id="s_idd" value="500" step="10" min="10" max="20000" oninput="autoCompute()">
+    </div>
+    <div class="ws-row">
+      <label>Process Node:</label>
+      <select id="s_proc" onchange="autoCompute()">
+        <option value="180">TSMC 180nm</option>
+        <option value="65">TSMC 65nm</option>
+        <option value="28">TSMC 28nm</option>
+      </select>
+    </div>
+    <div class="ws-row">
+      <label>Complexity Constraint:</label>
+      <select id="s_cplx" onchange="autoCompute()">
+        <option value="high">High OK</option>
+        <option value="med" selected>Medium preferred</option>
+        <option value="low">Low (fast turnaround)</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="ws-section">
+    <h3>BLOCK 2 — Topology Selection (automatic)</h3>
+    <div id="topo_result" style="font-size:0.85em;line-height:1.8"></div>
+  </div>
+
+  <div class="ws-section">
+    <h3>BLOCK 3 — Input Pair Sizing</h3>
+    <div class="ws-row">
+      <label>Overdrive Vov (V):</label>
+      <input type="number" id="s_vov" value="0.15" step="0.01" min="0.03" max="0.40" oninput="autoCompute()">
+      <span class="derived" id="d_vov_hint"></span>
+    </div>
+    <div class="ws-row">
+      <label>gm1 required [auto]:</label>
+      <span id="d_gm1" style="color:#00bcd4;font-size:0.85em"></span>
+    </div>
+    <div class="ws-row">
+      <label>ID per device [auto]:</label>
+      <span id="d_id" style="color:#00bcd4;font-size:0.85em"></span>
+    </div>
+    <div class="ws-row">
+      <label>ISS [auto]:</label>
+      <span id="d_iss" style="color:#00bcd4;font-size:0.85em"></span>
+    </div>
+    <div class="ws-row">
+      <label>W/L input pair [auto]:</label>
+      <span id="d_wl" style="color:#00bcd4;font-size:0.85em"></span>
+    </div>
+    <div class="ws-row">
+      <label>Slew Rate [auto]:</label>
+      <span id="d_sr" style="color:#00bcd4;font-size:0.85em"></span>
+    </div>
+  </div>
+
+  <div class="ws-section">
+    <h3>BLOCK 4 — Gain / Output Stage</h3>
+    <div id="block4_result" style="font-size:0.82em;line-height:1.9"></div>
+  </div>
+
+  <div class="ws-section">
+    <h3>BLOCK 5 — Power and FoM</h3>
+    <div id="block5_result" style="font-size:0.82em;line-height:1.9"></div>
+  </div>
+
+  <div class="result-panel" id="final_result">
+    <h3>Final Summary</h3>
+    <div style="color:#888;font-size:0.82em">Fill in specifications above — results appear here.</div>
+  </div>
+</div>
+
+<!-- TAB 1: Verification Charts -->
+<div class="panel" id="tab1">
+  <div class="controls">
+    <div class="ctrl">
+      <label>Vov sweep: min (V): <span class="val" id="vov_min_v">0.05</span></label>
+      <input type="range" id="vov_min" min="0.03" max="0.20" step="0.01" value="0.05" oninput="drawVerify()">
+    </div>
+    <div class="ctrl">
+      <label>Vov sweep: max (V): <span class="val" id="vov_max_v">0.35</span></label>
+      <input type="range" id="vov_max" min="0.10" max="0.50" step="0.01" value="0.35" oninput="drawVerify()">
+    </div>
+  </div>
+  <canvas id="chart1a" width="860" height="280"></canvas>
+  <canvas id="chart1b" width="860" height="280" style="margin-top:10px"></canvas>
+</div>
+
+<!-- TAB 2: Process Reference -->
+<div class="panel" id="tab2">
+  <div class="ws-section">
+    <h3>Process Parameter Quick Reference</h3>
+    <table style="border-collapse:collapse;width:100%;font-size:0.8em">
+      <tr style="background:#1a1a1a">
+        <th style="padding:6px;border:1px solid #333;color:#00bcd4">Parameter</th>
+        <th style="padding:6px;border:1px solid #333;color:#00bcd4">TSMC 180nm</th>
+        <th style="padding:6px;border:1px solid #333;color:#00bcd4">TSMC 65nm</th>
+        <th style="padding:6px;border:1px solid #333;color:#00bcd4">TSMC 28nm</th>
+      </tr>
+      <tr><td style="padding:5px 8px;border:1px solid #2a2a2a">µn Cox (µA/V²)</td><td style="padding:5px 8px;border:1px solid #2a2a2a;color:#4caf50">270</td><td style="padding:5px 8px;border:1px solid #2a2a2a;color:#4caf50">500</td><td style="padding:5px 8px;border:1px solid #2a2a2a;color:#4caf50">650</td></tr>
+      <tr><td style="padding:5px 8px;border:1px solid #2a2a2a">µp Cox (µA/V²)</td><td style="padding:5px 8px;border:1px solid #2a2a2a">70</td><td style="padding:5px 8px;border:1px solid #2a2a2a">120</td><td style="padding:5px 8px;border:1px solid #2a2a2a">200</td></tr>
+      <tr><td style="padding:5px 8px;border:1px solid #2a2a2a">Vth_n (V)</td><td style="padding:5px 8px;border:1px solid #2a2a2a">0.50</td><td style="padding:5px 8px;border:1px solid #2a2a2a">0.40</td><td style="padding:5px 8px;border:1px solid #2a2a2a">0.35</td></tr>
+      <tr><td style="padding:5px 8px;border:1px solid #2a2a2a">Vth_p (V)</td><td style="padding:5px 8px;border:1px solid #2a2a2a">-0.50</td><td style="padding:5px 8px;border:1px solid #2a2a2a">-0.40</td><td style="padding:5px 8px;border:1px solid #2a2a2a">-0.35</td></tr>
+      <tr><td style="padding:5px 8px;border:1px solid #2a2a2a">λ (V⁻¹/µm)</td><td style="padding:5px 8px;border:1px solid #2a2a2a">0.05</td><td style="padding:5px 8px;border:1px solid #2a2a2a">0.15</td><td style="padding:5px 8px;border:1px solid #2a2a2a">0.25</td></tr>
+      <tr><td style="padding:5px 8px;border:1px solid #2a2a2a">Typical L analog</td><td style="padding:5px 8px;border:1px solid #2a2a2a">0.5–1 µm</td><td style="padding:5px 8px;border:1px solid #2a2a2a">0.1–0.3 µm</td><td style="padding:5px 8px;border:1px solid #2a2a2a">0.06–0.1 µm</td></tr>
+      <tr><td style="padding:5px 8px;border:1px solid #2a2a2a">Typical VDD</td><td style="padding:5px 8px;border:1px solid #2a2a2a">1.8 or 3.3V</td><td style="padding:5px 8px;border:1px solid #2a2a2a">1.2V</td><td style="padding:5px 8px;border:1px solid #2a2a2a">0.9 or 1.8V</td></tr>
+      <tr><td style="padding:5px 8px;border:1px solid #2a2a2a">ro at L=min, ID=100µA</td><td style="padding:5px 8px;border:1px solid #2a2a2a;color:#ff9800">~180 kΩ</td><td style="padding:5px 8px;border:1px solid #2a2a2a;color:#ff9800">~65 kΩ</td><td style="padding:5px 8px;border:1px solid #2a2a2a;color:#f44336">~40 kΩ</td></tr>
+    </table>
+
+    <div style="margin-top:16px">
+      <h3 style="color:#ffeb3b">Key Design Equations</h3>
+      <div style="line-height:2;font-size:0.82em;color:#aaa">
+        <div><span style="color:#00bcd4">gm1</span> = GBW × 2π × CL</div>
+        <div><span style="color:#00bcd4">ISS</span> = gm1 × Vov  (long-channel)   or   ISS = gm1 × nVT  (subthreshold)</div>
+        <div><span style="color:#00bcd4">W/L</span> = 2×ID / (µCox × Vov²)</div>
+        <div><span style="color:#00bcd4">ro</span> = 1 / (λ × L_eff⁻¹ × ID) = L / (λ_sheet × ID)</div>
+        <div><span style="color:#00bcd4">Rout_cascode</span> = gm_c × ro_c × ro_main</div>
+        <div><span style="color:#00bcd4">Cc_Miller</span> = gm1 / (2π × GBW)</div>
+        <div><span style="color:#00bcd4">gm2_min</span> = 1.73 × GBW × 2π × CL  (for 60° PM)</div>
+        <div><span style="color:#00bcd4">SR</span> = ISS / CL</div>
+        <div><span style="color:#00bcd4">FoM</span> = GBW [MHz] × CL [pF] / IDD [mA]  →  GHz·pF/A</div>
+        <div><span style="color:#00bcd4">Noise</span> = √(8kT × 2/(3gm1))  at room temperature ≈ √(44/gm1 [mA/V]) nV/√Hz</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const PROC = {
+  '180': { un_cox: 270e-6, up_cox: 70e-6,  vth_n: 0.50, lambda: 0.05, L_anal: 0.5e-6, vdd_typ: 1.8 },
+  '65':  { un_cox: 500e-6, up_cox: 120e-6, vth_n: 0.40, lambda: 0.15, L_anal: 0.12e-6,vdd_typ: 1.2 },
+  '28':  { un_cox: 650e-6, up_cox: 200e-6, vth_n: 0.35, lambda: 0.25, L_anal: 0.08e-6,vdd_typ: 0.9 }
+};
+
+function fmt_e(v, unit, dec) {
+  if (unit === 'mA/V')  return (v*1000).toFixed(dec||2) + ' mA/V';
+  if (unit === 'µA')    return (v*1e6).toFixed(dec||1) + ' µA';
+  if (unit === 'pF')    return (v*1e12).toFixed(dec||2) + ' pF';
+  if (unit === 'MΩ')    return (v/1e6).toFixed(dec||1) + ' MΩ';
+  if (unit === 'kΩ')    return (v/1e3).toFixed(dec||1) + ' kΩ';
+  if (unit === 'MHz')   return (v/1e6).toFixed(dec||1) + ' MHz';
+  if (unit === 'dB')    return v.toFixed(dec||0) + ' dB';
+  if (unit === 'V/µs')  return v.toFixed(dec||0) + ' V/µs';
+  return v.toFixed(dec||2) + ' ' + unit;
+}
+
+function chk(pass) { return `<span class="${pass ? 'r-pass' : 'r-fail'}">${pass ? '✓ PASS' : '✗ FAIL'}</span>`; }
+
+function autoCompute() {
+  const vdd   = parseFloat(document.getElementById('s_vdd').value);
+  const gain  = parseFloat(document.getElementById('s_gain').value);
+  const swing = parseFloat(document.getElementById('s_swing').value); // %
+  const gbw   = parseFloat(document.getElementById('s_gbw').value) * 1e6;
+  const cl    = parseFloat(document.getElementById('s_cl').value) * 1e-12;
+  const idd_b = parseFloat(document.getElementById('s_idd').value) * 1e-6;
+  const vov   = parseFloat(document.getElementById('s_vov').value);
+  const proc  = document.getElementById('s_proc').value;
+  const cplx  = document.getElementById('s_cplx').value;
+  const P     = PROC[proc];
+
+  document.getElementById('d_swing_v').textContent = '= ' + (swing/100*vdd).toFixed(2) + ' V';
+  document.getElementById('d_vov_hint').textContent = proc === '28' ? '(≤0.10 recommended for 28nm)' :
+                                                       proc === '65' ? '(0.07–0.15 typical for 65nm)' : '(0.10–0.20 typical for 180nm)';
+
+  // BLOCK 2: topology selection
+  let topo = 'TwoStg', topoName = 'Two-Stage OTA';
+  const eliminated = [];
+  if (gain < 50 && swing < 80 && idd_b < 100e-6) { topo = '5T'; topoName = '5T OTA'; }
+  else if (gain < 50) { topo = '5T'; topoName = '5T OTA (gain sufficient)'; }
+  else if (vdd < 1.0) { topo = '5T'; topoName = '5T OTA or Low-V Two-Stage (VDD < 1V: no cascode)'; }
+  else if (idd_b < 100e-6) { topo = '5T'; topoName = '5T OTA (micropower budget)'; }
+  else if (gain > 100 && cplx !== 'low') { topo = 'GainBoosted'; topoName = 'Gain-Boosted Two-Stage'; }
+  else if (swing < 60 && gain <= 100 && gbw > 500e6) { topo = 'Tele'; topoName = 'Telescopic Cascode'; }
+  else if (swing >= 60 && swing < 80 && gain <= 100) { topo = 'Folded'; topoName = 'Folded Cascode'; }
+  else { topo = 'TwoStg'; topoName = 'Two-Stage OTA'; }
+
+  const topoHTML = `
+    <div><span style="color:#aaa">Gain:</span> <span style="color:#fff">${gain} dB</span> → ${gain < 50 ? 'Cat. <50 dB' : gain <= 80 ? 'Cat. 50–80 dB' : gain <= 100 ? 'Cat. 80–100 dB' : 'Cat. >100 dB'}</div>
+    <div><span style="color:#aaa">Swing:</span> <span style="color:#fff">${swing}% VDD = ${(swing/100*vdd).toFixed(2)}V</span> → ${swing > 60 ? 'Telescopic eliminated' : 'Telescopic viable'}</div>
+    <div><span style="color:#aaa">IDD budget:</span> <span style="color:#fff">${(idd_b*1e6).toFixed(0)} µA</span> → ${idd_b < 100e-6 ? 'Micropower: 5T only' : 'OK for all topologies'}</div>
+    <div><span style="color:#aaa">VDD:</span> <span style="color:#fff">${vdd}V</span> → ${vdd < 1.0 ? 'No cascode possible' : vdd < 1.5 ? 'Cascode feasible with care' : 'All topologies OK'}</div>
+    <div style="margin-top:8px"><strong style="color:#4caf50">Selected: ${topoName}</strong></div>`;
+  document.getElementById('topo_result').innerHTML = topoHTML;
+
+  // BLOCK 3: Input pair
+  const gm1 = gbw * 2 * Math.PI * cl;
+  const id   = gm1 * vov / 2;
+  const iss  = 2 * id;
+  const wl   = 2 * id / (P.un_cox * vov * vov);
+  const sr   = iss / cl;
+
+  document.getElementById('d_gm1').textContent = fmt_e(gm1, 'mA/V');
+  document.getElementById('d_id').textContent  = fmt_e(id, 'µA');
+  document.getElementById('d_iss').textContent = fmt_e(iss, 'µA');
+  document.getElementById('d_wl').textContent  = wl.toFixed(1) + '  (W = ' + (wl * P.L_anal * 1e6).toFixed(2) + ' µm, L = ' + (P.L_anal*1e9).toFixed(0) + ' nm)';
+  document.getElementById('d_sr').textContent  = fmt_e(sr * 1e-6, 'V/µs');
+
+  // BLOCK 4: gain stage
+  const ro = P.L_anal / (P.lambda * id);
+  const gmro_dev = gm1 * ro;
+
+  let b4html = '';
+  const gain_5T = 20*Math.log10(gm1 * ro / 2);
+  const gain_tele = 20*Math.log10(gm1 * gm1 * ro * ro / 2);
+
+  if (topo === '5T') {
+    const av = gm1 * ro / 2;
+    b4html = `
+      <div>Rout (5T) = gm1 × ro² / 2 = ${fmt_e(ro/2, 'kΩ', 0)} → Av = ${fmt_e(av,'',0)} = ${(20*Math.log10(av)).toFixed(0)} dB</div>
+      <div>${chk(20*Math.log10(av) >= gain)} Required gain = ${gain} dB</div>`;
+  } else if (topo === 'Tele') {
+    const rout = gm1 * ro * ro / 2;
+    const av   = gm1 * rout;
+    b4html = `
+      <div>Cascode ro = ${fmt_e(ro,'kΩ',0)}, gm_c ≈ gm1 = ${fmt_e(gm1,'mA/V')}</div>
+      <div>Rout = gm_c × ro_c × ro_main / 2 = ${fmt_e(rout,'MΩ',1)}</div>
+      <div>Av = gm1 × Rout = ${(20*Math.log10(av)).toFixed(0)} dB  ${chk(20*Math.log10(av) >= gain)}</div>
+      <div>Swing = VDD − 5×Vov = ${(vdd-5*vov).toFixed(2)}V = ${((vdd-5*vov)/vdd*100).toFixed(0)}% VDD  ${chk((vdd-5*vov)/vdd*100 >= swing)}</div>`;
+  } else if (topo === 'Folded') {
+    const rout = gm1 * ro * ro / 2;
+    const av   = gm1 * rout * 0.9; // slightly less than telescopic
+    const swg  = vdd - 4*vov;
+    b4html = `
+      <div>Folded: I_B ≥ ISS×1.2 = ${fmt_e(iss*1.2,'µA',0)} per side</div>
+      <div>Rout ≈ ${fmt_e(rout,'MΩ',1)} (similar to telescopic)</div>
+      <div>Av ≈ ${(20*Math.log10(av)).toFixed(0)} dB  ${chk(20*Math.log10(av) >= gain)}</div>
+      <div>Swing = VDD − 4×Vov = ${swg.toFixed(2)}V = ${(swg/vdd*100).toFixed(0)}% VDD  ${chk(swg/vdd*100 >= swing)}</div>`;
+  } else if (topo === 'TwoStg') {
+    const cc   = gm1 / (2 * Math.PI * gbw);
+    const gm2_req = 1.73 * gbw * 2 * Math.PI * cl;
+    const id2  = gm2_req * vov / 2;
+    const ro2  = P.L_anal / (P.lambda * id2);
+    const av1  = gm1 * gm1 * ro * ro / 2;
+    const av2  = gm2_req * ro2;
+    const av_t = av1 * av2;
+    const fz   = gm2_req / (2 * Math.PI * cc);
+    const swg  = vdd - 2*vov;
+    b4html = `
+      <div>Miller Cc = gm1/(2π×GBW) = ${fmt_e(cc,'pF',2)}  ${chk(cc < cl)} (must be &lt; CL = ${fmt_e(cl,'pF',1)})</div>
+      <div>gm2 ≥ 1.73×GBW×2π×CL = ${fmt_e(gm2_req,'mA/V')}</div>
+      <div>ID2 = gm2×Vov/2 = ${fmt_e(id2,'µA',0)}, ro2 = ${fmt_e(ro2,'kΩ',0)}</div>
+      <div>Av stage 1 = ${(20*Math.log10(av1)).toFixed(0)} dB, stage 2 = ${(20*Math.log10(av2)).toFixed(0)} dB</div>
+      <div>Total Av = ${(20*Math.log10(av_t)).toFixed(0)} dB  ${chk(20*Math.log10(av_t) >= gain)}</div>
+      <div>RHP zero fz = gm2/(2πCc) = ${fmt_e(fz,'MHz',0)} (add Rs = ${(1/gm2_req*1000).toFixed(0)} Ω nulling)</div>
+      <div>Swing = VDD − 2×Vov = ${swg.toFixed(2)}V = ${(swg/vdd*100).toFixed(0)}% VDD  ${chk(swg/vdd*100 >= swing)}</div>`;
+  } else if (topo === 'GainBoosted') {
+    const ab = 30;
+    const rout_b = ab * gm1 * ro * ro / 2;
+    const av   = gm1 * rout_b;
+    const swg  = vdd - 5*vov;
+    b4html = `
+      <div>Boost gain A_b = ${ab}</div>
+      <div>Rout_boosted = A_b × gm_c × ro_c × ro_main / 2 = ${fmt_e(rout_b,'MΩ',0)}</div>
+      <div>Av = gm1 × Rout = ${(20*Math.log10(av)).toFixed(0)} dB  ${chk(20*Math.log10(av) >= gain)}</div>
+      <div>Each boost amp: ~15 µA each, 4 total = 60 µA overhead</div>
+      <div>Swing limited by telescopic stack = ${(swg).toFixed(2)}V  ${chk(swg/vdd*100 >= swing)}</div>`;
+  }
+  document.getElementById('block4_result').innerHTML = b4html;
+
+  // BLOCK 5: Power
+  const idd_actual = topo === 'Folded' ? iss*2.6 :
+                     topo === 'TwoStg' ? iss*2.3 :
+                     topo === 'GainBoosted' ? iss*1.4 : iss;
+  const pwr = idd_actual * vdd;
+  const fom_n = gbw/1e6 * cl/1e-12 / (idd_actual/1e-3);
+  const noise = Math.sqrt(8 * 1.38e-23 * 300 * 0.667 / gm1) * 1e9;
+
+  document.getElementById('block5_result').innerHTML = `
+    <div>Estimated IDD = ${fmt_e(idd_actual,'µA',0)}  ${chk(idd_actual <= idd_b)}</div>
+    <div>Power = IDD × VDD = ${(pwr*1e6).toFixed(0)} µW</div>
+    <div>FoM_S = GBW × CL / IDD = ${fom_n.toFixed(0)} GHz·pF/A</div>
+    <div>Input-referred noise ≈ ${noise.toFixed(1)} nV/√Hz  (thermal, dominated by gm1)</div>`;
+
+  // Final summary
+  document.getElementById('final_result').innerHTML = `
+    <h3>Final Summary</h3>
+    <div class="result-row"><span class="r-label">Topology:</span><span class="r-val">${topoName}</span></div>
+    <div class="result-row"><span class="r-label">gm1:</span><span class="r-val">${fmt_e(gm1,'mA/V')}</span></div>
+    <div class="result-row"><span class="r-label">ISS:</span><span class="r-val">${fmt_e(iss,'µA',0)}</span></div>
+    <div class="result-row"><span class="r-label">Input W/L:</span><span class="r-val">${wl.toFixed(0)}</span></div>
+    <div class="result-row"><span class="r-label">Est. IDD:</span><span class="r-val">${fmt_e(idd_actual,'µA',0)} ${chk(idd_actual <= idd_b)}</span></div>
+    <div class="result-row"><span class="r-label">FoM_S:</span><span class="r-val">${fom_n.toFixed(0)} GHz·pF/A</span></div>
+    <div class="result-row"><span class="r-label">SR:</span><span class="r-val">${fmt_e(sr*1e-6,'V/µs',0)}</span></div>
+    <div class="result-row"><span class="r-label">Noise:</span><span class="r-val">${noise.toFixed(1)} nV/√Hz</span></div>`;
+}
+
+// ─── TAB 1: Verification Charts ───────────────────────────────────
+function drawVerify() {
+  document.getElementById('vov_min_v').textContent = document.getElementById('vov_min').value;
+  document.getElementById('vov_max_v').textContent = document.getElementById('vov_max').value;
+
+  const proc  = document.getElementById('s_proc').value;
+  const gbw   = parseFloat(document.getElementById('s_gbw').value) * 1e6;
+  const cl    = parseFloat(document.getElementById('s_cl').value) * 1e-12;
+  const P     = PROC[proc];
+  const v0    = parseFloat(document.getElementById('vov_min').value);
+  const v1    = parseFloat(document.getElementById('vov_max').value);
+  const N     = 80;
+
+  const vovs = Array.from({length:N}, (_, i) => v0 + (v1-v0)*(i/(N-1)));
+
+  // Chart A: gm1 vs ISS as Vov changes (GBW fixed)
+  const gm1 = gbw * 2 * Math.PI * cl; // fixed by GBW and CL
+  const ids  = vovs.map(v => gm1 * v / 2);
+  const isss = ids.map(d => 2*d);
+  const wls  = ids.map(d => 2*d / (P.un_cox * (vovs[0]**2))); // not fully correct but indicative
+
+  const c1 = document.getElementById('chart1a');
+  const cx1 = c1.getContext('2d');
+  const W = c1.width, H = c1.height;
+  cx1.clearRect(0, 0, W, H);
+  const m = {top:30, bottom:40, left:70, right:50};
+  const pw = W-m.left-m.right, ph = H-m.top-m.bottom;
+
+  const maxISS = Math.max(...isss);
+  const noises = vovs.map(v => {
+    const g = gm1 * v / v;  // gm1 is always the same (fixed by GBW)
+    return Math.sqrt(8*1.38e-23*300*0.667/gm1)*1e9; // constant
+  });
+  const wls2 = vovs.map(v => 2*(gm1*v/2) / (P.un_cox * v * v));
+
+  // Draw ISS curve
+  cx1.strokeStyle = '#2196f3';
+  cx1.lineWidth = 2;
+  cx1.beginPath();
+  isss.forEach((val, i) => {
+    const x = m.left + (i/(N-1))*pw;
+    const y = m.top + ph - (val/maxISS)*ph;
+    i === 0 ? cx1.moveTo(x,y) : cx1.lineTo(x,y);
+  });
+  cx1.stroke();
+
+  // W/L curve on secondary axis
+  const maxWL = Math.max(...wls2);
+  cx1.strokeStyle = '#ff9800';
+  cx1.lineWidth = 2;
+  cx1.beginPath();
+  wls2.forEach((val, i) => {
+    const x = m.left + (i/(N-1))*pw;
+    const y = m.top + ph - (val/maxWL)*ph;
+    i === 0 ? cx1.moveTo(x,y) : cx1.lineTo(x,y);
+  });
+  cx1.stroke();
+
+  // Axes
+  cx1.strokeStyle = '#555'; cx1.lineWidth = 1;
+  cx1.strokeRect(m.left, m.top, pw, ph);
+  cx1.fillStyle = '#888'; cx1.font = '9px Courier New'; cx1.textAlign = 'center';
+  cx1.fillText('Overdrive Vov (V)', m.left + pw/2, H-5);
+  cx1.textAlign = 'center';
+  cx1.fillText(`ISS vs Vov  (GBW=${(gbw/1e6).toFixed(0)} MHz, CL=${(cl*1e12).toFixed(1)} pF fixed) — Blue:ISS(µA), Orange:W/L input pair`, m.left+pw/2, 18);
+
+  // Tick marks
+  [0, 0.25, 0.5, 0.75, 1.0].forEach(frac => {
+    const v = v0 + frac*(v1-v0);
+    const x = m.left + frac*pw;
+    cx1.fillStyle = '#666'; cx1.textAlign = 'center'; cx1.font = '9px Courier New';
+    cx1.fillText(v.toFixed(2), x, H-26);
+    const iss_v = gm1*v/2*2;
+    cx1.fillStyle = '#2196f3'; cx1.textAlign = 'right';
+    cx1.fillText((iss_v*1e6).toFixed(0)+'µA', m.left-3, m.top + ph - (iss_v/maxISS)*ph + 4);
+  });
+
+  // Chart B: SR and FoM vs Vov
+  const c2 = document.getElementById('chart1b');
+  const cx2 = c2.getContext('2d');
+  cx2.clearRect(0, 0, W, H);
+
+  const srs  = vovs.map(v => (2*gm1*v/2) / cl / 1e6);  // V/µs
+  const foms = vovs.map(v => gbw/1e6 * cl/1e-12 / (2*gm1*v/2/1e-3));
+  const maxSR  = Math.max(...srs);
+  const maxFom = Math.max(...foms);
+
+  cx2.strokeStyle = '#4caf50'; cx2.lineWidth = 2; cx2.beginPath();
+  srs.forEach((val, i) => {
+    const x = m.left + (i/(N-1))*pw;
+    const y = m.top + ph - (val/maxSR)*ph;
+    i === 0 ? cx2.moveTo(x,y) : cx2.lineTo(x,y);
+  });
+  cx2.stroke();
+
+  cx2.strokeStyle = '#9c27b0'; cx2.lineWidth = 2; cx2.beginPath();
+  foms.forEach((val, i) => {
+    const x = m.left + (i/(N-1))*pw;
+    const y = m.top + ph - (val/maxFom)*ph;
+    i === 0 ? cx2.moveTo(x,y) : cx2.lineTo(x,y);
+  });
+  cx2.stroke();
+
+  cx2.strokeStyle = '#555'; cx2.lineWidth = 1;
+  cx2.strokeRect(m.left, m.top, pw, ph);
+  cx2.fillStyle = '#888'; cx2.font = '9px Courier New'; cx2.textAlign = 'center';
+  cx2.fillText('Overdrive Vov (V)', m.left + pw/2, H-5);
+  cx2.fillText('SR (V/µs) and FoM (GHz·pF/A) vs Vov — Green:SR, Purple:FoM', m.left+pw/2, 18);
+
+  [0, 0.25, 0.5, 0.75, 1.0].forEach(frac => {
+    const v = v0 + frac*(v1-v0);
+    const x = m.left + frac*pw;
+    cx2.fillStyle = '#666'; cx2.textAlign = 'center'; cx2.font = '9px Courier New';
+    cx2.fillText(v.toFixed(2), x, H-26);
+  });
+}
+
+function switchTab(n) {
+  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === n));
+  document.querySelectorAll('.panel').forEach((p, i) => p.classList.toggle('active', i === n));
+  if (n === 1) drawVerify();
+}
+
+autoCompute();
+</script>
+</body>
+</html>

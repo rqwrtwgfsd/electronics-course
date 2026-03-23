@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-5T-9.3.1 — 5T OTA Noise Analysis Simulator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; }
+  header { background: #1a1d2e; padding: 16px 24px; border-bottom: 2px solid #3a7bd5; }
+  header h1 { font-size: 1.15rem; color: #7eb3ff; font-weight: 600; }
+  header p { font-size: 0.8rem; color: #888; margin-top: 3px; }
+  .tabs { display: flex; background: #13151f; border-bottom: 1px solid #2a2d3e; }
+  .tab { padding: 11px 22px; cursor: pointer; font-size: 0.85rem; color: #888; border-bottom: 2px solid transparent; transition: all .2s; }
+  .tab.active { color: #7eb3ff; border-bottom-color: #3a7bd5; background: #1a1d2e; }
+  .tab:hover:not(.active) { color: #ccc; background: #1a1d2e55; }
+  .panel { display: none; padding: 20px 24px; }
+  .panel.active { display: block; }
+  .row { display: flex; gap: 20px; flex-wrap: wrap; }
+  .card { background: #1a1d2e; border: 1px solid #2a2d3e; border-radius: 8px; padding: 16px; flex: 1; min-width: 280px; }
+  .card h3 { font-size: 0.85rem; color: #7eb3ff; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .slider-row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+  .slider-row label { font-size: 0.78rem; color: #aaa; width: 185px; flex-shrink: 0; }
+  .slider-row input[type=range] { flex: 1; accent-color: #3a7bd5; }
+  .slider-row span { font-size: 0.78rem; color: #7eb3ff; width: 75px; text-align: right; }
+  canvas { display: block; width: 100%; border-radius: 6px; background: #12141e; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 8px; margin-top: 12px; }
+  .metric { background: #12141e; border: 1px solid #2a2d3e; border-radius: 6px; padding: 8px 12px; }
+  .metric .label { font-size: 0.7rem; color: #888; }
+  .metric .value { font-size: 1.05rem; color: #4ecdc4; font-weight: 700; margin-top: 2px; }
+  .metric .value.warn { color: #f6ad55; }
+  .metric .value.bad  { color: #fc8181; }
+  .metric .value.good { color: #68d391; }
+  .info-box { background: #12141e; border-left: 3px solid #3a7bd5; padding: 10px 14px; border-radius: 0 6px 6px 0; margin-top: 10px; font-size: 0.78rem; color: #bbb; line-height: 1.6; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #aaa; }
+  .legend-dot { width: 14px; height: 3px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>M4B-5T-9.3.1 — Five-Transistor OTA: Noise Analysis and Optimization</h1>
+  <p>Input-referred noise spectrum, load penalty, and noise-power trade-off</p>
+</header>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">Noise Spectrum</div>
+  <div class="tab" onclick="showTab(1)">Noise vs Power Trade-off</div>
+  <div class="tab" onclick="showTab(2)">Flicker & Integrated Noise</div>
+</div>
+
+<!-- TAB 0: Noise Spectrum -->
+<div class="panel active" id="tab0">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:310px;">
+      <h3>OTA Parameters</h3>
+      <div class="slider-row"><label>ISS (µA)</label><input type="range" id="t0_ISS" min="10" max="1000" step="10" value="100"><span id="v_t0_ISS">100</span></div>
+      <div class="slider-row"><label>Vov1 input pair (mV)</label><input type="range" id="t0_Vov1" min="30" max="400" step="5" value="150"><span id="v_t0_Vov1">150</span></div>
+      <div class="slider-row"><label>|Vov3| PMOS load (mV)</label><input type="range" id="t0_Vov3" min="30" max="400" step="5" value="150"><span id="v_t0_Vov3">150</span></div>
+      <div class="slider-row"><label>γ noise factor</label><input type="range" id="t0_gamma" min="0.5" max="2.0" step="0.05" value="0.67"><span id="v_t0_gamma">0.67</span></div>
+      <div class="slider-row"><label>KF (×10⁻²⁶ V²·F)</label><input type="range" id="t0_KF" min="1" max="100" step="1" value="20"><span id="v_t0_KF">20</span></div>
+      <div class="slider-row"><label>W×L input pair (µm²)</label><input type="range" id="t0_WL" min="1" max="500" step="1" value="50"><span id="v_t0_WL">50</span></div>
+      <div class="metrics" style="grid-template-columns:1fr 1fr;">
+        <div class="metric"><div class="label">gm1</div><div class="value" id="m0_gm1">—</div></div>
+        <div class="metric"><div class="label">gm3</div><div class="value" id="m0_gm3">—</div></div>
+        <div class="metric"><div class="label">Load factor</div><div class="value warn" id="m0_lf">—</div></div>
+        <div class="metric"><div class="label">Thermal noise</div><div class="value" id="m0_vn_th">—</div></div>
+        <div class="metric"><div class="label">Flicker corner fc</div><div class="value warn" id="m0_fc">—</div></div>
+        <div class="metric"><div class="label">Noise @ 1kHz</div><div class="value" id="m0_vn_1k">—</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Input-Referred Noise Spectral Density</h3>
+      <canvas id="c_spec" height="320"></canvas>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#4ecdc4;"></div>Total noise (thermal + 1/f)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#555;"></div>Thermal floor only</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f6ad55;"></div>fc (flicker corner)</div>
+      </div>
+      <div class="info-box">
+        Total noise: Svn(f) = (8kTγ/gm1)·(1 + gm3/gm1) · (1 + fc/f).
+        Below fc the noise density rises as 1/f (3 dB/octave). Above fc it is flat (thermal noise floor).
+        Increase W×L to move fc to lower frequencies. Use PMOS input (lower KF) for audio/DC precision.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: Noise vs Power -->
+<div class="panel" id="tab1">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:310px;">
+      <h3>Trade-off Parameters</h3>
+      <div class="slider-row"><label>VDD (V)</label><input type="range" id="t1_VDD" min="0.8" max="3.6" step="0.1" value="1.8"><span id="v_t1_VDD">1.80</span></div>
+      <div class="slider-row"><label>Vov1 (mV)</label><input type="range" id="t1_Vov1" min="30" max="350" step="5" value="150"><span id="v_t1_Vov1">150</span></div>
+      <div class="slider-row"><label>γ noise factor</label><input type="range" id="t1_gamma" min="0.5" max="2.0" step="0.05" value="0.67"><span id="v_t1_gamma">0.67</span></div>
+      <div class="slider-row"><label>Target noise (nV/√Hz)</label><input type="range" id="t1_target" min="1" max="50" step="0.5" value="5"><span id="v_t1_target">5.0</span></div>
+      <div class="metrics" style="grid-template-columns:1fr;">
+        <div class="metric"><div class="label">Noise-Power Product NPP</div><div class="value warn" id="m1_NPP">—</div></div>
+        <div class="metric"><div class="label">ISS for target noise</div><div class="value" id="m1_ISS_req">—</div></div>
+        <div class="metric"><div class="label">Power for target noise</div><div class="value bad" id="m1_Pwr">—</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Thermal Noise vs Power (4 Vov curves)</h3>
+      <canvas id="c_nvp" height="320"></canvas>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#4ecdc4;"></div>Vov = 50 mV</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#3a7bd5;"></div>Vov = 100 mV</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f6ad55;"></div>Vov = 200 mV</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#fc8181;"></div>Vov = 300 mV</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#fff; opacity:0.4;"></div>User Vov (current)</div>
+      </div>
+      <div class="info-box">
+        Each curve: Vn = √(8kTγ/gm1 × 2) = √(16kTγ × Vov / ISS). Power = VDD × ISS.
+        The noise scales as 1/√Power at fixed Vov. Reducing Vov shifts the entire curve down — lower noise at the same power.
+        The noise-power product NPP = 16kTγ × Vov × VDD is independent of ISS; it improves only by reducing Vov or VDD.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: Flicker & Integrated Noise -->
+<div class="panel" id="tab2">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:310px;">
+      <h3>Flicker Parameters</h3>
+      <div class="slider-row"><label>gm1 (mA/V)</label><input type="range" id="t2_gm1" min="0.1" max="5" step="0.05" value="1"><span id="v_t2_gm1">1.00</span></div>
+      <div class="slider-row"><label>KF (×10⁻²⁶ V²·F)</label><input type="range" id="t2_KF" min="1" max="200" step="1" value="20"><span id="v_t2_KF">20</span></div>
+      <div class="slider-row"><label>Cox (mF/m²)</label><input type="range" id="t2_Cox" min="2" max="30" step="0.5" value="8"><span id="v_t2_Cox">8.0</span></div>
+      <div class="slider-row"><label>W×L (µm²)</label><input type="range" id="t2_WL" min="1" max="1000" step="5" value="50"><span id="v_t2_WL">50</span></div>
+      <div class="slider-row"><label>γ noise factor</label><input type="range" id="t2_gamma" min="0.5" max="2.0" step="0.05" value="0.67"><span id="v_t2_gamma">0.67</span></div>
+      <div class="slider-row"><label>fLow (Hz)</label><input type="range" id="t2_fLow" min="1" max="1000" step="1" value="20"><span id="v_t2_fLow">20</span></div>
+      <div class="slider-row"><label>fHigh (kHz)</label><input type="range" id="t2_fHigh" min="1" max="1000" step="1" value="20"><span id="v_t2_fHigh">20</span></div>
+      <div class="metrics" style="grid-template-columns:1fr;">
+        <div class="metric"><div class="label">Thermal noise floor</div><div class="value" id="m2_vn_th">—</div></div>
+        <div class="metric"><div class="label">Flicker corner fc</div><div class="value warn" id="m2_fc">—</div></div>
+        <div class="metric"><div class="label">Integrated noise (thermal)</div><div class="value" id="m2_int_th">—</div></div>
+        <div class="metric"><div class="label">Integrated noise (total)</div><div class="value bad" id="m2_int_tot">—</div></div>
+        <div class="metric"><div class="label">1/f contribution</div><div class="value warn" id="m2_1f_pct">—</div></div>
+        <div class="metric"><div class="label">W×L to halve 1/f</div><div class="value" id="m2_WL2">—</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Noise Spectral Density + Integration Band</h3>
+      <canvas id="c_flicker" height="320"></canvas>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#4ecdc4;"></div>Total noise density (nV/√Hz)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#3a7bd5;opacity:0.4; height:12px;"></div>Integration band shading</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f6ad55;"></div>fc marker</div>
+      </div>
+      <div class="info-box">
+        The shaded region shows the integration bandwidth [fLow, fHigh].
+        The integrated noise² = Svn_th × [ (fHigh − fLow) + fc × ln(fHigh/fLow) ].
+        When fc ≫ fLow, the 1/f term dominates and the integrated noise grows with fc × ln(fHigh/fLow).
+        Reduce fc by increasing W×L (fc ∝ 1/(W×L)) or switching to PMOS (lower KF).
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const kB = 1.38e-23;
+const T  = 300;
+
+function logTicks(fMin, fMax) {
+  const ticks = [];
+  for(let e = Math.floor(Math.log10(fMin)); e <= Math.ceil(Math.log10(fMax)); e++) {
+    for(let m=1; m<10; m++) { const f=m*Math.pow(10,e); if(f>=fMin&&f<=fMax) ticks.push(f); }
+  }
+  return ticks;
+}
+
+function drawLogGrid(ctx, W, H, pad, fMin, fMax, yMin, yMax) {
+  ctx.fillStyle='#12141e'; ctx.fillRect(0,0,W,H);
+  const px = f => pad.l + (Math.log10(f)-Math.log10(fMin))/(Math.log10(fMax)-Math.log10(fMin))*(W-pad.l-pad.r);
+  const py = y => H - pad.b - (y-yMin)/(yMax-yMin)*(H-pad.t-pad.b);
+  ctx.strokeStyle='#1e2136'; ctx.lineWidth=1;
+  for(let y=yMin;y<=yMax+0.1;y+=5) {
+    ctx.beginPath(); ctx.moveTo(pad.l,py(y)); ctx.lineTo(W-pad.r,py(y)); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='right';
+    ctx.fillText(y+'nV/√Hz', pad.l-3, py(y)+3);
+  }
+  const flabels={1:'1Hz',10:'10Hz',100:'100Hz',1e3:'1kHz',1e4:'10kHz',1e5:'100kHz',1e6:'1MHz',1e7:'10MHz',1e8:'100MHz',1e9:'1GHz'};
+  logTicks(fMin, fMax).forEach(f => {
+    ctx.beginPath(); ctx.moveTo(px(f),pad.t); ctx.lineTo(px(f),H-pad.b); ctx.stroke();
+  });
+  for(let e=Math.floor(Math.log10(fMin));e<=Math.ceil(Math.log10(fMax));e++) {
+    const f=Math.pow(10,e);
+    if(f<fMin||f>fMax) continue;
+    ctx.fillStyle='#666'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(flabels[f]||('10^'+e), px(f), H-pad.b+12);
+  }
+  return {px, py};
+}
+
+// ─── TAB 0 ────────────────────────────────────────────────────────────────
+function updateTab0() {
+  const ISS   = parseFloat(document.getElementById('t0_ISS').value)*1e-6;
+  const Vov1  = parseFloat(document.getElementById('t0_Vov1').value)*1e-3;
+  const Vov3  = parseFloat(document.getElementById('t0_Vov3').value)*1e-3;
+  const gamma = parseFloat(document.getElementById('t0_gamma').value);
+  const KF    = parseFloat(document.getElementById('t0_KF').value)*1e-26;
+  const WL    = parseFloat(document.getElementById('t0_WL').value)*1e-12; // µm² → m²
+  const Cox   = 8e-3; // F/m², fixed for simplicity
+
+  document.getElementById('v_t0_ISS').textContent   = (ISS*1e6).toFixed(0);
+  document.getElementById('v_t0_Vov1').textContent  = (Vov1*1e3).toFixed(0);
+  document.getElementById('v_t0_Vov3').textContent  = (Vov3*1e3).toFixed(0);
+  document.getElementById('v_t0_gamma').textContent = gamma.toFixed(2);
+  document.getElementById('v_t0_KF').textContent    = (KF*1e26).toFixed(0);
+  document.getElementById('v_t0_WL').textContent    = (WL*1e12).toFixed(0);
+
+  const gm1 = ISS/Vov1;
+  const ID3 = ISS/2;
+  const gm3 = 2*ID3/Vov3;
+  const Svn_th = 8*kB*T*gamma/gm1 * (1 + gm3/gm1);
+  const Svn_th_in1 = 4*kB*T*gamma/gm1; // just M1 for fc calc
+  const fc = KF*gm1 / (Cox*WL * 4*kB*T*gamma);
+  const Svn_1k = Svn_th * (1 + fc/1e3);
+
+  document.getElementById('m0_gm1').textContent  = (gm1*1e3).toFixed(2)+' mA/V';
+  document.getElementById('m0_gm3').textContent  = (gm3*1e3).toFixed(2)+' mA/V';
+  document.getElementById('m0_lf').textContent   = (1+gm3/gm1).toFixed(2)+'×';
+  document.getElementById('m0_vn_th').textContent = (Math.sqrt(Svn_th)*1e9).toFixed(2)+' nV/√Hz';
+  document.getElementById('m0_fc').textContent   = fc>1e6?(fc/1e6).toFixed(1)+'MHz':fc>1e3?(fc/1e3).toFixed(0)+'kHz':fc.toFixed(0)+'Hz';
+  document.getElementById('m0_vn_1k').textContent = (Math.sqrt(Svn_1k)*1e9).toFixed(2)+' nV/√Hz';
+
+  const cv = document.getElementById('c_spec');
+  const ctx = cv.getContext('2d');
+  const W = cv.clientWidth*devicePixelRatio||600; const H=320;
+  cv.width=W; cv.height=H;
+  const pad={l:70,r:20,t:20,b:30};
+  const fMin=1,fMax=1e8;
+  const vnTh = Math.sqrt(Svn_th)*1e9;
+  const vnMax = vnTh * Math.sqrt(1 + fc/fMin) * 1.2;
+  const yMin=0, yMax=Math.min(Math.ceil(vnMax/5)*5, 200);
+  const {px,py} = drawLogGrid(ctx,W,H,pad,fMin,fMax,yMin,yMax);
+
+  // Thermal floor
+  ctx.strokeStyle='#333'; ctx.lineWidth=1.5; ctx.setLineDash([5,4]);
+  ctx.beginPath(); ctx.moveTo(pad.l,py(vnTh)); ctx.lineTo(W-pad.r,py(vnTh)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#666'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+  ctx.fillText(vnTh.toFixed(1)+'nV/√Hz thermal', pad.l+4, py(vnTh)-4);
+
+  // Total noise
+  const pts=[];
+  for(let i=0;i<=400;i++) {
+    const f=Math.pow(10, Math.log10(fMin)+i/400*(Math.log10(fMax)-Math.log10(fMin)));
+    const vn = Math.sqrt(Svn_th*(1+fc/f))*1e9;
+    pts.push([px(f), py(Math.min(Math.max(vn,yMin),yMax))]);
+  }
+  ctx.strokeStyle='#4ecdc4'; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
+  pts.forEach(p=>ctx.lineTo(p[0],p[1])); ctx.stroke();
+
+  // fc marker
+  if(fc>=fMin && fc<=fMax) {
+    ctx.strokeStyle='#f6ad55'; ctx.lineWidth=1.2; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(px(fc),pad.t); ctx.lineTo(px(fc),H-pad.b); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#f6ad55'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+    ctx.fillText('fc', px(fc)+3, pad.t+12);
+  }
+
+  ctx.fillStyle='#555'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('Frequency', (pad.l+W-pad.r)/2, H-2);
+}
+
+// ─── TAB 1 ────────────────────────────────────────────────────────────────
+function updateTab1() {
+  const VDD    = parseFloat(document.getElementById('t1_VDD').value);
+  const Vov1   = parseFloat(document.getElementById('t1_Vov1').value)*1e-3;
+  const gamma  = parseFloat(document.getElementById('t1_gamma').value);
+  const target = parseFloat(document.getElementById('t1_target').value)*1e-9;
+
+  document.getElementById('v_t1_VDD').textContent   = VDD.toFixed(2);
+  document.getElementById('v_t1_Vov1').textContent  = (Vov1*1e3).toFixed(0);
+  document.getElementById('v_t1_gamma').textContent = gamma.toFixed(2);
+  document.getElementById('v_t1_target').textContent= (target*1e9).toFixed(1);
+
+  // NPP = 16*kB*T*gamma*Vov1*VDD (for gm3=gm1 matched)
+  const NPP = 16*kB*T*gamma*Vov1*VDD;
+  // target: Vn^2 = NPP/Power → Power = NPP/Vn^2
+  const Pwr_req = NPP / (target*target);
+  const ISS_req = Pwr_req / VDD;
+
+  document.getElementById('m1_NPP').textContent     = (NPP*1e18).toFixed(2)+' ×10⁻¹⁸ V²·W/Hz';
+  document.getElementById('m1_ISS_req').textContent = ISS_req>1e-3?(ISS_req*1e3).toFixed(2)+' mA':(ISS_req*1e6).toFixed(0)+' µA';
+  document.getElementById('m1_Pwr').textContent     = Pwr_req>1e-3?(Pwr_req*1e3).toFixed(2)+' mW':(Pwr_req*1e6).toFixed(0)+' µW';
+
+  const cv = document.getElementById('c_nvp');
+  const ctx = cv.getContext('2d');
+  const W = cv.clientWidth*devicePixelRatio||600; const H=320;
+  cv.width=W; cv.height=H;
+  const pad={l:55,r:20,t:20,b:35};
+  const pMin=0.001, pMax=10; // mW
+  const yMin=0, yMax=50; // nV/√Hz
+  const px = p => pad.l + (Math.log10(p)-Math.log10(pMin))/(Math.log10(pMax)-Math.log10(pMin))*(W-pad.l-pad.r);
+  const py = y => H - pad.b - (y-yMin)/(yMax-yMin)*(H-pad.t-pad.b);
+
+  ctx.fillStyle='#12141e'; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#1e2136'; ctx.lineWidth=1;
+  for(let y=0;y<=yMax;y+=5) {
+    ctx.beginPath(); ctx.moveTo(pad.l,py(y)); ctx.lineTo(W-pad.r,py(y)); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='right';
+    ctx.fillText(y+'nV', pad.l-3, py(y)+3);
+  }
+  const plabels={0.001:'1µW',0.01:'10µW',0.1:'100µW',1:'1mW',10:'10mW'};
+  [0.001,0.01,0.1,1,10].forEach(p=>{
+    ctx.beginPath(); ctx.moveTo(px(p),pad.t); ctx.lineTo(px(p),H-pad.b); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(plabels[p], px(p), H-pad.b+12);
+  });
+
+  const curves = [
+    {Vov:0.05, color:'#4ecdc4'},
+    {Vov:0.10, color:'#3a7bd5'},
+    {Vov:0.20, color:'#f6ad55'},
+    {Vov:0.30, color:'#fc8181'},
+  ];
+  curves.forEach(c => {
+    const pts=[];
+    for(let e=-3;e<=1;e+=0.05) {
+      const P = Math.pow(10,e)*1e-3; // W
+      const ISS = P/VDD;
+      const gm1 = ISS/c.Vov;
+      const vn = Math.sqrt(16*kB*T*gamma*c.Vov/ISS)*1e9;
+      pts.push([px(P*1e3), py(Math.min(vn,yMax))]);
+    }
+    ctx.strokeStyle=c.color; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
+    pts.forEach(p=>ctx.lineTo(p[0],p[1])); ctx.stroke();
+  });
+
+  // User Vov curve
+  const pts_user=[];
+  for(let e=-3;e<=1;e+=0.05) {
+    const P=Math.pow(10,e)*1e-3;
+    const ISS=P/VDD;
+    const vn=Math.sqrt(16*kB*T*gamma*Vov1/ISS)*1e9;
+    pts_user.push([px(P*1e3), py(Math.min(vn,yMax))]);
+  }
+  ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.lineWidth=2.5; ctx.setLineDash([6,3]);
+  ctx.beginPath(); ctx.moveTo(pts_user[0][0],pts_user[0][1]);
+  pts_user.forEach(p=>ctx.lineTo(p[0],p[1])); ctx.stroke(); ctx.setLineDash([]);
+
+  // Target line
+  if(target*1e9 <= yMax) {
+    ctx.strokeStyle='#68d391'; ctx.lineWidth=1.2; ctx.setLineDash([5,4]);
+    ctx.beginPath(); ctx.moveTo(pad.l,py(target*1e9)); ctx.lineTo(W-pad.r,py(target*1e9)); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#68d391'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+    ctx.fillText('Target '+( target*1e9).toFixed(1)+'nV', pad.l+4, py(target*1e9)-4);
+  }
+
+  ctx.fillStyle='#555'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('Power (mW)', (pad.l+W-pad.r)/2, H-2);
+}
+
+// ─── TAB 2 ────────────────────────────────────────────────────────────────
+function updateTab2() {
+  const gm1   = parseFloat(document.getElementById('t2_gm1').value)*1e-3;
+  const KF    = parseFloat(document.getElementById('t2_KF').value)*1e-26;
+  const Cox   = parseFloat(document.getElementById('t2_Cox').value)*1e-3;
+  const WL    = parseFloat(document.getElementById('t2_WL').value)*1e-12;
+  const gamma = parseFloat(document.getElementById('t2_gamma').value);
+  const fLow  = parseFloat(document.getElementById('t2_fLow').value);
+  const fHigh = parseFloat(document.getElementById('t2_fHigh').value)*1e3;
+
+  document.getElementById('v_t2_gm1').textContent   = (gm1*1e3).toFixed(2);
+  document.getElementById('v_t2_KF').textContent    = (KF*1e26).toFixed(0);
+  document.getElementById('v_t2_Cox').textContent   = (Cox*1e3).toFixed(1);
+  document.getElementById('v_t2_WL').textContent    = (WL*1e12).toFixed(0);
+  document.getElementById('v_t2_gamma').textContent = gamma.toFixed(2);
+  document.getElementById('v_t2_fLow').textContent  = fLow.toFixed(0);
+  document.getElementById('v_t2_fHigh').textContent = (fHigh/1e3).toFixed(0);
+
+  const Svn_th2 = 16*kB*T*gamma/gm1; // ×2 for matched load
+  const fc = KF*gm1 / (Cox*WL * 4*kB*T*gamma);
+
+  const int_th  = Svn_th2 * (fHigh - fLow);
+  const int_tot = Svn_th2 * ((fHigh - fLow) + fc * Math.log(fHigh/Math.max(fLow,0.001)));
+  const pct_1f  = (int_tot - int_th) / int_tot * 100;
+  const WL_half = WL * 2; // halve 1/f noise → double W×L
+
+  const vnth = Math.sqrt(Svn_th2)*1e9;
+  document.getElementById('m2_vn_th').textContent   = vnth.toFixed(2)+' nV/√Hz';
+  document.getElementById('m2_fc').textContent      = fc>1e6?(fc/1e6).toFixed(1)+'MHz':fc>1e3?(fc/1e3).toFixed(0)+'kHz':fc.toFixed(0)+'Hz';
+  document.getElementById('m2_int_th').textContent  = (Math.sqrt(int_th)*1e9).toFixed(2)+' nV_rms';
+  document.getElementById('m2_int_tot').textContent = (Math.sqrt(int_tot)*1e9).toFixed(2)+' nV_rms';
+  document.getElementById('m2_1f_pct').textContent  = pct_1f.toFixed(0)+'%';
+  document.getElementById('m2_WL2').textContent     = (WL_half*1e12).toFixed(0)+' µm²';
+
+  const cv = document.getElementById('c_flicker');
+  const ctx = cv.getContext('2d');
+  const W = cv.clientWidth*devicePixelRatio||600; const H=320;
+  cv.width=W; cv.height=H;
+  const pad={l:65,r:20,t:20,b:30};
+  const fMin=0.1, fMax=1e8;
+  const vnPeak = Math.sqrt(Svn_th2*(1+fc/fMin))*1e9;
+  const yMax = Math.min(Math.ceil(vnPeak/5)*5, 200);
+  const yMin = 0;
+  const {px,py} = drawLogGrid(ctx,W,H,pad,fMin,fMax,yMin,yMax);
+
+  // Shaded integration band
+  if(fLow>=fMin && fHigh<=fMax) {
+    const x1=px(Math.max(fLow,fMin)), x2=px(Math.min(fHigh,fMax));
+    ctx.fillStyle='rgba(58,123,213,0.15)';
+    ctx.fillRect(x1, pad.t, x2-x1, H-pad.t-pad.b);
+  }
+
+  // Noise curve
+  const pts=[];
+  for(let i=0;i<=400;i++) {
+    const f=Math.pow(10, Math.log10(fMin)+i/400*(Math.log10(fMax)-Math.log10(fMin)));
+    const vn=Math.sqrt(Svn_th2*(1+fc/f))*1e9;
+    pts.push([px(f), py(Math.min(Math.max(vn,yMin),yMax))]);
+  }
+  ctx.strokeStyle='#4ecdc4'; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
+  pts.forEach(p=>ctx.lineTo(p[0],p[1])); ctx.stroke();
+
+  // fc marker
+  if(fc>=fMin && fc<=fMax) {
+    ctx.strokeStyle='#f6ad55'; ctx.lineWidth=1.2; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(px(fc),pad.t); ctx.lineTo(px(fc),H-pad.b); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#f6ad55'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+    ctx.fillText('fc='+(fc>1e3?(fc/1e3).toFixed(0)+'kHz':fc.toFixed(0)+'Hz'), px(fc)+3, pad.t+12);
+  }
+
+  // band markers
+  [fLow, fHigh].forEach((f,i) => {
+    if(f<fMin||f>fMax) return;
+    ctx.strokeStyle='#68d391'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(px(f),pad.t); ctx.lineTo(px(f),H-pad.b); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#68d391'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(i===0?'fL':'fH', px(f), pad.t+24);
+  });
+
+  ctx.fillStyle='#555'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('Frequency', (pad.l+W-pad.r)/2, H-2);
+}
+
+function showTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
+  if(n===0) updateTab0(); else if(n===1) updateTab1(); else updateTab2();
+}
+function wire(ids,fn){ ids.forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('input',fn);}); }
+wire(['t0_ISS','t0_Vov1','t0_Vov3','t0_gamma','t0_KF','t0_WL'], updateTab0);
+wire(['t1_VDD','t1_Vov1','t1_gamma','t1_target'], updateTab1);
+wire(['t2_gm1','t2_KF','t2_Cox','t2_WL','t2_gamma','t2_fLow','t2_fHigh'], updateTab2);
+window.addEventListener('load', () => updateTab0());
+window.addEventListener('resize', () => {
+  const a=document.querySelector('.panel.active');
+  if(a) showTab(['tab0','tab1','tab2'].indexOf(a.id));
+});
+</script>
+</body>
+</html>

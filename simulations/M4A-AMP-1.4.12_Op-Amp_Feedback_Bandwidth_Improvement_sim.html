@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.4.12 — Feedback: Bandwidth Improvement</title>
+<style>
+  :root{--bg:#f5f5f5;--card:#fff;--text:#1a1a1a;--subtext:#555;--accent:#0066cc;--accent2:#cc3300;--accent3:#007744;--accent4:#aa5500;--border:#ccc;--grid:#ddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--card:#242424;--text:#e8e8e8;--subtext:#aaa;--accent:#4da6ff;--accent2:#ff6644;--accent3:#44cc88;--accent4:#ffaa44;--border:#444;--grid:#333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;line-height:1.6;}
+  header{background:var(--card);border-bottom:2px solid var(--accent);padding:18px 28px;}
+  header h1{font-size:1.2rem;font-weight:700;color:var(--accent);}
+  header p{font-size:0.85rem;color:var(--subtext);margin-top:3px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:20px;padding:20px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px;}
+  .card h2{font-size:0.95rem;font-weight:600;margin-bottom:4px;}
+  .card p.desc{font-size:0.80rem;color:var(--subtext);margin-bottom:10px;line-height:1.4;}
+  canvas{display:block;width:100%;border-radius:4px;}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;}
+  .ctrl{display:flex;flex-direction:column;font-size:0.78rem;color:var(--subtext);min-width:140px;}
+  .ctrl label{margin-bottom:3px;}
+  input[type=range]{accent-color:var(--accent);width:100%;}
+  .readout{font-size:0.82rem;color:var(--accent);font-weight:600;margin-top:2px;}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:0.78rem;}
+  .leg{display:flex;align-items:center;gap:5px;}
+  .leg-dot{width:20px;height:3px;border-radius:2px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>M4A-AMP-1.4.12 — Op-Amp Feedback: Bandwidth Improvement</h1>
+  <p>GBW product, open-loop to closed-loop bandwidth extension, and multi-stage cascade tradeoffs</p>
+</header>
+<div class="grid">
+
+  <!-- Plot 1: Open-loop vs closed-loop Bode plot showing BW extension -->
+  <div class="card">
+    <h2>Open-Loop vs Closed-Loop Bode Plot</h2>
+    <p class="desc">Avol rolls off from fp_ol. Feedback pushes the closed-loop pole to f_3dB_cl = GBW/Acl. The bandwidth extends by (1+T). Drag gain to see the tradeoff: more gain → less bandwidth.</p>
+    <canvas id="c1" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>GBW (MHz): <span id="v1a" class="readout">10</span></label>
+        <input type="range" id="s1a" min="1" max="200" value="10" step="1">
+      </div>
+      <div class="ctrl">
+        <label>Avol DC (dB): <span id="v1b" class="readout">100</span></label>
+        <input type="range" id="s1b" min="60" max="140" value="100" step="1">
+      </div>
+      <div class="ctrl">
+        <label>Closed-loop gain: <span id="v1c" class="readout">10</span></label>
+        <input type="range" id="s1c" min="1" max="1000" value="10" step="1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Closed-loop |Acl(f)|</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2);opacity:0.6"></div> Open-loop Avol(f)</div>
+    </div>
+  </div>
+
+  <!-- Plot 2: f_3dB vs gain for several GBW values -->
+  <div class="card">
+    <h2>Closed-Loop Bandwidth vs Gain (GBW Budget)</h2>
+    <p class="desc">f_3dB = GBW/Acl — a hyperbola on linear axes, a straight line on log-log. Every decade of gain costs a decade of bandwidth. The operating point marker shows the gain/BW tradeoff for a selected gain.</p>
+    <canvas id="c2" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>Selected gain: <span id="v2a" class="readout">10</span></label>
+        <input type="range" id="s2a" min="1" max="1000" value="10" step="1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> GBW=100MHz</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> GBW=10MHz</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3)"></div> GBW=1MHz</div>
+    </div>
+  </div>
+
+  <!-- Plot 3: N-stage cascade bandwidth vs N for fixed total gain -->
+  <div class="card">
+    <h2>Cascade Bandwidth vs Number of Stages</h2>
+    <p class="desc">Splitting a fixed total gain across N stages improves bandwidth. More stages = more BW, but the gain per stage decreases and cascade shrinkage (0.644×, 0.510×...) partially offsets the gain. Optimal N depends on the target total gain.</p>
+    <canvas id="c3" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>Total gain: <span id="v3a" class="readout">100</span></label>
+        <input type="range" id="s3a" min="2" max="1000" value="100" step="1">
+      </div>
+      <div class="ctrl">
+        <label>GBW (MHz): <span id="v3b" class="readout">10</span></label>
+        <input type="range" id="s3b" min="1" max="200" value="10" step="1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> f_3dB total (MHz)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> Gain per stage</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent4)"></div> Single-stage BW (ref)</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function sc(id){const c=document.getElementById(id);const dpr=window.devicePixelRatio||1;return{canvas:c,resize:()=>{const w=c.clientWidth,h=c.clientHeight;c.width=w*dpr;c.height=h*dpr;const ctx=c.getContext('2d');ctx.scale(dpr,dpr);return{ctx,w,h};}};}
+
+function axes(ctx,w,h,pad,xL,yL,xT,yT){
+  ctx.clearRect(0,0,w,h);ctx.fillStyle=css('--card');ctx.fillRect(0,0,w,h);
+  const pw=w-pad.l-pad.r,ph=h-pad.t-pad.b;
+  ctx.strokeStyle=css('--grid');ctx.lineWidth=0.7;
+  xT.forEach(t=>{const x=pad.l+t.px*pw;ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();});
+  yT.forEach(t=>{const y=pad.t+ph-t.py*ph;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();});
+  ctx.strokeStyle=css('--text');ctx.lineWidth=1.5;ctx.strokeRect(pad.l,pad.t,pw,ph);
+  ctx.fillStyle=css('--subtext');ctx.font='10px system-ui';
+  ctx.textAlign='center';xT.forEach(t=>ctx.fillText(t.label,pad.l+t.px*pw,pad.t+ph+13));
+  ctx.textAlign='right';yT.forEach(t=>ctx.fillText(t.label,pad.l-4,pad.t+ph-t.py*ph+3.5));
+  ctx.fillStyle=css('--text');ctx.font='11px system-ui';ctx.textAlign='center';
+  ctx.fillText(xL,pad.l+pw/2,h-2);
+  ctx.save();ctx.translate(11,pad.t+ph/2);ctx.rotate(-Math.PI/2);ctx.fillText(yL,0,0);ctx.restore();
+  return{pw,ph};
+}
+
+// ─── Plot 1 ───────────────────────────────────────────────────────────────────
+const p1=sc('c1');
+function draw1(){
+  const {ctx,w,h}=p1.resize();
+  const GBW=parseFloat(document.getElementById('s1a').value)*1e6;
+  const Avol_dB=parseFloat(document.getElementById('s1b').value);
+  const Acl=parseFloat(document.getElementById('s1c').value);
+  document.getElementById('v1a').textContent=document.getElementById('s1a').value;
+  document.getElementById('v1b').textContent=Avol_dB;
+  document.getElementById('v1c').textContent=Acl;
+
+  const Avol_DC=Math.pow(10,Avol_dB/20);
+  const fp_ol=GBW/Avol_DC;
+  const f3dB_cl=GBW/Acl;
+  const Acl_dB=20*Math.log10(Acl);
+
+  const pad={l:52,r:16,t:18,b:36};
+  const fMin=fp_ol*0.1,fMax=GBW*10;
+  const dBmin=0,dBmax=Avol_dB+10;
+
+  const fDec=[];let fv=Math.pow(10,Math.floor(Math.log10(fMin)));
+  while(fv<=fMax*1.1){fDec.push(fv);fv*=10;}
+  const xTicks=fDec.filter(f=>f>=fMin&&f<=fMax).map(f=>{
+    const e=Math.round(Math.log10(f));
+    const l={'-2':'10m','-1':'100m','0':'1','1':'10','2':'100','3':'1k','4':'10k','5':'100k','6':'1M','7':'10M','8':'100M','9':'1G'};
+    return{px:Math.log10(f/fMin)/Math.log10(fMax/fMin),label:l[e]||f};
+  });
+  const yStep=20;const yTicks=[];for(let y=0;y<=dBmax;y+=yStep)yTicks.push({py:(y-dBmin)/(dBmax-dBmin),label:y+'dB'});
+
+  const {pw,ph}=axes(ctx,w,h,pad,'Frequency (Hz)','Gain (dB)',xTicks,yTicks);
+  const xp=f=>pad.l+Math.log10(f/fMin)/Math.log10(fMax/fMin)*pw;
+  const yp=dB=>pad.t+ph-(Math.max(dB,dBmin)-dBmin)/(dBmax-dBmin)*ph;
+
+  // GBW extension region shading
+  ctx.fillStyle=css('--accent');ctx.globalAlpha=0.07;
+  // CL BW much wider than OL BW
+  ctx.fillRect(xp(fp_ol*10),pad.t,xp(f3dB_cl)-xp(fp_ol*10),ph);
+  ctx.globalAlpha=1;
+
+  // Open-loop Avol
+  ctx.strokeStyle=css('--accent2');ctx.lineWidth=1.8;ctx.globalAlpha=0.6;
+  ctx.beginPath();let f=true;
+  for(let i=0;i<=300;i++){
+    const fv=fMin*Math.pow(fMax/fMin,i/300);
+    const dB=20*Math.log10(Avol_DC/Math.sqrt(1+(fv/fp_ol)**2));
+    if(dB<dBmin-5){f=true;continue;}
+    const x=xp(fv),y=yp(dB);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();ctx.globalAlpha=1;
+
+  // Closed-loop Acl
+  ctx.strokeStyle=css('--accent');ctx.lineWidth=2.5;
+  ctx.beginPath();f=true;
+  for(let i=0;i<=300;i++){
+    const fv=fMin*Math.pow(fMax/fMin,i/300);
+    const dB=20*Math.log10(Acl/Math.sqrt(1+(fv/f3dB_cl)**2));
+    if(dB<dBmin-5){f=true;continue;}
+    const x=xp(fv),y=yp(dB);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // fp_ol and f3dB_cl markers
+  const fpStr=fp_ol>=1?fp_ol.toFixed(0)+'Hz':fp_ol>=0.001?(fp_ol*1e3).toFixed(0)+'mHz':'<1mHz';
+  const f3Str=f3dB_cl>=1e6?(f3dB_cl/1e6).toFixed(1)+'MHz':f3dB_cl>=1e3?(f3dB_cl/1e3).toFixed(1)+'kHz':f3dB_cl.toFixed(0)+'Hz';
+  ctx.fillStyle=css('--accent');ctx.font='bold 9px system-ui';ctx.textAlign='left';
+  ctx.fillText('fp_ol='+fpStr+'  f_3dB_cl='+f3Str+'  BW×='+(f3dB_cl/fp_ol).toExponential(1),pad.l+4,pad.t+14);
+}
+
+// ─── Plot 2 ───────────────────────────────────────────────────────────────────
+const p2=sc('c2');
+function draw2(){
+  const {ctx,w,h}=p2.resize();
+  const Acl_sel=parseFloat(document.getElementById('s2a').value);
+  document.getElementById('v2a').textContent=Acl_sel;
+
+  const pad={l:56,r:16,t:18,b:36};
+  const GMin=1,GMax=1000;
+  const BWMin=1e3,BWMax=200e6;
+  const xTicks=[{v:1,px:0,label:'1'},{v:10,px:1/3,label:'10'},{v:100,px:2/3,label:'100'},{v:1000,px:1,label:'1000'}];
+  const yTicks=[{v:1e3,py:0,label:'1kHz'},{v:10e3,py:1/5,label:'10k'},{v:100e3,py:2/5,label:'100k'},{v:1e6,py:3/5,label:'1M'},{v:10e6,py:4/5,label:'10M'},{v:100e6,py:5/5,label:'100M'}];
+
+  const {pw,ph}=axes(ctx,w,h,pad,'Closed-loop gain','f_3dB (Hz)',xTicks,yTicks);
+  const xp=g=>pad.l+Math.log10(g/GMin)/Math.log10(GMax/GMin)*pw;
+  const yp=bw=>pad.t+ph-Math.log10(Math.max(bw,BWMin)/BWMin)/Math.log10(BWMax/BWMin)*ph;
+
+  const GBWs=[{gbw:100e6,c:'--accent'},{gbw:10e6,c:'--accent2'},{gbw:1e6,c:'--accent3'}];
+  GBWs.forEach(gc=>{
+    ctx.strokeStyle=css(gc.c);ctx.lineWidth=2.2;
+    ctx.beginPath();let f=true;
+    for(let i=0;i<=200;i++){
+      const g=GMin*Math.pow(GMax/GMin,i/200);
+      const bw=gc.gbw/g;
+      if(bw<BWMin||bw>BWMax){f=true;continue;}
+      const x=xp(g),y=yp(bw);
+      if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    // marker
+    const bw_sel=gc.gbw/Acl_sel;
+    if(bw_sel>=BWMin&&bw_sel<=BWMax){
+      ctx.fillStyle=css(gc.c);
+      ctx.beginPath();ctx.arc(xp(Acl_sel),yp(bw_sel),5,0,2*Math.PI);ctx.fill();
+    }
+  });
+
+  // Vertical line at selected gain
+  ctx.strokeStyle=css('--text');ctx.lineWidth=1;ctx.globalAlpha=0.3;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(xp(Acl_sel),pad.t);ctx.lineTo(xp(Acl_sel),pad.t+ph);ctx.stroke();
+  ctx.setLineDash([]);ctx.globalAlpha=1;
+
+  const bw100=100e6/Acl_sel;
+  const bwStr=bw100>=1e6?(bw100/1e6).toFixed(1)+'MHz':bw100>=1e3?(bw100/1e3).toFixed(1)+'kHz':bw100.toFixed(0)+'Hz';
+  ctx.fillStyle=css('--accent');ctx.font='bold 9px system-ui';ctx.textAlign='left';
+  ctx.fillText('GBW=100M: f_3dB='+bwStr+' @ gain='+Acl_sel,pad.l+4,pad.t+14);
+}
+
+// ─── Plot 3 ───────────────────────────────────────────────────────────────────
+const p3=sc('c3');
+function draw3(){
+  const {ctx,w,h}=p3.resize();
+  const A_total=parseFloat(document.getElementById('s3a').value);
+  const GBW=parseFloat(document.getElementById('s3b').value)*1e6;
+  document.getElementById('v3a').textContent=A_total;
+  document.getElementById('v3b').textContent=document.getElementById('s3b').value;
+
+  const pad={l:60,r:60,t:30,b:36};
+  const pw=w-pad.l-pad.r,ph=h-pad.t-pad.b;
+  const Nmax=8;
+
+  // Calculate f_total for N=1..Nmax
+  const data=[];
+  for(let N=1;N<=Nmax;N++){
+    const A_stage=Math.pow(A_total,1/N);
+    const f1=GBW/A_stage;
+    const shrink=Math.sqrt(Math.pow(2,1/N)-1);
+    const f_total=f1*shrink;
+    data.push({N,A_stage,f1,f_total});
+  }
+
+  const fMax=Math.max(...data.map(d=>d.f_total))*1.3;
+  const AMax=Math.max(...data.map(d=>d.A_stage))*1.3;
+  const single_bw=data[0].f_total;
+
+  ctx.clearRect(0,0,w,h);ctx.fillStyle=css('--card');ctx.fillRect(0,0,w,h);
+
+  // Axes
+  ctx.strokeStyle=css('--text');ctx.lineWidth=1.5;
+  ctx.strokeRect(pad.l,pad.t,pw,ph);
+
+  // Grid lines for N
+  data.forEach(d=>{
+    const x=pad.l+(d.N-1)/(Nmax-1)*pw;
+    ctx.strokeStyle=css('--grid');ctx.lineWidth=0.7;
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=css('--subtext');ctx.font='10px system-ui';ctx.textAlign='center';
+    ctx.fillText(d.N,x,pad.t+ph+13);
+  });
+
+  ctx.fillStyle=css('--text');ctx.font='11px system-ui';ctx.textAlign='center';
+  ctx.fillText('Number of stages N',pad.l+pw/2,h-2);
+  ctx.save();ctx.translate(11,pad.t+ph/2);ctx.rotate(-Math.PI/2);ctx.fillText('f_3dB / gain',0,0);ctx.restore();
+
+  const xp=N=>pad.l+(N-1)/(Nmax-1)*pw;
+  const ypBW=f=>pad.t+ph-(f/fMax)*ph;
+  const ypA=a=>pad.t+ph-(a/AMax)*ph;
+
+  // Single-stage BW reference
+  ctx.strokeStyle=css('--accent4');ctx.lineWidth=1;ctx.globalAlpha=0.5;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,ypBW(single_bw));ctx.lineTo(pad.l+pw,ypBW(single_bw));ctx.stroke();
+  ctx.setLineDash([]);ctx.globalAlpha=1;
+  const sbwStr=single_bw>=1e6?(single_bw/1e6).toFixed(2)+'M':single_bw>=1e3?(single_bw/1e3).toFixed(1)+'k':single_bw.toFixed(0);
+  ctx.fillStyle=css('--accent4');ctx.font='9px system-ui';ctx.textAlign='right';
+  ctx.fillText('N=1: f_3dB='+sbwStr,pad.l+pw-2,ypBW(single_bw)-3);
+
+  // BW curve
+  ctx.strokeStyle=css('--accent');ctx.lineWidth=2.5;
+  ctx.beginPath();data.forEach((d,i)=>{if(i===0)ctx.moveTo(xp(d.N),ypBW(d.f_total));else ctx.lineTo(xp(d.N),ypBW(d.f_total));});
+  ctx.stroke();
+  data.forEach(d=>{ctx.fillStyle=css('--accent');ctx.beginPath();ctx.arc(xp(d.N),ypBW(d.f_total),4,0,2*Math.PI);ctx.fill();});
+
+  // Gain per stage (secondary axis, right side)
+  ctx.strokeStyle=css('--accent2');ctx.lineWidth=2;ctx.setLineDash([5,4]);
+  ctx.beginPath();data.forEach((d,i)=>{if(i===0)ctx.moveTo(xp(d.N),ypA(d.A_stage));else ctx.lineTo(xp(d.N),ypA(d.A_stage));});
+  ctx.stroke();ctx.setLineDash([]);
+
+  // Right axis label for gain per stage
+  ctx.fillStyle=css('--accent2');ctx.font='9px system-ui';ctx.textAlign='left';
+  ctx.fillText('gain/stage →',pad.l+pw+4,pad.t+ph/2);
+
+  // Best N annotation
+  const bestN=data.reduce((best,d)=>d.f_total>best.f_total?d:best,data[0]);
+  const bfStr=bestN.f_total>=1e6?(bestN.f_total/1e6).toFixed(2)+'MHz':bestN.f_total>=1e3?(bestN.f_total/1e3).toFixed(1)+'kHz':bestN.f_total.toFixed(0)+'Hz';
+  ctx.fillStyle=css('--accent');ctx.font='bold 9px system-ui';ctx.textAlign='left';
+  ctx.fillText(`Best: N=${bestN.N}  f_3dB=${bfStr}  (${(bestN.f_total/single_bw).toFixed(1)}× single-stage)`,pad.l+4,pad.t+14);
+  ctx.fillStyle=css('--text');
+  ctx.fillText(`Total gain=${A_total}`,pad.l+4,pad.t+27);
+}
+
+['s1a','s1b','s1c'].forEach(id=>document.getElementById(id).addEventListener('input',draw1));
+['s2a'].forEach(id=>document.getElementById(id).addEventListener('input',draw2));
+['s3a','s3b'].forEach(id=>document.getElementById(id).addEventListener('input',draw3));
+window.addEventListener('resize',()=>{draw1();draw2();draw3();});
+draw1();draw2();draw3();
+</script>
+</body>
+</html>

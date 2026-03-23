@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-GB-2.1.2 — Gain in dB</title>
+<style>
+  :root { --bg:#ffffff; --surface:#f5f5f5; --border:#dddddd; --text:#1a1a1a; --accent:#0066cc; --accent2:#cc6600; --green:#007700; --red:#cc0000; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444444; --text:#e8e8e8; --accent:#4499ff; --accent2:#ff9944; --green:#44bb44; --red:#ff5555; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:'Segoe UI',Arial,sans-serif; font-size:15px; }
+  header { background:var(--accent); color:#fff; padding:12px 20px; display:flex; align-items:baseline; gap:16px; }
+  header .module-id { font-size:12px; opacity:0.85; font-family:monospace; }
+  header h1 { font-size:18px; font-weight:600; }
+  .main { display:grid; grid-template-columns:280px 1fr; height:calc(100vh - 48px); }
+  .controls { background:var(--surface); border-right:1px solid var(--border); padding:20px; overflow-y:auto; }
+  .controls h2 { font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--accent); margin-bottom:14px; }
+  .cg { margin-bottom:16px; }
+  .cg label { display:block; font-size:13px; margin-bottom:5px; }
+  .val { font-weight:700; color:var(--accent); }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .rbox { background:var(--bg); border:1px solid var(--border); border-radius:5px; padding:10px; margin-bottom:10px; }
+  .rbox .rl { font-size:11px; text-transform:uppercase; letter-spacing:.05em; opacity:.7; margin-bottom:3px; }
+  .rbox .rv { font-size:20px; font-weight:700; color:var(--accent); font-family:monospace; }
+  .rbox .ru { font-size:12px; opacity:.7; }
+  .canvas-area { padding:20px; overflow-y:auto; display:flex; flex-direction:column; gap:20px; }
+  canvas { border:1px solid var(--border); border-radius:6px; display:block; }
+  .clabel { font-size:12px; font-weight:600; margin-bottom:5px; opacity:.8; }
+  .two-col { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  .ref-table { background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:12px; font-size:12px; font-family:monospace; line-height:1.8; }
+  .ref-table .title { font-size:11px; text-transform:uppercase; color:var(--accent); margin-bottom:6px; font-family:sans-serif; }
+</style>
+</head>
+<body>
+<header>
+  <span class="module-id">M4A-GB-2.1.2</span>
+  <h1>Gain in dB — Interactive dB Converter & Cascade Builder</h1>
+</header>
+<div class="main">
+  <div class="controls">
+    <h2>dB ↔ Linear Converter</h2>
+    <div class="cg">
+      <label>Gain in dB: <span class="val" id="db-val">20 dB</span></label>
+      <input type="range" id="db-slider" min="-60" max="120" step="1" value="20">
+    </div>
+    <div class="rbox">
+      <div class="rl">Linear Voltage Gain |Av|</div>
+      <div class="rv" id="linear-out">10.00</div>
+      <div class="ru">V/V</div>
+    </div>
+    <div class="rbox">
+      <div class="rl">Power Gain</div>
+      <div class="rv" id="power-out">100.0</div>
+      <div class="ru">P/P (= Av²)</div>
+    </div>
+
+    <h2 style="margin-top:12px;">Cascade Gain Builder</h2>
+    <div class="cg">
+      <label>Stage 1 Gain: <span class="val" id="s1-val">20 dB</span></label>
+      <input type="range" id="s1" min="-20" max="60" step="1" value="20">
+    </div>
+    <div class="cg">
+      <label>Stage 2 Gain: <span class="val" id="s2-val">30 dB</span></label>
+      <input type="range" id="s2" min="-20" max="60" step="1" value="30">
+    </div>
+    <div class="cg">
+      <label>Stage 3 Gain: <span class="val" id="s3-val">0 dB</span></label>
+      <input type="range" id="s3" min="-20" max="60" step="1" value="0">
+    </div>
+
+    <div class="rbox">
+      <div class="rl">Total Gain (dB)</div>
+      <div class="rv" id="total-db">50</div>
+      <div class="ru">dB</div>
+    </div>
+    <div class="rbox">
+      <div class="rl">Total Gain (Linear)</div>
+      <div class="rv" id="total-lin">316</div>
+      <div class="ru">V/V</div>
+    </div>
+
+    <div class="ref-table">
+      <div class="title">Reference Points</div>
+      0 dB  = 1.000 V/V<br>
+      +6 dB = 2.000 V/V<br>
+      -3 dB = 0.707 V/V<br>
+      +20 dB = 10 V/V<br>
+      +40 dB = 100 V/V<br>
+      +60 dB = 1000 V/V<br>
+      -20 dB = 0.1 V/V<br>
+      -40 dB = 0.01 V/V
+    </div>
+  </div>
+
+  <div class="canvas-area">
+    <div class="two-col">
+      <div>
+        <div class="clabel">dB Scale — Gain Marker Position</div>
+        <canvas id="scaleCanvas" width="400" height="240"></canvas>
+      </div>
+      <div>
+        <div class="clabel">Cascade Stage Contributions</div>
+        <canvas id="cascadeCanvas" width="400" height="240"></canvas>
+      </div>
+    </div>
+    <div>
+      <div class="clabel">Gain Compression Illustration — Same Gain Range, Linear vs dB Scale</div>
+      <canvas id="compressionCanvas" width="840" height="200"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const dbSlider = document.getElementById('db-slider');
+  const s1 = document.getElementById('s1');
+  const s2 = document.getElementById('s2');
+  const s3 = document.getElementById('s3');
+
+  function getColors(){
+    const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return {
+      bg: dark?'#1a1a1a':'#ffffff', grid:dark?'#333':'#eee',
+      text:dark?'#ccc':'#555', blue:dark?'#4499ff':'#0066cc',
+      orange:dark?'#ff9944':'#cc6600', green:dark?'#44bb44':'#007700',
+      red:dark?'#ff5555':'#cc0000', purple:dark?'#bb88ff':'#7700cc'
+    };
+  }
+
+  function update(){
+    const dbVal = parseFloat(dbSlider.value);
+    const linVal = Math.pow(10, dbVal/20);
+    document.getElementById('db-val').textContent = dbVal + ' dB';
+    document.getElementById('linear-out').textContent = linVal >= 1000 ? (linVal/1000).toFixed(2)+'k' : linVal >= 10 ? linVal.toFixed(1) : linVal.toFixed(3);
+    document.getElementById('power-out').textContent = (linVal*linVal).toFixed(linVal*linVal<10?3:1);
+
+    const g1 = parseFloat(s1.value), g2 = parseFloat(s2.value), g3 = parseFloat(s3.value);
+    document.getElementById('s1-val').textContent = g1 + ' dB';
+    document.getElementById('s2-val').textContent = g2 + ' dB';
+    document.getElementById('s3-val').textContent = g3 + ' dB';
+    const tot = g1+g2+g3;
+    document.getElementById('total-db').textContent = tot;
+    const totLin = Math.pow(10, tot/20);
+    document.getElementById('total-lin').textContent = totLin >= 1000 ? (totLin/1000).toFixed(1)+'k' : totLin.toFixed(1);
+
+    drawScale(dbVal);
+    drawCascade(g1, g2, g3);
+    drawCompression(dbVal);
+  }
+
+  function drawScale(dbVal){
+    const canvas = document.getElementById('scaleCanvas');
+    const ctx = canvas.getContext('2d');
+    const W=canvas.width, H=canvas.height;
+    const c = getColors();
+    ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+
+    // vertical dB scale from -60 to +120
+    const dbMin=-60, dbMax=120;
+    const pad={l:70,r:40,t:20,b:20};
+    const ph=H-pad.t-pad.b;
+    const midX = pad.l + (W-pad.l-pad.r)/2;
+
+    // ticks
+    const ticks = [-60,-40,-20,-3,0,6,20,40,60,80,100,120];
+    ctx.strokeStyle=c.grid; ctx.lineWidth=1;
+    ctx.font='11px monospace'; ctx.textAlign='right'; ctx.fillStyle=c.text;
+    for(const t of ticks){
+      const y = pad.t + ph*(1-(t-dbMin)/(dbMax-dbMin));
+      ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(W-pad.r,y); ctx.stroke();
+      ctx.fillText(t+' dB', pad.l-4, y+4);
+    }
+
+    // scale bar
+    const barW = 30;
+    const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t+ph);
+    grad.addColorStop(0, '#4499ff');
+    grad.addColorStop(0.5, '#44bb44');
+    grad.addColorStop(1, '#cc0000');
+    ctx.fillStyle=grad;
+    ctx.fillRect(midX-barW/2, pad.t, barW, ph);
+    ctx.strokeStyle=c.border; ctx.lineWidth=1;
+    ctx.strokeRect(midX-barW/2, pad.t, barW, ph);
+
+    // marker
+    const markerY = pad.t + ph*(1-(dbVal-dbMin)/(dbMax-dbMin));
+    ctx.beginPath();
+    ctx.moveTo(midX-barW/2-8, markerY);
+    ctx.lineTo(midX+barW/2+8, markerY);
+    ctx.strokeStyle=c.orange; ctx.lineWidth=3; ctx.stroke();
+
+    // label
+    const linVal = Math.pow(10,dbVal/20);
+    ctx.fillStyle=c.orange; ctx.font='bold 12px monospace'; ctx.textAlign='left';
+    ctx.fillText(dbVal+' dB = '+( linVal>=1000?(linVal/1000).toFixed(1)+'k':linVal.toFixed(2) )+' V/V', midX+barW/2+12, markerY+4);
+
+    // special markers
+    const specials = [{db:-3,label:'-3dB (BW)'},{db:0,label:'0dB (unity)'},{db:6,label:'+6dB (×2)'}];
+    for(const s of specials){
+      const sy = pad.t + ph*(1-(s.db-dbMin)/(dbMax-dbMin));
+      ctx.fillStyle=c.blue; ctx.font='10px sans-serif'; ctx.textAlign='left';
+      ctx.fillText(s.label, midX+barW/2+12, sy+4);
+    }
+  }
+
+  function drawCascade(g1,g2,g3){
+    const canvas = document.getElementById('cascadeCanvas');
+    const ctx = canvas.getContext('2d');
+    const W=canvas.width, H=canvas.height;
+    const c=getColors();
+    ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+
+    const gains=[g1,g2,g3];
+    const colors=[c.blue,c.green,c.orange];
+    const labels=['Stage 1','Stage 2','Stage 3'];
+    const total=g1+g2+g3;
+    const maxDb=Math.max(60, Math.abs(total)*1.2, ...gains.map(Math.abs));
+
+    const pad={l:20,r:20,t:30,b:40};
+    const barH=50;
+    const pw=W-pad.l-pad.r;
+    let cumulative=0;
+
+    ctx.fillStyle=c.text; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Cumulative dB gain built up through cascade', W/2, 18);
+
+    // draw stage bars as accumulation
+    for(let i=0;i<3;i++){
+      const y = pad.t + i*(barH+10);
+      const x0 = pad.l + pw/2 + (cumulative/maxDb)*(pw/2);
+      const bw = (gains[i]/maxDb)*(pw/2);
+      ctx.fillStyle=colors[i];
+      ctx.fillRect(x0, y, bw, barH);
+      ctx.strokeStyle=c.border; ctx.lineWidth=1;
+      ctx.strokeRect(x0, y, bw, barH);
+      ctx.fillStyle=c.text; ctx.font='bold 12px monospace'; ctx.textAlign='center';
+      ctx.fillText(labels[i]+': '+(gains[i]>=0?'+':'')+gains[i]+' dB', x0+bw/2, y+barH/2+5);
+      cumulative+=gains[i];
+    }
+
+    // zero line
+    const zeroX = pad.l+pw/2;
+    ctx.beginPath(); ctx.moveTo(zeroX, pad.t-5); ctx.lineTo(zeroX, pad.t+3*(barH+10)+barH+5);
+    ctx.strokeStyle=c.text; ctx.lineWidth=2; ctx.stroke();
+    ctx.fillStyle=c.text; ctx.font='11px monospace'; ctx.textAlign='center';
+    ctx.fillText('0 dB', zeroX, H-5);
+
+    // total
+    const totalX = pad.l + pw/2 + (total/maxDb)*(pw/2);
+    ctx.fillStyle=c.orange; ctx.font='bold 13px monospace'; ctx.textAlign='center';
+    ctx.fillText('Total: '+(total>=0?'+':'')+total+' dB = '+Math.pow(10,total/20).toFixed(1)+' V/V', totalX, H-5);
+    ctx.beginPath(); ctx.moveTo(totalX, pad.t-5); ctx.lineTo(totalX, H-20);
+    ctx.strokeStyle=c.orange; ctx.lineWidth=2; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  function drawCompression(dbVal){
+    const canvas = document.getElementById('compressionCanvas');
+    const ctx = canvas.getContext('2d');
+    const W=canvas.width, H=canvas.height;
+    const c=getColors();
+    ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+
+    const pad={l:20,r:20,t:30,b:30};
+    const pw=(W-pad.l-pad.r)/2-20;
+    const ph=H-pad.t-pad.b;
+    const leftX=pad.l;
+    const rightX=pad.l+pw+40;
+
+    // helper: draw a number line
+    function drawLine(x0, label, isLog){
+      ctx.fillStyle=c.text; ctx.font='bold 11px sans-serif'; ctx.textAlign='center';
+      ctx.fillText(label, x0+pw/2, pad.t-10);
+
+      const vals=[0.01,0.1,1,10,100,1000,10000];
+      ctx.strokeStyle=c.grid; ctx.lineWidth=1;
+      for(const v of vals){
+        let xpos;
+        if(isLog){
+          const db=20*Math.log10(v);
+          xpos = x0 + pw*(db-(-40))/(120-(-40));
+        } else {
+          xpos = x0 + pw*(v/10000);
+        }
+        if(xpos<x0||xpos>x0+pw) continue;
+        ctx.beginPath(); ctx.moveTo(xpos,pad.t); ctx.lineTo(xpos,pad.t+ph); ctx.stroke();
+        ctx.fillStyle=c.text; ctx.font='10px monospace'; ctx.textAlign='center';
+        ctx.fillText(v>=1000?(v/1000)+'k':v, xpos, H-5);
+      }
+      // axis
+      ctx.beginPath(); ctx.moveTo(x0,pad.t+ph); ctx.lineTo(x0+pw,pad.t+ph);
+      ctx.strokeStyle=c.text; ctx.lineWidth=2; ctx.stroke();
+
+      // marker for current value
+      const linVal=Math.pow(10,dbVal/20);
+      let markerX;
+      if(isLog){
+        markerX = x0 + pw*(dbVal-(-40))/(120-(-40));
+      } else {
+        markerX = x0 + pw*(linVal/10000);
+      }
+      if(markerX>=x0 && markerX<=x0+pw){
+        ctx.beginPath(); ctx.arc(markerX, pad.t+ph/2, 8,0,2*Math.PI);
+        ctx.fillStyle=c.orange; ctx.fill();
+      }
+    }
+
+    drawLine(leftX, 'LINEAR SCALE (V/V) — crowded at low values', false);
+    drawLine(rightX, 'LOG / dB SCALE — evenly spaced', true);
+
+    // note
+    ctx.fillStyle=c.text; ctx.font='12px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Orange dot = current gain. On linear scale, small gains are invisible. dB scale shows all gains equally.', W/2, pad.t+ph+18);
+  }
+
+  [dbSlider,s1,s2,s3].forEach(el=>el.addEventListener('input',update));
+  window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',update);
+  update();
+})();
+</script>
+</body>
+</html>

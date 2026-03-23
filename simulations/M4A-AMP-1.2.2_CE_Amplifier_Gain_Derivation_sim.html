@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.2.2 — CE Amplifier Gain Derivation</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;align-items:baseline;gap:16px;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:14px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.2.2</div>
+  <div class="topic">CE Amplifier Gain Derivation — Av = –gm × (RC ‖ RL)</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>Bias & Device</h3>
+      <label>IC (mA): <b id="ic_lbl">1.0 mA</b></label>
+      <input type="range" id="ic" min="0.1" max="10" value="1" step="0.1">
+      <label>β: <b id="b_lbl">150</b></label>
+      <input type="range" id="beta" min="50" max="500" value="150" step="10">
+    </div>
+    <div class="cg">
+      <h3>Load Components</h3>
+      <label>RC: <b id="rc_lbl">10 kΩ</b></label>
+      <input type="range" id="rc" min="500" max="50000" value="10000" step="500">
+      <label>RL: <b id="rl_lbl">22 kΩ</b></label>
+      <input type="range" id="rl" min="100" max="200000" value="22000" step="100">
+      <label>RE (unbypassed): <b id="re_lbl">0 Ω</b></label>
+      <input type="range" id="re" min="0" max="2000" value="0" step="10">
+    </div>
+    <div class="cg">
+      <h3>Temperature</h3>
+      <label>Temperature: <b id="temp_lbl">27°C</b></label>
+      <input type="range" id="temp" min="-40" max="125" value="27" step="1">
+    </div>
+    <div class="cg">
+      <h3>Gain Analysis</h3>
+      <div class="rd">VT: <span id="r_vt">26.0</span> mV</div>
+      <div class="rd">gm: <span id="r_gm">38.5</span> mA/V</div>
+      <div class="rd">gm_eff: <span id="r_gmeff">38.5</span> mA/V</div>
+      <div class="rd">RC‖RL: <span id="r_rcrl">6.88</span> kΩ</div>
+      <div class="rd">|Av| bypassed: <span id="r_av_bp">264</span> V/V</div>
+      <div class="rd">|Av| unbypassed: <span id="r_av_ubp">264</span> V/V</div>
+      <div class="rd">Bypass ratio: <span id="r_ratio">1.0</span> ×</div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_gm">38.5</div><div class="l">gm (mA/V)</div></div>
+      <div class="met"><div class="v" id="m_av">264</div><div class="l">|Av| (V/V)</div></div>
+      <div class="met"><div class="v" id="m_db">48.4</div><div class="l">Av (dB)</div></div>
+      <div class="met"><div class="v" id="m_vt">26.0</div><div class="l">VT (mV)</div></div>
+    </div>
+    <div>
+      <div class="pl">|Av| vs Collector Current — at current temperature</div>
+      <canvas id="avCanvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">Gain vs Load Resistance (RC fixed) — bypassed vs unbypassed</div>
+      <canvas id="loadCanvas" height="180"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+function fmtR(v){if(v>=1e3)return(v/1e3).toFixed(1)+'kΩ';return v+'Ω';}
+
+function getVT(tempC){return (273.15+tempC)/11604;}
+
+function getAll(){
+  const ic=parseFloat(document.getElementById('ic').value)*1e-3;
+  const beta=parseFloat(document.getElementById('beta').value);
+  const rc=parseFloat(document.getElementById('rc').value);
+  const rl=parseFloat(document.getElementById('rl').value);
+  const re=parseFloat(document.getElementById('re').value);
+  const temp=parseFloat(document.getElementById('temp').value);
+  const vt=getVT(temp);
+  const gm=ic/vt;
+  const gm_eff=gm/(1+gm*re);
+  const rcrl=rc*rl/(rc+rl);
+  const av_bp=gm*rcrl;
+  const av_ubp=gm_eff*rcrl;
+  const ratio=av_bp/av_ubp;
+  return{ic,beta,rc,rl,re,temp,vt,gm,gm_eff,rcrl,av_bp,av_ubp,ratio};
+}
+
+function update(){
+  const p=getAll();
+  document.getElementById('ic_lbl').textContent=(p.ic*1000).toFixed(1)+' mA';
+  document.getElementById('b_lbl').textContent=parseFloat(document.getElementById('beta').value);
+  document.getElementById('rc_lbl').textContent=fmtR(p.rc);
+  document.getElementById('rl_lbl').textContent=fmtR(p.rl);
+  document.getElementById('re_lbl').textContent=p.re+'Ω';
+  document.getElementById('temp_lbl').textContent=p.temp+'°C';
+
+  document.getElementById('r_vt').textContent=(p.vt*1000).toFixed(1);
+  document.getElementById('r_gm').textContent=(p.gm*1000).toFixed(1);
+  document.getElementById('r_gmeff').textContent=(p.gm_eff*1000).toFixed(1);
+  document.getElementById('r_rcrl').textContent=(p.rcrl/1000).toFixed(2);
+  document.getElementById('r_av_bp').textContent=p.av_bp.toFixed(0);
+  document.getElementById('r_av_ubp').textContent=p.av_ubp.toFixed(1);
+  document.getElementById('r_ratio').textContent=p.ratio.toFixed(1);
+
+  document.getElementById('m_gm').textContent=(p.gm*1000).toFixed(1);
+  document.getElementById('m_av').textContent=p.av_bp.toFixed(0);
+  document.getElementById('m_db').textContent=(20*Math.log10(p.av_bp)).toFixed(1);
+  document.getElementById('m_vt').textContent=(p.vt*1000).toFixed(1);
+
+  drawAvVsIc(p);
+  drawGainVsLoad(p);
+}
+
+function drawAvVsIc(p){
+  const canvas=document.getElementById('avCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;
+  const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:50,r:10,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const IC_MAX=10e-3, AV_MAX=2000;
+  function xOf(ic){return pad.l+ic/IC_MAX*pw;}
+  function yOf(av){return pad.t+ph-Math.min(av,AV_MAX)/AV_MAX*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [0,500,1000,1500,2000].forEach(av=>{
+    const y=yOf(av);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(av,2,y+3);
+  });
+  [0,2,4,6,8,10].forEach(ic=>{
+    const x=xOf(ic*1e-3);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(ic+'mA',x-8,H-4);
+  });
+
+  // Bypassed gain curve (Av = gm*rcrl, gm = ic/VT)
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const ic=px/pw*IC_MAX;
+    const gm=ic/p.vt;
+    const av=gm*p.rcrl;
+    const y=yOf(av);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  // Unbypassed gain curve
+  ctx.strokeStyle='#cc6600';ctx.lineWidth=2;ctx.setLineDash([6,3]);
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const ic=px/pw*IC_MAX;
+    const gm=ic/p.vt;
+    const gm_eff=gm/(1+gm*p.re);
+    const av=gm_eff*p.rcrl;
+    const y=yOf(av);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Current IC marker
+  const xc=xOf(p.ic);
+  ctx.strokeStyle='#ff8800';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(xc,pad.t);ctx.lineTo(xc,pad.t+ph);ctx.stroke();
+  ctx.setLineDash([]);
+  const yc=yOf(p.av_bp);
+  ctx.fillStyle='#ff8800';ctx.beginPath();ctx.arc(xc,yc,5,0,2*Math.PI);ctx.fill();
+
+  ctx.font='10px Courier New';
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.fillText('── Av bypassed',W-200,20);
+  ctx.fillStyle='#cc6600';ctx.fillText('-- Av unbypassed',W-200,34);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.fillText('IC →',W/2-10,H-1);
+  ctx.save();ctx.translate(12,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('|Av|',0,0);ctx.restore();
+}
+
+function drawGainVsLoad(p){
+  const canvas=document.getElementById('loadCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;
+  const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:50,r:10,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const RL_MIN=100,RL_MAX=200000;
+  const AV_MAX=p.gm*p.rc;
+  function xOf(rl){return pad.l+(Math.log10(rl)-Math.log10(RL_MIN))/(Math.log10(RL_MAX)-Math.log10(RL_MIN))*pw;}
+  function yOf(av){return pad.t+ph-Math.min(av,AV_MAX*1.1)/AV_MAX/1.1*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [100,1000,10000,100000,200000].forEach(rl=>{
+    const x=xOf(rl);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    const lbl=rl>=1000?(rl/1000)+'k':rl;
+    ctx.fillText(lbl,x-8,H-4);
+  });
+
+  // Bypassed curve
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const frac=px/pw;
+    const logrl=Math.log10(RL_MIN)+frac*(Math.log10(RL_MAX)-Math.log10(RL_MIN));
+    const rl=Math.pow(10,logrl);
+    const rcrl=p.rc*rl/(p.rc+rl);
+    const av=p.gm*rcrl;
+    const y=yOf(av);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  // Unbypassed curve
+  ctx.strokeStyle='#cc6600';ctx.lineWidth=2;ctx.setLineDash([6,3]);
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const frac=px/pw;
+    const logrl=Math.log10(RL_MIN)+frac*(Math.log10(RL_MAX)-Math.log10(RL_MIN));
+    const rl=Math.pow(10,logrl);
+    const rcrl=p.rc*rl/(p.rc+rl);
+    const av=p.gm_eff*rcrl;
+    const y=yOf(av);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // RC marker (gain = AV_MAX/2 at RL=RC)
+  const xRC=xOf(p.rc);
+  ctx.strokeStyle='#cc0000';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(xRC,pad.t);ctx.lineTo(xRC,pad.t+ph);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#cc0000';ctx.font='10px Courier New';
+  ctx.fillText('RL=RC',xRC+3,pad.t+14);
+
+  // Current RL marker
+  const xRL=xOf(p.rl);
+  const yRL=yOf(p.av_bp);
+  ctx.fillStyle='#ff8800';ctx.beginPath();ctx.arc(xRL,yRL,5,0,2*Math.PI);ctx.fill();
+
+  ctx.font='10px Courier New';
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.fillText('── bypassed',W-170,20);
+  ctx.fillStyle='#cc6600';ctx.fillText('-- unbypassed',W-170,34);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.fillText('Load RL →',W/2-30,H-1);
+  ctx.save();ctx.translate(12,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('|Av|',0,0);ctx.restore();
+}
+
+['ic','beta','rc','rl','re','temp'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

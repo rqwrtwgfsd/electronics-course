@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-PM-11.8.1 — Dynamic Performance Simulator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; font-size: 14px; }
+  h1 { text-align: center; padding: 18px; font-size: 18px; color: #58a6ff; border-bottom: 1px solid #21262d; }
+  .tabs { display: flex; background: #161b22; border-bottom: 1px solid #21262d; }
+  .tab { padding: 10px 22px; cursor: pointer; color: #8b949e; border-bottom: 2px solid transparent; font-size: 13px; }
+  .tab.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+  .panel { display: none; padding: 18px; }
+  .panel.active { display: block; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .card { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 14px; flex: 1; min-width: 260px; }
+  .card h3 { font-size: 13px; color: #58a6ff; margin-bottom: 10px; }
+  label { display: block; font-size: 12px; color: #8b949e; margin: 6px 0 2px; }
+  input[type=range] { width: 100%; accent-color: #58a6ff; }
+  .val { display: inline-block; min-width: 54px; color: #f0883e; font-weight: bold; font-size: 12px; }
+  canvas { display: block; width: 100%; border-radius: 6px; background: #0d1117; }
+  .info-box { background: #1c2128; border: 1px solid #30363d; border-radius: 6px; padding: 10px 14px; margin-top: 10px; font-size: 12px; line-height: 1.8; }
+  .info-box span.g { color: #3fb950; font-weight: bold; }
+  .info-box span.r { color: #f85149; font-weight: bold; }
+  .info-box span.y { color: #d29922; font-weight: bold; }
+  .info-box span.b { color: #58a6ff; font-weight: bold; }
+  .legend-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 6px; font-size: 11px; }
+  .ld { display: flex; align-items: center; gap: 5px; }
+  .lbox { width: 14px; height: 4px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<h1>M4B-PM-11.8.1 — Dynamic Performance Simulator</h1>
+<div class="tabs">
+  <div class="tab active" onclick="switchTab(0)">Settling Time Simulator</div>
+  <div class="tab" onclick="switchTab(1)">Slew Rate Explorer</div>
+  <div class="tab" onclick="switchTab(2)">Phase Margin vs Settling</div>
+</div>
+
+<!-- TAB 0: Settling Time -->
+<div class="panel active" id="p0">
+  <div class="row">
+    <div class="card" style="max-width:320px;">
+      <h3>Step Response Parameters</h3>
+      <label>GBW (MHz): <span class="val" id="t0_gbw_v">500</span></label>
+      <input type="range" id="t0_gbw" min="10" max="2000" step="10" value="500" oninput="updateT0()">
+      <label>Closed-loop gain Acl: <span class="val" id="t0_acl_v">1</span></label>
+      <input type="range" id="t0_acl" min="1" max="100" step="1" value="1" oninput="updateT0()">
+      <label>Slew rate SR (V/μs): <span class="val" id="t0_sr_v">400</span></label>
+      <input type="range" id="t0_sr" min="1" max="5000" step="10" value="400" oninput="updateT0()">
+      <label>Step amplitude Vstep (V): <span class="val" id="t0_vstep_v">1.0</span></label>
+      <input type="range" id="t0_vstep" min="0.01" max="5.0" step="0.01" value="1.0" oninput="updateT0()">
+      <label>Target accuracy N (bits): <span class="val" id="t0_n_v">12</span></label>
+      <input type="range" id="t0_n" min="8" max="20" step="1" value="12" oninput="updateT0()">
+      <label>Phase margin PM (°): <span class="val" id="t0_pm_v">65</span></label>
+      <input type="range" id="t0_pm" min="30" max="90" step="1" value="65" oninput="updateT0()">
+      <div class="info-box" id="t0_info"></div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Step Response — Slew + Exponential Settling</h3>
+      <canvas id="c0" height="340"></canvas>
+      <div class="legend-row">
+        <div class="ld"><div class="lbox" style="background:#58a6ff"></div>Output Vout(t)</div>
+        <div class="ld"><div class="lbox" style="background:#f0883e"></div>Target Vfinal</div>
+        <div class="ld"><div class="lbox" style="background:#3fb950"></div>N-bit accuracy band</div>
+        <div class="ld"><div class="lbox" style="background:#f85149;border-top:2px dashed #f85149"></div>Settling time ts</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: Slew Rate -->
+<div class="panel" id="p1">
+  <div class="row">
+    <div class="card" style="max-width:320px;">
+      <h3>Slew Rate Budget</h3>
+      <label>ISS (μA): <span class="val" id="t1_iss_v">200</span></label>
+      <input type="range" id="t1_iss" min="10" max="2000" step="10" value="200" oninput="updateT1()">
+      <label>Cc (pF): <span class="val" id="t1_cc_v">0.5</span></label>
+      <input type="range" id="t1_cc" min="0.1" max="5.0" step="0.05" value="0.5" oninput="updateT1()">
+      <label>Class AB peak current Ipeak (mA): <span class="val" id="t1_ip_v">5</span></label>
+      <input type="range" id="t1_ip" min="0.5" max="50" step="0.5" value="5" oninput="updateT1()">
+      <label>Load capacitance CL (pF): <span class="val" id="t1_cl_v">2</span></label>
+      <input type="range" id="t1_cl" min="0.1" max="20" step="0.1" value="2" oninput="updateT1()">
+      <label>Signal frequency f (MHz): <span class="val" id="t1_f_v">10</span></label>
+      <input type="range" id="t1_f" min="0.1" max="500" step="0.5" value="10" oninput="updateT1()">
+      <label>Signal amplitude Vpeak (V): <span class="val" id="t1_vp_v">0.5</span></label>
+      <input type="range" id="t1_vp" min="0.01" max="2.0" step="0.01" value="0.5" oninput="updateT1()">
+      <div class="info-box" id="t1_info"></div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Slew Rate Comparison — Internal vs Output</h3>
+      <canvas id="c1" height="340"></canvas>
+      <div class="legend-row">
+        <div class="ld"><div class="lbox" style="background:#58a6ff"></div>SR_internal = ISS/Cc</div>
+        <div class="ld"><div class="lbox" style="background:#f0883e"></div>SR_output = Ipeak/CL</div>
+        <div class="ld"><div class="lbox" style="background:#3fb950"></div>Effective SR = min</div>
+        <div class="ld"><div class="lbox" style="background:#f85149;border-top:2px dashed #f85149"></div>Required SR for signal</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: PM vs Settling -->
+<div class="panel" id="p2">
+  <div class="row">
+    <div class="card" style="max-width:320px;">
+      <h3>Phase Margin Trade-off</h3>
+      <label>GBW (MHz): <span class="val" id="t2_gbw_v">500</span></label>
+      <input type="range" id="t2_gbw" min="10" max="2000" step="10" value="500" oninput="updateT2()">
+      <label>Target accuracy N (bits): <span class="val" id="t2_n_v">12</span></label>
+      <input type="range" id="t2_n" min="8" max="20" step="1" value="12" oninput="updateT2()">
+      <label>Step amplitude Vstep (V): <span class="val" id="t2_vstep_v">1.0</span></label>
+      <input type="range" id="t2_vstep" min="0.01" max="5.0" step="0.01" value="1.0" oninput="updateT2()">
+      <label>Operating PM (°): <span class="val" id="t2_pm_v">65</span></label>
+      <input type="range" id="t2_pm" min="20" max="90" step="1" value="65" oninput="updateT2()">
+      <div class="info-box" id="t2_info"></div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Settling Time vs Phase Margin</h3>
+      <canvas id="c2" height="340"></canvas>
+      <div class="legend-row">
+        <div class="ld"><div class="lbox" style="background:#58a6ff"></div>ts (N-bit settle)</div>
+        <div class="ld"><div class="lbox" style="background:#f0883e"></div>Overshoot %</div>
+        <div class="ld"><div class="lbox" style="background:#3fb950"></div>PM=60° marker</div>
+        <div class="ld"><div class="lbox" style="background:#f85149;border-top:2px dashed #f85149"></div>Operating point</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DPR = window.devicePixelRatio || 1;
+function setupCanvas(id) {
+  const c = document.getElementById(id);
+  const w = c.parentElement.clientWidth - 28;
+  const h = parseInt(c.getAttribute('height'));
+  c.width = w * DPR; c.height = h * DPR;
+  c.style.width = w + 'px'; c.style.height = h + 'px';
+  const ctx = c.getContext('2d'); ctx.scale(DPR, DPR);
+  return { ctx, W: w, H: h };
+}
+function switchTab(i) {
+  document.querySelectorAll('.tab').forEach((t,j) => t.classList.toggle('active', i===j));
+  document.querySelectorAll('.panel').forEach((p,j) => p.classList.toggle('active', i===j));
+  if(i===0) updateT0();
+  if(i===1) updateT1();
+  if(i===2) updateT2();
+}
+
+// Second-order underdamped step response
+function step2ndOrder(t, wn, xi, Vstep) {
+  if(xi >= 1) {
+    // overdamped
+    const s1 = -xi*wn + wn*Math.sqrt(xi*xi-1);
+    const s2 = -xi*wn - wn*Math.sqrt(xi*xi-1);
+    return Vstep * (1 + (s2*Math.exp(s1*t) - s1*Math.exp(s2*t))/(s1-s2));
+  }
+  const wd = wn * Math.sqrt(1 - xi*xi);
+  return Vstep * (1 - Math.exp(-xi*wn*t) * (Math.cos(wd*t) + (xi/Math.sqrt(1-xi*xi))*Math.sin(wd*t)));
+}
+
+// Compute settling time from waveform array
+function computeTs(times, vout, Vfinal, epsAbs) {
+  // Find last time output is outside the band
+  let ts = times[0];
+  for(let i = times.length-1; i >= 0; i--) {
+    if(Math.abs(vout[i] - Vfinal) > epsAbs) {
+      ts = times[i];
+      break;
+    }
+  }
+  return ts;
+}
+
+// ── TAB 0 ─────────────────────────────────────────────────────────────────
+function updateT0() {
+  const gbw_MHz = +document.getElementById('t0_gbw').value;
+  const acl = +document.getElementById('t0_acl').value;
+  const sr = +document.getElementById('t0_sr').value * 1e6; // V/s
+  const Vstep = +document.getElementById('t0_vstep').value;
+  const N = +document.getElementById('t0_n').value;
+  const pm_deg = +document.getElementById('t0_pm').value;
+
+  document.getElementById('t0_gbw_v').textContent = gbw_MHz;
+  document.getElementById('t0_acl_v').textContent = acl;
+  document.getElementById('t0_sr_v').textContent = sr/1e6;
+  document.getElementById('t0_vstep_v').textContent = Vstep.toFixed(2);
+  document.getElementById('t0_n_v').textContent = N;
+  document.getElementById('t0_pm_v').textContent = pm_deg;
+
+  const gbw_cl = gbw_MHz * 1e6 / acl; // Hz
+  const tau = 1 / (2 * Math.PI * gbw_cl);
+  const wn = 2 * Math.PI * gbw_cl;
+  const xi = Math.cos(Math.PI * (1 - pm_deg/180)); // approximate damping from PM
+  // More accurate: for PM in radians, xi ≈ sin(PM_rad/2) for normalized 2nd order
+  // Use simple: xi = pm_deg/100 (rule of thumb)
+  const xi2 = Math.min(0.99, pm_deg/100);
+
+  const eps = Vstep / Math.pow(2, N);
+  const Vstep_linear = sr / (2 * Math.PI * gbw_cl);
+  const slewing = Vstep > Vstep_linear;
+
+  const t_slew = slewing ? (Vstep - Vstep_linear) / sr : 0;
+  const V_after_slew = slewing ? Vstep - Vstep_linear : 0; // remaining error
+  const t_linear = tau * Math.log(Math.max(Vstep_linear, eps+1e-30) / Math.max(eps, 1e-30));
+  const ts_analytical = t_slew + Math.max(0, t_linear);
+
+  // Time axis: 0 to 3×ts or at least 5τ
+  const t_max = Math.max(ts_analytical * 2.5, 5 * tau, 3e-9);
+  const N_pts = 600;
+  const times = Array.from({length:N_pts}, (_,i) => i/N_pts * t_max);
+
+  // Build waveform
+  const vout = times.map(t => {
+    if(t < t_slew) {
+      return sr * t; // slewing phase
+    } else {
+      const t_lin = t - t_slew;
+      const V_start = slewing ? (Vstep - Vstep_linear) : Vstep;
+      // Exponential with damping from PM
+      const v = Vstep - V_start * Math.exp(-t_lin/tau) *
+        (Math.cos(wn * Math.sqrt(Math.max(0,1-xi2*xi2)) * t_lin) +
+         (xi2/Math.max(0.01,Math.sqrt(1-xi2*xi2))) * Math.sin(wn * Math.sqrt(Math.max(0,1-xi2*xi2)) * t_lin));
+      return Math.max(0, v);
+    }
+  });
+
+  // Find actual settling time
+  let ts_actual = t_max;
+  for(let i = N_pts-1; i >= 0; i--) {
+    if(Math.abs(vout[i] - Vstep) > eps) { ts_actual = times[i]; break; }
+  }
+
+  const { ctx, W, H } = setupCanvas('c0');
+  const PAD = { l: 54, r: 20, t: 20, b: 44 };
+  const PW = W - PAD.l - PAD.r;
+  const PH = H - PAD.t - PAD.b;
+
+  const yMin = -0.05 * Vstep; const yMax = 1.15 * Vstep;
+  function xP(t) { return PAD.l + (t/t_max)*PW; }
+  function yP(v) { return PAD.t + (1-(v-yMin)/(yMax-yMin))*PH; }
+
+  ctx.fillStyle = '#0d1117'; ctx.fillRect(0,0,W,H);
+
+  // Grid
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 0.5;
+  for(let v = 0; v <= Vstep*1.1; v += Vstep/5) {
+    ctx.beginPath(); ctx.moveTo(PAD.l,yP(v)); ctx.lineTo(PAD.l+PW,yP(v)); ctx.stroke();
+    ctx.fillStyle='#8b949e'; ctx.font='10px monospace';
+    ctx.fillText(v.toFixed(2)+'V', 2, yP(v)+3);
+  }
+  const tStep = t_max/5;
+  for(let i=0; i<=5; i++) {
+    const t = i*tStep;
+    ctx.beginPath(); ctx.moveTo(xP(t),PAD.t); ctx.lineTo(xP(t),PAD.t+PH); ctx.stroke();
+    ctx.fillStyle='#8b949e'; ctx.font='10px monospace';
+    const lbl = t<1e-6 ? (t*1e9).toFixed(1)+'ns' : t<1e-3 ? (t*1e6).toFixed(2)+'μs' : (t*1e3).toFixed(2)+'ms';
+    ctx.fillText(lbl, xP(t)-14, PAD.t+PH+14);
+  }
+
+  // N-bit band
+  ctx.fillStyle = 'rgba(63,185,80,0.08)';
+  ctx.fillRect(PAD.l, yP(Vstep+eps), PW, yP(Vstep-eps)-yP(Vstep+eps));
+  ctx.strokeStyle = '#3fb950'; ctx.lineWidth = 0.5; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(PAD.l,yP(Vstep+eps)); ctx.lineTo(PAD.l+PW,yP(Vstep+eps)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(PAD.l,yP(Vstep-eps)); ctx.lineTo(PAD.l+PW,yP(Vstep-eps)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Final value line
+  ctx.strokeStyle = '#f0883e'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(PAD.l,yP(Vstep)); ctx.lineTo(PAD.l+PW,yP(Vstep)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Waveform
+  ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  vout.forEach((v, i) => {
+    const x = xP(times[i]); const y = yP(v);
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+
+  // Settling time marker
+  if(ts_actual < t_max * 0.99) {
+    const xTs = xP(ts_actual);
+    ctx.strokeStyle = '#f85149'; ctx.lineWidth = 1.5; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(xTs,PAD.t); ctx.lineTo(xTs,PAD.t+PH); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#f85149'; ctx.font='10px sans-serif';
+    const lbl = ts_actual < 1e-6 ? (ts_actual*1e9).toFixed(1)+'ns' : (ts_actual*1e6).toFixed(2)+'μs';
+    ctx.fillText('ts='+lbl, xTs+2, PAD.t+14);
+  }
+
+  // Slew phase shading
+  if(slewing && t_slew > 0) {
+    ctx.fillStyle = 'rgba(248,81,73,0.05)';
+    ctx.fillRect(PAD.l, PAD.t, xP(t_slew)-PAD.l, PH);
+    ctx.fillStyle='#f85149'; ctx.font='10px sans-serif';
+    ctx.fillText('Slew', PAD.l+2, PAD.t+14);
+  }
+
+  ctx.fillStyle='#8b949e'; ctx.font='11px sans-serif';
+  ctx.fillText('Output Voltage (V)', 4, PAD.t+PH/2);
+  ctx.fillText('Time', PAD.l+PW/2-12, H-6);
+
+  const ts_lbl = ts_actual<1e-6?(ts_actual*1e9).toFixed(1)+'ns':(ts_actual*1e6).toFixed(2)+'μs';
+  const os_pct = xi2 < 1 ? Math.exp(-Math.PI*xi2/Math.sqrt(1-xi2*xi2))*100 : 0;
+  document.getElementById('t0_info').innerHTML =
+    `<span class="b">GBW_cl = ${(gbw_cl/1e6).toFixed(1)} MHz, τ = ${(tau*1e12).toFixed(0)} ps</span><br>` +
+    `Slewing: <span class="${slewing?'r':'g'}">${slewing?'YES ('+((t_slew*1e9).toFixed(1))+'ns)':'NO'}</span><br>` +
+    `Vstep_linear = <span class="y">${(Vstep_linear*1000).toFixed(1)} mV</span><br>` +
+    `t_linear = <span class="b">${(t_linear*1e9).toFixed(1)} ns</span><br>` +
+    `Settling time ts = <span class="${ts_actual < 10e-9 ? 'g':'y'}">${ts_lbl}</span><br>` +
+    `Overshoot ≈ <span class="${os_pct<10?'g':'r'}">${os_pct.toFixed(1)}%</span><br>` +
+    `N-bit ε = <span class="b">${(eps*1000).toFixed(3)} mV</span>`;
+}
+
+// ── TAB 1 ─────────────────────────────────────────────────────────────────
+function updateT1() {
+  const ISS_uA = +document.getElementById('t1_iss').value;
+  const Cc_pF = +document.getElementById('t1_cc').value;
+  const Ipeak_mA = +document.getElementById('t1_ip').value;
+  const CL_pF = +document.getElementById('t1_cl').value;
+  const f_MHz = +document.getElementById('t1_f').value;
+  const Vpeak = +document.getElementById('t1_vp').value;
+
+  document.getElementById('t1_iss_v').textContent = ISS_uA;
+  document.getElementById('t1_cc_v').textContent = Cc_pF.toFixed(2);
+  document.getElementById('t1_ip_v').textContent = Ipeak_mA.toFixed(1);
+  document.getElementById('t1_cl_v').textContent = CL_pF.toFixed(1);
+  document.getElementById('t1_f_v').textContent = f_MHz.toFixed(1);
+  document.getElementById('t1_vp_v').textContent = Vpeak.toFixed(2);
+
+  const SR_int = (ISS_uA * 1e-6) / (Cc_pF * 1e-12); // V/s
+  const SR_out = (Ipeak_mA * 1e-3) / (CL_pF * 1e-12); // V/s
+  const SR_eff = Math.min(SR_int, SR_out);
+  const SR_req = 2 * Math.PI * f_MHz * 1e6 * Vpeak; // V/s — required to avoid slew
+
+  const { ctx, W, H } = setupCanvas('c1');
+  const PAD = { l: 54, r: 120, t: 30, b: 50 };
+  const PW = W - PAD.l - PAD.r;
+  const PH = H - PAD.t - PAD.b;
+
+  ctx.fillStyle = '#0d1117'; ctx.fillRect(0,0,W,H);
+
+  const bars = [
+    { label: 'SR_int\n(ISS/Cc)', val: SR_int/1e6, color: '#58a6ff' },
+    { label: 'SR_out\n(Ipeak/CL)', val: SR_out/1e6, color: '#f0883e' },
+    { label: 'SR_eff\n(min)', val: SR_eff/1e6, color: '#3fb950' },
+    { label: 'SR_req\n(2πfV)', val: SR_req/1e6, color: '#f85149' },
+  ];
+
+  const maxVal = Math.max(...bars.map(b => b.val)) * 1.2 || 10;
+  const barH = 50;
+  const gap = 18;
+  const totalH = bars.length * (barH + gap);
+  const startY = PAD.t + (PH - totalH)/2;
+
+  function xBarP(v) { return PAD.l + (v/maxVal)*PW; }
+
+  // Grid
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 0.5;
+  const vStep = maxVal > 1000 ? 500 : maxVal > 100 ? 50 : maxVal > 10 ? 10 : 1;
+  for(let v=0; v<=maxVal; v+=vStep) {
+    const x = xBarP(v);
+    ctx.beginPath(); ctx.moveTo(x,PAD.t); ctx.lineTo(x,PAD.t+PH); ctx.stroke();
+    ctx.fillStyle='#8b949e'; ctx.font='10px monospace';
+    ctx.fillText(v>=1000?(v/1000).toFixed(0)+'k':v.toFixed(0), x-8, PAD.t+PH+14);
+  }
+
+  bars.forEach((bar, i) => {
+    const y = startY + i*(barH+gap);
+    const xEnd = xBarP(bar.val);
+    ctx.fillStyle = bar.color.replace('rgb','rgba')+'20';
+    // gradient
+    ctx.fillStyle = bar.color;
+    ctx.globalAlpha = 0.15;
+    ctx.fillRect(PAD.l, y, xEnd-PAD.l, barH);
+    ctx.globalAlpha = 1.0;
+    ctx.strokeStyle = bar.color; ctx.lineWidth = 2;
+    ctx.strokeRect(PAD.l, y, xEnd-PAD.l, barH);
+    ctx.fillStyle = bar.color; ctx.font = 'bold 11px sans-serif';
+    const lparts = bar.label.split('\n');
+    ctx.fillText(lparts[0], PAD.l+PW+6, y+18);
+    ctx.fillStyle='#8b949e'; ctx.font='10px sans-serif';
+    if(lparts[1]) ctx.fillText(lparts[1], PAD.l+PW+6, y+32);
+    ctx.fillStyle='#e6edf3'; ctx.font='bold 11px monospace';
+    const vStr = bar.val >= 1000 ? (bar.val/1000).toFixed(1)+'k' : bar.val.toFixed(0);
+    ctx.fillText(vStr+' V/μs', Math.min(xEnd-60, PAD.l+PW-60), y+barH/2+5);
+  });
+
+  ctx.fillStyle='#8b949e'; ctx.font='11px sans-serif';
+  ctx.fillText('Slew Rate (V/μs)', PAD.l+PW/2-40, H-6);
+
+  const slewing = SR_eff < SR_req;
+  const margin = SR_eff / SR_req;
+  document.getElementById('t1_info').innerHTML =
+    `<span class="b">At f=${f_MHz}MHz, Vpeak=${Vpeak}V</span><br>` +
+    `SR_internal = <span class="b">${(SR_int/1e6).toFixed(0)} V/μs</span><br>` +
+    `SR_output = <span class="b">${(SR_out/1e6).toFixed(0)} V/μs</span><br>` +
+    `SR_eff = <span class="b">${(SR_eff/1e6).toFixed(0)} V/μs</span><br>` +
+    `SR_required = <span class="y">${(SR_req/1e6).toFixed(0)} V/μs</span><br>` +
+    `Slew margin = <span class="${margin>2?'g':margin>1?'y':'r'}">${margin.toFixed(1)}×</span><br>` +
+    `<span class="${slewing?'r':'g'}">${slewing?'OUTPUT SLEWING':'No slewing'}</span>`;
+}
+
+// ── TAB 2 ─────────────────────────────────────────────────────────────────
+function updateT2() {
+  const gbw_MHz = +document.getElementById('t2_gbw').value;
+  const N = +document.getElementById('t2_n').value;
+  const Vstep = +document.getElementById('t2_vstep').value;
+  const pm_op = +document.getElementById('t2_pm').value;
+
+  document.getElementById('t2_gbw_v').textContent = gbw_MHz;
+  document.getElementById('t2_n_v').textContent = N;
+  document.getElementById('t2_vstep_v').textContent = Vstep.toFixed(2);
+  document.getElementById('t2_pm_v').textContent = pm_op;
+
+  const gbw = gbw_MHz * 1e6;
+  const tau0 = 1 / (2 * Math.PI * gbw); // unity-gain τ
+  const eps = Vstep / Math.pow(2, N);
+
+  const { ctx, W, H } = setupCanvas('c2');
+  const PAD = { l: 54, r: 20, t: 30, b: 60 };
+  const PW = W - PAD.l - PAD.r;
+  const PH = H - PAD.t - PAD.b;
+
+  // x-axis: PM from 20 to 90 degrees
+  const pmMin = 20, pmMax = 90;
+  function xP(pm) { return PAD.l + ((pm-pmMin)/(pmMax-pmMin))*PW; }
+
+  // Compute ts and overshoot vs PM
+  const ts_arr = [], os_arr = [];
+  for(let pm = pmMin; pm <= pmMax; pm += 1) {
+    const xi = pm/100;
+    const wn = 2 * Math.PI * gbw;
+    // Settling time: for underdamped, add ringing overhead
+    // Model: ts = tau0 * [N*ln2 + ringing_overhead]
+    // Ringing overhead ≈ 2*ln(1/eps_normalized) / (xi*wn*tau0)
+    // Simpler: use the envelope decay: exp(-xi*wn*t) < eps/Vstep
+    // t_envelope = -ln(eps/Vstep) / (xi*wn)
+    const t_env = Math.log(Vstep/eps) / (xi * wn);
+    // But also need at least N*ln2 * tau0 for exponential settling
+    const t_exp = N * Math.log(2) * tau0;
+    const ts_pm = Math.max(t_env, t_exp);
+    ts_arr.push(ts_pm);
+    const os = xi < 1 ? Math.exp(-Math.PI*xi/Math.sqrt(1-xi*xi))*100 : 0;
+    os_arr.push(os);
+  }
+
+  ctx.fillStyle = '#0d1117'; ctx.fillRect(0,0,W,H);
+
+  // Dual y-axes: left = ts in ns, right = overshoot %
+  const ts_max = Math.max(...ts_arr);
+  const os_max = Math.max(...os_arr);
+
+  function yP_ts(ts) { return PAD.t + (1 - ts/ts_max)*PH; }
+  function yP_os(os) { return PAD.t + (1 - os/Math.max(os_max,1))*PH; }
+
+  // Grid
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 0.5;
+  for(let i=0; i<=5; i++) {
+    const ts = i/5 * ts_max;
+    ctx.beginPath(); ctx.moveTo(PAD.l, yP_ts(ts)); ctx.lineTo(PAD.l+PW, yP_ts(ts)); ctx.stroke();
+    ctx.fillStyle='#58a6ff'; ctx.font='10px monospace';
+    const lbl = ts < 1e-6 ? (ts*1e9).toFixed(0)+'ns' : (ts*1e6).toFixed(1)+'μs';
+    ctx.fillText(lbl, 2, yP_ts(ts)+3);
+  }
+  for(let pm = pmMin; pm <= pmMax; pm += 10) {
+    ctx.beginPath(); ctx.moveTo(xP(pm),PAD.t); ctx.lineTo(xP(pm),PAD.t+PH); ctx.stroke();
+    ctx.fillStyle='#8b949e'; ctx.font='10px monospace';
+    ctx.fillText(pm+'°', xP(pm)-6, PAD.t+PH+14);
+  }
+
+  // PM=60 marker
+  ctx.strokeStyle='#3fb950'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(xP(60),PAD.t); ctx.lineTo(xP(60),PAD.t+PH); ctx.stroke();
+  ctx.fillStyle='#3fb950'; ctx.font='10px sans-serif';
+  ctx.fillText('60°', xP(60)+2, PAD.t+12);
+  ctx.setLineDash([]);
+
+  // ts curve
+  ctx.strokeStyle='#58a6ff'; ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0; i<ts_arr.length; i++) {
+    const pm_i = pmMin + i;
+    const x = xP(pm_i); const y = yP_ts(ts_arr[i]);
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // OS curve (scaled to right axis, drawn secondary)
+  ctx.strokeStyle='#f0883e'; ctx.lineWidth=1.5; ctx.setLineDash([4,2]);
+  ctx.beginPath();
+  for(let i=0; i<os_arr.length; i++) {
+    const pm_i = pmMin + i;
+    const x = xP(pm_i); const y = yP_os(os_arr[i]);
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+
+  // right axis labels for overshoot
+  ctx.fillStyle='#f0883e'; ctx.font='10px monospace';
+  for(let i=0; i<=5; i++) {
+    const os = i/5 * Math.max(os_max,1);
+    ctx.fillText(os.toFixed(0)+'%', PAD.l+PW+2, yP_os(os)+3);
+  }
+
+  // Operating point
+  const pm_idx = pm_op - pmMin;
+  if(pm_idx >= 0 && pm_idx < ts_arr.length) {
+    const xOp = xP(pm_op);
+    const yOp = yP_ts(ts_arr[pm_idx]);
+    ctx.strokeStyle='#f85149'; ctx.lineWidth=1.5; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(xOp,PAD.t); ctx.lineTo(xOp,yOp); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#f85149';
+    ctx.beginPath(); ctx.arc(xOp,yOp,5,0,2*Math.PI); ctx.fill();
+    ctx.fillStyle='#f0883e';
+    const yOp_os = yP_os(os_arr[pm_idx]);
+    ctx.beginPath(); ctx.arc(xOp,yOp_os,4,0,2*Math.PI); ctx.fill();
+  }
+
+  ctx.fillStyle='#58a6ff'; ctx.font='11px sans-serif';
+  ctx.fillText('ts (left)', 4, PAD.t+PH/2);
+  ctx.fillStyle='#f0883e';
+  ctx.fillText('OS% (right)', PAD.l+PW+2, PAD.t-8);
+  ctx.fillStyle='#8b949e'; ctx.font='11px sans-serif';
+  ctx.fillText('Phase Margin (degrees)', PAD.l+PW/2-60, H-6);
+
+  const ts_op = pm_idx >= 0 && pm_idx < ts_arr.length ? ts_arr[pm_idx] : 0;
+  const os_op = pm_idx >= 0 && pm_idx < ts_arr.length ? os_arr[pm_idx] : 0;
+  const ts_lbl = ts_op < 1e-6 ? (ts_op*1e9).toFixed(1)+'ns' : (ts_op*1e6).toFixed(2)+'μs';
+  document.getElementById('t2_info').innerHTML =
+    `<span class="b">GBW = ${gbw_MHz} MHz, N = ${N} bits</span><br>` +
+    `τ₀ = <span class="b">${(tau0*1e12).toFixed(0)} ps</span><br>` +
+    `At PM = ${pm_op}°:<br>` +
+    `ts ≈ <span class="${ts_op<10e-9?'g':'y'}">${ts_lbl}</span><br>` +
+    `Overshoot ≈ <span class="${os_op<10?'g':'r'}">${os_op.toFixed(1)}%</span><br>` +
+    `Optimum PM for min ts: ~<span class="g">65–70°</span>`;
+}
+
+updateT0();
+window.addEventListener('resize', () => { updateT0(); updateT1(); updateT2(); });
+</script>
+</body>
+</html>

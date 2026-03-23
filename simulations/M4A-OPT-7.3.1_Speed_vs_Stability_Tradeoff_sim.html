@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-OPT-7.3.1 — Speed vs Stability Trade-off</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #1a1d27; --border: #2e3248;
+    --text: #e2e8f0; --muted: #8892a4; --accent: #7c9ef8;
+    --green: #4ade80; --red: #f87171; --yellow: #fbbf24;
+    --orange: #fb923c; --purple: #c084fc; --cyan: #22d3ee;
+    --grid: rgba(255,255,255,0.06);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f0f2f8; --panel: #ffffff; --border: #d0d5e8;
+      --text: #1a1d27; --muted: #5a6170; --accent: #3a5fd9;
+      --green: #16a34a; --red: #dc2626; --yellow: #d97706;
+      --orange: #ea580c; --purple: #9333ea; --cyan: #0891b2;
+      --grid: rgba(0,0,0,0.07);
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; min-height: 100vh; }
+  header { padding: 18px 24px 10px; border-bottom: 1px solid var(--border); }
+  header h1 { font-size: 1.15rem; font-weight: 700; color: var(--accent); }
+  header p { color: var(--muted); font-size: 0.82rem; margin-top: 3px; }
+  .tabs { display: flex; gap: 4px; padding: 10px 24px 0; background: var(--bg); border-bottom: 1px solid var(--border); }
+  .tab { padding: 7px 16px; border-radius: 6px 6px 0 0; cursor: pointer; font-size: 0.82rem; color: var(--muted); background: transparent; border: 1px solid transparent; border-bottom: none; transition: all .18s; }
+  .tab.active { background: var(--panel); color: var(--text); border-color: var(--border); }
+  .tab:hover:not(.active) { color: var(--text); }
+  .pane { display: none; padding: 20px 24px; }
+  .pane.active { display: block; }
+  .row { display: flex; gap: 18px; flex-wrap: wrap; }
+  .col { flex: 1; min-width: 260px; }
+  canvas { display: block; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); width: 100%; }
+  .ctrl { background: var(--panel); border-radius: 10px; border: 1px solid var(--border); padding: 14px 16px; margin-bottom: 14px; }
+  .ctrl h3 { font-size: 0.78rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 10px; }
+  .sl-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .sl-row label { width: 150px; font-size: 0.8rem; color: var(--muted); flex-shrink: 0; }
+  .sl-row input[type=range] { flex: 1; accent-color: var(--accent); }
+  .sl-row span { width: 64px; text-align: right; font-size: 0.8rem; color: var(--text); font-variant-numeric: tabular-nums; }
+  .metrics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .metric { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; }
+  .metric .lbl { font-size: 0.72rem; color: var(--muted); }
+  .metric .val { font-size: 1rem; font-weight: 700; }
+  .green { color: var(--green); } .red { color: var(--red); }
+  .yellow { color: var(--yellow); } .orange { color: var(--orange); }
+  .purple { color: var(--purple); } .cyan { color: var(--cyan); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 8px; }
+  th { background: var(--bg); color: var(--muted); font-weight: 600; padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  td { padding: 6px 10px; border-bottom: 1px solid var(--border); }
+  .note { font-size: 0.78rem; color: var(--muted); margin-top: 8px; line-height: 1.5; }
+  .legend-row { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+  .dot { width: 12px; height: 4px; border-radius: 2px; flex-shrink: 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>M4A-OPT-7.3.1 — Speed vs Stability Trade-off</h1>
+  <p>Explore how phase margin, bandwidth, and settling time are coupled in feedback amplifiers.</p>
+</header>
+<div class="tabs">
+  <div class="tab active" onclick="switchTab(0)">PM vs Bandwidth</div>
+  <div class="tab" onclick="switchTab(1)">Settling Time Analysis</div>
+  <div class="tab" onclick="switchTab(2)">Operating Region Map</div>
+</div>
+
+<!-- TAB 0: PM vs Bandwidth -->
+<div class="pane active" id="pane0">
+  <div class="row">
+    <div class="col" style="max-width:420px">
+      <div class="ctrl">
+        <h3>Amplifier Parameters</h3>
+        <div class="sl-row"><label>GBW (MHz)</label><input type="range" id="t0gbw" min="1" max="100" step="1" value="10"><span id="t0gbwV">10 MHz</span></div>
+        <div class="sl-row"><label>Closed-loop gain G</label><input type="range" id="t0g" min="1" max="50" step="1" value="5"><span id="t0gV">5 V/V</span></div>
+        <div class="sl-row"><label>Stray Cs (pF)</label><input type="range" id="t0cs" min="0" max="20" step="0.5" value="3"><span id="t0csV">3.0 pF</span></div>
+        <div class="sl-row"><label>Rf (kΩ)</label><input type="range" id="t0rf" min="1" max="100" step="1" value="10"><span id="t0rfV">10 kΩ</span></div>
+        <div class="sl-row"><label>Cf (pF)</label><input type="range" id="t0cf" min="0" max="30" step="0.5" value="0"><span id="t0cfV">0.0 pF</span></div>
+        <div class="sl-row"><label>CL load (pF)</label><input type="range" id="t0cl" min="0" max="500" step="10" value="0"><span id="t0clV">0 pF</span></div>
+        <div class="sl-row"><label>Rout (Ω)</label><input type="range" id="t0ro" min="10" max="200" step="5" value="50"><span id="t0roV">50 Ω</span></div>
+        <div class="sl-row"><label>Series Rs (Ω)</label><input type="range" id="t0rs" min="0" max="200" step="5" value="0"><span id="t0rsV">0 Ω</span></div>
+      </div>
+      <div class="ctrl">
+        <h3>Key Metrics</h3>
+        <div class="metrics" id="t0metrics"></div>
+        <div class="note" id="t0note"></div>
+      </div>
+      <div class="ctrl">
+        <h3>Legend</h3>
+        <div class="legend-row"><div class="dot" style="background:#7c9ef8"></div>Open-loop gain |Aol(f)|</div>
+        <div class="legend-row"><div class="dot" style="background:#4ade80"></div>Loop gain |T(f)| (closed-loop)</div>
+        <div class="legend-row"><div class="dot" style="background:#fb923c;height:2px;border-top:2px dashed #fb923c"></div>1/β(f) — noise gain</div>
+        <div class="legend-row"><div class="dot" style="background:#f87171"></div>Phase of T(f)</div>
+        <div class="legend-row"><div class="dot" style="background:#fbbf24;border-radius:50%;width:10px;height:10px"></div>Unity gain crossover fc</div>
+      </div>
+    </div>
+    <div class="col">
+      <canvas id="c0" height="500"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: Settling Time -->
+<div class="pane" id="pane1">
+  <div class="row">
+    <div class="col" style="max-width:360px">
+      <div class="ctrl">
+        <h3>System Parameters</h3>
+        <div class="sl-row"><label>Closed-loop BW (kHz)</label><input type="range" id="t1bw" min="10" max="2000" step="10" value="400"><span id="t1bwV">400 kHz</span></div>
+        <div class="sl-row"><label>Phase Margin (°)</label><input type="range" id="t1pm" min="20" max="90" step="1" value="60"><span id="t1pmV">60°</span></div>
+        <div class="sl-row"><label>Step size (V)</label><input type="range" id="t1step" min="0.1" max="10" step="0.1" value="1"><span id="t1stepV">1.0 V</span></div>
+        <div class="sl-row"><label>Slew rate (V/μs)</label><input type="range" id="t1sr" min="0.1" max="100" step="0.1" value="10"><span id="t1srV">10.0 V/μs</span></div>
+        <div class="sl-row"><label>Accuracy target (%)</label><input type="range" id="t1acc" min="0.001" max="1" step="0.001" value="0.01"><span id="t1accV">0.010%</span></div>
+      </div>
+      <div class="ctrl">
+        <h3>Settling Metrics</h3>
+        <div class="metrics" id="t1metrics"></div>
+      </div>
+      <div class="ctrl">
+        <h3>PM Comparison Table</h3>
+        <table id="t1table">
+          <thead><tr><th>PM</th><th>ζ</th><th>%OS</th><th>t_settle (μs)</th></tr></thead>
+          <tbody id="t1tbody"></tbody>
+        </table>
+        <p class="note">t_settle = time to reach and stay within accuracy band. BW fixed at selected value.</p>
+      </div>
+    </div>
+    <div class="col">
+      <canvas id="c1" height="500"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: Operating Region Map -->
+<div class="pane" id="pane2">
+  <div class="row">
+    <div class="col" style="max-width:360px">
+      <div class="ctrl">
+        <h3>Design Requirements</h3>
+        <div class="sl-row"><label>Required BW (kHz)</label><input type="range" id="t2reqbw" min="10" max="5000" step="10" value="500"><span id="t2reqbwV">500 kHz</span></div>
+        <div class="sl-row"><label>Min phase margin (°)</label><input type="range" id="t2reqpm" min="20" max="80" step="1" value="45"><span id="t2reqpmV">45°</span></div>
+        <div class="sl-row"><label>GBW available (MHz)</label><input type="range" id="t2gbw" min="1" max="1000" step="1" value="10"><span id="t2gbwV">10 MHz</span></div>
+        <div class="sl-row"><label>Stray Cs (pF)</label><input type="range" id="t2cs" min="0" max="20" step="0.5" value="3"><span id="t2csV">3.0 pF</span></div>
+        <div class="sl-row"><label>Rf (kΩ)</label><input type="range" id="t2rf" min="1" max="100" step="1" value="10"><span id="t2rfV">10 kΩ</span></div>
+      </div>
+      <div class="ctrl">
+        <h3>Operating Regions</h3>
+        <div style="display:grid;gap:6px;margin-top:4px">
+          <div style="padding:7px 10px;border-radius:6px;background:rgba(248,113,113,0.12);border:1px solid rgba(248,113,113,0.3);font-size:0.8rem"><b style="color:var(--red)">Region 4 — Unstable</b><br><span class="note">PM &lt; 0°. Continuous oscillation.</span></div>
+          <div style="padding:7px 10px;border-radius:6px;background:rgba(251,191,36,0.10);border:1px solid rgba(251,191,36,0.3);font-size:0.8rem"><b style="color:var(--yellow)">Region 3 — Marginal</b><br><span class="note">PM 0°–45°. Excessive ringing.</span></div>
+          <div style="padding:7px 10px;border-radius:6px;background:rgba(74,222,128,0.10);border:1px solid rgba(74,222,128,0.3);font-size:0.8rem"><b style="color:var(--green)">Region 2 — Optimal</b><br><span class="note">PM 45°–70°. Balanced speed/stability.</span></div>
+          <div style="padding:7px 10px;border-radius:6px;background:rgba(124,158,248,0.10);border:1px solid rgba(124,158,248,0.3);font-size:0.8rem"><b style="color:var(--accent)">Region 1 — Stable/slow</b><br><span class="note">PM &gt; 70°. Overdamped, slower settling.</span></div>
+        </div>
+      </div>
+      <div class="ctrl">
+        <h3>Design Point Status</h3>
+        <div class="metrics" id="t2metrics"></div>
+        <p class="note" id="t2note" style="margin-top:8px"></p>
+      </div>
+    </div>
+    <div class="col">
+      <canvas id="c2" height="500"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Physics engine ─────────────────────────────────────────────────────────
+
+function loopT(fHz, gbwMHz, G, CsPF, RfkO, CfPF, RouO, CLpF, RsO) {
+  const f = fHz;
+  const gbw = gbwMHz * 1e6;
+  const Cs = CsPF * 1e-12;
+  const Rf = RfkO * 1e3;
+  const Cf = CfPF * 1e-12;
+  const Ro = RouO;
+  const CL = CLpF * 1e-12;
+  const Rs = RsO;
+  const R1 = Rf / (G - 1);   // non-inv: R1 = Rf/(G-1), but for simplicity treat G as noise gain
+  // Aol model: single dominant pole at fp = gbw/Aol0; Aol0 = 120 dB typical
+  const Aol0 = 1e6;
+  const fp_aol = gbw / Aol0;
+  const Aol_mag = Aol0 / Math.sqrt(1 + (f / fp_aol) ** 2);
+  const Aol_ph = -Math.atan2(f, fp_aol);
+
+  // Beta: feedback factor with Cs pole and Cf zero/pole
+  // β = 1/G at DC; Cs creates pole at fp_cs = 1/(2πRfCs); Cf creates zero at fz_cf, pole at fp_cf
+  const fp_cs = Cs > 0 ? 1 / (2 * Math.PI * Rf * Cs) : 1e15;
+  const fz_cf = Cf > 0 ? 1 / (2 * Math.PI * Rf * Cf) : 1e15;
+  // Parallel Rp = R1||Rf ≈ Rf/G
+  const Rp = Rf / G;
+  const fp_cf = Cf > 0 ? 1 / (2 * Math.PI * Rp * Cf) : 1e15;
+  // β magnitude and phase
+  const beta0 = 1 / G;
+  // With Cs: β(f) = (1/G) * [1 + j(f/fp_cs)] · correction for Cf
+  // Simplified: β = (1/G) * [1 + j(f/fz_cf)] / [1 + j(f/fp_cf)] / [1 + j(f/fp_cs)]
+  const num_cf_re = 1, num_cf_im = f / fz_cf;
+  const den_cf_re = 1, den_cf_im = f / fp_cf;
+  const den_cs_re = 1, den_cs_im = f / fp_cs;
+  // β = beta0 * (num_cf / den_cf / den_cs)
+  const num_cf_mag = Math.sqrt(num_cf_re**2 + num_cf_im**2);
+  const num_cf_ph = Math.atan2(num_cf_im, num_cf_re);
+  const den_cf_mag = Math.sqrt(den_cf_re**2 + den_cf_im**2);
+  const den_cf_ph = Math.atan2(den_cf_im, den_cf_re);
+  const den_cs_mag = Math.sqrt(den_cs_re**2 + den_cs_im**2);
+  const den_cs_ph = Math.atan2(den_cs_im, den_cs_re);
+  const beta_mag = beta0 * num_cf_mag / den_cf_mag / den_cs_mag;
+  const beta_ph = num_cf_ph - den_cf_ph - den_cs_ph;
+
+  // CL pole through Ro (and Rs)
+  const fp_cl = CL > 0 ? 1 / (2 * Math.PI * (Ro + Rs) * CL) : 1e15;
+  // Rs creates zero with CL
+  const fz_rs = (Rs > 0 && CL > 0) ? 1 / (2 * Math.PI * Rs * CL) : 1e15;
+  const cl_re = 1, cl_im = f / fp_cl;
+  const cl_zero_re = 1, cl_zero_im = f / fz_rs;
+  const cl_mag = Math.sqrt(cl_re**2 + cl_im**2);
+  const cl_ph = Math.atan2(cl_im, cl_re);
+  const cl_zero_mag = Math.sqrt(cl_zero_re**2 + cl_zero_im**2);
+  const cl_zero_ph = Math.atan2(cl_zero_im, cl_zero_re);
+
+  // Loop gain T = Aol * beta / CL_correction
+  const T_mag = Aol_mag * beta_mag * cl_zero_mag / cl_mag;
+  const T_ph = Aol_ph + beta_ph + cl_zero_ph - cl_ph;
+
+  return { T_mag, T_ph_deg: T_ph * 180 / Math.PI, Aol_mag, beta_mag };
+}
+
+function findPM(gbwMHz, G, CsPF, RfkO, CfPF, RouO, CLpF, RsO) {
+  // Bisection: find f where T_mag = 1
+  let lo = 1, hi = gbwMHz * 1e6 * 3;
+  const T_hi = loopT(hi, gbwMHz, G, CsPF, RfkO, CfPF, RouO, CLpF, RsO);
+  const T_lo = loopT(lo, gbwMHz, G, CsPF, RfkO, CfPF, RouO, CLpF, RsO);
+  if (T_lo.T_mag < 1) return { fc: lo, pm: 90 }; // always stable
+  if (T_hi.T_mag > 1) return { fc: hi, pm: -90 }; // still > 1 at hi
+  for (let i = 0; i < 52; i++) {
+    const mid = (lo + hi) / 2;
+    const T_mid = loopT(mid, gbwMHz, G, CsPF, RfkO, CfPF, RouO, CLpF, RsO);
+    if (T_mid.T_mag > 1) lo = mid; else hi = mid;
+  }
+  const fc = (lo + hi) / 2;
+  const T_fc = loopT(fc, gbwMHz, G, CsPF, RfkO, CfPF, RouO, CLpF, RsO);
+  const pm = 180 + T_fc.T_ph_deg;
+  return { fc, pm };
+}
+
+// ─── Canvas helpers ──────────────────────────────────────────────────────────
+
+function resize(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = (parseInt(canvas.getAttribute('height')) || 400) * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return ctx;
+}
+
+function getCSS(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+function drawAxes(ctx, W, H, pad, xLabel, yLabel, title) {
+  ctx.strokeStyle = getCSS('--border');
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, H - pad.b);
+  ctx.lineTo(W - pad.r, H - pad.b); ctx.stroke();
+  ctx.fillStyle = getCSS('--muted');
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(xLabel, (pad.l + W - pad.r) / 2, H - 4);
+  ctx.save(); ctx.translate(12, (pad.t + H - pad.b) / 2);
+  ctx.rotate(-Math.PI / 2); ctx.fillText(yLabel, 0, 0); ctx.restore();
+  ctx.fillStyle = getCSS('--text');
+  ctx.font = 'bold 12px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(title, (pad.l + W - pad.r) / 2, pad.t - 6);
+}
+
+function xLog(f, fMin, fMax, x0, x1) {
+  return x0 + (Math.log10(f / fMin) / Math.log10(fMax / fMin)) * (x1 - x0);
+}
+
+function yLin(v, vMin, vMax, y0, y1) {
+  return y0 + (1 - (v - vMin) / (vMax - vMin)) * (y1 - y0);
+}
+
+function gridLinesLog(ctx, fMin, fMax, x0, x1, y0, y1) {
+  ctx.strokeStyle = getCSS('--grid');
+  ctx.lineWidth = 1;
+  for (let dec = Math.floor(Math.log10(fMin)); dec <= Math.ceil(Math.log10(fMax)); dec++) {
+    for (let m of [1, 2, 3, 5]) {
+      const f = m * Math.pow(10, dec);
+      if (f < fMin || f > fMax) continue;
+      const x = xLog(f, fMin, fMax, x0, x1);
+      ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke();
+    }
+  }
+}
+
+function ticksLog(ctx, fMin, fMax, x0, x1, y1) {
+  ctx.fillStyle = getCSS('--muted');
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'center';
+  for (let dec = Math.floor(Math.log10(fMin)); dec <= Math.ceil(Math.log10(fMax)); dec++) {
+    const f = Math.pow(10, dec);
+    if (f < fMin || f > fMax) continue;
+    const x = xLog(f, fMin, fMax, x0, x1);
+    const lbl = f >= 1e9 ? (f/1e9)+'G' : f >= 1e6 ? (f/1e6)+'M' : f >= 1e3 ? (f/1e3)+'k' : f+'';
+    ctx.fillText(lbl, x, y1 + 13);
+  }
+}
+
+// ─── Tab 0: Bode Plot ────────────────────────────────────────────────────────
+
+function drawBode() {
+  const canvas = document.getElementById('c0');
+  const W = canvas.getBoundingClientRect().width;
+  const H = parseInt(canvas.getAttribute('height'));
+  const ctx = resize(canvas);
+  ctx.clearRect(0, 0, W, H);
+
+  const gbw = parseFloat(document.getElementById('t0gbw').value);
+  const G = parseFloat(document.getElementById('t0g').value);
+  const Cs = parseFloat(document.getElementById('t0cs').value);
+  const Rf = parseFloat(document.getElementById('t0rf').value);
+  const Cf = parseFloat(document.getElementById('t0cf').value);
+  const CL = parseFloat(document.getElementById('t0cl').value);
+  const Ro = parseFloat(document.getElementById('t0ro').value);
+  const Rs = parseFloat(document.getElementById('t0rs').value);
+
+  const pad = { l: 58, r: 20, t: 36, b: 60 };
+  const x0 = pad.l, x1 = W - pad.r, y0 = pad.t, y1 = H - pad.b;
+  const fMin = 10, fMax = gbw * 1e6 * 5;
+
+  // Magnitude panel: top half; Phase panel: bottom half
+  const mid = (y0 + y1) / 2 + 10;
+  const magY0 = y0, magY1 = mid - 10;
+  const phY0 = mid + 10, phY1 = y1;
+
+  const magMax = 140, magMin = -20; // dB
+  const phMax = 0, phMin = -280; // degrees
+
+  // Grid
+  gridLinesLog(ctx, fMin, fMax, x0, x1, magY0, magY1);
+  gridLinesLog(ctx, fMin, fMax, x0, x1, phY0, phY1);
+
+  // dB grid lines
+  ctx.strokeStyle = getCSS('--grid'); ctx.lineWidth = 1;
+  for (let db = -20; db <= 140; db += 20) {
+    const y = yLin(db, magMin, magMax, magY0, magY1);
+    ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+    ctx.fillStyle = getCSS('--muted'); ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+    ctx.fillText(db + 'dB', x0 - 3, y + 3);
+  }
+  // 0 dB line emphasis
+  {
+    const y0db = yLin(0, magMin, magMax, magY0, magY1);
+    ctx.strokeStyle = getCSS('--muted'); ctx.lineWidth = 0.5; ctx.setLineDash([4, 4]);
+    ctx.beginPath(); ctx.moveTo(x0, y0db); ctx.lineTo(x1, y0db); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  // Phase grid lines
+  for (let ph = -270; ph <= 0; ph += 45) {
+    const y = yLin(ph, phMin, phMax, phY0, phY1);
+    ctx.strokeStyle = getCSS('--grid'); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+    ctx.fillStyle = getCSS('--muted'); ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+    ctx.fillText(ph + '°', x0 - 3, y + 3);
+  }
+  // −180° emphasis
+  {
+    const y180 = yLin(-180, phMin, phMax, phY0, phY1);
+    ctx.strokeStyle = getCSS('--red'); ctx.lineWidth = 0.8; ctx.setLineDash([3, 5]);
+    ctx.beginPath(); ctx.moveTo(x0, y180); ctx.lineTo(x1, y180); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Axes
+  ctx.strokeStyle = getCSS('--border'); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x0, magY0); ctx.lineTo(x0, magY1); ctx.lineTo(x1, magY1); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x0, phY0); ctx.lineTo(x0, phY1); ctx.lineTo(x1, phY1); ctx.stroke();
+
+  ticksLog(ctx, fMin, fMax, x0, x1, phY1);
+
+  // Labels
+  ctx.fillStyle = getCSS('--muted'); ctx.font = '11px system-ui'; ctx.textAlign = 'right';
+  ctx.fillText('Gain (dB)', x0 - 40, (magY0 + magY1) / 2);
+  ctx.fillText('Phase (°)', x0 - 40, (phY0 + phY1) / 2);
+  ctx.textAlign = 'center'; ctx.font = 'bold 12px system-ui'; ctx.fillStyle = getCSS('--text');
+  ctx.fillText('Bode Plot — Loop Gain & Phase', (x0 + x1) / 2, magY0 - 8);
+
+  // Compute and draw curves
+  const Npts = 500;
+  const logsMin = Math.log10(fMin), logsMax = Math.log10(fMax);
+  let firstAol = true, firstT = true, firstBeta = true, firstPh = true;
+  const phLine = [], aolLine = [], tLine = [], betaLine = [];
+  for (let i = 0; i < Npts; i++) {
+    const logF = logsMin + (logsMax - logsMin) * i / (Npts - 1);
+    const f = Math.pow(10, logF);
+    const { T_mag, T_ph_deg, Aol_mag, beta_mag } = loopT(f, gbw, G, Cs, Rf, Cf, Ro, CL, Rs);
+    const xp = xLog(f, fMin, fMax, x0, x1);
+    const aol_dB = 20 * Math.log10(Math.max(Aol_mag, 1e-9));
+    const T_dB = 20 * Math.log10(Math.max(T_mag, 1e-9));
+    const beta_inv_dB = 20 * Math.log10(1 / Math.max(beta_mag, 1e-9));
+    const yAol = yLin(Math.min(Math.max(aol_dB, magMin), magMax), magMin, magMax, magY0, magY1);
+    const yT = yLin(Math.min(Math.max(T_dB, magMin), magMax), magMin, magMax, magY0, magY1);
+    const yBeta = yLin(Math.min(Math.max(beta_inv_dB, magMin), magMax), magMin, magMax, magY0, magY1);
+    const yPh = yLin(Math.min(Math.max(T_ph_deg, phMin), phMax), phMin, phMax, phY0, phY1);
+    aolLine.push({ x: xp, y: yAol });
+    tLine.push({ x: xp, y: yT });
+    betaLine.push({ x: xp, y: yBeta });
+    phLine.push({ x: xp, y: yPh });
+  }
+
+  function drawLine(pts, color, dash = []) {
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash(dash);
+    ctx.beginPath();
+    pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  drawLine(aolLine, getCSS('--accent'));
+  drawLine(tLine, getCSS('--green'));
+  drawLine(betaLine, getCSS('--orange'), [6, 4]);
+  drawLine(phLine, getCSS('--red'));
+
+  // Find and mark unity gain crossover
+  const { fc, pm } = findPM(gbw, G, Cs, Rf, Cf, Ro, CL, Rs);
+  if (fc > fMin && fc < fMax) {
+    const xfc = xLog(fc, fMin, fMax, x0, x1);
+    const y0db = yLin(0, magMin, magMax, magY0, magY1);
+    ctx.strokeStyle = getCSS('--yellow'); ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(xfc, magY0); ctx.lineTo(xfc, magY1); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(xfc, y0db, 5, 0, 2 * Math.PI);
+    ctx.fillStyle = getCSS('--yellow'); ctx.fill();
+    // PM marker on phase plot
+    const yPM = yLin(pm - 180, phMin, phMax, phY0, phY1);
+    ctx.beginPath(); ctx.arc(xfc, yPM, 5, 0, 2 * Math.PI);
+    ctx.fillStyle = pm > 45 ? getCSS('--green') : pm > 0 ? getCSS('--yellow') : getCSS('--red');
+    ctx.fill();
+  }
+
+  // Metrics
+  const metricsDiv = document.getElementById('t0metrics');
+  const fcKHz = fc >= 1e6 ? (fc / 1e6).toFixed(2) + ' MHz' : (fc / 1e3).toFixed(1) + ' kHz';
+  const pmColor = pm > 60 ? 'green' : pm > 45 ? 'yellow' : pm > 0 ? 'orange' : 'red';
+  const region = pm > 70 ? 'Region 1 (Stable/slow)' : pm > 45 ? 'Region 2 (Optimal)' : pm > 0 ? 'Region 3 (Marginal)' : 'Region 4 (Unstable!)';
+  metricsDiv.innerHTML = `
+    <div class="metric"><div class="lbl">fc (crossover)</div><div class="val cyan">${fcKHz}</div></div>
+    <div class="metric"><div class="lbl">Phase Margin</div><div class="val ${pmColor}">${pm.toFixed(1)}°</div></div>
+    <div class="metric"><div class="lbl">Region</div><div class="val" style="font-size:0.8rem">${region}</div></div>
+  `;
+  const zetaVal = Math.max(0, Math.cos(pm * Math.PI / 180));
+  const os = pm > 0 && pm < 90 ? (100 * Math.exp(-Math.PI * zetaVal / Math.sqrt(Math.max(1e-6, 1 - zetaVal * zetaVal)))).toFixed(1) : (pm <= 0 ? '∞' : '0');
+  document.getElementById('t0note').innerHTML = `ζ ≈ ${zetaVal.toFixed(3)} &nbsp;|&nbsp; Overshoot ≈ ${os}% &nbsp;|&nbsp; Cf_opt ≈ ${(Math.sqrt(Cs * 1e-12 / (2 * Math.PI * gbw * 1e6 * Rf * 1e3)) * 1e12).toFixed(2)} pF`;
+}
+
+// ─── Tab 1: Settling Time ────────────────────────────────────────────────────
+
+function step2nd(t_us, bw_kHz, pm_deg, stepV, sr_Vus) {
+  const bw = bw_kHz * 1e3;
+  const zetaV = Math.max(0.01, Math.cos(pm_deg * Math.PI / 180));
+  const wn = 2 * Math.PI * bw;
+  const wd = wn * Math.sqrt(Math.max(0.001, 1 - zetaV * zetaV));
+  const t = t_us * 1e-6;
+  // Slew-limited phase: output = SR * t until SR-limited portion done
+  const t_slew = stepV / Math.abs(sr_Vus); // μs
+  if (t_us < t_slew) {
+    return sr_Vus * t_us; // slew ramp
+  }
+  // After slew, remainder settled from slew endpoint
+  const t_rem = t - t_slew * 1e-6;
+  const offset = sr_Vus * t_slew;  // V at end of slew phase (clipped to stepV)
+  const slew_end = Math.min(offset, stepV);
+  const error0 = stepV - slew_end;
+  // Second order response from slew endpoint
+  let val;
+  if (zetaV >= 1) {
+    // Overdamped
+    val = stepV * (1 - Math.exp(-zetaV * wn * t_rem) * (Math.cosh(wn * Math.sqrt(zetaV**2 - 1) * t_rem) + zetaV / Math.sqrt(zetaV**2 - 1) * Math.sinh(wn * Math.sqrt(zetaV**2 - 1) * t_rem)));
+  } else {
+    val = stepV - error0 * Math.exp(-zetaV * wn * t_rem) * (Math.cos(wd * t_rem) + zetaV / Math.sqrt(1 - zetaV**2) * Math.sin(wd * t_rem));
+  }
+  return val;
+}
+
+function findSettlingTime(bw_kHz, pm_deg, stepV, sr_Vus, acc_frac) {
+  const band = stepV * acc_frac;
+  const t_slew = stepV / Math.abs(sr_Vus); // μs
+  // Search beyond slew time
+  const t_end = Math.max(t_slew + 50 / (bw_kHz * 1e3) * 1e6, 1);
+  let settle_t = t_end;
+  const Npts = 2000;
+  let last_outside = 0;
+  for (let i = Npts - 1; i >= 0; i--) {
+    const t_us = t_end * i / Npts;
+    const v = step2nd(t_us, bw_kHz, pm_deg, stepV, sr_Vus);
+    if (Math.abs(v - stepV) > band) { last_outside = t_us; break; }
+  }
+  return last_outside;
+}
+
+function drawSettling() {
+  const canvas = document.getElementById('c1');
+  const W = canvas.getBoundingClientRect().width;
+  const H = parseInt(canvas.getAttribute('height'));
+  const ctx = resize(canvas);
+  ctx.clearRect(0, 0, W, H);
+
+  const bw = parseFloat(document.getElementById('t1bw').value);
+  const pm = parseFloat(document.getElementById('t1pm').value);
+  const stepV = parseFloat(document.getElementById('t1step').value);
+  const sr = parseFloat(document.getElementById('t1sr').value);
+  const acc = parseFloat(document.getElementById('t1acc').value) / 100;
+
+  const pad = { l: 64, r: 20, t: 36, b: 50 };
+  const x0 = pad.l, x1 = W - pad.r, y0 = pad.t, y1 = H - pad.b;
+
+  // Time range
+  const t_slew = stepV / sr;
+  const t_max = Math.max(t_slew + 60 / (bw * 1e3) * 1e6, 2, t_slew * 3);
+  const vMin = -0.1 * stepV, vMax = stepV * 1.3;
+
+  // Grid
+  ctx.strokeStyle = getCSS('--grid'); ctx.lineWidth = 1;
+  for (let v = 0; v <= stepV * 1.3; v += stepV / 5) {
+    const y = yLin(v, vMin, vMax, y0, y1);
+    ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+    ctx.fillStyle = getCSS('--muted'); ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+    ctx.fillText(v.toFixed(2) + 'V', x0 - 3, y + 3);
+  }
+  // Time ticks
+  const Nticks = 6;
+  for (let i = 0; i <= Nticks; i++) {
+    const t = t_max * i / Nticks;
+    const x = x0 + (x1 - x0) * i / Nticks;
+    ctx.strokeStyle = getCSS('--grid'); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, y0); ctx.lineTo(x, y1); ctx.stroke();
+    ctx.fillStyle = getCSS('--muted'); ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+    const lbl = t < 1 ? (t * 1000).toFixed(0) + 'ns' : t.toFixed(2) + 'μs';
+    ctx.fillText(lbl, x, y1 + 14);
+  }
+
+  // Settling band
+  const yTop = yLin(stepV * (1 + acc), vMin, vMax, y0, y1);
+  const yBot = yLin(stepV * (1 - acc), vMin, vMax, y0, y1);
+  ctx.fillStyle = 'rgba(74,222,128,0.08)';
+  ctx.fillRect(x0, yTop, x1 - x0, yBot - yTop);
+  ctx.strokeStyle = 'rgba(74,222,128,0.4)'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(x0, yTop); ctx.lineTo(x1, yTop); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x0, yBot); ctx.lineTo(x1, yBot); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Final value line
+  const yFinal = yLin(stepV, vMin, vMax, y0, y1);
+  ctx.strokeStyle = getCSS('--muted'); ctx.lineWidth = 0.5; ctx.setLineDash([2, 6]);
+  ctx.beginPath(); ctx.moveTo(x0, yFinal); ctx.lineTo(x1, yFinal); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Axes
+  ctx.strokeStyle = getCSS('--border'); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0, y1); ctx.lineTo(x1, y1); ctx.stroke();
+
+  // Draw waveform
+  const Npts = 800;
+  ctx.strokeStyle = getCSS('--accent'); ctx.lineWidth = 2.5; ctx.setLineDash([]);
+  ctx.beginPath();
+  for (let i = 0; i <= Npts; i++) {
+    const t_us = t_max * i / Npts;
+    const v = step2nd(t_us, bw, pm, stepV, sr);
+    const xp = x0 + (x1 - x0) * t_us / t_max;
+    const yp = yLin(Math.min(Math.max(v, vMin), vMax * 1.1), vMin, vMax, y0, y1);
+    i === 0 ? ctx.moveTo(xp, yp) : ctx.lineTo(xp, yp);
+  }
+  ctx.stroke();
+
+  // Slew region marker
+  if (t_slew < t_max) {
+    const xsl = x0 + (x1 - x0) * t_slew / t_max;
+    ctx.strokeStyle = getCSS('--orange'); ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
+    ctx.beginPath(); ctx.moveTo(xsl, y0); ctx.lineTo(xsl, y1); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = getCSS('--orange'); ctx.font = '10px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('SR limit', xsl + 3, y0 + 14);
+  }
+
+  // Settling time marker
+  const ts = findSettlingTime(bw, pm, stepV, sr, acc);
+  if (ts > 0 && ts < t_max) {
+    const xts = x0 + (x1 - x0) * ts / t_max;
+    ctx.strokeStyle = getCSS('--yellow'); ctx.lineWidth = 1.5; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(xts, y0); ctx.lineTo(xts, y1); ctx.stroke();
+    ctx.fillStyle = getCSS('--yellow'); ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'left';
+    const lbl = ts < 1 ? (ts * 1000).toFixed(1) + ' ns' : ts.toFixed(3) + ' μs';
+    ctx.fillText('ts = ' + lbl, xts + 3, y0 + 28);
+  }
+
+  ctx.fillStyle = getCSS('--text'); ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Step Response — Settling Time Analysis', (x0 + x1) / 2, y0 - 8);
+  ctx.fillStyle = getCSS('--muted'); ctx.font = '10px system-ui';
+  ctx.fillText('Time (μs)', (x0 + x1) / 2, y1 + 28);
+
+  // Update metrics
+  const zetaV = Math.max(0.01, Math.cos(pm * Math.PI / 180));
+  const os = pm > 0 && pm < 90 ? (100 * Math.exp(-Math.PI * zetaV / Math.sqrt(Math.max(1e-6, 1 - zetaV * zetaV)))).toFixed(2) : '0';
+  const tsLbl = ts > 0 ? (ts < 1 ? (ts * 1000).toFixed(1) + ' ns' : ts.toFixed(3) + ' μs') : '> window';
+  document.getElementById('t1metrics').innerHTML = `
+    <div class="metric"><div class="lbl">ζ (damping)</div><div class="val cyan">${zetaV.toFixed(3)}</div></div>
+    <div class="metric"><div class="lbl">Overshoot</div><div class="val ${parseFloat(os) > 10 ? 'red' : parseFloat(os) > 4 ? 'yellow' : 'green'}">${os}%</div></div>
+    <div class="metric"><div class="lbl">Settling time</div><div class="val yellow">${tsLbl}</div></div>
+  `;
+
+  // Table
+  const tbody = document.getElementById('t1tbody');
+  tbody.innerHTML = '';
+  const pms = [30, 45, 60, 70, 80, 90];
+  pms.forEach(p => {
+    const z = Math.max(0.01, Math.cos(p * Math.PI / 180));
+    const osV = p < 90 ? (100 * Math.exp(-Math.PI * z / Math.sqrt(Math.max(1e-6, 1 - z * z)))).toFixed(2) : '0';
+    const tsp = findSettlingTime(bw, p, stepV, sr, acc);
+    const tspLbl = tsp > 0 ? (tsp < 1 ? (tsp * 1000).toFixed(1) + ' ns' : tsp.toFixed(3) + ' μs') : '> window';
+    const c = p === Math.round(pm) ? 'background:rgba(124,158,248,0.12);' : '';
+    tbody.innerHTML += `<tr style="${c}"><td>${p}°</td><td>${z.toFixed(3)}</td><td>${osV}%</td><td>${tspLbl}</td></tr>`;
+  });
+}
+
+// ─── Tab 2: Operating Region Map ─────────────────────────────────────────────
+
+function computePMfromBW(bw_Hz, gbw_Hz, Cs_pF, Rf_kO) {
+  // G = GBW / BW
+  const G = gbw_Hz / bw_Hz;
+  if (G < 1) return { pm: 90, G };
+  const Cs = Cs_pF * 1e-12;
+  const Rf = Rf_kO * 1e3;
+  const fc = bw_Hz;
+  // Phase of Aol at fc: -arctan(fc / fp_aol), fp_aol = gbw/1e6
+  const fp_aol = gbw_Hz / 1e6;
+  const ph_aol = -Math.atan2(fc, fp_aol) * 180 / Math.PI;
+  // Stray Cs phase lag at fc
+  const fp_cs = Cs > 0 ? 1 / (2 * Math.PI * Rf * Cs) : 1e15;
+  const ph_cs = -Math.atan2(fc, fp_cs) * 180 / Math.PI;
+  const pm = 180 + ph_aol + ph_cs; // simplification for map
+  return { pm, G };
+}
+
+function drawRegionMap() {
+  const canvas = document.getElementById('c2');
+  const W = canvas.getBoundingClientRect().width;
+  const H = parseInt(canvas.getAttribute('height'));
+  const ctx = resize(canvas);
+  ctx.clearRect(0, 0, W, H);
+
+  const reqBW = parseFloat(document.getElementById('t2reqbw').value) * 1e3;
+  const reqPM = parseFloat(document.getElementById('t2reqpm').value);
+  const gbwMHz = parseFloat(document.getElementById('t2gbw').value);
+  const Cs = parseFloat(document.getElementById('t2cs').value);
+  const Rf = parseFloat(document.getElementById('t2rf').value);
+  const gbw = gbwMHz * 1e6;
+
+  const pad = { l: 58, r: 20, t: 36, b: 50 };
+  const x0 = pad.l, x1 = W - pad.r, y0 = pad.t, y1 = H - pad.b;
+
+  // Axes: X = closed-loop BW (log, 1kHz–GBW), Y = phase margin (linear, 0–120°)
+  const bwMin = 1e3, bwMax = Math.min(gbw * 2, 5e9);
+  const pmMin = -10, pmMax = 100;
+
+  // Region fills
+  function fillRegion(pmLo, pmHi, color) {
+    const yLo = yLin(Math.min(pmLo, pmMax), pmMin, pmMax, y0, y1);
+    const yHi = yLin(Math.min(pmHi, pmMax), pmMin, pmMax, y0, y1);
+    ctx.fillStyle = color;
+    ctx.fillRect(x0, Math.min(yLo, yHi), x1 - x0, Math.abs(yHi - yLo));
+  }
+  fillRegion(pmMin, 0, 'rgba(248,113,113,0.12)');
+  fillRegion(0, 45, 'rgba(251,191,36,0.09)');
+  fillRegion(45, 70, 'rgba(74,222,128,0.09)');
+  fillRegion(70, pmMax, 'rgba(124,158,248,0.09)');
+
+  // Grid lines
+  ctx.strokeStyle = getCSS('--grid'); ctx.lineWidth = 1;
+  for (let p = 0; p <= pmMax; p += 15) {
+    const y = yLin(p, pmMin, pmMax, y0, y1);
+    ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke();
+    ctx.fillStyle = getCSS('--muted'); ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+    ctx.fillText(p + '°', x0 - 3, y + 3);
+  }
+  gridLinesLog(ctx, bwMin, bwMax, x0, x1, y0, y1);
+
+  // Region boundary labels
+  const labels = [[0, 'Region 4 — Unstable'], [22, 'Region 3 — Marginal'], [57, 'Region 2 — Optimal'], [82, 'Region 1 — Stable/slow']];
+  labels.forEach(([p, lbl]) => {
+    const y = yLin(p, pmMin, pmMax, y0, y1);
+    ctx.fillStyle = getCSS('--muted'); ctx.font = '10px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText(lbl, x0 + 6, y - 4);
+  });
+
+  // GBW hyperbola: for each BW, G = GBW/BW, compute PM
+  const Npts = 400;
+  ctx.strokeStyle = getCSS('--cyan'); ctx.lineWidth = 2.5; ctx.setLineDash([]);
+  ctx.beginPath();
+  let first = true;
+  for (let i = 0; i < Npts; i++) {
+    const logBW = Math.log10(bwMin) + (Math.log10(bwMax) - Math.log10(bwMin)) * i / (Npts - 1);
+    const bw = Math.pow(10, logBW);
+    if (bw >= gbw) continue; // BW can't exceed GBW
+    const { pm } = computePMfromBW(bw, gbw, Cs, Rf);
+    const xp = xLog(bw, bwMin, bwMax, x0, x1);
+    const yp = yLin(Math.min(Math.max(pm, pmMin), pmMax), pmMin, pmMax, y0, y1);
+    first ? ctx.moveTo(xp, yp) : ctx.lineTo(xp, yp);
+    first = false;
+  }
+  ctx.stroke();
+
+  // Required BW line
+  if (reqBW > bwMin && reqBW < bwMax) {
+    const xReq = xLog(reqBW, bwMin, bwMax, x0, x1);
+    ctx.strokeStyle = getCSS('--yellow'); ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]);
+    ctx.beginPath(); ctx.moveTo(xReq, y0); ctx.lineTo(xReq, y1); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = getCSS('--yellow'); ctx.font = '10px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('Required BW', xReq + 3, y0 + 14);
+  }
+
+  // Required PM line
+  const yReqPM = yLin(reqPM, pmMin, pmMax, y0, y1);
+  ctx.strokeStyle = getCSS('--yellow'); ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]);
+  ctx.beginPath(); ctx.moveTo(x0, yReqPM); ctx.lineTo(x1, yReqPM); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = getCSS('--yellow'); ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+  ctx.fillText('Min PM', x1 - 3, yReqPM - 4);
+
+  // Operating point on GBW curve at reqBW
+  if (reqBW < gbw) {
+    const { pm: opPM } = computePMfromBW(reqBW, gbw, Cs, Rf);
+    const xOp = xLog(reqBW, bwMin, bwMax, x0, x1);
+    const yOp = yLin(Math.min(Math.max(opPM, pmMin), pmMax), pmMin, pmMax, y0, y1);
+    const opColor = opPM >= reqPM ? getCSS('--green') : getCSS('--red');
+    ctx.beginPath(); ctx.arc(xOp, yOp, 8, 0, 2 * Math.PI);
+    ctx.fillStyle = opColor; ctx.fill();
+    ctx.strokeStyle = getCSS('--text'); ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(xOp, yOp, 8, 0, 2 * Math.PI); ctx.stroke();
+
+    // Metrics
+    const region = opPM > 70 ? '1 — Stable/slow' : opPM > 45 ? '2 — Optimal' : opPM > 0 ? '3 — Marginal' : '4 — Unstable';
+    const G_op = (gbw / reqBW).toFixed(1);
+    document.getElementById('t2metrics').innerHTML = `
+      <div class="metric"><div class="lbl">Achievable PM</div><div class="val ${opPM >= reqPM ? 'green' : 'red'}">${opPM.toFixed(1)}°</div></div>
+      <div class="metric"><div class="lbl">Required G = GBW/BW</div><div class="val cyan">${G_op} V/V</div></div>
+      <div class="metric"><div class="lbl">Region</div><div class="val">${region}</div></div>
+    `;
+    const feasible = opPM >= reqPM;
+    document.getElementById('t2note').textContent = feasible
+      ? `Design is feasible. PM margin = ${(opPM - reqPM).toFixed(1)}° above requirement. Operates in Region ${region[0]}.`
+      : `Design is NOT feasible. PM is ${(reqPM - opPM).toFixed(1)}° below requirement. Increase GBW to ${(reqBW * (gbw / reqBW * 1.5) / 1e6).toFixed(0)} MHz, reduce stray Cs, or add Cf compensation.`;
+  } else {
+    document.getElementById('t2metrics').innerHTML = `<div class="metric"><div class="lbl">Status</div><div class="val red">BW > GBW — impossible</div></div>`;
+    document.getElementById('t2note').textContent = 'Required bandwidth exceeds GBW. Select a higher-GBW op-amp or reduce bandwidth requirement.';
+  }
+
+  // Axes
+  ctx.strokeStyle = getCSS('--border'); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x0, y1); ctx.lineTo(x1, y1); ctx.stroke();
+  ticksLog(ctx, bwMin, bwMax, x0, x1, y1);
+  ctx.fillStyle = getCSS('--text'); ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Phase Margin vs Closed-loop BW (GBW = ' + gbwMHz + ' MHz)', (x0 + x1) / 2, y0 - 8);
+  ctx.fillStyle = getCSS('--muted'); ctx.font = '10px system-ui';
+  ctx.fillText('Closed-loop Bandwidth (Hz)', (x0 + x1) / 2, y1 + 28);
+  ctx.save(); ctx.translate(12, (y0 + y1) / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Phase Margin (°)', 0, 0); ctx.restore();
+
+  // Legend
+  ctx.strokeStyle = getCSS('--cyan'); ctx.lineWidth = 2; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(x1 - 100, y0 + 14); ctx.lineTo(x1 - 70, y0 + 14); ctx.stroke();
+  ctx.fillStyle = getCSS('--muted'); ctx.font = '10px system-ui'; ctx.textAlign = 'left';
+  ctx.fillText('Achievable PM curve', x1 - 66, y0 + 17);
+}
+
+// ─── Tabs & Init ─────────────────────────────────────────────────────────────
+
+function switchTab(n) {
+  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === n));
+  document.querySelectorAll('.pane').forEach((p, i) => p.classList.toggle('active', i === n));
+  if (n === 0) drawBode();
+  if (n === 1) drawSettling();
+  if (n === 2) drawRegionMap();
+}
+
+function wireSlider(id, valId, fmt) {
+  const el = document.getElementById(id);
+  const vEl = document.getElementById(valId);
+  el.addEventListener('input', () => {
+    vEl.textContent = fmt(parseFloat(el.value));
+    redraw();
+  });
+}
+
+function redraw() {
+  const active = document.querySelector('.pane.active');
+  if (!active) return;
+  const idx = [...document.querySelectorAll('.pane')].indexOf(active);
+  if (idx === 0) drawBode();
+  if (idx === 1) drawSettling();
+  if (idx === 2) drawRegionMap();
+}
+
+wireSlider('t0gbw', 't0gbwV', v => v + ' MHz');
+wireSlider('t0g', 't0gV', v => v + ' V/V');
+wireSlider('t0cs', 't0csV', v => v.toFixed(1) + ' pF');
+wireSlider('t0rf', 't0rfV', v => v + ' kΩ');
+wireSlider('t0cf', 't0cfV', v => v.toFixed(1) + ' pF');
+wireSlider('t0cl', 't0clV', v => v + ' pF');
+wireSlider('t0ro', 't0roV', v => v + ' Ω');
+wireSlider('t0rs', 't0rsV', v => v + ' Ω');
+
+wireSlider('t1bw', 't1bwV', v => v + ' kHz');
+wireSlider('t1pm', 't1pmV', v => v + '°');
+wireSlider('t1step', 't1stepV', v => v.toFixed(1) + ' V');
+wireSlider('t1sr', 't1srV', v => v.toFixed(1) + ' V/μs');
+wireSlider('t1acc', 't1accV', v => (v * 100).toFixed(3) + '%');
+
+wireSlider('t2reqbw', 't2reqbwV', v => v + ' kHz');
+wireSlider('t2reqpm', 't2reqpmV', v => v + '°');
+wireSlider('t2gbw', 't2gbwV', v => v + ' MHz');
+wireSlider('t2cs', 't2csV', v => v.toFixed(1) + ' pF');
+wireSlider('t2rf', 't2rfV', v => v + ' kΩ');
+
+window.addEventListener('resize', redraw);
+drawBode();
+</script>
+</body>
+</html>

@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-OAD-10.3.1 — Op-Amp Gain Stage & Output Stage Simulator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; }
+  header { background: #1a1d2e; padding: 16px 24px; border-bottom: 2px solid #3a7bd5; }
+  header h1 { font-size: 1.15rem; color: #7eb3ff; font-weight: 600; }
+  header p { font-size: 0.8rem; color: #888; margin-top: 3px; }
+  .tabs { display: flex; background: #13151f; border-bottom: 1px solid #2a2d3e; }
+  .tab { padding: 11px 22px; cursor: pointer; font-size: 0.85rem; color: #888; border-bottom: 2px solid transparent; transition: all .2s; }
+  .tab.active { color: #7eb3ff; border-bottom-color: #3a7bd5; background: #1a1d2e; }
+  .tab:hover:not(.active) { color: #ccc; background: #1a1d2e55; }
+  .panel { display: none; padding: 20px 24px; }
+  .panel.active { display: block; }
+  .row { display: flex; gap: 20px; flex-wrap: wrap; }
+  .card { background: #1a1d2e; border: 1px solid #2a2d3e; border-radius: 8px; padding: 16px; flex: 1; min-width: 280px; }
+  .card h3 { font-size: 0.85rem; color: #7eb3ff; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .slider-row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+  .slider-row label { font-size: 0.78rem; color: #aaa; width: 195px; flex-shrink: 0; }
+  .slider-row input[type=range] { flex: 1; accent-color: #3a7bd5; }
+  .slider-row span { font-size: 0.78rem; color: #7eb3ff; width: 75px; text-align: right; }
+  canvas { display: block; width: 100%; border-radius: 6px; background: #12141e; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 8px; margin-top: 12px; }
+  .metric { background: #12141e; border: 1px solid #2a2d3e; border-radius: 6px; padding: 8px 12px; }
+  .metric .label { font-size: 0.7rem; color: #888; }
+  .metric .value { font-size: 1.05rem; color: #4ecdc4; font-weight: 700; margin-top: 2px; }
+  .metric .value.warn { color: #f6ad55; }
+  .metric .value.bad  { color: #fc8181; }
+  .metric .value.good { color: #68d391; }
+  .info-box { background: #12141e; border-left: 3px solid #3a7bd5; padding: 10px 14px; border-radius: 0 6px 6px 0; margin-top: 10px; font-size: 0.78rem; color: #bbb; line-height: 1.6; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #aaa; }
+  .legend-dot { width: 14px; height: 3px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>M4B-OAD-10.3.1 — Second Gain Stage and Class AB Output Stage</h1>
+  <p>gm6 sizing for PM, output stage IV curves, and quiescent current vs THD</p>
+</header>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">Stage 2 Sizing & PM</div>
+  <div class="tab" onclick="showTab(1)">Output Stage IV</div>
+  <div class="tab" onclick="showTab(2)">Quiescent Current & THD</div>
+</div>
+
+<!-- TAB 0: Stage 2 Sizing & PM -->
+<div class="panel active" id="tab0">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:310px;">
+      <h3>Two-Stage Parameters</h3>
+      <div class="slider-row"><label>gm1 (µA/V)</label><input type="range" id="t0_gm1" min="50" max="5000" step="25" value="500"><span id="v_t0_gm1">500</span></div>
+      <div class="slider-row"><label>Cc (pF)</label><input type="range" id="t0_Cc" min="0.2" max="20" step="0.1" value="2"><span id="v_t0_Cc">2.0</span></div>
+      <div class="slider-row"><label>CL internal (fF)</label><input type="range" id="t0_CL_int" min="50" max="2000" step="50" value="200"><span id="v_t0_CL_int">200</span></div>
+      <div class="slider-row"><label>CL external (pF)</label><input type="range" id="t0_CL_ext" min="1" max="100" step="1" value="20"><span id="v_t0_CL_ext">20</span></div>
+      <div class="slider-row"><label>gm_out (mA/V)</label><input type="range" id="t0_gm_out" min="0.5" max="50" step="0.5" value="5"><span id="v_t0_gm_out">5.0</span></div>
+      <div class="slider-row"><label>Vov_M6 (mV)</label><input type="range" id="t0_Vov6" min="50" max="400" step="5" value="150"><span id="v_t0_Vov6">150</span></div>
+      <div class="metrics" style="grid-template-columns:1fr 1fr;">
+        <div class="metric"><div class="label">GBW</div><div class="value" id="m0_GBW">—</div></div>
+        <div class="metric"><div class="label">gm6_min for PM60</div><div class="value" id="m0_gm6min">—</div></div>
+        <div class="metric"><div class="label">fp2 (internal)</div><div class="value" id="m0_fp2i">—</div></div>
+        <div class="metric"><div class="label">fp3 (ext load)</div><div class="value" id="m0_fp3">—</div></div>
+        <div class="metric"><div class="label">PM (two poles)</div><div class="value" id="m0_PM">—</div></div>
+        <div class="metric"><div class="label">ID_M6 = gm6×Vov</div><div class="value" id="m0_ID6">—</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>PM vs gm6/gm1 Ratio</h3>
+      <canvas id="c_pm" height="320"></canvas>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#4ecdc4;"></div>PM with internal CL only</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f6ad55;"></div>PM with external CL (output stage)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#68d391;"></div>60° target</div>
+      </div>
+      <div class="info-box">
+        When the full op-amp has an output stage, CL at the Stage 2 node is just the internal capacitance
+        (gate Cgs of M_p and M_n). The external CL creates a new pole fp3 at the output of the output stage.
+        PM depends on both: PM = 90° − arctan(GBW/fp2_int) − arctan(GBW/fp3_ext).
+        The output stage must have gm_out large enough to push fp3_ext well above GBW.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: Output Stage IV -->
+<div class="panel" id="tab1">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:310px;">
+      <h3>Output Stage Parameters</h3>
+      <div class="slider-row"><label>VDD (V)</label><input type="range" id="t1_VDD" min="0.8" max="5" step="0.1" value="1.8"><span id="v_t1_VDD">1.8</span></div>
+      <div class="slider-row"><label>W/L M_n</label><input type="range" id="t1_WLn" min="5" max="500" step="5" value="100"><span id="v_t1_WLn">100</span></div>
+      <div class="slider-row"><label>W/L M_p</label><input type="range" id="t1_WLp" min="5" max="500" step="5" value="200"><span id="v_t1_WLp">200</span></div>
+      <div class="slider-row"><label>µnCox (µA/V²)</label><input type="range" id="t1_unCox" min="50" max="800" step="10" value="270"><span id="v_t1_unCox">270</span></div>
+      <div class="slider-row"><label>µpCox (µA/V²)</label><input type="range" id="t1_upCox" min="30" max="300" step="5" value="90"><span id="v_t1_upCox">90</span></div>
+      <div class="slider-row"><label>Vth_n (V)</label><input type="range" id="t1_Vthn" min="0.2" max="0.7" step="0.01" value="0.5"><span id="v_t1_Vthn">0.5</span></div>
+      <div class="slider-row"><label>|Vth_p| (V)</label><input type="range" id="t1_Vthp" min="0.2" max="0.7" step="0.01" value="0.45"><span id="v_t1_Vthp">0.45</span></div>
+      <div class="slider-row"><label>VGS_n bias (V)</label><input type="range" id="t1_VGSn" min="0.5" max="2" step="0.01" value="0.8"><span id="v_t1_VGSn">0.80</span></div>
+      <div class="metrics" style="grid-template-columns:1fr 1fr;">
+        <div class="metric"><div class="label">IQ (quiescent)</div><div class="value" id="m1_IQ">—</div></div>
+        <div class="metric"><div class="label">I_peak_n (sink)</div><div class="value" id="m1_Ipn">—</div></div>
+        <div class="metric"><div class="label">I_peak_p (source)</div><div class="value" id="m1_Ipp">—</div></div>
+        <div class="metric"><div class="label">Rout (open loop)</div><div class="value" id="m1_Rout">—</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Output Stage ID vs Vout (Transconductor Characteristic)</h3>
+      <canvas id="c_iv" height="320"></canvas>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#4ecdc4;"></div>M_n current (sink)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f6ad55;"></div>M_p current (source)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#fc8181;"></div>Net Iout = ID_p − ID_n</div>
+      </div>
+      <div class="info-box">
+        Each transistor's current depends on its VGS and the output voltage (which sets VDS).
+        When Vout rises, VGS_n increases → M_n current rises; M_p current falls (VGS_p reduces).
+        At Vout = VDD/2: both transistors carry the quiescent current IQ.
+        The net output current (ID_p − ID_n) must supply the load.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: Quiescent Current & THD -->
+<div class="panel" id="tab2">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:310px;">
+      <h3>Class AB Bias</h3>
+      <div class="slider-row"><label>VDD (V)</label><input type="range" id="t2_VDD" min="0.8" max="5" step="0.1" value="1.8"><span id="v_t2_VDD">1.8</span></div>
+      <div class="slider-row"><label>IQ (µA)</label><input type="range" id="t2_IQ" min="1" max="2000" step="5" value="100"><span id="v_t2_IQ">100</span></div>
+      <div class="slider-row"><label>Peak current (mA)</label><input type="range" id="t2_Ipk" min="0.1" max="20" step="0.1" value="2"><span id="v_t2_Ipk">2.0</span></div>
+      <div class="slider-row"><label>RL (Ω)</label><input type="range" id="t2_RL" min="100" max="10000" step="100" value="2000"><span id="v_t2_RL">2000</span></div>
+      <div class="metrics" style="grid-template-columns:1fr;">
+        <div class="metric"><div class="label">IQ/Ipeak ratio</div><div class="value" id="m2_ratio">—</div></div>
+        <div class="metric"><div class="label">Max output power</div><div class="value" id="m2_Pout">—</div></div>
+        <div class="metric"><div class="label">Static power (quiescent)</div><div class="value" id="m2_Pq">—</div></div>
+        <div class="metric"><div class="label">Efficiency @ peak</div><div class="value" id="m2_eff">—</div></div>
+        <div class="metric"><div class="label">THD estimate</div><div class="value warn" id="m2_thd">—</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>THD vs Quiescent Current</h3>
+      <canvas id="c_thd" height="320"></canvas>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#4ecdc4;"></div>THD (estimated)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f6ad55;"></div>Static power</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#3a7bd5;"></div>Current IQ marker</div>
+      </div>
+      <div class="info-box">
+        THD in a class AB output stage decreases dramatically as IQ increases (quiescent current removes the crossover dead zone).
+        Empirical model: THD ≈ A × (Ipeak/IQ)^B where A, B are topology-dependent (~A=1e-4, B=2 for well-designed class AB).
+        Static power = VDD × IQ (for the output stage). There is a clear trade-off between low THD and low power.
+        Target: IQ = 1–5% of Ipeak for audio-quality output; smaller IQ for power-critical battery devices.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function fmtHz(f) {
+  if(f>=1e9) return (f/1e9).toFixed(2)+'GHz';
+  if(f>=1e6) return (f/1e6).toFixed(1)+'MHz';
+  if(f>=1e3) return (f/1e3).toFixed(1)+'kHz';
+  return f.toFixed(0)+'Hz';
+}
+
+// ─── TAB 0: Stage 2 Sizing & PM ──────────────────────────────────────────
+function updateTab0() {
+  const gm1     = parseFloat(document.getElementById('t0_gm1').value)*1e-6;
+  const Cc      = parseFloat(document.getElementById('t0_Cc').value)*1e-12;
+  const CL_int  = parseFloat(document.getElementById('t0_CL_int').value)*1e-15;
+  const CL_ext  = parseFloat(document.getElementById('t0_CL_ext').value)*1e-12;
+  const gm_out  = parseFloat(document.getElementById('t0_gm_out').value)*1e-3;
+  const Vov6    = parseFloat(document.getElementById('t0_Vov6').value)*1e-3;
+
+  document.getElementById('v_t0_gm1').textContent    = (gm1*1e6).toFixed(0);
+  document.getElementById('v_t0_Cc').textContent     = (Cc*1e12).toFixed(1);
+  document.getElementById('v_t0_CL_int').textContent = (CL_int*1e15).toFixed(0);
+  document.getElementById('v_t0_CL_ext').textContent = (CL_ext*1e12).toFixed(1);
+  document.getElementById('v_t0_gm_out').textContent = (gm_out*1e3).toFixed(1);
+  document.getElementById('v_t0_Vov6').textContent   = (Vov6*1e3).toFixed(0);
+
+  const GBW   = gm1/(2*Math.PI*Cc);
+  const gm6min = gm1*(CL_int/Cc)*Math.tan(30*Math.PI/180); // for PM=60
+  const fp2_i = gm_out/(2*Math.PI*CL_int); // internal pole at stage 2 output (gm_out drives CL_int)
+  // Actually: Stage 2 output -> output stage gate (CL_int). Stage 2 gm6 drives CL_int.
+  // fp2 = gm6/(2π*CL_int). Use gm_out here as if it IS gm6 for simplicity.
+  const fp3   = gm_out/(2*Math.PI*CL_ext); // ext output pole
+  const PM    = 90 - Math.atan(GBW/fp2_i)*180/Math.PI - Math.atan(GBW/fp3)*180/Math.PI;
+  const ID6   = gm_out * Vov6;
+
+  document.getElementById('m0_GBW').textContent    = fmtHz(GBW);
+  document.getElementById('m0_gm6min').textContent = (gm6min*1e3).toFixed(2)+' mA/V';
+  document.getElementById('m0_fp2i').textContent   = fmtHz(fp2_i);
+  document.getElementById('m0_fp3').textContent    = fmtHz(fp3);
+  const pmEl = document.getElementById('m0_PM');
+  pmEl.textContent = PM.toFixed(1)+'°';
+  pmEl.className = 'value '+(PM>=60?'good':PM>=45?'warn':'bad');
+  document.getElementById('m0_ID6').textContent    = (ID6*1e3).toFixed(2)+' mA';
+
+  // PM vs gm6/gm1 ratio chart
+  const cv = document.getElementById('c_pm');
+  const ctx = cv.getContext('2d');
+  const W=cv.clientWidth*devicePixelRatio||600, H=320;
+  cv.width=W; cv.height=H;
+  const pad={l:50,r:20,t:20,b:35};
+  const xMin=0.1, xMax=20, yMin=0, yMax=90;
+  const px = x => pad.l + (Math.log10(x)-Math.log10(xMin))/(Math.log10(xMax)-Math.log10(xMin))*(W-pad.l-pad.r);
+  const py = y => H - pad.b - (y-yMin)/(yMax-yMin)*(H-pad.t-pad.b);
+
+  ctx.fillStyle='#12141e'; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#1e2136'; ctx.lineWidth=1;
+  for(let y=0;y<=90;y+=15) {
+    ctx.beginPath(); ctx.moveTo(pad.l,py(y)); ctx.lineTo(W-pad.r,py(y)); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='right';
+    ctx.fillText(y+'°',pad.l-3,py(y)+3);
+  }
+  [0.1,0.3,1,3,10].forEach(x=>{
+    ctx.beginPath(); ctx.moveTo(px(x),pad.t); ctx.lineTo(px(x),H-pad.b); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(x+'×', px(x), H-pad.b+12);
+  });
+
+  // 60° line
+  ctx.strokeStyle='#68d391'; ctx.lineWidth=1.2; ctx.setLineDash([5,4]);
+  ctx.beginPath(); ctx.moveTo(pad.l,py(60)); ctx.lineTo(W-pad.r,py(60)); ctx.stroke(); ctx.setLineDash([]);
+
+  const ptsI=[], ptsE=[];
+  for(let e=-1; e<=Math.log10(xMax); e+=0.05) {
+    const ratio = Math.pow(10,e);
+    const gm6_cur = ratio * gm1;
+    const fp2_i_cur = gm6_cur/(2*Math.PI*CL_int);
+    const fp3_cur   = gm6_cur/(2*Math.PI*CL_ext); // if gm_out scales with gm6
+    const pm_i = Math.max(0, 90 - Math.atan(GBW/fp2_i_cur)*180/Math.PI);
+    const pm_e = Math.max(0, 90 - Math.atan(GBW/fp2_i_cur)*180/Math.PI - Math.atan(GBW/(gm_out/(2*Math.PI*CL_ext)))*180/Math.PI);
+    ptsI.push([px(ratio), py(Math.min(pm_i,89))]);
+    ptsE.push([px(ratio), py(Math.min(pm_e,89))]);
+  }
+  ctx.strokeStyle='#4ecdc4'; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(ptsI[0][0],ptsI[0][1]);
+  ptsI.forEach(p=>ctx.lineTo(p[0],p[1])); ctx.stroke();
+
+  ctx.strokeStyle='#f6ad55'; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(ptsE[0][0],ptsE[0][1]);
+  ptsE.forEach(p=>ctx.lineTo(p[0],p[1])); ctx.stroke();
+
+  ctx.fillStyle='#555'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('gm6/gm1 ratio', (pad.l+W-pad.r)/2, H-2);
+}
+
+// ─── TAB 1: Output Stage IV ───────────────────────────────────────────────
+function updateTab1() {
+  const VDD  = parseFloat(document.getElementById('t1_VDD').value);
+  const WLn  = parseFloat(document.getElementById('t1_WLn').value);
+  const WLp  = parseFloat(document.getElementById('t1_WLp').value);
+  const unCox= parseFloat(document.getElementById('t1_unCox').value)*1e-6;
+  const upCox= parseFloat(document.getElementById('t1_upCox').value)*1e-6;
+  const Vthn = parseFloat(document.getElementById('t1_Vthn').value);
+  const Vthp = parseFloat(document.getElementById('t1_Vthp').value);
+  const VGSn = parseFloat(document.getElementById('t1_VGSn').value);
+
+  document.getElementById('v_t1_VDD').textContent  = VDD.toFixed(1);
+  document.getElementById('v_t1_WLn').textContent  = WLn.toFixed(0);
+  document.getElementById('v_t1_WLp').textContent  = WLp.toFixed(0);
+  document.getElementById('v_t1_unCox').textContent= (unCox*1e6).toFixed(0);
+  document.getElementById('v_t1_upCox').textContent= (upCox*1e6).toFixed(0);
+  document.getElementById('v_t1_Vthn').textContent = Vthn.toFixed(2);
+  document.getElementById('v_t1_Vthp').textContent = Vthp.toFixed(2);
+  document.getElementById('v_t1_VGSn').textContent = VGSn.toFixed(2);
+
+  // Class AB: VGSp is set so that ID_p(IQ) = ID_n(IQ) at Vout=VDD/2
+  // At quiescent: assume VGSn_q set by user, VGSp computed to match
+  const Vov_n_q = Math.max(0, VGSn - Vthn);
+  const IQ_n = 0.5 * unCox * WLn * Vov_n_q * Vov_n_q;
+  // Set IQ_p = IQ_n: 0.5 * upCox * WLp * Vov_p_q^2 = IQ_n → Vov_p_q = sqrt(2IQ_n / (upCox*WLp))
+  const Vov_p_q = Math.sqrt(2*IQ_n / (upCox*WLp));
+  const VGSp_q = Vthp + Vov_p_q; // magnitude
+
+  const IQ = IQ_n;
+  const Ipeak_n = 0.5 * unCox * WLn * Math.pow(VGSn - Vthn, 2);
+  const Ipeak_p = 0.5 * upCox * WLp * Math.pow(VGSp_q, 2);
+
+  const labn=0.1, labp=0.08;
+  const ro_n = IQ>0 ? 1/(labn*IQ) : 1e9;
+  const ro_p = IQ>0 ? 1/(labp*IQ) : 1e9;
+  const Rout = ro_n*ro_p/(ro_n+ro_p);
+
+  document.getElementById('m1_IQ').textContent  = (IQ*1e6).toFixed(0)+' µA';
+  document.getElementById('m1_Ipn').textContent = (Ipeak_n*1e3).toFixed(2)+' mA';
+  document.getElementById('m1_Ipp').textContent = (Ipeak_p*1e3).toFixed(2)+' mA';
+  document.getElementById('m1_Rout').textContent= (Rout/1e3).toFixed(0)+' kΩ';
+
+  const cv = document.getElementById('c_iv');
+  const ctx = cv.getContext('2d');
+  const W=cv.clientWidth*devicePixelRatio||600, H=320;
+  cv.width=W; cv.height=H;
+  const pad={l:60,r:20,t:20,b:35};
+  const Imax = Math.max(Ipeak_n, Ipeak_p)*1.1;
+  const px = v => pad.l + (v/VDD)*(W-pad.l-pad.r);
+  const py = i => H/2 - pad.t/2 - i/(Imax)*(H/2-pad.t-5);
+
+  ctx.fillStyle='#12141e'; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#1e2136'; ctx.lineWidth=1;
+  [0, Imax/2, Imax].forEach(i => {
+    [i, -i].forEach(ii => {
+      if(ii < -Imax) return;
+      ctx.beginPath(); ctx.moveTo(pad.l,py(ii)); ctx.lineTo(W-pad.r,py(ii)); ctx.stroke();
+      ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='right';
+      ctx.fillText((ii*1e3).toFixed(1)+'mA', pad.l-3, py(ii)+3);
+    });
+  });
+  for(let v=0;v<=VDD;v+=VDD/4) {
+    ctx.beginPath(); ctx.moveTo(px(v),pad.t/2); ctx.lineTo(px(v),H-pad.b); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(v.toFixed(1)+'V', px(v), H-pad.b+12);
+  }
+  // Zero line
+  ctx.strokeStyle='#555'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(pad.l,py(0)); ctx.lineTo(W-pad.r,py(0)); ctx.stroke(); ctx.setLineDash([]);
+
+  // Compute IV curves
+  const Npts=300;
+  const ptsN=[], ptsP=[], ptsNet=[];
+  for(let i=0;i<=Npts;i++) {
+    const Vout = i/Npts * VDD;
+    // M_n: VGS = VGSn (fixed gate, drain=Vout). In saturation (Vout > VGSn - Vthn = Vov_n_q)
+    const VDS_n = Vout;
+    const in_sat_n = VDS_n >= Vov_n_q;
+    const ID_n = in_sat_n ? 0.5*unCox*WLn*Vov_n_q*Vov_n_q*(1+labn*VDS_n) : unCox*WLn*((Vov_n_q)*VDS_n - VDS_n*VDS_n/2);
+    // M_p: |VGS_p| = VGSp_q (fixed). VDS_p = Vout - VDD. In saturation if |VDS_p| >= Vov_p_q.
+    const VSD_p = VDD - Vout;
+    const in_sat_p = VSD_p >= Vov_p_q;
+    const ID_p = in_sat_p ? 0.5*upCox*WLp*Vov_p_q*Vov_p_q*(1+labp*VSD_p) : upCox*WLp*((Vov_p_q)*VSD_p - VSD_p*VSD_p/2);
+    ptsN.push([px(Vout), py(-Math.min(ID_n, Imax*0.99))]);
+    ptsP.push([px(Vout), py(Math.min(ID_p, Imax*0.99))]);
+    ptsNet.push([px(Vout), py(Math.max(-Imax*0.99, Math.min(ID_p - ID_n, Imax*0.99)))]);
+  }
+  const drawLine = (pts, color) => {
+    ctx.strokeStyle=color; ctx.lineWidth=2.5; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
+    pts.forEach(p=>ctx.lineTo(p[0],p[1])); ctx.stroke();
+  };
+  drawLine(ptsN, '#4ecdc4');
+  drawLine(ptsP, '#f6ad55');
+  drawLine(ptsNet, '#fc8181');
+
+  ctx.fillStyle='#555'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('Vout (V)', (pad.l+W-pad.r)/2, H-2);
+}
+
+// ─── TAB 2: THD vs IQ ─────────────────────────────────────────────────────
+function updateTab2() {
+  const VDD  = parseFloat(document.getElementById('t2_VDD').value);
+  const IQ   = parseFloat(document.getElementById('t2_IQ').value)*1e-6;
+  const Ipk  = parseFloat(document.getElementById('t2_Ipk').value)*1e-3;
+  const RL   = parseFloat(document.getElementById('t2_RL').value);
+
+  document.getElementById('v_t2_VDD').textContent = VDD.toFixed(1);
+  document.getElementById('v_t2_IQ').textContent  = (IQ*1e6).toFixed(0);
+  document.getElementById('v_t2_Ipk').textContent = (Ipk*1e3).toFixed(1);
+  document.getElementById('v_t2_RL').textContent  = RL.toFixed(0);
+
+  const ratio = IQ/Ipk;
+  // THD model: THD_dB = -20 - 40*log10(IQ/Ipk) for reasonable range
+  const THD_est = -20 - 40*Math.log10(Math.max(ratio, 0.001));
+  const Pout_max = 0.5 * (Ipk*RL)*(Ipk*RL) / RL; // Vout_peak = Ipk*RL, Pout = Vp²/2R
+  const Pq = VDD * IQ;
+  const eff = Pout_max / (Pout_max + Pq) * 100;
+
+  document.getElementById('m2_ratio').textContent = (ratio*100).toFixed(1)+'%';
+  document.getElementById('m2_Pout').textContent  = (Pout_max*1e3).toFixed(1)+' mW';
+  document.getElementById('m2_Pq').textContent    = (Pq*1e6).toFixed(0)+' µW';
+  document.getElementById('m2_eff').textContent   = eff.toFixed(1)+'%';
+  const tEl = document.getElementById('m2_thd');
+  tEl.textContent = THD_est.toFixed(0)+' dB';
+  tEl.className = 'value ' + (THD_est<-80?'good':THD_est<-60?'warn':'bad');
+
+  const cv = document.getElementById('c_thd');
+  const ctx = cv.getContext('2d');
+  const W=cv.clientWidth*devicePixelRatio||600, H=320;
+  cv.width=W; cv.height=H;
+  const pad={l:60,r:60,t:20,b:35};
+  const IQMin=0.1e-6, IQMax=Math.min(Ipk, 5e-3);
+  const yMin_thd=-120, yMax_thd=-20;
+  const yMin_p=0, yMax_p=VDD*IQMax*1e6;
+  const px = IQ => pad.l + (Math.log10(IQ)-Math.log10(IQMin))/(Math.log10(IQMax)-Math.log10(IQMin))*(W-pad.l-pad.r);
+  const py_thd = t => H - pad.b - (t-yMin_thd)/(yMax_thd-yMin_thd)*(H-pad.t-pad.b);
+  const py_pwr = p => H - pad.b - (p-yMin_p)/(yMax_p-yMin_p)*(H-pad.t-pad.b);
+
+  ctx.fillStyle='#12141e'; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#1e2136'; ctx.lineWidth=1;
+  for(let t=-120;t<=-20;t+=20) {
+    ctx.beginPath(); ctx.moveTo(pad.l,py_thd(t)); ctx.lineTo(W-pad.r,py_thd(t)); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='right';
+    ctx.fillText(t+'dB', pad.l-3, py_thd(t)+3);
+  }
+  const IQlabels = {0.1e-6:'100nA',1e-6:'1µA',10e-6:'10µA',100e-6:'100µA',1e-3:'1mA',5e-3:'5mA'};
+  [0.1e-6,1e-6,10e-6,100e-6,1e-3,5e-3].forEach(iq => {
+    if(iq<IQMin||iq>IQMax) return;
+    ctx.beginPath(); ctx.moveTo(px(iq),pad.t); ctx.lineTo(px(iq),H-pad.b); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(IQlabels[iq]||'', px(iq), H-pad.b+12);
+  });
+
+  const ptsTHD=[], ptsPwr=[];
+  for(let e=-7; e<=Math.log10(IQMax); e+=0.05) {
+    const iq = Math.pow(10,e);
+    if(iq<IQMin||iq>IQMax) continue;
+    const r=iq/Ipk;
+    const thd = -20 - 40*Math.log10(Math.max(r,0.001));
+    const pwr = VDD*iq*1e6;
+    ptsTHD.push([px(iq), py_thd(Math.max(yMin_thd, Math.min(yMax_thd, thd)))]);
+    ptsPwr.push([px(iq), py_pwr(Math.min(yMax_p, pwr))]);
+  }
+  ctx.strokeStyle='#4ecdc4'; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(ptsTHD[0][0],ptsTHD[0][1]);
+  ptsTHD.forEach(p=>ctx.lineTo(p[0],p[1])); ctx.stroke();
+
+  ctx.strokeStyle='#f6ad55'; ctx.lineWidth=2; ctx.setLineDash([5,3]);
+  ctx.beginPath(); ctx.moveTo(ptsPwr[0][0],ptsPwr[0][1]);
+  ptsPwr.forEach(p=>ctx.lineTo(p[0],p[1])); ctx.stroke(); ctx.setLineDash([]);
+
+  // IQ marker
+  if(IQ >= IQMin && IQ <= IQMax) {
+    ctx.strokeStyle='#3a7bd5'; ctx.lineWidth=1.5; ctx.setLineDash([5,3]);
+    ctx.beginPath(); ctx.moveTo(px(IQ),pad.t); ctx.lineTo(px(IQ),H-pad.b); ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // Power axis label (right side)
+  ctx.fillStyle='#f6ad55'; ctx.font='9px sans-serif'; ctx.textAlign='left';
+  ctx.fillText(yMax_p.toFixed(0)+'µW', W-pad.r+3, pad.t+6);
+  ctx.fillStyle='#555'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('Quiescent Current IQ', (pad.l+W-pad.r)/2, H-2);
+}
+
+function showTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
+  if(n===0) updateTab0(); else if(n===1) updateTab1(); else updateTab2();
+}
+function wire(ids,fn){ ids.forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('input',fn);}); }
+wire(['t0_gm1','t0_Cc','t0_CL_int','t0_CL_ext','t0_gm_out','t0_Vov6'], updateTab0);
+wire(['t1_VDD','t1_WLn','t1_WLp','t1_unCox','t1_upCox','t1_Vthn','t1_Vthp','t1_VGSn'], updateTab1);
+wire(['t2_VDD','t2_IQ','t2_Ipk','t2_RL'], updateTab2);
+window.addEventListener('load', () => updateTab0());
+window.addEventListener('resize', () => {
+  const a=document.querySelector('.panel.active');
+  if(a) showTab(['tab0','tab1','tab2'].indexOf(a.id));
+});
+</script>
+</body>
+</html>

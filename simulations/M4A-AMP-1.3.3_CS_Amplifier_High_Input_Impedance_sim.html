@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.3.3 — CS High Input Impedance</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;gap:16px;align-items:baseline;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:14px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.3.3</div>
+  <div class="topic">CS High Input Impedance — Bias RG, Gate Capacitance, Miller Effect</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>Gate Parameters</h3>
+      <label>RG (MΩ): <b id="rg_lbl">1.0</b></label>
+      <input type="range" id="rg" min="0.01" max="100" value="1" step="0.1">
+      <label>Cgs (pF): <b id="cgs_lbl">2.0</b></label>
+      <input type="range" id="cgs" min="0.1" max="50" value="2" step="0.1">
+      <label>Cgd (pF): <b id="cgd_lbl">0.5</b></label>
+      <input type="range" id="cgd" min="0.01" max="10" value="0.5" step="0.05">
+    </div>
+    <div class="cg">
+      <h3>Amplifier</h3>
+      <label>|Av| (V/V): <b id="av_lbl">20</b></label>
+      <input type="range" id="av" min="1" max="100" value="20" step="1">
+      <label>Rsource (kΩ): <b id="rs_lbl">10</b></label>
+      <input type="range" id="rsrc" min="0.1" max="1000" value="10" step="1">
+    </div>
+    <div class="cg">
+      <h3>BJT CE Comparison</h3>
+      <label>rπ (kΩ): <b id="rpi_lbl">20</b></label>
+      <input type="range" id="rpi" min="1" max="200" value="20" step="1">
+      <label>CE R1||R2 (kΩ): <b id="rbias_lbl">20</b></label>
+      <input type="range" id="rbias" min="1" max="200" value="20" step="1">
+    </div>
+    <div class="cg">
+      <h3>Readout</h3>
+      <div class="rd">Cin_Miller: <span id="r_cin">—</span> pF</div>
+      <div class="rd">CS Zin @ DC: <span id="r_zin_dc">—</span> MΩ</div>
+      <div class="rd">CE Zin @ DC: <span id="r_zin_ce">—</span> kΩ</div>
+      <div class="rd">Signal reach CS: <span id="r_cs_frac">—</span> %</div>
+      <div class="rd">Signal reach CE: <span id="r_ce_frac">—</span> %</div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_zin_dc">—</div><div class="l">CS Zin DC (MΩ)</div></div>
+      <div class="met"><div class="v" id="m_cin">—</div><div class="l">Cin Miller (pF)</div></div>
+      <div class="met"><div class="v" id="m_f3db">—</div><div class="l">BW limit (kHz)</div></div>
+      <div class="met"><div class="v" id="m_reach">—</div><div class="l">CS signal reach %</div></div>
+    </div>
+    <div>
+      <div class="pl">Zin(f) — CS vs CE vs ideal (log frequency)</div>
+      <canvas id="zinCanvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">Signal transfer fraction vs Source Impedance — CS vs CE</div>
+      <canvas id="fracCanvas" height="170"></canvas>
+    </div>
+    <div>
+      <div class="pl">Cin_Miller vs |Av| (parametric over Cgd)</div>
+      <canvas id="millerCanvas" height="150"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+function update(){
+  const rg=parseFloat(document.getElementById('rg').value)*1e6;
+  const cgs=parseFloat(document.getElementById('cgs').value)*1e-12;
+  const cgd=parseFloat(document.getElementById('cgd').value)*1e-12;
+  const av=parseFloat(document.getElementById('av').value);
+  const rsrc=parseFloat(document.getElementById('rsrc').value)*1e3;
+  const rpi=parseFloat(document.getElementById('rpi').value)*1e3;
+  const rbias=parseFloat(document.getElementById('rbias').value)*1e3;
+
+  document.getElementById('rg_lbl').textContent=(rg/1e6).toFixed(1);
+  document.getElementById('cgs_lbl').textContent=(cgs*1e12).toFixed(1);
+  document.getElementById('cgd_lbl').textContent=(cgd*1e12).toFixed(2);
+  document.getElementById('av_lbl').textContent=av.toFixed(0);
+  document.getElementById('rs_lbl').textContent=(rsrc/1e3).toFixed(0);
+  document.getElementById('rpi_lbl').textContent=(rpi/1e3).toFixed(0);
+  document.getElementById('rbias_lbl').textContent=(rbias/1e3).toFixed(0);
+
+  const cin_miller=cgs+cgd*(1+av);
+  const f3db=1/(2*Math.PI*rsrc*cin_miller);
+  const zin_cs_dc=rg;
+  const zin_ce_dc=rpi*rbias/(rpi+rbias);
+  const frac_cs=rg/(rsrc+rg)*100;
+  const frac_ce=zin_ce_dc/(rsrc+zin_ce_dc)*100;
+
+  document.getElementById('r_cin').textContent=(cin_miller*1e12).toFixed(2);
+  document.getElementById('r_zin_dc').textContent=(zin_cs_dc/1e6).toFixed(2);
+  document.getElementById('r_zin_ce').textContent=(zin_ce_dc/1e3).toFixed(1);
+  document.getElementById('r_cs_frac').textContent=frac_cs.toFixed(1);
+  document.getElementById('r_ce_frac').textContent=frac_ce.toFixed(1);
+
+  document.getElementById('m_zin_dc').textContent=(zin_cs_dc/1e6).toFixed(1);
+  document.getElementById('m_cin').textContent=(cin_miller*1e12).toFixed(1);
+  document.getElementById('m_f3db').textContent=(f3db/1e3).toFixed(1);
+  document.getElementById('m_reach').textContent=frac_cs.toFixed(0)+'%';
+
+  drawZin(rg,cgs,cgd,av,rpi,rbias);
+  drawFrac(rg,cgs,cgd,av,rpi,rbias);
+  drawMiller(cgs,cgd,av);
+}
+
+function drawZin(rg,cgs,cgd,av,rpi,rbias){
+  const canvas=document.getElementById('zinCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:50,r:15,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  // Log frequency: 1 Hz to 1 GHz
+  const F_MIN=1,F_MAX=1e9;
+  const LOG_F_MIN=Math.log10(F_MIN),LOG_F_MAX=Math.log10(F_MAX);
+  // Log impedance: 1 Ω to 10 GΩ
+  const Z_MIN=1,Z_MAX=1e10;
+  const LOG_Z_MIN=Math.log10(Z_MIN),LOG_Z_MAX=Math.log10(Z_MAX);
+  function xOf(f){return pad.l+(Math.log10(f)-LOG_F_MIN)/(LOG_F_MAX-LOG_F_MIN)*pw;}
+  function yOf(z){if(z<=0)return pad.t+ph;return pad.t+ph-(Math.log10(Math.max(z,1))-LOG_Z_MIN)/(LOG_Z_MAX-LOG_Z_MIN)*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [1,10,100,1e3,1e4,1e5,1e6,1e7,1e8,1e9].forEach(f=>{
+    const x=xOf(f);ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';
+    const lbl=f>=1e9?'1G':f>=1e6?(f/1e6).toFixed(0)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f.toFixed(0);
+    ctx.fillText(lbl+'Hz',x-10,pad.t+ph+11);
+  });
+  [1,1e3,1e6,1e9].forEach(z=>{
+    const y=yOf(z);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';
+    const lbl=z>=1e9?(z/1e9).toFixed(0)+'GΩ':z>=1e6?(z/1e6).toFixed(0)+'MΩ':z>=1e3?(z/1e3).toFixed(0)+'kΩ':z.toFixed(0)+'Ω';
+    ctx.fillText(lbl,0,y+3);
+  });
+
+  const cin_miller=cgs+cgd*(1+av);
+  const zin_ce=rpi*rbias/(rpi+rbias);
+
+  // CS Zin: RG || 1/(jw*cin_miller) — magnitude = RG/sqrt(1+(w*RG*cin_miller)^2)
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const f=Math.pow(10,LOG_F_MIN+(LOG_F_MAX-LOG_F_MIN)*px/pw);
+    const wrc=2*Math.PI*f*rg*cin_miller;
+    const z=rg/Math.sqrt(1+wrc*wrc);
+    const y=yOf(z);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  // CE Zin: approximately constant (rπ||R1||R2, no freq dep at audio)
+  ctx.strokeStyle='#cc6600';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  const y_ce=yOf(zin_ce);
+  ctx.beginPath();ctx.moveTo(pad.l,y_ce);ctx.lineTo(pad.l+pw,y_ce);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Ideal (∞) reference
+  ctx.strokeStyle='#888';ctx.lineWidth=0.8;ctx.setLineDash([2,4]);
+  ctx.beginPath();ctx.moveTo(pad.l,yOf(Z_MAX));ctx.lineTo(pad.l+pw,yOf(Z_MAX));ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='9px Courier New';
+  ctx.fillText('── CS Zin',pad.l+5,pad.t+12);
+  ctx.fillStyle='#cc6600';ctx.fillText('-- CE Zin',pad.l+90,pad.t+12);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();
+  ctx.fillText('Frequency →',W/2-20,H-1);
+  ctx.save();ctx.translate(12,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('|Zin|',0,0);ctx.restore();
+}
+
+function drawFrac(rg,cgs,cgd,av,rpi,rbias){
+  const canvas=document.getElementById('fracCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:42,r:15,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const RS_MAX=1e6; // 1 MΩ max source
+  function xOf(rs){return pad.l+Math.log10(Math.max(rs,1))/Math.log10(RS_MAX)*pw;}
+  function yOf(pct){return pad.t+ph-pct/100*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [0,20,40,60,80,100].forEach(p=>{
+    const y=yOf(p);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(p,0,y+3);
+  });
+  [10,100,1e3,1e4,1e5,1e6].forEach(rs=>{
+    const x=xOf(rs);ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';
+    const lbl=rs>=1e6?'1M':rs>=1e3?(rs/1e3).toFixed(0)+'k':rs.toFixed(0);
+    ctx.fillText(lbl,x-10,pad.t+ph+11);
+  });
+
+  const zin_ce=rpi*rbias/(rpi+rbias);
+
+  // CS signal fraction vs Rsource
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const rs=Math.pow(10,px/pw*Math.log10(RS_MAX));
+    const frac=rg/(rs+rg)*100;
+    const y=yOf(frac);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  // CE fraction
+  ctx.strokeStyle='#cc6600';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const rs=Math.pow(10,px/pw*Math.log10(RS_MAX));
+    const frac=zin_ce/(rs+zin_ce)*100;
+    const y=yOf(frac);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();ctx.setLineDash([]);
+
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='9px Courier New';
+  ctx.fillText('── CS',pad.l+5,pad.t+12);
+  ctx.fillStyle='#cc6600';ctx.fillText('-- CE',pad.l+55,pad.t+12);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();
+  ctx.fillText('Rsource (Ω) →',W/2-20,H-1);
+  ctx.save();ctx.translate(10,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('Signal reach (%)',0,0);ctx.restore();
+}
+
+function drawMiller(cgs,cgd,av_cur){
+  const canvas=document.getElementById('millerCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:42,r:15,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const AV_MAX=100,CIN_MAX=(cgs+cgd*(1+AV_MAX))*1e12*1.1;
+  function xOf(av){return pad.l+av/AV_MAX*pw;}
+  function yOf(cin){return pad.t+ph-Math.min(cin,CIN_MAX)/CIN_MAX*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const cin=CIN_MAX*i/4;
+    const y=yOf(cin);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(cin.toFixed(0),0,y+3);
+  }
+
+  const cgdArr=[0.1e-12,0.5e-12,1e-12,2e-12,5e-12];
+  const colors=['#888','#006633',cs.getPropertyValue('--accent').trim(),'#cc6600','#cc0000'];
+  cgdArr.forEach((cgd_i,idx)=>{
+    ctx.strokeStyle=colors[idx];ctx.lineWidth=1.5;
+    ctx.beginPath();
+    for(let px=0;px<=pw;px++){
+      const av_i=px/pw*AV_MAX;
+      const cin=(cgs+cgd_i*(1+av_i))*1e12;
+      const y=yOf(cin);
+      if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+    }
+    ctx.stroke();
+    ctx.fillStyle=colors[idx];ctx.font='8px Courier New';
+    ctx.fillText('Cgd='+(cgd_i*1e12).toFixed(1)+'pF',W-95,14+idx*12);
+  });
+
+  const cin_q=(cgs+cgd*(1+av_cur))*1e12;
+  ctx.fillStyle='#ff8800';
+  ctx.beginPath();ctx.arc(xOf(av_cur),yOf(cin_q),5,0,2*Math.PI);ctx.fill();
+
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+  ctx.fillText('|Av| (V/V) →',W/2-20,H-1);
+  ctx.save();ctx.translate(10,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('Cin (pF)',0,0);ctx.restore();
+}
+
+['rg','cgs','cgd','av','rsrc','rpi','rbias'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

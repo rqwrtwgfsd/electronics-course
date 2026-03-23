@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-DA-2.4.2 — Noise</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-DA-2.4.2</div>
+  <h1>Differential Amplifier — Non-Idealities: Noise</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Noise Parameters</h2>
+      <label>g_m (mA/V): <b id="gm_l">1.65</b> <input type="range" id="gm" min="0.1" max="20" value="1.65" step="0.05"></label>
+      <label>γ (MOSFET noise): <b id="gam_l">0.67</b> <input type="range" id="gam" min="0.5" max="2.0" value="0.67" step="0.01"></label>
+      <label>K_f (×10⁻²⁶ J): <b id="kf_l">2.0</b> <input type="range" id="kf" min="0.1" max="20" value="2.0" step="0.1"></label>
+      <label>W×L (μm²): <b id="wl_l">50</b> μm² <input type="range" id="wl" min="1" max="1000" value="50" step="1"></label>
+      <label>C_ox (fF/μm²): <b id="cox_l">8.6</b> <input type="range" id="cox" min="1" max="30" value="8.6" step="0.1"></label>
+      <label>Load g_m ratio (g_m,p/g_m,n): <b id="gmr_l">1.0</b> <input type="range" id="gmr" min="0.1" max="3" value="1.0" step="0.1"></label>
+
+      <div class="ro">Thermal S_vn (nV/√Hz): <span id="svn_t">--</span></div>
+      <div class="ro" style="margin-top:4px">Flicker S_vn at 1 kHz (nV/√Hz): <span id="svn_f">--</span></div>
+      <div class="ro g" style="margin-top:4px">Total noise at 1 kHz (nV/√Hz): <span id="svn_tot">--</span></div>
+      <div class="ro" style="margin-top:4px">Noise corner f_c (kHz): <span id="fc_d">--</span></div>
+      <div class="ro" style="margin-top:4px">Load noise at 1 kHz (nV/√Hz): <span id="svn_load">--</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Input-Referred Noise vs Frequency</h2>
+      <canvas id="cv" height="280"></canvas>
+      <div class="insight">
+        Blue: thermal noise floor (flat). Orange: 1/f flicker noise (−10 dB/decade). Green: total noise = √(thermal² + flicker²). Red dashed: load contribution to thermal noise. The noise corner frequency f_c marks where 1/f equals thermal.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const gm=+document.getElementById('gm').value*1e-3;
+    const gam=+document.getElementById('gam').value;
+    const kf=+document.getElementById('kf').value*1e-26;
+    const wl=+document.getElementById('wl').value;
+    const cox=+document.getElementById('cox').value*1e-15; // F/um^2
+    const gmr=+document.getElementById('gmr').value;
+
+    document.getElementById('gm_l').textContent=(gm*1e3).toFixed(2);
+    document.getElementById('gam_l').textContent=gam.toFixed(2);
+    document.getElementById('kf_l').textContent=(kf/1e-26).toFixed(1);
+    document.getElementById('wl_l').textContent=wl.toFixed(0);
+    document.getElementById('cox_l').textContent=(cox*1e15).toFixed(1);
+    document.getElementById('gmr_l').textContent=gmr.toFixed(1);
+
+    const kT=1.38e-23*300;
+    const svn_thermal_pair=Math.sqrt(2*4*kT*gam/gm)*1e9; // nV/√Hz
+    const svn_load_frac=gmr; // g_m,p/g_m,n ratio contribution
+    const svn_thermal_total=svn_thermal_pair*Math.sqrt(1+gmr*gmr); // pair + load in quadrature... simplified: load adds (gmp/gmn)^2 times pair contribution
+
+    // Flicker: 2 * Kf/(Cox * WL * f) per transistor pair
+    const svn_flicker_1k=Math.sqrt(2*kf/(cox*wl*1e-12*1000))*1e9; // um^2 to m^2
+    const svn_total_1k=Math.sqrt(svn_thermal_pair**2+svn_flicker_1k**2);
+    const fc=kf*gm/(4*kT*gam*cox*wl*1e-12)/1000; // kHz
+
+    const svn_load_1k=svn_thermal_pair*gmr; // simplified
+
+    document.getElementById('svn_t').textContent=svn_thermal_pair.toFixed(2);
+    document.getElementById('svn_f').textContent=svn_flicker_1k.toFixed(2);
+    document.getElementById('svn_tot').textContent=svn_total_1k.toFixed(2);
+    document.getElementById('fc_d').textContent=fc.toFixed(2);
+    document.getElementById('svn_load').textContent=svn_load_1k.toFixed(2);
+
+    draw(svn_thermal_pair,kf,cox,wl,fc);
+  }
+
+  function draw(svn_t,kf,cox,wl,fc_kHz){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=280;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,280);
+    const pL=55,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=280-pT-pB;
+
+    const fmin=1, fmax=1e8;
+    const logFmin=0, logFmax=8;
+    const snMax=200, snMin=0;
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='10px system-ui';
+    ctx.fillText('S_vn (nV/√Hz)', 2, pT+ph/2);
+    ctx.fillText('Frequency (Hz)', pL+pw/2-20, 280-4);
+
+    for(let i=0;i<=5;i++){
+      const v=i/5*snMax; const y=pT+ph-(i/5)*ph;
+      ctx.fillStyle='#8888aa'; ctx.fillText(v.toFixed(0), 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+    ['1','100','10k','1M','100M'].forEach((lbl,i)=>{
+      const x=pL+(i*2/logFmax)*pw;
+      ctx.fillStyle='#8888aa'; ctx.fillText(lbl, x-10, pT+ph+14);
+    });
+
+    // Thermal (flat)
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2; ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(pL, pT+ph-(svn_t/snMax)*ph);
+    ctx.lineTo(pL+pw, pT+ph-(svn_t/snMax)*ph);
+    ctx.stroke();
+
+    // Flicker
+    ctx.strokeStyle='#ff8800'; ctx.lineWidth=2; ctx.setLineDash([4,3]);
+    ctx.beginPath(); let first=true;
+    for(let px=0;px<=pw;px++){
+      const f=Math.pow(10,logFmin+(px/pw)*(logFmax-logFmin));
+      const kT=1.38e-23*300;
+      const svn_f=Math.sqrt(2*kf/(cox*wl*1e-12*f))*1e9;
+      const y=pT+ph-(Math.min(svn_f,snMax)/snMax)*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // Total
+    ctx.strokeStyle='#00994d'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+    ctx.beginPath(); first=true;
+    for(let px=0;px<=pw;px++){
+      const f=Math.pow(10,logFmin+(px/pw)*(logFmax-logFmin));
+      const kT=1.38e-23*300;
+      const svn_f=Math.sqrt(2*kf/(cox*wl*1e-12*f))*1e9;
+      const svn_tot=Math.sqrt(svn_t**2+svn_f**2);
+      const y=pT+ph-(Math.min(svn_tot,snMax)/snMax)*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // fc marker
+    const xfc=pL+((Math.log10(fc_kHz*1e3)-logFmin)/(logFmax-logFmin))*pw;
+    if(xfc>pL&&xfc<pL+pw){
+      ctx.strokeStyle='#cc220066'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(xfc,pT); ctx.lineTo(xfc,pT+ph); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle='#cc2200'; ctx.font='9px system-ui';
+      ctx.fillText('f_c='+fc_kHz.toFixed(1)+'kHz', xfc+2, pT+12);
+    }
+
+    const items=[{c:'#0066cc',lbl:'Thermal',d:[]},{c:'#ff8800',lbl:'Flicker (1/f)',d:[4,3]},{c:'#00994d',lbl:'Total',d:[]}];
+    items.forEach(({c,lbl,d},i)=>{
+      ctx.strokeStyle=c; ctx.lineWidth=1.8; ctx.setLineDash(d);
+      ctx.beginPath(); ctx.moveTo(pL+pw-90,pT+12+14*i); ctx.lineTo(pL+pw-70,pT+12+14*i); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle='#8888aa'; ctx.font='10px system-ui'; ctx.fillText(lbl, pL+pw-66, pT+16+14*i);
+    });
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

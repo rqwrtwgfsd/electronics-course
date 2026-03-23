@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.3.8 — CG Circuit Structure</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;gap:16px;align-items:baseline;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:14px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.3.8</div>
+  <div class="topic">CG Circuit Structure — Bias, Gate Bypass, Signal Path</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>MOSFET & Supply</h3>
+      <label>VDD (V): <b id="vdd_lbl">12</b></label>
+      <input type="range" id="vdd" min="1.8" max="20" value="12" step="0.1">
+      <label>K (mA/V²): <b id="k_lbl">3.0</b></label>
+      <input type="range" id="k" min="0.1" max="20" value="3" step="0.1">
+      <label>Vth (V): <b id="vth_lbl">1.0</b></label>
+      <input type="range" id="vth" min="0.3" max="4" value="1.0" step="0.05">
+    </div>
+    <div class="cg">
+      <h3>Resistors</h3>
+      <label>R1 (kΩ): <b id="r1_lbl">100</b></label>
+      <input type="range" id="r1" min="10" max="1000" value="100" step="10">
+      <label>R2 (kΩ): <b id="r2_lbl">33</b></label>
+      <input type="range" id="r2" min="5" max="500" value="33" step="5">
+      <label>RS (Ω): <b id="rs_lbl">1000</b></label>
+      <input type="range" id="rs" min="100" max="5000" value="1000" step="100">
+      <label>RD (kΩ): <b id="rd_lbl">3.0</b></label>
+      <input type="range" id="rd" min="0.1" max="20" value="3" step="0.1">
+      <label>RL (kΩ): <b id="rl_lbl">10</b></label>
+      <input type="range" id="rl" min="0.05" max="100" value="10" step="0.5">
+    </div>
+    <div class="cg">
+      <h3>Gate Bypass Cap</h3>
+      <label>Cbyp (µF): <b id="cbyp_lbl">10</b></label>
+      <input type="range" id="cbyp" min="0.001" max="100" value="10" step="0.1">
+      <label>Signal freq (Hz): <b id="freq_lbl">1000</b></label>
+      <input type="range" id="freq" min="10" max="1000000" value="1000" step="100">
+    </div>
+    <div class="cg">
+      <h3>Operating Point</h3>
+      <div class="rd">VG: <span id="r_vg">—</span> V</div>
+      <div class="rd">ID: <span id="r_id">—</span> mA</div>
+      <div class="rd">VGS: <span id="r_vgs">—</span> V</div>
+      <div class="rd">VDS: <span id="r_vds">—</span> V</div>
+      <div class="rd">gm: <span id="r_gm">—</span> mA/V</div>
+      <div class="rd">Av (bypassed): <span id="r_av">—</span> V/V</div>
+      <div class="rd">Zbyp vs Zin: <span id="r_bypass">—</span></div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_av">—</div><div class="l">|Av| (V/V)</div></div>
+      <div class="met"><div class="v" id="m_zin">—</div><div class="l">Zin (Ω)</div></div>
+      <div class="met"><div class="v" id="m_zbyp">—</div><div class="l">Zbyp (Ω)</div></div>
+      <div class="met"><div class="v" id="m_bypass_ok">—</div><div class="l">Bypass OK?</div></div>
+    </div>
+    <div>
+      <div class="pl">CG load line and Q-point (same as CS but source ≠ 0)</div>
+      <canvas id="loadCanvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">Gate bypass impedance vs frequency — vs Zin = 1/gm</div>
+      <canvas id="bypassCanvas" height="170"></canvas>
+    </div>
+    <div>
+      <div class="pl">|Av| vs frequency — effect of bypass capacitor</div>
+      <canvas id="avfCanvas" height="140"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+function solveBias(vdd,k,vth,r1k,r2k,rs){
+  const vg=vdd*r2k/(r1k+r2k);
+  if(vg<=vth) return {vg,id:0,vgs:vg,vs:0};
+  const A=k*rs*rs;
+  const B=-(2*k*rs*(vg-vth)+1);
+  const C=k*(vg-vth)*(vg-vth);
+  let id=0;
+  if(Math.abs(A)<1e-9){id=Math.max(0,k*(vg-vth)*(vg-vth));}
+  else{
+    const disc=B*B-4*A*C;
+    if(disc<0){id=0;}
+    else{
+      const i1=(-B-Math.sqrt(disc))/(2*A);
+      const i2=(-B+Math.sqrt(disc))/(2*A);
+      const cands=[i1,i2].filter(x=>x>=0);
+      id=cands.length?Math.min(...cands):0;
+    }
+  }
+  const vs=id*rs;
+  const vgs=vg-vs;
+  return {vg,id,vgs,vs};
+}
+
+function update(){
+  const vdd=parseFloat(document.getElementById('vdd').value);
+  const k=parseFloat(document.getElementById('k').value)*1e-3;
+  const vth=parseFloat(document.getElementById('vth').value);
+  const r1k=parseFloat(document.getElementById('r1').value);
+  const r2k=parseFloat(document.getElementById('r2').value);
+  const rs=parseFloat(document.getElementById('rs').value);
+  const rd=parseFloat(document.getElementById('rd').value)*1e3;
+  const rl=parseFloat(document.getElementById('rl').value)*1e3;
+  const cbyp=parseFloat(document.getElementById('cbyp').value)*1e-6;
+  const freq=parseFloat(document.getElementById('freq').value);
+
+  document.getElementById('vdd_lbl').textContent=vdd.toFixed(1);
+  document.getElementById('k_lbl').textContent=(k*1e3).toFixed(1);
+  document.getElementById('vth_lbl').textContent=vth.toFixed(2);
+  document.getElementById('r1_lbl').textContent=r1k.toFixed(0);
+  document.getElementById('r2_lbl').textContent=r2k.toFixed(0);
+  document.getElementById('rs_lbl').textContent=rs.toFixed(0);
+  document.getElementById('rd_lbl').textContent=(rd/1e3).toFixed(1);
+  document.getElementById('rl_lbl').textContent=(rl/1e3).toFixed(0);
+  document.getElementById('cbyp_lbl').textContent=(cbyp*1e6).toFixed(1);
+  document.getElementById('freq_lbl').textContent=freq>=1e6?(freq/1e6).toFixed(1)+'M':freq>=1e3?(freq/1e3).toFixed(1)+'k':freq.toFixed(0);
+
+  const {vg,id,vgs,vs}=solveBias(vdd,k,vth,r1k,r2k,rs);
+  const vds=vdd-id*(rd+rs)-vs+vs; // = VDD - ID*RD - VS (VS already subtracted... VDS = VD - VS = (VDD-ID*RD) - VS)
+  const vd=vdd-id*rd;
+  const vds2=vd-vs;
+  const vov=vgs-vth;
+  const gm=vov>0?2*k*vov:0;
+  const rdl=rd*rl/(rd+rl);
+  const av=gm*rdl;
+  const zin=gm>0?1/gm:1e6;
+  const zbyp=1/(2*Math.PI*freq*cbyp);
+  const bypass_ok=zbyp<zin/10;
+
+  document.getElementById('r_vg').textContent=vg.toFixed(2);
+  document.getElementById('r_id').textContent=(id*1e3).toFixed(2);
+  document.getElementById('r_vgs').textContent=vgs.toFixed(2);
+  document.getElementById('r_vds').textContent=vds2.toFixed(2);
+  document.getElementById('r_gm').textContent=(gm*1e3).toFixed(2);
+  document.getElementById('r_av').textContent='+'+av.toFixed(2);
+  document.getElementById('r_bypass').textContent=(zbyp<zin?'OK ('+zbyp.toFixed(0)+'Ω < '+zin.toFixed(0)+'Ω)':'FAIL ('+zbyp.toFixed(0)+'Ω > '+zin.toFixed(0)+'Ω)');
+
+  document.getElementById('m_av').textContent=av.toFixed(1);
+  document.getElementById('m_zin').textContent=zin.toFixed(0);
+  document.getElementById('m_zbyp').textContent=zbyp.toFixed(1);
+  document.getElementById('m_bypass_ok').textContent=bypass_ok?'YES':'NO';
+
+  drawLoad(vdd,k,vth,vs,rd,rs,id,vds2,vov);
+  drawBypass(gm,cbyp,freq);
+  drawAvF(gm,rdl,cbyp);
+}
+
+function drawLoad(vdd,k,vth,vs,rd,rs,id_q,vds_q,vov_q){
+  const canvas=document.getElementById('loadCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:42,r:15,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const VDS_MAX=vdd;
+  const ID_MAX=vdd/(rd+rs)*1e3*1.1||5;
+  function xOf(vds){return pad.l+vds/VDS_MAX*pw;}
+  function yOf(id_mA){return pad.t+ph-Math.min(id_mA,ID_MAX)/ID_MAX*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const id=ID_MAX*i/4;
+    const y=yOf(id);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(id.toFixed(1),0,y+3);
+  }
+
+  // Load line: VDS = VDD - ID*RD - VS = VDD - ID*(RD+RS) [for DC, VS=ID*RS]
+  ctx.strokeStyle='#cc0000';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(xOf(vdd),yOf(0));ctx.lineTo(xOf(0),yOf(vdd/(rd+rs)*1e3));ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Saturation boundary
+  ctx.strokeStyle='#888';ctx.lineWidth=0.5;
+  ctx.beginPath();ctx.moveTo(xOf(0),yOf(0));ctx.lineTo(xOf(VDS_MAX),yOf(VDS_MAX/(rd/1e3)*1e3));ctx.stroke();
+
+  // Q-point
+  if(id_q*1e3<=ID_MAX&&vds_q>=0&&vds_q<=VDS_MAX){
+    ctx.fillStyle='#ff8800';
+    ctx.beginPath();ctx.arc(xOf(vds_q),yOf(id_q*1e3),6,0,2*Math.PI);ctx.fill();
+  }
+
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+  ctx.fillText('VDS (V) →',W/2-20,H-1);
+  ctx.save();ctx.translate(10,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('ID (mA)',0,0);ctx.restore();
+  ctx.fillStyle='#ff8800';ctx.fillText('● Q-point',pad.l+5,pad.t+12);
+  ctx.fillStyle='#cc0000';ctx.fillText('-- Load line',pad.l+80,pad.t+12);
+}
+
+function drawBypass(gm,cbyp,freq_cur){
+  const canvas=document.getElementById('bypassCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:50,r:15,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const F_MIN=1,F_MAX=1e7;
+  const lf_min=Math.log10(F_MIN),lf_max=Math.log10(F_MAX);
+  const zin=gm>0?1/gm:1e6;
+  const Z_MAX=Math.max(zin*100,1e6);
+  function xOf(f){return pad.l+(Math.log10(f)-lf_min)/(lf_max-lf_min)*pw;}
+  function yOf(z){return pad.t+ph-Math.log10(Math.max(z,0.01))/Math.log10(Z_MAX)*ph;}
+
+  // Grid
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [1,10,100,1e3,1e4,1e5,1e6,1e7].forEach(f=>{
+    const x=xOf(f);ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';
+    const lbl=f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f;
+    ctx.fillText(lbl,x-8,pad.t+ph+11);
+  });
+
+  // Zbyp vs f
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const f=Math.pow(10,lf_min+(lf_max-lf_min)*px/pw);
+    const z=1/(2*Math.PI*f*cbyp);
+    const y=yOf(z);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  // Zin (1/gm) horizontal
+  if(zin<Z_MAX){
+    ctx.strokeStyle='#cc6600';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+    ctx.beginPath();ctx.moveTo(pad.l,yOf(zin));ctx.lineTo(pad.l+pw,yOf(zin));ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#cc6600';ctx.font='8px Courier New';
+    ctx.fillText('Zin=1/gm='+zin.toFixed(0)+'Ω',pad.l+5,yOf(zin)-3);
+  }
+
+  // Current freq marker
+  const zbyp_cur=1/(2*Math.PI*freq_cur*cbyp);
+  ctx.fillStyle='#ff8800';
+  ctx.beginPath();ctx.arc(xOf(freq_cur),yOf(zbyp_cur),5,0,2*Math.PI);ctx.fill();
+
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='8px Courier New';
+  ctx.fillText('── Zbyp (gate cap)',pad.l+5,pad.t+10);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+  ctx.fillText('f (Hz) →',W/2-20,H-1);
+  ctx.save();ctx.translate(10,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('|Z| (Ω)',0,0);ctx.restore();
+}
+
+function drawAvF(gm,rdl,cbyp){
+  const canvas=document.getElementById('avfCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:42,r:15,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const F_MIN=1,F_MAX=1e7;
+  const lf_min=Math.log10(F_MIN),lf_max=Math.log10(F_MAX);
+  const zin=gm>0?1/gm:1e6;
+  const av_max=gm*rdl;
+  function xOf(f){return pad.l+(Math.log10(f)-lf_min)/(lf_max-lf_min)*pw;}
+  function yOf(av){return pad.t+ph-Math.min(av,av_max*1.1)/av_max/1.1*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const av=av_max*i/4;
+    const y=yOf(av);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(av.toFixed(0),0,y+3);
+  }
+
+  // Av vs f: at freq f, gate bypass impedance is Zbyp=1/(2πf*Cbyp).
+  // Effective gm_eff = gm / (1 + gm*Zbyp) (gate not fully bypassed at low f)
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const f=Math.pow(10,lf_min+(lf_max-lf_min)*px/pw);
+    const zbyp=1/(2*Math.PI*f*cbyp);
+    // Simplified: gain degrades as Zbyp rises
+    const gm_eff=gm/(1+gm*zbyp);
+    const av_eff=gm_eff*rdl;
+    const y=yOf(av_eff);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  // –3dB frequency
+  const f3db=gm/(2*Math.PI*cbyp);
+  if(f3db>=F_MIN&&f3db<=F_MAX){
+    ctx.strokeStyle='#ff8800';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(xOf(f3db),pad.t);ctx.lineTo(xOf(f3db),pad.t+ph);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#ff8800';ctx.font='8px Courier New';
+    const f3db_lbl=f3db>=1e3?(f3db/1e3).toFixed(1)+'kHz':f3db.toFixed(0)+'Hz';
+    ctx.fillText('f_L='+f3db_lbl,xOf(f3db)+3,pad.t+20);
+  }
+
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+  ctx.fillText('Frequency (Hz) →',W/2-30,H-1);
+  ctx.save();ctx.translate(10,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('|Av|',0,0);ctx.restore();
+}
+
+['vdd','k','vth','r1','r2','rs','rd','rl','cbyp','freq'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

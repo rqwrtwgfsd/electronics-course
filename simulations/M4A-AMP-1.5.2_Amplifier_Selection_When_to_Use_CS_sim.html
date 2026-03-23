@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.5.2 — When to Use Common-Source</title>
+<style>
+  :root{--bg:#f5f5f5;--card:#fff;--text:#1a1a1a;--subtext:#555;--accent:#0066cc;--accent2:#cc3300;--accent3:#007744;--accent4:#aa5500;--border:#ccc;--grid:#ddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--card:#242424;--text:#e8e8e8;--subtext:#aaa;--accent:#4da6ff;--accent2:#ff6644;--accent3:#44cc88;--accent4:#ffaa44;--border:#444;--grid:#333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;line-height:1.6;}
+  header{background:var(--card);border-bottom:2px solid var(--accent);padding:18px 28px;}
+  header h1{font-size:1.2rem;font-weight:700;color:var(--accent);}
+  header p{font-size:0.85rem;color:var(--subtext);margin-top:3px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:20px;padding:20px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px;}
+  .card h2{font-size:0.95rem;font-weight:600;margin-bottom:4px;}
+  .card p.desc{font-size:0.80rem;color:var(--subtext);margin-bottom:10px;line-height:1.4;}
+  canvas{display:block;width:100%;border-radius:4px;}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;}
+  .ctrl{display:flex;flex-direction:column;font-size:0.78rem;color:var(--subtext);min-width:140px;}
+  .ctrl label{margin-bottom:3px;}
+  input[type=range]{accent-color:var(--accent);width:100%;}
+  .readout{font-size:0.82rem;color:var(--accent);font-weight:600;margin-top:2px;}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:0.78rem;}
+  .leg{display:flex;align-items:center;gap:5px;}
+  .leg-dot{width:20px;height:3px;border-radius:2px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>M4A-AMP-1.5.2 — Amplifier Selection: When to Use Common-Source</h1>
+  <p>High-Z sourcing, intrinsic gain, Miller effect, and the CS vs CE vs op-amp trade space</p>
+</header>
+<div class="grid">
+
+  <!-- Plot 1: Input impedance vs frequency: CS vs CE -->
+  <div class="card">
+    <h2>Input Impedance vs Frequency: CS vs CE</h2>
+    <p class="desc">CS gate impedance: Zin = 1/(jωCgs) — capacitive only, zero DC current. CE base impedance: β/gm at low frequency, dropping with frequency. At high-impedance sources, CS wins for f less than the CE pole.</p>
+    <canvas id="c1" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>Cgs (pF): <span id="v1a" class="readout">2</span></label>
+        <input type="range" id="s1a" min="0.1" max="50" value="2" step="0.1">
+      </div>
+      <div class="ctrl">
+        <label>IC/ID (mA): <span id="v1b" class="readout">1</span></label>
+        <input type="range" id="s1b" min="0.01" max="10" value="1" step="0.01">
+      </div>
+      <div class="ctrl">
+        <label>β (BJT): <span id="v1c" class="readout">100</span></label>
+        <input type="range" id="s1c" min="20" max="500" value="100" step="5">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> CS (MOSFET gate)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> CE (BJT base)</div>
+    </div>
+  </div>
+
+  <!-- Plot 2: gm and intrinsic gain vs ID for CS -->
+  <div class="card">
+    <h2>CS Intrinsic Gain vs Drain Current</h2>
+    <p class="desc">gm ∝ sqrt(ID); ro ∝ 1/ID. Intrinsic gain A0 = gm×ro ∝ 1/sqrt(ID). Lower bias gives higher intrinsic gain — but lower bandwidth and higher 1/f noise corner. Drag to see the tradeoff.</p>
+    <canvas id="c2" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>µnCox × W/L (mA/V²): <span id="v2a" class="readout">1.0</span></label>
+        <input type="range" id="s2a" min="0.01" max="10" value="1" step="0.01">
+      </div>
+      <div class="ctrl">
+        <label>λ (V⁻¹): <span id="v2b" class="readout">0.05</span></label>
+        <input type="range" id="s2b" min="0.005" max="0.5" value="0.05" step="0.005">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> gm (mA/V)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> ro (kΩ)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3)"></div> A0 = gm×ro</div>
+    </div>
+  </div>
+
+  <!-- Plot 3: Miller capacitance — CS vs cascode -->
+  <div class="card">
+    <h2>Effective Input Capacitance: CS vs CS+CG Cascode</h2>
+    <p class="desc">Miller effect: Cin = Cgs + Cgd×(1+|Av|). Cascode (CG on top) eliminates Miller: Cin_casc ≈ Cgs + 2×Cgd. At high gain, the cascode dramatically reduces input capacitance and extends bandwidth.</p>
+    <canvas id="c3" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>Cgs (pF): <span id="v3a" class="readout">1</span></label>
+        <input type="range" id="s3a" min="0.1" max="20" value="1" step="0.1">
+      </div>
+      <div class="ctrl">
+        <label>Cgd (pF): <span id="v3b" class="readout">0.2</span></label>
+        <input type="range" id="s3b" min="0.01" max="5" value="0.2" step="0.01">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> CS: Cin = Cgs + Cgd×(1+|Av|)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Cascode: Cin ≈ Cgs + 2×Cgd</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function sc(id){const c=document.getElementById(id);const dpr=window.devicePixelRatio||1;return{canvas:c,resize:()=>{const w=c.clientWidth,h=c.clientHeight;c.width=w*dpr;c.height=h*dpr;const ctx=c.getContext('2d');ctx.scale(dpr,dpr);return{ctx,w,h};}};}
+
+function axes(ctx,w,h,pad,xL,yL,xT,yT){
+  ctx.clearRect(0,0,w,h);ctx.fillStyle=css('--card');ctx.fillRect(0,0,w,h);
+  const pw=w-pad.l-pad.r,ph=h-pad.t-pad.b;
+  ctx.strokeStyle=css('--grid');ctx.lineWidth=0.7;
+  xT.forEach(t=>{const x=pad.l+t.px*pw;ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();});
+  yT.forEach(t=>{const y=pad.t+ph-t.py*ph;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();});
+  ctx.strokeStyle=css('--text');ctx.lineWidth=1.5;ctx.strokeRect(pad.l,pad.t,pw,ph);
+  ctx.fillStyle=css('--subtext');ctx.font='10px system-ui';
+  ctx.textAlign='center';xT.forEach(t=>ctx.fillText(t.label,pad.l+t.px*pw,pad.t+ph+13));
+  ctx.textAlign='right';yT.forEach(t=>ctx.fillText(t.label,pad.l-4,pad.t+ph-t.py*ph+3.5));
+  ctx.fillStyle=css('--text');ctx.font='11px system-ui';ctx.textAlign='center';
+  ctx.fillText(xL,pad.l+pw/2,h-2);
+  ctx.save();ctx.translate(11,pad.t+ph/2);ctx.rotate(-Math.PI/2);ctx.fillText(yL,0,0);ctx.restore();
+  return{pw,ph};
+}
+
+// ─── Plot 1: Input impedance ──────────────────────────────────────────────────
+const p1=sc('c1');
+function draw1(){
+  const {ctx,w,h}=p1.resize();
+  const Cgs=parseFloat(document.getElementById('s1a').value)*1e-12;
+  const IC=parseFloat(document.getElementById('s1b').value)*1e-3;
+  const beta=parseFloat(document.getElementById('s1c').value);
+  document.getElementById('v1a').textContent=parseFloat(document.getElementById('s1a').value).toFixed(1);
+  document.getElementById('v1b').textContent=parseFloat(document.getElementById('s1b').value).toFixed(2);
+  document.getElementById('v1c').textContent=beta;
+
+  const gm_BJT=IC/26e-3;
+  const rpi=beta/gm_BJT;
+  const Cbe_BJT=gm_BJT/(2*Math.PI*500e6); // assume fT=500MHz for BJT
+
+  const pad={l:62,r:16,t:18,b:36};
+  const fMin=1,fMax=1e10;
+  const ZMin=1,ZMax=1e15;
+  const xDec=[1,10,100,1e3,1e4,1e5,1e6,1e7,1e8,1e9,1e10].filter(f=>f>=fMin&&f<=fMax);
+  const xTicks=xDec.map(f=>{const e=Math.round(Math.log10(f));const l={'0':'1','1':'10','2':'100','3':'1k','4':'10k','5':'100k','6':'1M','7':'10M','8':'100M','9':'1G','10':'10G'};return{px:Math.log10(f/fMin)/Math.log10(fMax/fMin),label:l[e]||f};});
+  const yDec=[1,1e3,1e6,1e9,1e12,1e15].filter(v=>v>=ZMin&&v<=ZMax);
+  const yTicks=yDec.map(v=>{const e=Math.round(Math.log10(v));const l={'0':'1Ω','3':'kΩ','6':'MΩ','9':'GΩ','12':'TΩ','15':'PΩ'};return{py:Math.log10(v/ZMin)/Math.log10(ZMax/ZMin),label:l[e]||v};});
+
+  const {pw,ph}=axes(ctx,w,h,pad,'Frequency (Hz)','|Zin|',xTicks,yTicks);
+  const xp=f=>pad.l+Math.log10(f/fMin)/Math.log10(fMax/fMin)*pw;
+  const yp=z=>pad.t+ph-Math.log10(Math.max(z,ZMin)/ZMin)/Math.log10(ZMax/ZMin)*ph;
+
+  // CS: Zin = 1/(2π*f*Cgs)
+  ctx.strokeStyle=css('--accent');ctx.lineWidth=2.5;
+  ctx.beginPath();let f=true;
+  for(let i=0;i<=300;i++){
+    const fv=fMin*Math.pow(fMax/fMin,i/300);
+    const z=1/(2*Math.PI*fv*Cgs);
+    if(z<ZMin||z>ZMax){f=true;continue;}
+    const x=xp(fv),y=yp(z);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  ctx.fillStyle=css('--accent');ctx.font='9px system-ui';ctx.textAlign='left';
+  ctx.fillText('CS (gate)',pad.l+4,pad.t+14);
+
+  // CE: Zin = rpi / (1 + j*f*rpi*Cbe_BJT)... simplified: rpi at low f, rolls off above rpi*Cbe corner
+  ctx.strokeStyle=css('--accent2');ctx.lineWidth=2.5;
+  ctx.beginPath();f=true;
+  for(let i=0;i<=300;i++){
+    const fv=fMin*Math.pow(fMax/fMin,i/300);
+    const z=rpi/Math.sqrt(1+(2*Math.PI*fv*rpi*Cbe_BJT)**2);
+    if(z<ZMin||z>ZMax){f=true;continue;}
+    const x=xp(fv),y=yp(z);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  ctx.fillStyle=css('--accent2');ctx.font='9px system-ui';ctx.textAlign='left';
+  ctx.fillText('CE (base) rπ='+(rpi/1000).toFixed(1)+'kΩ',pad.l+4,pad.t+27);
+}
+
+// ─── Plot 2: gm, ro, A0 vs ID ─────────────────────────────────────────────────
+const p2=sc('c2');
+function draw2(){
+  const {ctx,w,h}=p2.resize();
+  const KP=parseFloat(document.getElementById('s2a').value)*1e-3; // A/V^2
+  const lam=parseFloat(document.getElementById('s2b').value);
+  document.getElementById('v2a').textContent=parseFloat(document.getElementById('s2a').value).toFixed(2);
+  document.getElementById('v2b').textContent=lam.toFixed(3);
+
+  const pad={l:62,r:16,t:18,b:36};
+  const IDmin=1e-6,IDmax=10e-3;
+  const VMin=1e-3,VMax=1e5;
+  const xDec=[1e-6,10e-6,100e-6,1e-3,10e-3].filter(v=>v>=IDmin&&v<=IDmax);
+  const xTicks=xDec.map(v=>{const e=Math.round(Math.log10(v));const l={'-6':'1µA','-5':'10µA','-4':'100µA','-3':'1mA','-2':'10mA'};return{px:Math.log10(v/IDmin)/Math.log10(IDmax/IDmin),label:l[e]||v};});
+  const yDec=[1e-3,0.01,0.1,1,10,100,1e3,1e4,1e5].filter(v=>v>=VMin&&v<=VMax);
+  const yTicks=yDec.map(v=>{const e=Math.round(Math.log10(v));const l={'-3':'1m','-2':'10m','-1':'100m','0':'1','1':'10','2':'100','3':'1k','4':'10k','5':'100k'};return{py:Math.log10(v/VMin)/Math.log10(VMax/VMin),label:l[e]||v};});
+
+  const {pw,ph}=axes(ctx,w,h,pad,'ID (A)','Value (mA/V, kΩ, or V/V)',xTicks,yTicks);
+  const xp=ID=>pad.l+Math.log10(ID/IDmin)/Math.log10(IDmax/IDmin)*pw;
+  const yp=v=>pad.t+ph-Math.log10(Math.max(v,VMin)/VMin)/Math.log10(VMax/VMin)*ph;
+
+  // gm curve (mA/V normalized)
+  ctx.strokeStyle=css('--accent');ctx.lineWidth=2.2;
+  ctx.beginPath();let f=true;
+  for(let i=0;i<=200;i++){
+    const ID=IDmin*Math.pow(IDmax/IDmin,i/200);
+    const gm=Math.sqrt(2*KP*ID)*1e3; // in mA/V
+    const x=xp(ID),y=yp(gm);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  ctx.fillStyle=css('--accent');ctx.font='9px system-ui';ctx.textAlign='right';
+  ctx.fillText('gm (mA/V)',pad.l+pw-2,yp(Math.sqrt(2*KP*IDmax)*1e3)-4);
+
+  // ro (kΩ)
+  ctx.strokeStyle=css('--accent2');ctx.lineWidth=2.2;
+  ctx.beginPath();f=true;
+  for(let i=0;i<=200;i++){
+    const ID=IDmin*Math.pow(IDmax/IDmin,i/200);
+    const ro=1/(lam*ID)/1e3; // kΩ
+    if(ro<VMin||ro>VMax){f=true;continue;}
+    const x=xp(ID),y=yp(ro);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  ctx.fillStyle=css('--accent2');ctx.font='9px system-ui';ctx.textAlign='right';
+  ctx.fillText('ro (kΩ)',pad.l+pw-2,yp(1/(lam*IDmin)/1e3)+12);
+
+  // A0 = gm*ro
+  ctx.strokeStyle=css('--accent3');ctx.lineWidth=2.5;
+  ctx.beginPath();f=true;
+  for(let i=0;i<=200;i++){
+    const ID=IDmin*Math.pow(IDmax/IDmin,i/200);
+    const gm=Math.sqrt(2*KP*ID); // A/V
+    const ro=1/(lam*ID);
+    const A0=gm*ro;
+    if(A0<VMin||A0>VMax){f=true;continue;}
+    const x=xp(ID),y=yp(A0);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  ctx.fillStyle=css('--accent3');ctx.font='9px system-ui';ctx.textAlign='right';
+  ctx.fillText('A0=gm×ro (V/V)',pad.l+pw-2,yp(Math.sqrt(2*KP*IDmin)/(lam*IDmin))-4);
+
+  ctx.fillStyle=css('--accent3');ctx.font='bold 9px system-ui';ctx.textAlign='left';
+  const A0_1mA=Math.sqrt(2*KP*1e-3)/(lam*1e-3);
+  ctx.fillText(`A0 @ 1mA = ${A0_1mA.toFixed(0)} V/V`,pad.l+4,pad.t+14);
+}
+
+// ─── Plot 3: Miller input capacitance ────────────────────────────────────────
+const p3=sc('c3');
+function draw3(){
+  const {ctx,w,h}=p3.resize();
+  const Cgs=parseFloat(document.getElementById('s3a').value)*1e-12;
+  const Cgd=parseFloat(document.getElementById('s3b').value)*1e-12;
+  document.getElementById('v3a').textContent=parseFloat(document.getElementById('s3a').value).toFixed(1);
+  document.getElementById('v3b').textContent=parseFloat(document.getElementById('s3b').value).toFixed(2);
+
+  const pad={l:60,r:16,t:18,b:36};
+  const AvMin=1,AvMax=100;
+  const CinMin=Cgs,CinMax=(Cgs+Cgd*(1+AvMax))*1.1;
+
+  const xTicks=[{py:0,px:0,label:'1'},{py:0,px:0.25,label:'25'},{py:0,px:0.5,label:'50'},{py:0,px:0.75,label:'75'},{py:0,px:1,label:'100'}];
+  const numY=5;
+  const yTicks=Array.from({length:numY+1},(_,i)=>{
+    const v=CinMin+(CinMax-CinMin)*i/numY;
+    const vp=v*1e12;
+    return{py:i/numY,label:vp.toFixed(1)+'pF'};
+  });
+
+  const {pw,ph}=axes(ctx,w,h,pad,'Voltage gain |Av|','Input capacitance Cin',xTicks,yTicks);
+  const xp=av=>pad.l+(av-AvMin)/(AvMax-AvMin)*pw;
+  const yp=cin=>pad.t+ph-((cin-CinMin)/(CinMax-CinMin))*ph;
+
+  // CS Miller: Cin = Cgs + Cgd*(1+Av)
+  ctx.strokeStyle=css('--accent2');ctx.lineWidth=2.5;
+  ctx.beginPath();let f=true;
+  for(let i=0;i<=200;i++){
+    const av=AvMin+(AvMax-AvMin)*i/200;
+    const cin=Cgs+Cgd*(1+av);
+    const x=xp(av),y=yp(cin);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Cascode: Cin ≈ Cgs + 2*Cgd (flat)
+  const cin_casc=Cgs+2*Cgd;
+  ctx.strokeStyle=css('--accent');ctx.lineWidth=2;ctx.setLineDash([5,4]);
+  ctx.beginPath();ctx.moveTo(xp(AvMin),yp(cin_casc));ctx.lineTo(xp(AvMax),yp(cin_casc));ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Labels
+  const cin_at_100=Cgs+Cgd*(1+100);
+  ctx.fillStyle=css('--accent2');ctx.font='bold 9px system-ui';ctx.textAlign='left';
+  ctx.fillText('CS @ Av=100: Cin='+(cin_at_100*1e12).toFixed(1)+'pF',pad.l+4,pad.t+14);
+  ctx.fillStyle=css('--accent');
+  ctx.fillText('Cascode: Cin='+(cin_casc*1e12).toFixed(2)+'pF (flat)',pad.l+4,pad.t+27);
+
+  // Difference annotation
+  const reduction=(cin_at_100-cin_casc)/cin_at_100*100;
+  ctx.fillStyle=css('--accent3');ctx.font='9px system-ui';
+  ctx.fillText(`Cascode reduces Cin by ${reduction.toFixed(0)}% at Av=100`,pad.l+4,pad.t+40);
+}
+
+['s1a','s1b','s1c'].forEach(id=>document.getElementById(id).addEventListener('input',draw1));
+['s2a','s2b'].forEach(id=>document.getElementById(id).addEventListener('input',draw2));
+['s3a','s3b'].forEach(id=>document.getElementById(id).addEventListener('input',draw3));
+window.addEventListener('resize',()=>{draw1();draw2();draw3();});
+draw1();draw2();draw3();
+</script>
+</body>
+</html>

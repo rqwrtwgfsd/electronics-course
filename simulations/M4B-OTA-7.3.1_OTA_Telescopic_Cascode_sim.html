@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-OTA-7.3.1 — Telescopic Cascode OTA</title>
+<style>
+  :root { --bg:#ffffff; --bg2:#f5f5f5; --text:#1a1a1a; --text2:#555; --border:#ddd; --accent:#0066cc; --green:#00994d; --canvas-bg:#fafafa; --warn:#cc4400; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1a1a1a; --bg2:#242424; --text:#e8e8e8; --text2:#aaa; --border:#444; --canvas-bg:#1f1f1f; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); font-size:14px; }
+  header { background:var(--bg2); border-bottom:2px solid var(--accent); padding:12px 20px; }
+  header .id { font-family:monospace; font-size:12px; color:var(--accent); font-weight:700; }
+  header h1 { font-size:16px; margin-top:2px; }
+  .container { display:flex; gap:16px; padding:16px; flex-wrap:wrap; }
+  .panel { background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:14px; }
+  .sim-panel { flex:1; min-width:380px; }
+  .ctrl-panel { width:270px; min-width:240px; }
+  canvas { background:var(--canvas-bg); border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .readouts { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+  .readout { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 10px; }
+  .readout label { font-size:11px; color:var(--text2); display:block; }
+  .readout .val { font-family:monospace; font-size:14px; font-weight:700; color:var(--accent); }
+  .ctrl { margin-bottom:12px; }
+  .ctrl label { display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px; }
+  .ctrl label span { font-family:monospace; color:var(--accent); font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .section-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text2); margin-bottom:8px; }
+  .insight { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 12px; margin-top:10px; font-size:12px; color:var(--text2); line-height:1.5; }
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4B-OTA-7.3.1</div>
+  <h1>OTA — Telescopic Cascode OTA</h1>
+</header>
+<div class="container">
+  <div class="panel sim-panel">
+    <canvas id="cv" height="340"></canvas>
+    <div class="readouts">
+      <div class="readout"><label>Rout (MΩ)</label><span class="val" id="r-ro">—</span></div>
+      <div class="readout"><label>DC Gain (dB)</label><span class="val" id="r-av">—</span></div>
+      <div class="readout"><label>GBW</label><span class="val" id="r-gbw">—</span></div>
+      <div class="readout"><label>Output Swing (V)</label><span class="val" id="r-sw">—</span></div>
+      <div class="readout"><label>5T Gain (dB)</label><span class="val" id="r-av5t">—</span></div>
+      <div class="readout"><label>Gain boost vs 5T</label><span class="val" id="r-boost">—</span></div>
+    </div>
+    <div class="insight" id="ins">—</div>
+  </div>
+  <div class="panel ctrl-panel">
+    <div class="section-title">Process</div>
+    <div class="ctrl">
+      <label>
+        <select id="sel-proc" onchange="applyProc()" style="width:100%;padding:4px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px">
+          <option value="180">TSMC 180nm (VDD=1.8V, λ=0.05)</option>
+          <option value="65">TSMC 65nm (VDD=1.2V, λ=0.15)</option>
+          <option value="28">TSMC 28nm (VDD=0.9V, λ=0.25)</option>
+        </select>
+      </label>
+    </div>
+    <div class="section-title" style="margin-top:4px">Bias</div>
+    <div class="ctrl">
+      <label>ID (µA) <span id="lbl-id">100</span></label>
+      <input type="range" id="sl-id" min="10" max="500" step="10" value="100" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>Vov input (mV) <span id="lbl-vov">150</span></label>
+      <input type="range" id="sl-vov" min="50" max="400" step="10" value="150" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>Vov cascode (mV) <span id="lbl-vovc">100</span></label>
+      <input type="range" id="sl-vovc" min="50" max="300" step="10" value="100" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>λ (V⁻¹) <span id="lbl-lam">0.05</span></label>
+      <input type="range" id="sl-lam" min="0.01" max="0.3" step="0.01" value="0.05" oninput="update()">
+    </div>
+    <div class="section-title" style="margin-top:4px">Circuit</div>
+    <div class="ctrl">
+      <label>CL (pF) <span id="lbl-cl">1.0</span></label>
+      <input type="range" id="sl-cl" min="0.1" max="10" step="0.1" value="1.0" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>VDD (V) <span id="lbl-vdd">1.8</span></label>
+      <input type="range" id="sl-vdd" min="0.8" max="3.3" step="0.1" value="1.8" oninput="update()">
+    </div>
+  </div>
+</div>
+<script>
+function applyProc(){
+  const p=document.getElementById('sel-proc').value;
+  const params={'180':[0.05,1.8],'65':[0.15,1.2],'28':[0.25,0.9]};
+  const [lam,vdd]=params[p];
+  document.getElementById('sl-lam').value=lam;
+  document.getElementById('sl-vdd').value=vdd;
+  update();
+}
+function fmt(f){return f>=1e9?(f/1e9).toFixed(2)+'GHz':f>=1e6?(f/1e6).toFixed(2)+'MHz':f>=1e3?(f/1e3).toFixed(1)+'kHz':f.toFixed(1)+'Hz';}
+
+function update(){
+  const id=parseFloat(document.getElementById('sl-id').value)*1e-6;
+  const vov=parseFloat(document.getElementById('sl-vov').value)*1e-3;
+  const vovc=parseFloat(document.getElementById('sl-vovc').value)*1e-3;
+  const lam=parseFloat(document.getElementById('sl-lam').value);
+  const cl=parseFloat(document.getElementById('sl-cl').value)*1e-12;
+  const vdd=parseFloat(document.getElementById('sl-vdd').value);
+
+  document.getElementById('lbl-id').textContent=(id*1e6).toFixed(0);
+  document.getElementById('lbl-vov').textContent=(vov*1e3).toFixed(0);
+  document.getElementById('lbl-vovc').textContent=(vovc*1e3).toFixed(0);
+  document.getElementById('lbl-lam').textContent=lam.toFixed(2);
+  document.getElementById('lbl-cl').textContent=(cl*1e12).toFixed(1);
+  document.getElementById('lbl-vdd').textContent=vdd.toFixed(1);
+
+  const gm1=2*id/vov;
+  const gm_c=2*id/vovc;
+  const ro=1/(lam*id);
+  const rout_n=gm_c*ro*ro;
+  const rout_p=gm_c*ro*ro;
+  const rout=rout_n*rout_p/(rout_n+rout_p);
+
+  const av=gm1*rout;
+  const av_5t=gm1*(ro/2);
+  const gbw=gm1/(2*Math.PI*cl);
+
+  // Swing: VDD - 5*Vov (tail+input+cascode_n + cascode_p+load)
+  const n_vov_stack=5; // tail, input, cascode_n, cascode_p, load_p
+  const swing=Math.max(0,vdd-n_vov_stack*Math.max(vov,vovc));
+
+  document.getElementById('r-ro').textContent=(rout/1e6).toFixed(2);
+  const avEl=document.getElementById('r-av');avEl.textContent=(20*Math.log10(av)).toFixed(1)+'dB';avEl.style.color=av>=10000?'var(--green)':av>=1000?'#cc8800':'var(--warn)';
+  document.getElementById('r-gbw').textContent=fmt(gbw);
+  const swEl=document.getElementById('r-sw');swEl.textContent=swing.toFixed(2);swEl.style.color=swing>=0.5?'var(--green)':swing>=0.2?'#cc8800':'var(--warn)';
+  document.getElementById('r-av5t').textContent=(20*Math.log10(av_5t)).toFixed(1)+'dB';
+  document.getElementById('r-boost').textContent='+'+(20*Math.log10(av/av_5t)).toFixed(0)+'dB vs 5T';
+
+  document.getElementById('ins').textContent=
+    `gm1=${(gm1*1000).toFixed(1)}mA/V, gm_c=${(gm_c*1000).toFixed(1)}mA/V, ro=${(ro/1e3).toFixed(0)}kΩ. ` +
+    `Rout_n=Rout_p=${(rout_n/1e6).toFixed(1)}MΩ → Rout=${(rout/1e6).toFixed(2)}MΩ. ` +
+    `Av=${av.toFixed(0)}×(${(20*Math.log10(av)).toFixed(0)}dB). 5T OTA would give ${(20*Math.log10(av_5t)).toFixed(0)}dB. ` +
+    `Output swing=${swing.toFixed(2)}V out of ${vdd}V supply.`;
+
+  draw(gm1,gm_c,ro,rout,av,av_5t,gbw,swing,vdd,vov,vovc,cl,id);
+}
+
+function draw(gm1,gm_c,ro,rout,av,av_5t,gbw,swing,vdd,vov,vovc,cl,id){
+  const canvas=document.getElementById('cv');
+  const W=canvas.offsetWidth||500;canvas.width=W;canvas.height=340;
+  const ctx=canvas.getContext('2d');
+  const pad={l:55,r:20,t:30,b:40};
+  const pw=W-pad.l-pad.r,ph=340-pad.t-pad.b;
+  ctx.fillStyle='var(--canvas-bg)';ctx.fillRect(0,0,W,340);
+
+  // Left half: bar chart comparison
+  const bw=pw*0.42,bh=ph*0.85;
+  const bx=pad.l,by=pad.t+(ph-bh)/2;
+
+  ctx.fillStyle='var(--text2)';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('Gain & Swing Comparison',bx+bw/2,by-8);
+
+  const cats=['5T OTA','Telescopic'];
+  const avdB_5t=20*Math.log10(av_5t);
+  const avdB_tel=20*Math.log10(av);
+  const maxAv=Math.max(100,avdB_tel+10);
+  const avs=[avdB_5t,avdB_tel];
+  const cols=['rgba(150,150,150,0.8)','#0066cc'];
+  const barW=(bw-30)/(cats.length*2);
+
+  avs.forEach((a,i)=>{
+    const x=bx+10+i*(barW*2+10);
+    const frac=a/maxAv;
+    const barH=frac*bh;
+    ctx.fillStyle=cols[i];ctx.fillRect(x,by+bh-barH,barW,barH);
+    ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='center';ctx.fillText(a.toFixed(0)+'dB',x+barW/2,by+bh-barH-3);
+    ctx.fillText(cats[i],x+barW/2,by+bh+14);
+  });
+
+  // y-axis for gain
+  ctx.strokeStyle='var(--border)';ctx.lineWidth=0.5;
+  [0,20,40,60,80,100].filter(v=>v<=maxAv).forEach(v=>{
+    const y=by+bh-v/maxAv*bh;
+    ctx.beginPath();ctx.moveTo(bx,y);ctx.lineTo(bx+bw,y);ctx.stroke();
+    ctx.fillStyle='var(--text2)';ctx.font='7px monospace';ctx.textAlign='right';ctx.fillText(v+'dB',bx-2,y+3);
+  });
+
+  // Right half: output swing visualization
+  const sx=pad.l+bw+20,sy=by,sw2=pw-bw-30,sh=bh;
+  ctx.fillStyle='var(--text2)';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('Output Swing',sx+sw2/2,sy-8);
+
+  // VDD rail
+  ctx.fillStyle='rgba(200,0,0,0.1)';ctx.fillRect(sx,sy,sw2,sh);
+  const vddH=sy;const vssH=sy+sh;
+  const vToY=v=>vssH-(v/vdd)*sh;
+
+  // Voltage regions
+  const vov_eff=Math.max(vov,vovc);
+  const vmin_stack=vov+(vovc)+0.05; // tail+input+cascode (approx)
+  const vmax_stack=vdd-vovc-vov; // cascode_p+load_p
+
+  // Dead zones
+  ctx.fillStyle='rgba(204,68,0,0.2)';
+  ctx.fillRect(sx,vToY(vmax_stack),sw2,sy+sh-vToY(vmax_stack)+(vToY(vmax_stack)-sy));
+  // bottom dead zone
+  ctx.fillStyle='rgba(204,68,0,0.2)';
+  ctx.fillRect(sx,vToY(vmin_stack),sw2,vssH-vToY(vmin_stack));
+  // swing zone
+  if(swing>0){
+    ctx.fillStyle='rgba(0,153,77,0.15)';ctx.fillRect(sx,vToY(vmax_stack),sw2,vToY(vmin_stack)-vToY(vmax_stack));}
+
+  // Labels
+  ctx.strokeStyle='rgba(0,0,0,0.3)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(sx,vToY(vdd));ctx.lineTo(sx+sw2,vToY(vdd));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(sx,vToY(0));ctx.lineTo(sx+sw2,vToY(0));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(sx,vToY(vmax_stack));ctx.lineTo(sx+sw2,vToY(vmax_stack));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(sx,vToY(vmin_stack));ctx.lineTo(sx+sw2,vToY(vmin_stack));ctx.stroke();
+
+  ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='left';
+  ctx.fillText('VDD='+vdd.toFixed(1)+'V',sx+2,vToY(vdd)+10);
+  ctx.fillText('VSS=0V',sx+2,vToY(0)-3);
+  ctx.fillStyle='#cc4400';ctx.fillText('PMOS headroom',sx+2,vToY(vmax_stack+0.01)-5);
+  ctx.fillText('NMOS headroom',sx+2,vToY(vmin_stack)+15);
+  if(swing>0){ctx.fillStyle='#00994d';ctx.fillText('Swing='+swing.toFixed(2)+'V',sx+sw2/2-15,( vToY(vmax_stack)+vToY(vmin_stack))/2+4);}
+  else{ctx.fillStyle='#cc4400';ctx.fillText('NO SWING! Reduce Vov',sx+4,sy+sh/2);}
+
+  ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='center';
+  [0,0.5,1,1.5,1.8,2.5,3.3].filter(v=>v<=vdd+0.1).forEach(v=>{ctx.fillText(v.toFixed(1)+'V',sx+sw2+16,vToY(v)+3);});
+}
+update();
+</script>
+</body>
+</html>

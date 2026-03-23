@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-FO-3.5.2 — Parameter Sweep Simulation</title>
+<style>
+  :root { --accent: #0066cc; --bg: #1a1a1a; --panel: #242424; --border: #333; --text: #e0e0e0; --muted: #888; }
+  @media (prefers-color-scheme: light) { :root { --bg: #f4f4f4; --panel: #fff; --border: #ccc; --text: #1a1a1a; --muted: #555; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+  h1 { font-size: 1.1rem; color: var(--accent); padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .subtitle { font-size: 0.8rem; color: var(--muted); padding: 0 16px 8px; }
+  .layout { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; }
+  .controls { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px; min-width: 230px; flex: 0 0 230px; }
+  .ctrl-group { margin-bottom: 14px; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .val { font-weight: bold; color: var(--accent); }
+  .legend { margin-top: 10px; }
+  .legend-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 0.78rem; }
+  .swatch { width: 20px; height: 3px; display: inline-block; border-radius: 2px; }
+  canvas { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: block; }
+  .canvas-wrap { flex: 1; min-width: 300px; }
+  pre { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 8px; font-size: 0.7rem; line-height: 1.7; overflow-x: auto; margin-top: 10px; }
+  .kw { color: #0066cc; font-weight: bold; }
+  .val2 { color: #ff8844; }
+</style>
+</head>
+<body>
+<h1>P2-FO-3.5.2 — NGSpice .step param Sweep</h1>
+<p class="subtitle">Family of RC curves &nbsp;|&nbsp; .step param R DEC 5 R1 R2 &nbsp;|&nbsp; Decade sweep</p>
+<div class="layout">
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>Capacitance C (nF): <span class="val" id="vC">10</span></label>
+      <input type="range" id="sC" min="1" max="100" step="1" value="10">
+    </div>
+    <div class="ctrl-group">
+      <label>R_min (kΩ): <span class="val" id="vRmin">1.0</span></label>
+      <input type="range" id="sRmin" min="0.1" max="10" step="0.1" value="1">
+    </div>
+    <div class="ctrl-group">
+      <label>R_max (kΩ): <span class="val" id="vRmax">100.0</span></label>
+      <input type="range" id="sRmax" min="10" max="1000" step="10" value="100">
+    </div>
+    <div class="legend" id="legend"></div>
+    <pre id="netlist"></pre>
+  </div>
+  <div class="canvas-wrap">
+    <canvas id="cv" width="540" height="430"></canvas>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const COLORS = ['#0066cc','#ff8844','#44aa44','#cc44cc','#ffcc00'];
+
+function draw() {
+  const C = parseFloat(document.getElementById('sC').value) * 1e-9;
+  const Rmin = parseFloat(document.getElementById('sRmin').value) * 1e3;
+  const Rmax = parseFloat(document.getElementById('sRmax').value) * 1e3;
+  document.getElementById('vC').textContent = (C*1e9).toFixed(0);
+  document.getElementById('vRmin').textContent = (Rmin/1e3).toFixed(1);
+  document.getElementById('vRmax').textContent = (Rmax/1e3).toFixed(1);
+
+  // 5 log-spaced R values
+  const Rs = [];
+  for (let i = 0; i < 5; i++) Rs.push(Rmin * Math.pow(Rmax/Rmin, i/4));
+  const taus = Rs.map(R => R*C);
+  const tauMax = taus[taus.length-1];
+
+  // Legend
+  let legHtml = '';
+  Rs.forEach((R,i) => {
+    const tau = R*C;
+    const tauStr = tau>=1e-3?(tau*1e3).toFixed(1)+'ms':tau>=1e-6?(tau*1e6).toFixed(1)+'µs':(tau*1e9).toFixed(0)+'ns';
+    const Rstr = R>=1000?(R/1000).toFixed(1)+'kΩ':R.toFixed(0)+'Ω';
+    legHtml += `<div class="legend-row"><span class="swatch" style="background:${COLORS[i]};height:3px;width:20px;display:inline-block;"></span><span>R=${Rstr}, τ=${tauStr}</span></div>`;
+  });
+  document.getElementById('legend').innerHTML = legHtml;
+
+  // Netlist display
+  const Rvals = Rs.map(R => R>=1000?(R/1e3).toFixed(1)+'k':R.toFixed(0)).join(' ');
+  document.getElementById('netlist').innerHTML =
+`<span class="kw">.param</span> C=<span class="val2">${(C*1e9).toFixed(0)}n</span>
+<span class="kw">.step</span> param R LIST <span class="val2">${Rvals}</span>
+Vstep IN 0 PULSE(0 1 0 1n 1n 1 2)
+R1 IN N1 <span class="val2">{R}</span>
+C1 N1 0  <span class="val2">{C}</span> IC=0
+<span class="kw">.tran</span> <span class="val2">{R*C/100}</span> <span class="val2">{R*C*6}</span> 0 UIC
+<span class="kw">.measure</span> TRAN tau63 WHEN V(N1)=0.6321 RISE=1
+<span class="kw">.measure</span> TRAN tr   WHEN V(N1)=0.9   RISE=1`;
+
+  // Draw
+  const W=cv.width,H=cv.height,padL=65,padR=20,padT=35,padB=50,plotW=W-padL-padR,plotH=H-padT-padB;
+  const tPlotMax = tauMax*5;
+  const isDark=window.matchMedia('(prefers-color-scheme: dark)').matches;
+  ctx.fillStyle=isDark?'#242424':'#fff';ctx.fillRect(0,0,W,H);
+  const gridC=isDark?'#2e2e2e':'#e8e8e8';
+  const mutC=isDark?'#888':'#555';
+
+  const tx=t=>padL+(t/tPlotMax)*plotW;
+  const ty=y=>padT+(1-y)*plotH;
+
+  ctx.strokeStyle=gridC;ctx.lineWidth=1;
+  for(let i=0;i<=6;i++){ctx.beginPath();ctx.moveTo(tx(i*tPlotMax/6),padT);ctx.lineTo(tx(i*tPlotMax/6),padT+plotH);ctx.stroke();}
+  for(let i=0;i<=5;i++){ctx.beginPath();ctx.moveTo(padL,padT+i*plotH/5);ctx.lineTo(padL+plotW,padT+i*plotH/5);ctx.stroke();}
+  ctx.strokeStyle=mutC;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(padL,padT);ctx.lineTo(padL,padT+plotH);ctx.lineTo(padL+plotW,padT+plotH);ctx.stroke();
+
+  // y(∞) dashed
+  ctx.setLineDash([5,4]);ctx.strokeStyle='rgba(100,150,255,0.5)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,ty(1));ctx.lineTo(padL+plotW,ty(1));ctx.stroke();ctx.setLineDash([]);
+
+  // Curves
+  taus.forEach((tau,i)=>{
+    ctx.strokeStyle=COLORS[i];ctx.lineWidth=2;ctx.beginPath();
+    for(let j=0;j<=500;j++){
+      const t=j/500*tPlotMax;
+      const y=1-Math.exp(-t/tau);
+      if(j===0)ctx.moveTo(tx(t),ty(y));else ctx.lineTo(tx(t),ty(y));
+    }
+    ctx.stroke();
+    // tau dot
+    const y63=1-Math.exp(-1);
+    ctx.fillStyle=COLORS[i];
+    ctx.beginPath();ctx.arc(tx(tau),ty(y63),4,0,Math.PI*2);ctx.fill();
+  });
+
+  // Title
+  ctx.fillStyle=mutC;ctx.font='11px sans-serif';
+  ctx.fillText('.step param R sweep — 5 curves, C = '+(C*1e9).toFixed(0)+'nF',padL+4,padT-10);
+
+  ctx.fillStyle=mutC;ctx.font='10px sans-serif';
+  const units = tPlotMax>=1?(tPlotMax).toFixed(2)+'s':tPlotMax>=1e-3?(tPlotMax*1e3).toFixed(1)+'ms':tPlotMax>=1e-6?(tPlotMax*1e6).toFixed(1)+'µs':(tPlotMax*1e9).toFixed(0)+'ns';
+  for(let i=0;i<=6;i++){
+    const t=i*tPlotMax/6;
+    let ts = t>=1e-3?(t*1e3).toFixed(1)+'m':t>=1e-6?(t*1e6).toFixed(1)+'µ':(t*1e9).toFixed(0)+'n';
+    ctx.fillText(ts,tx(t)-12,padT+plotH+18);
+  }
+  ctx.fillText('t',padL+plotW/2-5,padT+plotH+36);
+  for(let i=0;i<=5;i++)ctx.fillText((i*0.2).toFixed(1),2,ty(i*0.2)+4);
+}
+
+['sC','sRmin','sRmax'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',draw);
+draw();
+</script>
+</body>
+</html>

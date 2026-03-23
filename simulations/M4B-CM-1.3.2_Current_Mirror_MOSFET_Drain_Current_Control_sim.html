@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CM-1.3.2 — MOSFET Drain Current Control</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:11px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 14px;margin-top:5px;font-size:13px;}
+  .ro span{font-size:17px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:12px;}
+  .bar-sec{margin-top:10px;}
+  .brow{display:flex;align-items:center;gap:8px;margin-bottom:7px;font-size:13px;}
+  .blbl{width:70px;color:var(--text2);font-size:12px;}
+  .btrack{flex:1;background:var(--bg2);border-radius:4px;height:18px;overflow:hidden;}
+  .bfill{height:100%;border-radius:4px;display:flex;align-items:center;padding-left:6px;color:#fff;font-size:11px;font-weight:600;transition:width .2s;}
+  .bval{width:65px;text-align:right;font-family:monospace;font-size:12px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CM-1.3.2</div>
+  <h1>Current Mirror MOSFET — Drain Current Control</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Mirror Configuration</h2>
+      <label>Reference Current I_ref (μA): <b id="ir_l">50</b> μA
+        <input type="range" id="iref" min="5" max="500" value="50" step="5">
+      </label>
+      <label>Channel Length Modulation λ (V⁻¹): <b id="lam_l">0.08</b>
+        <input type="range" id="lam" min="0" max="0.4" value="0.08" step="0.01">
+      </label>
+      <label>V_DS reference M1 (V): <b id="vds1_l">0.65</b> V
+        <input type="range" id="vds1" min="0.3" max="1.5" value="0.65" step="0.05">
+      </label>
+      <label>V_DS output M2 (V): <b id="vds2_l">1.5</b> V
+        <input type="range" id="vds2" min="0.1" max="3.3" value="1.5" step="0.05">
+      </label>
+
+      <div class="ro">Ideal I_out (μA): <span id="io_id">50.0</span></div>
+      <div class="ro g" style="margin-top:5px">Actual I_out with λ (μA): <span id="io_act">--</span></div>
+      <div class="ro" style="margin-top:5px">CLM Error: <span id="clm_err">--</span> %</div>
+      <div class="ro" style="margin-top:5px">r_out = 1/(λ·I_D) (kΩ): <span id="rout_d">--</span></div>
+
+      <h2 style="margin-top:16px">Multi-Ratio Mirror Array</h2>
+      <label>Mirror Ratio 1: <b id="m1_l">1</b>×  <input type="range" id="m1" min="1" max="10" value="1" step="1"></label>
+      <label>Mirror Ratio 2: <b id="m2_l">2</b>×  <input type="range" id="m2" min="1" max="10" value="2" step="1"></label>
+      <label>Mirror Ratio 3: <b id="m3_l">4</b>×  <input type="range" id="m3" min="1" max="10" value="4" step="1"></label>
+      <div class="bar-sec" id="bars"></div>
+    </div>
+
+    <div class="card">
+      <h2>I_out vs V_DS (Channel Length Modulation)</h2>
+      <canvas id="cv" height="280"></canvas>
+      <div class="insight">
+        The ideal mirror (dashed) is flat. Actual output (solid) slopes upward due to channel length modulation. Higher λ (shorter channel) gives steeper slope and larger current error. The vertical dotted line marks V_DS,sat = V_ov.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const Iref=+document.getElementById('iref').value;
+    const lam=+document.getElementById('lam').value;
+    const vds1=+document.getElementById('vds1').value;
+    const vds2=+document.getElementById('vds2').value;
+
+    document.getElementById('ir_l').textContent=Iref;
+    document.getElementById('lam_l').textContent=lam.toFixed(2);
+    document.getElementById('vds1_l').textContent=vds1.toFixed(2);
+    document.getElementById('vds2_l').textContent=vds2.toFixed(2);
+
+    const io_ideal=Iref;
+    const io_act=Iref*(1+lam*vds2)/(1+lam*vds1);
+    const clm_err=(io_act-io_ideal)/io_ideal*100;
+    const rout=1/(lam*io_ideal*1e-6)/1e3;
+
+    document.getElementById('io_id').textContent=io_ideal.toFixed(2);
+    document.getElementById('io_act').textContent=io_act.toFixed(2);
+    document.getElementById('clm_err').textContent=(clm_err>=0?'+':'')+clm_err.toFixed(2);
+    document.getElementById('rout_d').textContent=lam>0?rout.toFixed(0):'∞';
+
+    // Multi-ratio
+    const mr=[+document.getElementById('m1').value,+document.getElementById('m2').value,+document.getElementById('m3').value];
+    document.getElementById('m1_l').textContent=mr[0];
+    document.getElementById('m2_l').textContent=mr[1];
+    document.getElementById('m3_l').textContent=mr[2];
+
+    const maxI=Math.max(...mr)*Iref*1.1;
+    const colors=['#0066cc','#00994d','#ff8800'];
+    const barsEl=document.getElementById('bars');
+    barsEl.innerHTML='';
+    mr.forEach((r,i)=>{
+      const I=r*Iref;
+      const pct=Math.min(100,(I/maxI)*100);
+      barsEl.innerHTML+=`<div class="brow">
+        <div class="blbl">M${i+2} (${r}×)</div>
+        <div class="btrack"><div class="bfill" style="width:${pct}%;background:${colors[i]}">${I.toFixed(0)}</div></div>
+        <div class="bval">${I.toFixed(0)} μA</div>
+      </div>`;
+    });
+
+    drawSweep(Iref,lam,vds1);
+  }
+
+  function drawSweep(Iref,lam,vds1){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=280;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,280);
+    const pL=52,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=280-pT-pB;
+    const Vmax=3.3, Imax=Iref*1.5;
+
+    ctx.strokeStyle='#8888aa';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(pL,pT);ctx.lineTo(pL,pT+ph);ctx.lineTo(pL+pw,pT+ph);ctx.stroke();
+    ctx.fillStyle='#8888aa';ctx.font='11px system-ui';
+    ctx.fillText('I_out (μA)',2,pT+ph/2);
+    ctx.fillText('V_DS (V)',pL+pw/2-20,280-4);
+
+    for(let i=0;i<=4;i++){
+      const v=i/4*Imax;
+      const y=pT+ph-(i/4)*ph;
+      ctx.fillText(v.toFixed(0),2,y+4);
+      ctx.strokeStyle='#8888aa22';ctx.beginPath();ctx.moveTo(pL,y);ctx.lineTo(pL+pw,y);ctx.stroke();
+    }
+    [0,0.5,1,1.5,2,2.5,3,3.3].forEach(v=>{
+      const x=pL+(v/Vmax)*pw;
+      ctx.fillStyle='#8888aa';ctx.fillText(v.toFixed(1),x-8,pT+ph+16);
+    });
+
+    // V_ov marker (V_DS,sat)
+    const vov=0.15; // approximate
+    const xSat=pL+(vov/Vmax)*pw;
+    ctx.strokeStyle='#cc550077';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(xSat,pT);ctx.lineTo(xSat,pT+ph);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#cc5500';ctx.font='10px system-ui';ctx.fillText('V_sat',xSat+2,pT+16);
+
+    // Draw λ curves
+    const lambdas=[{v:0,c:'#0066cc88',d:[4,3]},{v:lam,c:'#00994d',d:[]}];
+    lambdas.forEach(({v:l,c,d})=>{
+      ctx.strokeStyle=c;ctx.lineWidth=2;ctx.setLineDash(d);
+      ctx.beginPath();let first=true;
+      for(let px=0;px<=pw;px++){
+        const vds=px/pw*Vmax;
+        let I;
+        if(vds<vov){I=Iref*(vds/vov)*(vds/vov);}// triode approximation
+        else{I=l>0?Iref*(1+l*vds)/(1+l*vds1):Iref;}
+        const y=pT+ph-(Math.min(I,Imax)/Imax)*ph;
+        if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+      }
+      ctx.stroke();
+    });
+    ctx.setLineDash([]);
+
+    // VDS2 marker
+    const vds2=+document.getElementById('vds2').value;
+    const xV=pL+(vds2/Vmax)*pw;
+    const I_mark=lam>0?Iref*(1+lam*vds2)/(1+lam*vds1):Iref;
+    const yV=pT+ph-(Math.min(I_mark,Imax)/Imax)*ph;
+    ctx.fillStyle='#00994d';
+    ctx.beginPath();ctx.arc(xV,yV,5,0,Math.PI*2);ctx.fill();
+
+    // Legend
+    ctx.strokeStyle='#0066cc88';ctx.lineWidth=2;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(pL+pw-120,pT+14);ctx.lineTo(pL+pw-100,pT+14);ctx.stroke();
+    ctx.setLineDash([]);ctx.fillStyle='#8888aa';ctx.font='11px system-ui';ctx.fillText('λ=0 (ideal)',pL+pw-96,pT+18);
+    ctx.strokeStyle='#00994d';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(pL+pw-120,pT+28);ctx.lineTo(pL+pw-100,pT+28);ctx.stroke();
+    ctx.fillText('λ='+lam.toFixed(2),pL+pw-96,pT+32);
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

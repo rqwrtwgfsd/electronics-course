@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-C-1.5.2 — Debug: Oversized Capacitor Problems</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+  h1 { color: #0066cc; font-size: 1.3em; margin-bottom: 4px; }
+  .subtitle { color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }
+  .layout { display: flex; gap: 20px; flex-wrap: wrap; }
+  .panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+  .controls { width: 290px; flex-shrink: 0; }
+  .plots { flex: 1; min-width: 360px; display: flex; flex-direction: column; gap: 10px; }
+  label { display: block; color: #8b949e; font-size: 0.8em; margin-bottom: 4px; margin-top: 12px; }
+  input[type=range] { width: 100%; accent-color: #0066cc; }
+  .val { color: #0066cc; font-weight: bold; }
+  canvas { background: #0d1117; border-radius: 6px; display: block; }
+  .metric-row { display: flex; justify-content: space-between; padding: 6px 8px; border-radius: 4px; margin: 3px 0; font-size: 0.82em; }
+  .metric-ok { background: #1a2f1a; border-left: 3px solid #39d353; }
+  .metric-warn { background: #2a2018; border-left: 3px solid #e3b341; }
+  .metric-bad { background: #2a1a1a; border-left: 3px solid #f78166; }
+  .metric-label { color: #8b949e; }
+  .metric-val { font-weight: bold; font-family: monospace; }
+  .sect-hdr { color: #8b949e; font-size: 0.75em; text-transform: uppercase; letter-spacing: 1px; margin-top: 14px; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<h1>P2-C-1.5.2 — Debug: Oversized Capacitor Problems</h1>
+<div class="subtitle">Three effect panels: inrush duration, filter cutoff shift, and phase margin indicator</div>
+<div class="layout">
+  <div class="panel controls">
+    <div class="sect-hdr">Circuit Parameters</div>
+    <label>R_series (source + trace): <span class="val" id="rsLabel">0.5 Ω</span></label>
+    <input type="range" id="rsSlider" min="1" max="50" value="5" step="1">
+    <label>R_filter (for f_c calc): <span class="val" id="rfLabel">10 kΩ</span></label>
+    <input type="range" id="rfSlider" min="1" max="200" value="100" step="5">
+    <label>V_supply: <span class="val" id="vsLabel">5 V</span></label>
+    <input type="range" id="vsSlider" min="10" max="120" value="50" step="5">
+    <label>Loop crossover freq: <span class="val" id="fcxLabel">10 kHz</span></label>
+    <input type="range" id="fcxSlider" min="1" max="200" value="100" step="5">
+
+    <div class="sect-hdr">Capacitor Size</div>
+    <label>C_nominal: <span class="val" id="cnLabel">10 µF</span></label>
+    <input type="range" id="cnSlider" min="1" max="100" value="10" step="1">
+    <label>C_multiplier (oversize): <span class="val" id="cmLabel">1× (nominal)</span></label>
+    <input type="range" id="cmSlider" min="10" max="200" value="10" step="5">
+
+    <div id="metrics" style="margin-top:12px;"></div>
+  </div>
+  <div class="panel plots">
+    <canvas id="inrush" width="570" height="150"></canvas>
+    <canvas id="filter" width="570" height="150"></canvas>
+    <canvas id="phase" width="570" height="130"></canvas>
+  </div>
+</div>
+<script>
+const W=570;
+const PAD={top:28,right:20,bottom:34,left:62};
+const PW=W-PAD.left-PAD.right;
+
+function getP(){
+  const Rs=parseFloat(document.getElementById('rsSlider').value)/10;
+  const Rf=parseFloat(document.getElementById('rfSlider').value)*100;
+  const VS=parseFloat(document.getElementById('vsSlider').value)/10;
+  const fcx=parseFloat(document.getElementById('fcxSlider').value)*100;
+  const Cn=parseFloat(document.getElementById('cnSlider').value)*1e-6;
+  const mult=parseFloat(document.getElementById('cmSlider').value)/10;
+  const Ca=Cn*mult;
+  const tauN=Rs*Cn, tauA=Rs*Ca;
+  const fcN=1/(2*Math.PI*Rf*Cn), fcA=1/(2*Math.PI*Rf*Ca);
+  const phN=-Math.atan(fcx/fcN)*180/Math.PI;
+  const phA=-Math.atan(fcx/fcA)*180/Math.PI;
+  const IpeakN=VS/Rs, IpeakA=VS/Rs; // same peak
+  return {Rs,Rf,VS,fcx,Cn,Ca,mult,tauN,tauA,fcN,fcA,phN,phA,IpeakN,IpeakA};
+}
+
+function fmtT(t){ return t<1e-6?(t*1e9).toFixed(0)+'ns':t<1e-3?(t*1e6).toFixed(1)+'µs':t<1?(t*1e3).toFixed(2)+'ms':t.toFixed(3)+'s'; }
+function fmtF(f){ return f>=1e6?(f/1e6).toFixed(2)+'MHz':f>=1e3?(f/1e3).toFixed(1)+'kHz':f.toFixed(0)+'Hz'; }
+function fmtC(c){ return c>=1e-3?(c*1e3).toFixed(1)+'mF':c>=1e-6?(c*1e6).toFixed(2)+'µF':c>=1e-9?(c*1e9).toFixed(1)+'nF':(c*1e12).toFixed(0)+'pF'; }
+
+function updateLabels(p){
+  document.getElementById('rsLabel').textContent=p.Rs.toFixed(1)+' Ω';
+  document.getElementById('rfLabel').textContent=(p.Rf/1000).toFixed(0)+' kΩ';
+  document.getElementById('vsLabel').textContent=p.VS.toFixed(1)+' V';
+  document.getElementById('fcxLabel').textContent=fmtF(p.fcx);
+  document.getElementById('cnLabel').textContent=fmtC(p.Cn);
+  document.getElementById('cmLabel').textContent=(p.mult).toFixed(1)+'× ('+fmtC(p.Ca)+')';
+
+  function status(v,ok,warn){ return v<=ok?'ok':v<=warn?'warn':'bad'; }
+  const tauRatio=p.tauA/p.tauN;
+  const fcRatio=p.fcN/p.fcA;
+  const phaseShift=Math.abs(p.phA-p.phN);
+  const sr1=status(tauRatio,1.2,2,'ok','warn','bad');
+  const sr2=status(fcRatio,1.5,5,'ok','warn','bad');
+  const sr3=status(phaseShift,10,30,'ok','warn','bad');
+
+  const cl=['metric-ok','metric-warn','metric-bad'];
+  function getClass(v,t1,t2){ return v<t1?'metric-ok':v<t2?'metric-warn':'metric-bad'; }
+
+  document.getElementById('metrics').innerHTML=`
+    <div class="metric-row ${getClass(tauRatio,1.2,2)}">
+      <span class="metric-label">Inrush duration ratio</span>
+      <span class="metric-val" style="color:${tauRatio<1.2?'#39d353':tauRatio<2?'#e3b341':'#f78166'}">${tauRatio.toFixed(1)}×</span>
+    </div>
+    <div class="metric-row ${getClass(fcRatio,1.5,5)}">
+      <span class="metric-label">f_c shift (÷ C factor)</span>
+      <span class="metric-val" style="color:${fcRatio<1.5?'#39d353':fcRatio<5?'#e3b341':'#f78166'}">f_c ÷ ${p.mult.toFixed(1)}</span>
+    </div>
+    <div class="metric-row ${getClass(phaseShift,10,30)}">
+      <span class="metric-label">Extra phase at crossover</span>
+      <span class="metric-val" style="color:${phaseShift<10?'#39d353':phaseShift<30?'#e3b341':'#f78166'}">${phaseShift.toFixed(1)}°</span>
+    </div>`;
+}
+
+function drawInrush(p){
+  const cv=document.getElementById('inrush'); const ctx=cv.getContext('2d');
+  const H=cv.height; const PH=H-PAD.top-PAD.bottom;
+  ctx.clearRect(0,0,W,H);
+  const tMax=p.tauA*5;
+  const Imax=p.IpeakN*1.1;
+  ctx.strokeStyle='#21262d'; ctx.lineWidth=1;
+  for(let i=0;i<=5;i++){const y=PAD.top+(i/5)*PH;ctx.beginPath();ctx.moveTo(PAD.left,y);ctx.lineTo(PAD.left+PW,y);ctx.stroke();}
+  ctx.strokeStyle='#484f58'; ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(PAD.left,PAD.top);ctx.lineTo(PAD.left,PAD.top+PH);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(PAD.left,PAD.top+PH);ctx.lineTo(PAD.left+PW,PAD.top+PH);ctx.stroke();
+  // Nominal
+  ctx.strokeStyle='#39d353'; ctx.lineWidth=2; ctx.beginPath();
+  for(let px=0;px<=PW;px++){
+    const t=(px/PW)*tMax; const i=(p.VS/p.Rs)*Math.exp(-t/p.tauN);
+    const y=PAD.top+PH-(i/Imax)*PH;
+    px===0?ctx.moveTo(PAD.left+px,y):ctx.lineTo(PAD.left+px,y);
+  }
+  ctx.stroke();
+  // Actual (same peak, longer)
+  ctx.strokeStyle='#f78166'; ctx.lineWidth=2; ctx.setLineDash([6,3]); ctx.beginPath();
+  for(let px=0;px<=PW;px++){
+    const t=(px/PW)*tMax; const i=(p.VS/p.Rs)*Math.exp(-t/p.tauA);
+    const y=PAD.top+PH-(i/Imax)*PH;
+    px===0?ctx.moveTo(PAD.left+px,y):ctx.lineTo(PAD.left+px,y);
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#8b949e'; ctx.font='11px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('INRUSH CURRENT  I_peak='+p.VS.toFixed(1)+'/'+p.Rs.toFixed(1)+'Ω='+( p.VS/p.Rs).toFixed(1)+'A', PAD.left, PAD.top-10);
+  ctx.fillStyle='#39d353'; ctx.fillText('Nominal C (τ='+fmtT(p.tauN)+')',PAD.left+4,PAD.top+16);
+  ctx.fillStyle='#f78166'; ctx.fillText('Oversized C='+fmtC(p.Ca)+' (τ='+fmtT(p.tauA)+')',PAD.left+200,PAD.top+16);
+  ctx.textAlign='right'; ctx.fillStyle='#8b949e'; ctx.font='10px sans-serif';
+  ctx.fillText(fmtT(tMax),PAD.left+PW,PAD.top+PH+22);
+}
+
+function drawFilter(p){
+  const cv=document.getElementById('filter'); const ctx=cv.getContext('2d');
+  const H=cv.height; const PH=H-PAD.top-PAD.bottom;
+  ctx.clearRect(0,0,W,H);
+  const fMin=Math.min(p.fcA,p.fcN)*0.05, fMax=Math.max(p.fcA,p.fcN)*50;
+  const logMin=Math.log10(fMin), logMax=Math.log10(fMax);
+  const dBmin=-50, dBmax=3;
+  const fx=f=>PAD.left+(Math.log10(f)-logMin)/(logMax-logMin)*PW;
+  const fy=db=>PAD.top+PH-(db-dBmin)/(dBmax-dBmin)*PH;
+  ctx.strokeStyle='#21262d'; ctx.lineWidth=1;
+  for(let db=-50;db<=0;db+=10){const y=fy(db);ctx.beginPath();ctx.moveTo(PAD.left,y);ctx.lineTo(PAD.left+PW,y);ctx.stroke();}
+  ctx.strokeStyle='#484f58'; ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(PAD.left,PAD.top);ctx.lineTo(PAD.left,PAD.top+PH);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(PAD.left,PAD.top+PH);ctx.lineTo(PAD.left+PW,PAD.top+PH);ctx.stroke();
+  ctx.fillStyle='#8b949e'; ctx.font='10px sans-serif'; ctx.textAlign='right';
+  for(let db=-50;db<=0;db+=10){ ctx.fillText(db+'dB',PAD.left-4,fy(db)+4); }
+  // Nominal
+  ctx.strokeStyle='#39d353'; ctx.lineWidth=2; ctx.beginPath();
+  for(let px=0;px<=PW;px++){
+    const f=Math.pow(10,logMin+(px/PW)*(logMax-logMin));
+    const db=20*Math.log10(1/Math.sqrt(1+Math.pow(f/p.fcN,2)));
+    const y=fy(Math.max(dBmin,db));
+    px===0?ctx.moveTo(PAD.left+px,y):ctx.lineTo(PAD.left+px,y);
+  }
+  ctx.stroke();
+  // Actual
+  ctx.strokeStyle='#f78166'; ctx.lineWidth=2; ctx.setLineDash([6,3]); ctx.beginPath();
+  for(let px=0;px<=PW;px++){
+    const f=Math.pow(10,logMin+(px/PW)*(logMax-logMin));
+    const db=20*Math.log10(1/Math.sqrt(1+Math.pow(f/p.fcA,2)));
+    const y=fy(Math.max(dBmin,db));
+    px===0?ctx.moveTo(PAD.left+px,y):ctx.lineTo(PAD.left+px,y);
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+  // fc markers
+  ctx.fillStyle='#39d353'; ctx.beginPath();ctx.arc(fx(p.fcN),fy(-3),5,0,2*Math.PI);ctx.fill();
+  ctx.font='10px sans-serif'; ctx.textAlign='center';
+  ctx.fillText(fmtF(p.fcN),fx(p.fcN),fy(-3)-8);
+  ctx.fillStyle='#f78166'; ctx.beginPath();ctx.arc(fx(p.fcA),fy(-3),5,0,2*Math.PI);ctx.fill();
+  ctx.fillText(fmtF(p.fcA)+'←shifted',fx(p.fcA),PAD.top+14);
+  ctx.fillStyle='#8b949e'; ctx.font='11px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('FILTER CUTOFF SHIFT (f_c = 1/(2πRC))', PAD.left, PAD.top-10);
+}
+
+function drawPhase(p){
+  const cv=document.getElementById('phase'); const ctx=cv.getContext('2d');
+  const H=cv.height; const PH=H-PAD.top-PAD.bottom;
+  ctx.clearRect(0,0,W,H);
+  const phMax=50, phMin=-100;
+  const xScale=PW/90; // 90° range
+  const barH=24;
+  ctx.fillStyle='#8b949e'; ctx.font='11px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('PHASE SHIFT AT LOOP CROSSOVER (f = '+fmtF(p.fcx)+')', PAD.left, PAD.top-10);
+  function drawBar(y, label, val, ref, color){
+    const barW=Math.min(PW, Math.abs(val)/90*PW);
+    ctx.fillStyle='#21262d'; ctx.fillRect(PAD.left,y,PW,barH-4);
+    ctx.fillStyle=color; ctx.fillRect(PAD.left,y,barW,barH-4);
+    ctx.fillStyle='#e6edf3'; ctx.font='bold 11px sans-serif'; ctx.textAlign='left';
+    ctx.fillText(label,PAD.left+4,y+16);
+    ctx.textAlign='right';
+    ctx.fillText(val.toFixed(1)+'°',PAD.left+PW-4,y+16);
+  }
+  drawBar(PAD.top, 'Nominal C ('+fmtC(p.Cn)+'): phase at crossover', p.phN, 0, '#39d353');
+  drawBar(PAD.top+34, 'Oversized C ('+fmtC(p.Ca)+'): phase at crossover', p.phA, 0, Math.abs(p.phA)>60?'#f78166':'#e3b341');
+  // Status
+  const extra=Math.abs(p.phA-p.phN);
+  ctx.fillStyle=extra<10?'#39d353':extra<30?'#e3b341':'#f78166';
+  ctx.font='11px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('Extra phase from oversized cap: '+extra.toFixed(1)+'° '+
+    (extra<10?'✓ safe':extra<30?'⚠ marginal':'✗ risky'),
+    PAD.left,PAD.top+78);
+}
+
+function draw(){
+  const p=getP();
+  updateLabels(p);
+  drawInrush(p);
+  drawFilter(p);
+  drawPhase(p);
+}
+['rsSlider','rfSlider','vsSlider','fcxSlider','cnSlider','cmSlider'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+draw();
+</script>
+</body>
+</html>

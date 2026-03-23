@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CM-1.5.1 — Simple Mirror Limitations</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.r span{color:#cc2200;} .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+  .err-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px;}
+  .err-cell{background:var(--bg2);border-radius:8px;padding:10px 8px;text-align:center;border:1px solid var(--border);}
+  .err-cell .val{font-size:17px;font-weight:700;font-family:monospace;}
+  .err-cell .lbl{font-size:11px;color:var(--text2);margin-top:3px;}
+  .dom{border-color:#cc2200;background:#cc220011;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CM-1.5.1</div>
+  <h1>Current Mirror Advanced — Simple Mirror Limitations</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Error Budget Analysis</h2>
+      <label>λ (V⁻¹): <b id="lam_l">0.10</b> <input type="range" id="lam" min="0.01" max="0.5" value="0.10" step="0.01"></label>
+      <label>ΔV_DS (V): <b id="dvds_l">1.5</b> V <input type="range" id="dvds" min="0" max="4" value="1.5" step="0.1"></label>
+      <label>Overdrive V_ov (mV): <b id="vov_l">200</b> mV <input type="range" id="vov" min="50" max="600" value="200" step="10"></label>
+      <label>ΔV_th mismatch (mV): <b id="dvth_l">3</b> mV <input type="range" id="dvth" min="0" max="20" value="3" step="0.5"></label>
+      <label>BJT β (0 = MOSFET): <b id="beta_l">0</b> <input type="range" id="beta" min="0" max="300" value="0" step="5"></label>
+
+      <div class="err-grid" id="err_grid">
+        <div class="err-cell"><div class="val" id="e_clm">--</div><div class="lbl">CLM Error %</div></div>
+        <div class="err-cell"><div class="val" id="e_vth">--</div><div class="lbl">V_th Mismatch %</div></div>
+        <div class="err-cell"><div class="val" id="e_beta">--</div><div class="lbl">β Error %</div></div>
+      </div>
+      <div class="ro r" style="margin-top:8px">Total Error: <span id="e_tot">--</span> %</div>
+      <div class="ro" style="margin-top:5px">Dominant Limitation: <span id="dom_lim">--</span></div>
+      <div class="ro g" style="margin-top:5px">Recommended Fix: <span id="rec_fix" style="font-size:13px">--</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Limitation Comparison vs V_DS Output</h2>
+      <canvas id="cv" height="260"></canvas>
+      <div class="insight">
+        Each colored line shows one limitation source vs. output voltage. The dominant error (highest line) determines which circuit improvement is most impactful.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const lam=+document.getElementById('lam').value;
+    const dvds=+document.getElementById('dvds').value;
+    const vov=+document.getElementById('vov').value/1000;
+    const dvth=+document.getElementById('dvth').value/1000;
+    const beta=+document.getElementById('beta').value;
+    const vds1=0.65;
+
+    document.getElementById('lam_l').textContent=lam.toFixed(2);
+    document.getElementById('dvds_l').textContent=dvds.toFixed(1);
+    document.getElementById('vov_l').textContent=(vov*1000).toFixed(0);
+    document.getElementById('dvth_l').textContent=(dvth*1000).toFixed(1);
+    document.getElementById('beta_l').textContent=beta===0?'∞ (MOSFET)':beta;
+
+    const vds2=vds1+dvds;
+    const e_clm=Math.abs(((1+lam*vds2)/(1+lam*vds1)-1)*100);
+    const e_vth=Math.abs(((vov-dvth)/vov)**2-1)*100;
+    const e_beta=beta>0?Math.abs(2/beta*100):0;
+    const e_tot=e_clm+e_vth+e_beta; // arithmetic sum worst case
+
+    document.getElementById('e_clm').textContent=e_clm.toFixed(2)+'%';
+    document.getElementById('e_vth').textContent=e_vth.toFixed(2)+'%';
+    document.getElementById('e_beta').textContent=e_beta.toFixed(2)+'%';
+    document.getElementById('e_tot').textContent=e_tot.toFixed(2);
+
+    const errs=[e_clm,e_vth,e_beta];
+    const names=['CLM','V_th mismatch','β (BJT)'];
+    const fixes=['Cascode mirror','Larger area / higher V_ov','Wilson / beta-helper'];
+    const maxIdx=errs.indexOf(Math.max(...errs));
+
+    document.getElementById('dom_lim').textContent=names[maxIdx];
+    document.getElementById('rec_fix').textContent=fixes[maxIdx];
+
+    // Highlight dominant cell
+    document.querySelectorAll('.err-cell').forEach((c,i)=>{
+      c.classList.toggle('dom',i===maxIdx);
+      c.querySelector('.val').style.color=i===maxIdx?'#cc2200':'';
+    });
+
+    drawSweep(lam,vds1,vov,dvth,beta);
+  }
+
+  function drawSweep(lam,vds1,vov,dvth,beta){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=260;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,260);
+    const pL=52,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=260-pT-pB;
+    const Vmax=4, Emax=30;
+
+    ctx.strokeStyle='#8888aa';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(pL,pT);ctx.lineTo(pL,pT+ph);ctx.lineTo(pL+pw,pT+ph);ctx.stroke();
+    ctx.fillStyle='#8888aa';ctx.font='10px system-ui';
+    ctx.fillText('Error %',2,pT+ph/2);
+    ctx.fillText('V_DS,out (V)',pL+pw/2-20,260-4);
+
+    for(let i=0;i<=5;i++){
+      const v=i/5*Emax;const y=pT+ph-(i/5)*ph;
+      ctx.fillText(v.toFixed(0),2,y+4);
+      ctx.strokeStyle='#8888aa22';ctx.beginPath();ctx.moveTo(pL,y);ctx.lineTo(pL+pw,y);ctx.stroke();
+    }
+    [0,1,2,3,4].forEach(v=>{
+      const x=pL+(v/Vmax)*pw;ctx.fillStyle='#8888aa';ctx.fillText(v,x-4,pT+ph+14);
+    });
+
+    const curves=[
+      {fn:v=>Math.abs(((1+lam*v)/(1+lam*vds1)-1)*100),c:'#cc2200',lbl:'CLM'},
+      {fn:v=>Math.abs(((vov-dvth)/vov)**2-1)*100,c:'#0066cc',lbl:'V_th mismatch',dash:[5,4]},
+      ...(beta>0?[{fn:v=>Math.abs(2/beta*100),c:'#ff8800',lbl:'β error',dash:[3,3]}]:[]),
+    ];
+
+    curves.forEach(({fn,c,lbl,dash})=>{
+      ctx.strokeStyle=c;ctx.lineWidth=2;ctx.setLineDash(dash||[]);
+      ctx.beginPath();let first=true;
+      for(let px=0;px<=pw;px++){
+        const v=px/pw*Vmax;
+        const e=Math.min(fn(v),Emax);
+        const y=pT+ph-(e/Emax)*ph;
+        if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+      }
+      ctx.stroke();
+    });
+    ctx.setLineDash([]);
+
+    // Legend
+    curves.forEach(({c,lbl,dash},i)=>{
+      ctx.strokeStyle=c;ctx.lineWidth=1.5;ctx.setLineDash(dash||[]);
+      ctx.beginPath();ctx.moveTo(pL+pw-110,pT+12+14*i);ctx.lineTo(pL+pw-90,pT+12+14*i);ctx.stroke();
+      ctx.setLineDash([]);ctx.fillStyle='#8888aa';ctx.font='10px system-ui';ctx.fillText(lbl,pL+pw-86,pT+16+14*i);
+    });
+
+    // 5% spec line
+    const y5=pT+ph-(5/Emax)*ph;
+    ctx.strokeStyle='#44994444';ctx.lineWidth=1;ctx.setLineDash([2,3]);
+    ctx.beginPath();ctx.moveTo(pL,y5);ctx.lineTo(pL+pw,y5);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#449944';ctx.font='10px system-ui';ctx.fillText('5% spec',pL+4,y5-3);
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

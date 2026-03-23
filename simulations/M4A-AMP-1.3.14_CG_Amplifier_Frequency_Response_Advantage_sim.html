@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.3.14 — CG Frequency Advantage</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;gap:16px;align-items:baseline;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:13px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.3.14</div>
+  <div class="topic">CG Frequency Response — Miller Effect vs No Miller, Bandwidth Comparison</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>Transistor</h3>
+      <label>gm (mA/V): <b id="gm_lbl">10</b></label>
+      <input type="range" id="gm" min="1" max="30" value="10" step="0.5">
+      <label>Cgs (fF): <b id="cgs_lbl">100</b></label>
+      <input type="range" id="cgs" min="20" max="500" value="100" step="10">
+      <label>Cgd (fF): <b id="cgd_lbl">30</b></label>
+      <input type="range" id="cgd" min="5" max="200" value="30" step="5">
+    </div>
+    <div class="cg">
+      <h3>Circuit</h3>
+      <label>RD (kΩ): <b id="rd_lbl">3.0</b></label>
+      <input type="range" id="rd" min="0.5" max="20" value="3" step="0.5">
+      <label>Rs (Ω): <b id="rs_lbl">500</b></label>
+      <input type="range" id="rs" min="50" max="5000" value="500" step="50">
+    </div>
+    <div class="cg">
+      <h3>Results</h3>
+      <div class="rd">Av: <span id="r_av">—</span></div>
+      <div class="rd">CS BW: <span id="r_csbw">—</span></div>
+      <div class="rd">CG BW: <span id="r_cgbw">—</span></div>
+      <div class="rd">BW ratio: <span id="r_ratio">—</span></div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_cin_cs">—</div><div class="l">CS Cin (fF)</div></div>
+      <div class="met"><div class="v" id="m_bw_cs">—</div><div class="l">CS –3dB</div></div>
+      <div class="met"><div class="v" id="m_bw_cg">—</div><div class="l">CG –3dB</div></div>
+    </div>
+    <div>
+      <div class="pl">Input capacitance: CS (Miller) vs CG — vs voltage gain</div>
+      <canvas id="cinCanvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">–3dB bandwidth: CS vs CG — vs source resistance Rs</div>
+      <canvas id="bwCanvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">Gain-bandwidth product: CS vs cascode — vs gain</div>
+      <canvas id="gbwCanvas" height="180"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+function fmtHz(f){
+  if(f>=1e9)return (f/1e9).toFixed(2)+' GHz';
+  if(f>=1e6)return (f/1e6).toFixed(1)+' MHz';
+  if(f>=1e3)return (f/1e3).toFixed(0)+' kHz';
+  return f.toFixed(0)+' Hz';
+}
+function fmtF(f){return (f*1e15).toFixed(0)+' fF';}
+
+function update(){
+  const gm=parseFloat(document.getElementById('gm').value)*1e-3;
+  const cgs=parseFloat(document.getElementById('cgs').value)*1e-15;
+  const cgd=parseFloat(document.getElementById('cgd').value)*1e-15;
+  const rd=parseFloat(document.getElementById('rd').value)*1e3;
+  const rs=parseFloat(document.getElementById('rs').value);
+
+  document.getElementById('gm_lbl').textContent=(gm*1e3).toFixed(1);
+  document.getElementById('cgs_lbl').textContent=(cgs*1e15).toFixed(0);
+  document.getElementById('cgd_lbl').textContent=(cgd*1e15).toFixed(0);
+  document.getElementById('rd_lbl').textContent=(rd/1e3).toFixed(1);
+  document.getElementById('rs_lbl').textContent=rs.toFixed(0);
+
+  const av=gm*rd;
+  const cin_cs=cgs+cgd*(1+av);
+  const cin_cg=cgs;
+  const bw_cs=1/(2*Math.PI*rs*cin_cs);
+  const bw_cg=1/(2*Math.PI*(1/gm)*cgs); // at Zin_CG = 1/gm
+
+  document.getElementById('r_av').textContent=av.toFixed(1)+' V/V';
+  document.getElementById('r_csbw').textContent=fmtHz(bw_cs);
+  document.getElementById('r_cgbw').textContent=fmtHz(bw_cg);
+  document.getElementById('r_ratio').textContent=(bw_cg/bw_cs).toFixed(1)+'×';
+
+  document.getElementById('m_cin_cs').textContent=fmtF(cin_cs);
+  document.getElementById('m_bw_cs').textContent=fmtHz(bw_cs);
+  document.getElementById('m_bw_cg').textContent=fmtHz(bw_cg);
+
+  drawCin(gm,cgs,cgd,rd,rs);
+  drawBW(gm,cgs,cgd,rd,rs);
+  drawGBW(gm,cgs,cgd,rd,rs);
+}
+
+function drawCin(gm0,cgs0,cgd0,rd0,rs0){
+  const canvas=document.getElementById('cinCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:60,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+  // x: Av from 1 to 100
+  const avmax=100;
+  const toX=v=>pad.l+((v-1)/(avmax-1))*pw;
+
+  // y: Cin log from cgs to cgs+cgd*101
+  const cin_min=cgs0;
+  const cin_max=cgs0+cgd0*101;
+  const ymin=Math.log10(cin_min),ymax=Math.log10(cin_max);
+  const toY=v=>pad.t+(1-(Math.log10(v)-ymin)/(ymax-ymin))*ph;
+
+  // grid
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [1,5,10,20,50,100].forEach(v=>{
+    const x=toX(v);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(v,x-5,pad.t+ph+12);
+  });
+
+  // CS Cin line
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let av=1;av<=100;av++){
+    const cin=cgs0+cgd0*(1+av);
+    const x=toX(av),y=toY(cin);
+    if(av===1)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // CG Cin = cgs (horizontal line)
+  ctx.strokeStyle='#006633';ctx.lineWidth=2;ctx.setLineDash([5,4]);
+  const ycg=toY(cgs0);
+  ctx.beginPath();ctx.moveTo(pad.l,ycg);ctx.lineTo(pad.l+pw,ycg);ctx.stroke();ctx.setLineDash([]);
+
+  // current Av marker
+  const av0=gm0*rd0;
+  if(av0>=1&&av0<=100){
+    const cin0=cgs0+cgd0*(1+av0);
+    ctx.fillStyle=cs.getPropertyValue('--accent').trim();
+    ctx.beginPath();ctx.arc(toX(av0),toY(cin0),4,0,2*Math.PI);ctx.fill();
+  }
+
+  // labels
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='9px Courier New';ctx.fillText('CS: Cgs+Cgd×(1+Av)',pad.l+5,pad.t+14);
+  ctx.fillStyle='#006633';ctx.fillText('CG: Cgs only (flat)',pad.l+5,ycg-4);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('Av →',W/2,H-3);
+  ctx.save();ctx.translate(10,H/2+15);ctx.rotate(-Math.PI/2);ctx.fillText('Cin',0,0);ctx.restore();
+
+  // y-axis tick values
+  let logv=Math.ceil(ymin);
+  while(logv<=ymax){
+    const v=Math.pow(10,logv);
+    const y=toY(v);
+    if(y>=pad.t&&y<=pad.t+ph){
+      ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';
+      const lbl=v>=1e-12?(v*1e15).toFixed(0)+'f':'';
+      ctx.fillText(lbl,pad.l-40,y+3);
+    }
+    logv++;
+  }
+}
+
+function drawBW(gm0,cgs0,cgd0,rd0,rs0){
+  const canvas=document.getElementById('bwCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:65,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+  const av=gm0*rd0;
+  const cin_cs=cgs0+cgd0*(1+av);
+
+  // x: Rs from 50 to 5000 log
+  const xmin=Math.log10(50),xmax=Math.log10(5000);
+  const toX=v=>pad.l+(Math.log10(v)-xmin)/(xmax-xmin)*pw;
+
+  // y: BW log, from 1 MHz to fT range
+  const bw_min=1e7,bw_max=1e11;
+  const ymin=Math.log10(bw_min),ymax=Math.log10(bw_max);
+  const toY=v=>pad.t+(1-(Math.log10(v)-ymin)/(ymax-ymin))*ph;
+
+  // grid
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [1e7,1e8,1e9,1e10,1e11].forEach(v=>{
+    const y=toY(v);if(y<pad.t||y>pad.t+ph)return;
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    const lbl=v>=1e9?(v/1e9).toFixed(0)+'G':(v/1e6).toFixed(0)+'M';
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(lbl+' Hz',pad.l-38,y+3);
+  });
+  [50,100,500,1000,5000].forEach(v=>{
+    const x=toX(v);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(v,x-8,pad.t+ph+12);
+  });
+
+  // CS bandwidth
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=200;i++){
+    const rsv=Math.pow(10,xmin+i/200*(xmax-xmin));
+    const bw=1/(2*Math.PI*rsv*cin_cs);
+    const x=pad.l+i/200*pw,y=toY(bw);
+    if(y<pad.t||y>pad.t+ph){if(i===0)ctx.moveTo(x,Math.max(pad.t,Math.min(pad.t+ph,y)));else ctx.lineTo(x,Math.max(pad.t,Math.min(pad.t+ph,y)));continue;}
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // CG bandwidth = 1/(2pi*(1/gm)*cgs) — independent of Rs (driven at source with 1/gm input)
+  // But also show bandwidth for CG with external Rs (Rs || 1/gm drives Cgs)
+  ctx.strokeStyle='#006633';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=200;i++){
+    const rsv=Math.pow(10,xmin+i/200*(xmax-xmin));
+    const zin_cg=1/gm0;
+    const zeff=rsv*zin_cg/(rsv+zin_cg); // parallel combination
+    const bw=1/(2*Math.PI*zeff*cgs0);
+    const x=pad.l+i/200*pw,y=toY(bw);
+    if(y<pad.t||y>pad.t+ph){if(i===0)ctx.moveTo(x,Math.max(pad.t,Math.min(pad.t+ph,y)));else ctx.lineTo(x,Math.max(pad.t,Math.min(pad.t+ph,y)));continue;}
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // current operating point
+  const bw_cs0=1/(2*Math.PI*rs0*cin_cs);
+  const zeff0=rs0*(1/gm0)/(rs0+1/gm0);
+  const bw_cg0=1/(2*Math.PI*zeff0*cgs0);
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.beginPath();ctx.arc(toX(rs0),toY(bw_cs0),4,0,2*Math.PI);ctx.fill();
+  ctx.fillStyle='#006633';ctx.beginPath();ctx.arc(toX(rs0),toY(bw_cg0),4,0,2*Math.PI);ctx.fill();
+
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='9px Courier New';ctx.fillText('CS bandwidth',pad.l+5,pad.t+14);
+  ctx.fillStyle='#006633';ctx.fillText('CG bandwidth (Rs||1/gm drives Cgs)',pad.l+5,pad.t+26);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('Rs (Ω) →',W/2-20,H-3);
+  ctx.save();ctx.translate(10,H/2+15);ctx.rotate(-Math.PI/2);ctx.fillText('–3dB BW',0,0);ctx.restore();
+}
+
+function drawGBW(gm0,cgs0,cgd0,rd0,rs0){
+  const canvas=document.getElementById('gbwCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:65,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+  // x: Av 1..100
+  const toX=av=>pad.l+(av-1)/99*pw;
+
+  // y: GBW log
+  // CS GBW = Av / (2pi*Rs*Cin) where Cin = cgs + cgd*(1+Av)
+  // Cascode GBW = Av / (2pi * (1/gm) * cgs) — BW independent of Av
+  const gbw_max=gm0/(2*Math.PI*cgs0)*100; // at Av=100
+  const gbw_min=1/(2*Math.PI*rs0*(cgs0+cgd0*2)); // CS at Av=1
+  const ymin=Math.log10(Math.min(gbw_min,1e6));
+  const ymax=Math.log10(gbw_max);
+  const toY=v=>pad.t+(1-(Math.log10(Math.max(v,1))-ymin)/(ymax-ymin))*ph;
+
+  // grid
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  for(let lv=Math.ceil(ymin);lv<=Math.floor(ymax);lv++){
+    const y=toY(Math.pow(10,lv));
+    if(y<pad.t||y>pad.t+ph)continue;
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    const v=Math.pow(10,lv);
+    const lbl=v>=1e9?(v/1e9).toFixed(0)+'G':v>=1e6?(v/1e6).toFixed(0)+'M':'';
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(lbl,pad.l-35,y+3);
+  }
+  [1,10,20,50,100].forEach(v=>{
+    const x=toX(v);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(v,x-5,pad.t+ph+12);
+  });
+
+  // CS GBW
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let av=1;av<=100;av++){
+    const cin=cgs0+cgd0*(1+av);
+    const bw=1/(2*Math.PI*rs0*cin);
+    const gbw=av*bw;
+    const x=toX(av),y=toY(gbw);
+    if(av===1)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Cascode GBW (BW = fT = gm/2pi/Cgs, independent of Av)
+  const bw_casc=1/(2*Math.PI*(1/gm0)*cgs0);
+  ctx.strokeStyle='#006633';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let av=1;av<=100;av++){
+    const gbw=av*bw_casc;
+    const x=toX(av),y=toY(gbw);
+    if(av===1)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  const av0=gm0*rd0;
+  const cin0=cgs0+cgd0*(1+av0);
+  const bw_cs0=1/(2*Math.PI*rs0*cin0);
+  if(av0>=1&&av0<=100){
+    ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.beginPath();ctx.arc(toX(av0),toY(av0*bw_cs0),4,0,2*Math.PI);ctx.fill();
+    ctx.fillStyle='#006633';ctx.beginPath();ctx.arc(toX(av0),toY(av0*bw_casc),4,0,2*Math.PI);ctx.fill();
+  }
+
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='9px Courier New';ctx.fillText('CS GBW (Miller limited)',pad.l+5,pad.t+14);
+  ctx.fillStyle='#006633';ctx.fillText('Cascode GBW (grows with Av)',pad.l+5,pad.t+26);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('Av →',W/2-15,H-3);
+  ctx.save();ctx.translate(10,H/2+15);ctx.rotate(-Math.PI/2);ctx.fillText('GBW (Hz)',0,0);ctx.restore();
+}
+
+['gm','cgs','cgd','rd','rs'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

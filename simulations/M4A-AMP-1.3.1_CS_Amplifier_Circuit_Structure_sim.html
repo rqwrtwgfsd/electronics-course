@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.3.1 — CS Amplifier Circuit Structure</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;gap:16px;align-items:baseline;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:14px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.3.1</div>
+  <div class="topic">CS Amplifier Circuit Structure — MOSFET Bias and AC Analysis</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>Supply & MOSFET</h3>
+      <label>VDD (V): <b id="vdd_lbl">12</b></label>
+      <input type="range" id="vdd" min="3" max="20" value="12" step="0.5">
+      <label>K (mA/V²): <b id="k_lbl">2.0</b></label>
+      <input type="range" id="k" min="0.1" max="10" value="2" step="0.1">
+      <label>Vth (V): <b id="vth_lbl">1.5</b></label>
+      <input type="range" id="vth" min="0.5" max="4" value="1.5" step="0.1">
+    </div>
+    <div class="cg">
+      <h3>Bias Network</h3>
+      <label>R1 (kΩ): <b id="r1_lbl">100</b></label>
+      <input type="range" id="r1" min="10" max="1000" value="100" step="10">
+      <label>R2 (kΩ): <b id="r2_lbl">47</b></label>
+      <input type="range" id="r2" min="10" max="1000" value="47" step="10">
+      <label>RS (Ω): <b id="rs_lbl">500</b></label>
+      <input type="range" id="rs" min="0" max="2000" value="500" step="50">
+      <label>RD (kΩ): <b id="rd_lbl">4.7</b></label>
+      <input type="range" id="rd" min="0.5" max="20" value="4.7" step="0.1">
+    </div>
+    <div class="cg">
+      <h3>Load</h3>
+      <label>RL (kΩ): <b id="rl_lbl">10</b></label>
+      <input type="range" id="rl" min="1" max="100" value="10" step="1">
+    </div>
+    <div class="cg">
+      <h3>DC Operating Point</h3>
+      <div class="rd">VG: <span id="r_vg">—</span> V</div>
+      <div class="rd">VGS: <span id="r_vgs">—</span> V</div>
+      <div class="rd">ID: <span id="r_id">—</span> mA</div>
+      <div class="rd">VDS: <span id="r_vds">—</span> V</div>
+      <div class="rd">gm: <span id="r_gm">—</span> mA/V</div>
+      <div class="rd">Region: <span id="r_region">—</span></div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_av">—</div><div class="l">|Av| (V/V)</div></div>
+      <div class="met"><div class="v" id="m_zin">—</div><div class="l">Zin (MΩ)</div></div>
+      <div class="met"><div class="v" id="m_zout">—</div><div class="l">Zout (kΩ)</div></div>
+      <div class="met"><div class="v" id="m_swing">—</div><div class="l">Max Swing (Vpp)</div></div>
+    </div>
+    <div>
+      <div class="pl">Load Line & Q-Point (ID vs VDS)</div>
+      <canvas id="loadCanvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">|Av| vs RD — parametric over K (VGS–Vth fixed)</div>
+      <canvas id="gainCanvas" height="180"></canvas>
+    </div>
+    <div>
+      <div class="pl">ID vs VGS — transfer characteristic with Q-point</div>
+      <canvas id="transferCanvas" height="160"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+function solveBias(vdd, k_mA, vth, r1k, r2k, rs_ohm) {
+  // VG from divider
+  const vg = vdd * r2k / (r1k + r2k);
+  // ID = K*(VGS-Vth)^2, VGS = VG - ID*RS
+  // ID = K*(VG - ID*RS - Vth)^2
+  // Let Vov = VG - Vth - ID*RS → ID = K*Vov^2
+  // Quadratic: K*RS^2 * ID^2 - (2*K*RS*(VG-Vth)+1)*ID + K*(VG-Vth)^2 = 0
+  const k = k_mA * 1e-3; // A/V^2
+  const RS = rs_ohm;
+  const A = k * RS * RS;
+  const B = -(2 * k * RS * (vg - vth) + 1);
+  const C = k * (vg - vth) * (vg - vth);
+  let id = 0;
+  if (Math.abs(A) < 1e-15) {
+    // RS=0: ID = K*(VG-Vth)^2 directly
+    const vov = vg - vth;
+    id = vov > 0 ? k * vov * vov : 0;
+  } else {
+    const disc = B * B - 4 * A * C;
+    if (disc < 0) { id = 0; }
+    else {
+      const id1 = (-B - Math.sqrt(disc)) / (2 * A);
+      const id2 = (-B + Math.sqrt(disc)) / (2 * A);
+      // Take smaller positive root (physical)
+      const candidates = [id1, id2].filter(x => x >= 0);
+      if (candidates.length === 0) id = 0;
+      else id = Math.min(...candidates);
+    }
+  }
+  const vs = id * RS;
+  const vgs = vg - vs;
+  return { vg, vgs, id };
+}
+
+function update() {
+  const vdd = parseFloat(document.getElementById('vdd').value);
+  const k_mA = parseFloat(document.getElementById('k').value);
+  const vth = parseFloat(document.getElementById('vth').value);
+  const r1k = parseFloat(document.getElementById('r1').value);
+  const r2k = parseFloat(document.getElementById('r2').value);
+  const rs = parseFloat(document.getElementById('rs').value);
+  const rd = parseFloat(document.getElementById('rd').value) * 1e3;
+  const rl = parseFloat(document.getElementById('rl').value) * 1e3;
+
+  document.getElementById('vdd_lbl').textContent = vdd.toFixed(1);
+  document.getElementById('k_lbl').textContent = k_mA.toFixed(1);
+  document.getElementById('vth_lbl').textContent = vth.toFixed(1);
+  document.getElementById('r1_lbl').textContent = r1k.toFixed(0);
+  document.getElementById('r2_lbl').textContent = r2k.toFixed(0);
+  document.getElementById('rs_lbl').textContent = rs.toFixed(0);
+  document.getElementById('rd_lbl').textContent = (rd / 1000).toFixed(1);
+  document.getElementById('rl_lbl').textContent = (rl / 1000).toFixed(0);
+
+  const { vg, vgs, id } = solveBias(vdd, k_mA, vth, r1k, r2k, rs);
+  const vds = vdd - id * rd - id * rs;
+  const vov = vgs - vth;
+  const gm = vov > 0 ? 2 * k_mA * 1e-3 * vov : 0; // S
+  const region = id <= 0 ? 'Cutoff' : (vds < vov ? 'Triode' : 'Saturation');
+
+  document.getElementById('r_vg').textContent = vg.toFixed(2);
+  document.getElementById('r_vgs').textContent = vgs.toFixed(2);
+  document.getElementById('r_id').textContent = (id * 1000).toFixed(2);
+  document.getElementById('r_vds').textContent = vds.toFixed(2);
+  document.getElementById('r_gm').textContent = (gm * 1000).toFixed(2);
+  document.getElementById('r_region').textContent = region;
+
+  const rdl = rd * rl / (rd + rl);
+  const av = gm * rdl;
+  const zin_M = (r1k * r2k / (r1k + r2k)) / 1000; // MΩ
+  const zout_k = rd / 1000;
+  // Max symmetrical swing: limited by VDS headroom and ID*rd
+  const swing = 2 * Math.min(vds - vov, id * rdl) * 0.9;
+
+  document.getElementById('m_av').textContent = av.toFixed(1);
+  document.getElementById('m_zin').textContent = zin_M.toFixed(2);
+  document.getElementById('m_zout').textContent = zout_k.toFixed(1);
+  document.getElementById('m_swing').textContent = (swing > 0 ? swing.toFixed(2) : '0.00');
+
+  drawLoadLine(vdd, k_mA, vth, rd, rs, id, vds, vgs);
+  drawGain(vdd, k_mA, vth, r1k, r2k, rs, rd, rl);
+  drawTransfer(vdd, k_mA, vth, r1k, r2k, rs, rd, id, vgs);
+}
+
+function drawLoadLine(vdd, k_mA, vth, rd, rs, id_q, vds_q, vgs_q) {
+  const canvas = document.getElementById('loadCanvas');
+  const W = canvas.clientWidth || 600; canvas.width = W; const H = canvas.height;
+  const ctx = canvas.getContext('2d');
+  const cs = getComputedStyle(document.documentElement);
+  ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0, 0, W, H);
+  const pad = { l: 45, r: 15, t: 10, b: 30 };
+  const pw = W - pad.l - pad.r, ph = H - pad.t - pad.b;
+  const VDS_MAX = vdd * 1.05;
+  const ID_MAX = vdd / (rd + rs) * 1.1 * 1000; // mA
+  function xOf(vds) { return pad.l + vds / VDS_MAX * pw; }
+  function yOf(id_mA) { return pad.t + ph - id_mA / ID_MAX * ph; }
+
+  // Grid
+  ctx.strokeStyle = cs.getPropertyValue('--grid').trim(); ctx.lineWidth = 0.5;
+  for (let v = 0; v <= VDS_MAX; v += VDS_MAX / 5) {
+    const x = xOf(v); ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
+    ctx.fillStyle = cs.getPropertyValue('--fg').trim(); ctx.font = '9px Courier New';
+    ctx.fillText(v.toFixed(0), x - 8, pad.t + ph + 12);
+  }
+  for (let i = 0; i <= ID_MAX; i += ID_MAX / 4) {
+    const y = yOf(i); ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+    ctx.fillText(i.toFixed(1), 0, y + 3);
+  }
+
+  // MOSFET output curves for several VGS
+  const k = k_mA * 1e-3;
+  const vgsArr = [vth + 0.5, vth + 1, vth + 1.5, vth + 2, vth + 2.5];
+  const colors2 = ['#888', '#666', cs.getPropertyValue('--accent').trim(), '#cc6600', '#cc0000'];
+  vgsArr.forEach((vgs_i, idx) => {
+    ctx.strokeStyle = colors2[idx]; ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (let px = 0; px <= pw; px++) {
+      const vds = px / pw * VDS_MAX;
+      const vov = vgs_i - vth;
+      let id_mA = 0;
+      if (vov > 0) {
+        if (vds < vov) id_mA = k * (2 * vov * vds - vds * vds) * 1000;
+        else id_mA = k * vov * vov * 1000;
+      }
+      const y = yOf(id_mA);
+      if (px === 0) ctx.moveTo(pad.l + px, y); else ctx.lineTo(pad.l + px, y);
+    }
+    ctx.stroke();
+    ctx.fillStyle = colors2[idx]; ctx.font = '8px Courier New';
+    ctx.fillText('VGS=' + vgs_i.toFixed(1) + 'V', pad.l + pw - 75, yOf(k * (vgs_i - vth) * (vgs_i - vth) * 1000) - 2);
+  });
+
+  // Load line: VDS = VDD - ID*(RD+RS)
+  ctx.strokeStyle = '#cc0000'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 3]);
+  ctx.beginPath();
+  ctx.moveTo(xOf(vdd), yOf(0));
+  ctx.lineTo(xOf(0), yOf(vdd / (rd + rs) * 1000));
+  ctx.stroke(); ctx.setLineDash([]);
+
+  // Q-point
+  ctx.fillStyle = '#ff8800';
+  ctx.beginPath(); ctx.arc(xOf(vds_q), yOf(id_q * 1000), 6, 0, 2 * Math.PI); ctx.fill();
+
+  ctx.fillStyle = cs.getPropertyValue('--fg').trim(); ctx.font = '9px Courier New';
+  ctx.fillText('VDS (V) →', W / 2 - 20, H - 2);
+  ctx.save(); ctx.translate(10, H / 2); ctx.rotate(-Math.PI / 2); ctx.fillText('ID (mA)', 0, 0); ctx.restore();
+  ctx.fillStyle = '#ff8800'; ctx.fillText('● Q-point', pad.l + 5, pad.t + 12);
+  ctx.fillStyle = '#cc0000'; ctx.fillText('-- Load line', pad.l + 70, pad.t + 12);
+}
+
+function drawGain(vdd, k_mA, vth, r1k, r2k, rs, rd, rl) {
+  const canvas = document.getElementById('gainCanvas');
+  const W = canvas.clientWidth || 600; canvas.width = W; const H = canvas.height;
+  const ctx = canvas.getContext('2d');
+  const cs = getComputedStyle(document.documentElement);
+  ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0, 0, W, H);
+  const pad = { l: 42, r: 15, t: 10, b: 28 };
+  const pw = W - pad.l - pad.r, ph = H - pad.t - pad.b;
+  const RD_MAX = 20e3;
+  const AV_MAX = 50;
+  function xOf(r) { return pad.l + r / RD_MAX * pw; }
+  function yOf(av) { return pad.t + ph - Math.min(av, AV_MAX) / AV_MAX * ph; }
+
+  ctx.strokeStyle = cs.getPropertyValue('--grid').trim(); ctx.lineWidth = 0.5;
+  [0, 10, 20, 30, 40, 50].forEach(av => {
+    const y = yOf(av); ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+    ctx.fillStyle = cs.getPropertyValue('--fg').trim(); ctx.font = '9px Courier New';
+    ctx.fillText(av, 0, y + 3);
+  });
+
+  const kArr = [0.5, 1, 2, 5, 10];
+  const colors = ['#888', '#006633', cs.getPropertyValue('--accent').trim(), '#cc6600', '#cc0000'];
+  kArr.forEach((k_i, idx) => {
+    // For each k_i, solve bias then compute gm vs RD sweep
+    ctx.strokeStyle = colors[idx]; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let px = 0; px <= pw; px++) {
+      const rd_i = px / pw * RD_MAX;
+      const { vgs, id } = solveBias(vdd, k_i, vth, r1k, r2k, rs);
+      const vov = vgs - vth;
+      const gm_i = vov > 0 ? 2 * k_i * 1e-3 * vov : 0;
+      const rdl = (rd_i * rl) / (rd_i + rl);
+      const av_i = gm_i * rdl;
+      const y = yOf(av_i);
+      if (px === 0) ctx.moveTo(pad.l + px, y); else ctx.lineTo(pad.l + px, y);
+    }
+    ctx.stroke();
+    ctx.fillStyle = colors[idx]; ctx.font = '8px Courier New';
+    ctx.fillText('K=' + k_i.toFixed(0) + 'mA/V²', W - 90, 14 + idx * 12);
+  });
+
+  // Current operating point
+  const { vgs, id } = solveBias(vdd, k_mA, vth, r1k, r2k, rs);
+  const vov = vgs - vth;
+  const gm = vov > 0 ? 2 * k_mA * 1e-3 * vov : 0;
+  const rdl = rd * rl / (rd + rl);
+  const av_q = gm * rdl;
+  ctx.fillStyle = '#ff8800';
+  ctx.beginPath(); ctx.arc(xOf(rd), yOf(av_q), 5, 0, 2 * Math.PI); ctx.fill();
+
+  ctx.fillStyle = cs.getPropertyValue('--fg').trim(); ctx.font = '9px Courier New';
+  ctx.fillText('RD (Ω) →', W / 2 - 20, H - 1);
+  ctx.save(); ctx.translate(10, H / 2); ctx.rotate(-Math.PI / 2); ctx.fillText('|Av| (V/V)', 0, 0); ctx.restore();
+}
+
+function drawTransfer(vdd, k_mA, vth, r1k, r2k, rs, rd, id_q, vgs_q) {
+  const canvas = document.getElementById('transferCanvas');
+  const W = canvas.clientWidth || 600; canvas.width = W; const H = canvas.height;
+  const ctx = canvas.getContext('2d');
+  const cs = getComputedStyle(document.documentElement);
+  ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0, 0, W, H);
+  const pad = { l: 42, r: 15, t: 10, b: 28 };
+  const pw = W - pad.l - pad.r, ph = H - pad.t - pad.b;
+  const VGS_MAX = vth + 3;
+  const ID_MAX_T = k_mA * 1e-3 * (3 * 3) * 1000 * 1.1; // mA at VGS=Vth+3
+  function xOf(vgs) { return pad.l + vgs / VGS_MAX * pw; }
+  function yOf(id_mA) { return pad.t + ph - id_mA / ID_MAX_T * ph; }
+
+  ctx.strokeStyle = cs.getPropertyValue('--grid').trim(); ctx.lineWidth = 0.5;
+  for (let v = 0; v <= VGS_MAX; v += VGS_MAX / 5) {
+    const x = xOf(v); ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
+    ctx.fillStyle = cs.getPropertyValue('--fg').trim(); ctx.font = '9px Courier New';
+    ctx.fillText(v.toFixed(1), x - 8, pad.t + ph + 12);
+  }
+
+  // Transfer curve
+  ctx.strokeStyle = cs.getPropertyValue('--accent').trim(); ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let px = 0; px <= pw; px++) {
+    const vgs = px / pw * VGS_MAX;
+    const vov = vgs - vth;
+    const id_mA = vov > 0 ? k_mA * vov * vov : 0;
+    const y = yOf(id_mA);
+    if (px === 0) ctx.moveTo(pad.l + px, y); else ctx.lineTo(pad.l + px, y);
+  }
+  ctx.stroke();
+
+  // Vth marker
+  ctx.strokeStyle = '#888'; ctx.lineWidth = 0.8; ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.moveTo(xOf(vth), pad.t); ctx.lineTo(xOf(vth), pad.t + ph); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#888'; ctx.font = '9px Courier New';
+  ctx.fillText('Vth', xOf(vth) - 8, pad.t + 10);
+
+  // Q-point on transfer curve
+  const id_q_mA = id_q * 1000;
+  ctx.fillStyle = '#ff8800';
+  ctx.beginPath(); ctx.arc(xOf(vgs_q), yOf(id_q_mA), 5, 0, 2 * Math.PI); ctx.fill();
+
+  // Tangent (gm slope)
+  const vov_q = vgs_q - vth;
+  if (vov_q > 0) {
+    const gm_q = 2 * k_mA * 1e-3 * vov_q;
+    const delta = 0.5;
+    const id1 = k_mA * Math.max(0, vgs_q - delta - vth) ** 2;
+    const id2 = k_mA * Math.min(vgs_q + delta, VGS_MAX - 0.1 - vth) ** 2;
+    ctx.strokeStyle = '#ff8800'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(xOf(vgs_q - delta), yOf(id1));
+    ctx.lineTo(xOf(vgs_q + delta), yOf(id2));
+    ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = '#ff8800'; ctx.font = '9px Courier New';
+    ctx.fillText('gm=' + (gm_q * 1000).toFixed(1) + 'mA/V', xOf(vgs_q) + 6, yOf(id_q_mA) - 4);
+  }
+
+  ctx.fillStyle = cs.getPropertyValue('--fg').trim(); ctx.font = '9px Courier New';
+  ctx.fillText('VGS (V) →', W / 2 - 20, H - 1);
+  ctx.save(); ctx.translate(10, H / 2); ctx.rotate(-Math.PI / 2); ctx.fillText('ID (mA)', 0, 0); ctx.restore();
+}
+
+['vdd','k','vth','r1','r2','rs','rd','rl'].forEach(id => document.getElementById(id).addEventListener('input', update));
+window.addEventListener('resize', update);
+update();
+</script>
+</body>
+</html>

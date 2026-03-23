@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.3.11 — CG High Output Impedance</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;gap:16px;align-items:baseline;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:14px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.3.11</div>
+  <div class="topic">CG High Output Impedance — Cascode Zout = gm×ro², Gain Boost</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>CG Transistor</h3>
+      <label>gm_CG (mA/V): <b id="gm_lbl">10</b></label>
+      <input type="range" id="gm" min="0.5" max="50" value="10" step="0.5">
+      <label>ro_CG (kΩ): <b id="ro_lbl">10</b></label>
+      <input type="range" id="ro" min="1" max="100" value="10" step="1">
+    </div>
+    <div class="cg">
+      <h3>Source Resistance (Rs or ro_CS)</h3>
+      <label>Rs (kΩ): <b id="rs_lbl">0</b></label>
+      <input type="range" id="rs" min="0" max="100" value="0" step="1">
+    </div>
+    <div class="cg">
+      <h3>Gain-Boost (regulated cascode)</h3>
+      <label>Aux gain A: <b id="a_lbl">1</b></label>
+      <input type="range" id="a" min="1" max="100" value="1" step="1">
+    </div>
+    <div class="cg">
+      <h3>Load</h3>
+      <label>RD (kΩ): <b id="rd_lbl">5</b></label>
+      <input type="range" id="rd" min="0" max="200" value="5" step="1">
+      <label>gm_input (mA/V): <b id="gmin_lbl">5</b></label>
+      <input type="range" id="gmin" min="0.5" max="20" value="5" step="0.5">
+    </div>
+    <div class="cg">
+      <h3>Results</h3>
+      <div class="rd">Zout_drain: <span id="r_zout">—</span> kΩ</div>
+      <div class="rd">Zout (boost): <span id="r_zout_b">—</span> kΩ</div>
+      <div class="rd">Total Zout: <span id="r_ztotal">—</span> kΩ</div>
+      <div class="rd">μ = gm×ro: <span id="r_mu">—</span></div>
+      <div class="rd">Av = gm_in×Ztotal: <span id="r_av">—</span> V/V</div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_zout">—</div><div class="l">Zout (kΩ)</div></div>
+      <div class="met"><div class="v" id="m_mu">—</div><div class="l">μ = gm×ro</div></div>
+      <div class="met"><div class="v" id="m_av">—</div><div class="l">Av (V/V)</div></div>
+      <div class="met"><div class="v" id="m_boost">—</div><div class="l">Boost factor</div></div>
+    </div>
+    <div>
+      <div class="pl">Zout vs Rs (source resistance) — boost effect</div>
+      <canvas id="zoutCanvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">Av vs ro_CS (cascode benefit) — gm_input × Zout</div>
+      <canvas id="avCanvas" height="170"></canvas>
+    </div>
+    <div>
+      <div class="pl">Simple CS vs Cascode vs Gain-Boosted Zout comparison</div>
+      <canvas id="compCanvas" height="150"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+function update(){
+  const gm=parseFloat(document.getElementById('gm').value)*1e-3;
+  const ro=parseFloat(document.getElementById('ro').value)*1e3;
+  const rs=parseFloat(document.getElementById('rs').value)*1e3;
+  const a=parseFloat(document.getElementById('a').value);
+  const rd=parseFloat(document.getElementById('rd').value)*1e3;
+  const gmin=parseFloat(document.getElementById('gmin').value)*1e-3;
+
+  document.getElementById('gm_lbl').textContent=(gm*1e3).toFixed(1);
+  document.getElementById('ro_lbl').textContent=(ro/1e3).toFixed(0);
+  document.getElementById('rs_lbl').textContent=(rs/1e3).toFixed(0);
+  document.getElementById('a_lbl').textContent=a.toFixed(0);
+  document.getElementById('rd_lbl').textContent=(rd/1e3).toFixed(0);
+  document.getElementById('gmin_lbl').textContent=(gmin*1e3).toFixed(1);
+
+  const zout_drain=ro*(1+gm*rs)+rs;
+  const zout_boost=a*zout_drain;
+  const ztotal=rd>0?rd*zout_boost/(rd+zout_boost):zout_boost;
+  const mu=gm*ro;
+  const av=gmin*ztotal;
+
+  document.getElementById('r_zout').textContent=(zout_drain/1e3).toFixed(1);
+  document.getElementById('r_zout_b').textContent=(zout_boost/1e3).toFixed(1);
+  document.getElementById('r_ztotal').textContent=(ztotal/1e3).toFixed(1);
+  document.getElementById('r_mu').textContent=mu.toFixed(1);
+  document.getElementById('r_av').textContent=av.toFixed(0);
+
+  document.getElementById('m_zout').textContent=(ztotal/1e3).toFixed(0);
+  document.getElementById('m_mu').textContent=mu.toFixed(0);
+  document.getElementById('m_av').textContent=av.toFixed(0);
+  document.getElementById('m_boost').textContent=a.toFixed(0)+'×';
+
+  drawZout(gm,ro,rs);
+  drawAv(gm,ro,gmin,a);
+  drawComp(gm,ro,rs,a);
+}
+
+function logCanvas(ctx,W,H,pad,Z_MAX,F_MAX,labels){
+  // Helper for log-y axis (Zout)
+}
+
+function drawZout(gm,ro,rs_cur){
+  const canvas=document.getElementById('zoutCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:55,r:15,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const RS_MAX=100e3;
+  const Z_MAX_LOG=Math.log10(gm*ro*ro*ro*RS_MAX+ro)*1.05||8;
+  const Z_MIN_LOG=Math.log10(ro);
+  function xOf(rs){return pad.l+rs/RS_MAX*pw;}
+  function yOf(z){return pad.t+ph-(Math.log10(Math.max(z,1))-Z_MIN_LOG)/(Z_MAX_LOG-Z_MIN_LOG)*ph;}
+
+  // Grid
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  for(let exp=Math.floor(Z_MIN_LOG);exp<=Math.ceil(Z_MAX_LOG);exp++){
+    const z=Math.pow(10,exp);
+    const y=yOf(z);
+    if(y>=pad.t&&y<=pad.t+ph){
+      ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+      ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';
+      const lbl=z>=1e6?(z/1e6).toFixed(0)+'MΩ':z>=1e3?(z/1e3).toFixed(0)+'kΩ':z.toFixed(0)+'Ω';
+      ctx.fillText(lbl,0,y+3);
+    }
+  }
+
+  // Zout = ro*(1+gm*Rs) + Rs
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const rs_i=px/pw*RS_MAX;
+    const z=ro*(1+gm*rs_i)+rs_i;
+    const y=yOf(z);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  // Simple ro baseline
+  ctx.strokeStyle='#888';ctx.lineWidth=0.8;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,yOf(ro));ctx.lineTo(pad.l+pw,yOf(ro));ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle='#ff8800';
+  const z_q=ro*(1+gm*rs_cur)+rs_cur;
+  ctx.beginPath();ctx.arc(xOf(rs_cur),yOf(z_q),5,0,2*Math.PI);ctx.fill();
+
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='8px Courier New';
+  ctx.fillText('CG Zout = ro×(1+gm×Rs)',pad.l+5,pad.t+10);
+  ctx.fillStyle='#888';ctx.fillText('-- simple ro',pad.l+5,pad.t+22);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+  ctx.fillText('Rs (Ω) →',W/2-20,H-1);
+  ctx.save();ctx.translate(12,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('Zout',0,0);ctx.restore();
+}
+
+function drawAv(gm_cg,ro_cg,gmin,a){
+  const canvas=document.getElementById('avCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:55,r:15,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const RO_CS_MAX=100e3;
+  const AV_MAX=gmin*a*gm_cg*ro_cg*RO_CS_MAX*1.1;
+  const AV_MAX_LOG=Math.log10(Math.max(AV_MAX,1))||5;
+  function xOf(ro){return pad.l+ro/RO_CS_MAX*pw;}
+  function yOf(av){return pad.t+ph-Math.log10(Math.max(av,1))/AV_MAX_LOG*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  for(let exp=0;exp<=Math.ceil(AV_MAX_LOG);exp++){
+    const av=Math.pow(10,exp);
+    const y=yOf(av);
+    if(y>=pad.t&&y<=pad.t+ph){
+      ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+      ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';
+      ctx.fillText(av.toFixed(0),0,y+3);
+    }
+  }
+
+  // Simple CS: Av = gmin*ro_CS
+  ctx.strokeStyle='#888';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();
+  for(let px=1;px<=pw;px++){
+    const ro_cs=px/pw*RO_CS_MAX;
+    const av=gmin*ro_cs;
+    if(av>0){const y=yOf(av);if(px===1)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);}
+  }
+  ctx.stroke();ctx.setLineDash([]);
+
+  // Cascode: Av = gmin × gm_cg × ro_cg × ro_cs
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=1;px<=pw;px++){
+    const ro_cs=px/pw*RO_CS_MAX;
+    const zout=gm_cg*ro_cg*ro_cs;
+    const av=a*gmin*zout;
+    if(av>0){const y=yOf(av);if(px===1)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);}
+  }
+  ctx.stroke();
+
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='8px Courier New';
+  ctx.fillText('── Cascode Av = gm_in×gm_CG×ro²',pad.l+5,pad.t+10);
+  ctx.fillStyle='#888';ctx.fillText('-- Simple CS Av',pad.l+5,pad.t+22);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+  ctx.fillText('ro_CS (Ω) →',W/2-20,H-1);
+  ctx.save();ctx.translate(12,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('Av (V/V)',0,0);ctx.restore();
+}
+
+function drawComp(gm,ro,rs,a){
+  const canvas=document.getElementById('compCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:15,r:15,t:20,b:10};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+  const vals=[
+    {label:'Simple CS', val:ro, color:'#888'},
+    {label:'CG (Rs=0)', val:ro*(1+0)+0, color:'#cc6600'},
+    {label:'CG w/ Rs', val:ro*(1+gm*rs)+rs, color:cs.getPropertyValue('--accent').trim()},
+    {label:'Boosted', val:a*(ro*(1+gm*rs)+rs), color:'#006633'},
+  ];
+  const maxVal=Math.max(...vals.map(v=>v.val));
+  const barH=Math.floor(ph/vals.length)-6;
+
+  vals.forEach((v,i)=>{
+    const bw=pw*v.val/maxVal;
+    const y=pad.t+i*(barH+6);
+    ctx.fillStyle=v.color;
+    ctx.fillRect(pad.l,y,bw,barH);
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(v.label+': '+(v.val>=1e6?(v.val/1e6).toFixed(1)+'MΩ':v.val>=1e3?(v.val/1e3).toFixed(0)+'kΩ':v.val.toFixed(0)+'Ω'),pad.l+3,y+barH-3);
+  });
+}
+
+['gm','ro','rs','a','rd','gmin'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

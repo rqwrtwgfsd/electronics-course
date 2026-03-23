@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-WI-5.2.1 Identify Circuit from Graph</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{padding:12px;display:flex;gap:12px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:14px;min-width:240px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:10px;text-transform:uppercase}
+.choice-btn{display:block;width:100%;margin-top:7px;padding:8px 10px;background:#1a1a3a;border:1px solid #334;color:#ccc;cursor:pointer;font-family:inherit;font-size:12px;border-radius:3px;text-align:left}
+.choice-btn:hover{border-color:#0066cc}
+.choice-btn.correct{background:#004400;border-color:#00ff88;color:#00ff88}
+.choice-btn.wrong{background:#330000;border-color:#ff4444;color:#ff4444}
+#feedback{margin-top:12px;font-size:13px;line-height:1.6;min-height:40px}
+.score{color:#ffaa00;font-size:14px;margin-bottom:10px}
+.new-btn{margin-top:10px;padding:8px;background:#0066cc;border:none;color:#fff;cursor:pointer;font-family:inherit;font-size:12px;border-radius:3px;width:100%}
+.hint{color:#888;font-size:11px;margin-top:8px;line-height:1.5}
+</style>
+</head>
+<body>
+<h1>P2-WI-5.2.1 — Identify Circuit Type from Waveform Shape</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="560" height="340"></canvas>
+</div>
+<div class="panel">
+<div class="score" id="score">Score: 0 / 0</div>
+<h2>What type of circuit produced this waveform?</h2>
+<button class="choice-btn" id="c0" onclick="answer(0)"></button>
+<button class="choice-btn" id="c1" onclick="answer(1)"></button>
+<button class="choice-btn" id="c2" onclick="answer(2)"></button>
+<button class="choice-btn" id="c3" onclick="answer(3)"></button>
+<div id="feedback"></div>
+<button class="new-btn" onclick="newQ()">New Question</button>
+<div class="hint" id="hint"></div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+const W=560,H=340,PAD={l:55,r:20,t:20,b:40};
+const CW=W-PAD.l-PAD.r,CH=H-PAD.t-PAD.b;
+let correct=0,total=0,answered=false,rightIdx=0;
+
+const waveforms=[
+  {name:'RC Charge (Exponential Rise)',fn:(t,tm)=>5*(1-Math.exp(-t/(tm/4))),hint:'Rises rapidly then slows — concave down, approaches final value asymptotically.',color:'#00ff88',choices:['RC Charge','RC Discharge','RLC Underdamped','RL Charge (current)']},
+  {name:'RC Discharge (Exponential Decay)',fn:(t,tm)=>5*Math.exp(-t/(tm/4)),hint:'Starts at maximum, decays exponentially — steepest slope at t=0.',color:'#00aaff',choices:['RC Discharge','RC Charge','RLC Overdamped','Integrator output']},
+  {name:'RLC Underdamped Step Response',fn:(t,tm)=>{const w0=20/tm,a=2/tm,wd=Math.sqrt(w0*w0-a*a);return 5*(1-Math.exp(-a*t)*(Math.cos(wd*t)+a/wd*Math.sin(wd*t)));},hint:'Overshoots the final value, rings with decaying amplitude — has oscillation.',color:'#ffaa00',choices:['RLC Underdamped','RC Charge','RL Current Rise','Sine wave']},
+  {name:'RL Current Rise',fn:(t,tm)=>3*(1-Math.exp(-t/(tm/3))),hint:'Current rise in RL: same exponential shape as RC voltage, but represents current, not voltage.',color:'#aa44ff',choices:['RL Current Rise','RC Charge','Differentiated pulse','Integrator ramp']},
+  {name:'RC Differentiator (Pulse edges)',fn:(t,tm)=>{const tp=tm*0.3;if(t<0.02*tm)return 5*Math.exp(-t/(tm*0.05));if(t<tp-0.02*tm)return 5*Math.exp(-t/(tm*0.05));if(t<tp)return -5*(1-Math.exp(-(t-tp+0.02*tm)/(tm*0.05)));return -5*Math.exp(-(t-tp)/(tm*0.05));},hint:'Brief positive spike at rising edge, brief negative spike at falling edge — differentiator with t_p >> τ.',color:'#ff6600',choices:['RC Differentiator','RLC Oscillation','RC Discharge','RL Decay']},
+  {name:'RLC Overdamped Step Response',fn:(t,tm)=>{const a=4/tm,b=6/tm;return 5*(1-1.5*Math.exp(-a*t)+0.5*Math.exp(-b*t));},hint:'Rises slowly without oscillation or overshoot — two real exponential terms, sluggish response.',color:'#ff4444',choices:['RLC Overdamped','RC Charge','Integrator','RLC Underdamped']},
+];
+
+let q=null;
+function newQ(){
+  answered=false;
+  q=waveforms[Math.floor(Math.random()*waveforms.length)];
+  // Shuffle choices
+  const choices=[...q.choices];
+  for(let i=choices.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[choices[i],choices[j]]=[choices[j],choices[i]];}
+  rightIdx=choices.indexOf(q.choices[0]);
+  for(let i=0;i<4;i++){
+    const b=document.getElementById('c'+i);
+    b.textContent=choices[i];
+    b.className='choice-btn';
+  }
+  document.getElementById('feedback').textContent='';
+  document.getElementById('hint').textContent='';
+  drawWave();
+}
+function answer(i){
+  if(answered)return;
+  answered=true;total++;
+  if(i===rightIdx){
+    correct++;
+    document.getElementById('c'+i).classList.add('correct');
+    document.getElementById('feedback').innerHTML='<span style="color:#00ff88">Correct!</span> '+q.name;
+  } else {
+    document.getElementById('c'+i).classList.add('wrong');
+    document.getElementById('c'+rightIdx).classList.add('correct');
+    document.getElementById('feedback').innerHTML='<span style="color:#ff4444">Wrong.</span> This is: '+q.name;
+  }
+  document.getElementById('hint').textContent='Key feature: '+q.hint;
+  document.getElementById('score').textContent='Score: '+correct+' / '+total;
+}
+function drawWave(){
+  ctx.clearRect(0,0,W,H);
+  const tmax=10;
+  function toPx(t,v,vmin=-1.5,vmax=6){
+    return[PAD.l+CW*(t/tmax),PAD.t+CH*(1-(v-vmin)/(vmax-vmin))];
+  }
+  // Grid
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=10;i++){const x=PAD.l+CW*(i/10);ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=PAD.t+CH*(i/5);ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+CH);ctx.moveTo(PAD.l,PAD.t+CH);ctx.lineTo(PAD.l+CW,PAD.t+CH);ctx.stroke();
+  // Zero line
+  const[,y0]=toPx(0,0);
+  ctx.strokeStyle='#333';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(PAD.l,y0);ctx.lineTo(PAD.l+CW,y0);ctx.stroke();ctx.setLineDash([]);
+  // Axes labels
+  ctx.fillStyle='#555';ctx.font='10px Courier New';ctx.textAlign='center';
+  ctx.fillText('Time →',PAD.l+CW/2,PAD.t+CH+28);
+  ctx.save();ctx.translate(12,PAD.t+CH/2);ctx.rotate(-Math.PI/2);ctx.fillText('Signal',0,0);ctx.restore();
+  // Waveform
+  if(!q)return;
+  ctx.strokeStyle=q.color;ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=600;i++){
+    const t=tmax*i/600;
+    const v=q.fn(t,tmax);
+    const[x,y]=toPx(t,v);
+    if(y>PAD.t-20&&y<PAD.t+CH+20){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  }
+  ctx.stroke();
+  ctx.fillStyle='#444';ctx.font='11px Courier New';ctx.textAlign='center';
+  ctx.fillText('Identify the circuit that produced this waveform',PAD.l+CW/2,PAD.t+CH+14);
+}
+newQ();
+</script>
+</body>
+</html>

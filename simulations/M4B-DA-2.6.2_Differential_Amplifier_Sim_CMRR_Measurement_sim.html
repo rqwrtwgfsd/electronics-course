@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-DA-2.6.2 — CMRR Measurement</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-DA-2.6.2</div>
+  <h1>Differential Amplifier — Simulation: CMRR Measurement</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>CMRR Parameters</h2>
+      <label>g_m (mA/V): <b id="gm_l">1.65</b> <input type="range" id="gm" min="0.1" max="10" value="1.65" step="0.05"></label>
+      <label>r_SS tail (MΩ): <b id="rss_l">1000</b> <input type="range" id="rss" min="10" max="10000" value="1000" step="10"></label>
+      <label>C_SS (fF): <b id="css_l">80</b> <input type="range" id="css" min="5" max="500" value="80" step="5"></label>
+      <label>ΔV_th mismatch (mV): <b id="dvth_l">3</b> mV <input type="range" id="dvth" min="0.5" max="20" value="3" step="0.5"></label>
+      <label>V_ov (mV): <b id="vov_l">200</b> mV <input type="range" id="vov" min="50" max="500" value="200" step="10"></label>
+      <label>A_DM (dB): <b id="adm_l">80</b> <input type="range" id="adm" min="20" max="120" value="80" step="1"></label>
+
+      <div class="ro">CMRR_tail @ DC (dB): <span id="cmrr_tail">--</span></div>
+      <div class="ro" style="margin-top:4px">CMRR_mismatch (dB): <span id="cmrr_mis">--</span></div>
+      <div class="ro g" style="margin-top:4px">Total CMRR @ DC (dB): <span id="cmrr_dc">--</span></div>
+      <div class="ro" style="margin-top:4px">f_p,tail (Hz): <span id="fptail">--</span></div>
+      <div class="ro" style="margin-top:4px">CMRR @ 10 kHz (dB): <span id="cmrr_10k">--</span></div>
+      <div class="insight">
+        CMRR = min(2g_m r_SS, V_ov/ΔV_th). Rolls off at −20 dB/decade above f_p,tail = 1/(2π r_SS C_SS). Mismatch floor is fixed — no topology improvement helps. Only larger W×L devices reduce ΔV_th via Pelgrom scaling.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>CMRR vs Frequency</h2>
+      <canvas id="cv" height="300"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const gm=+document.getElementById('gm').value*1e-3;
+    const rss=+document.getElementById('rss').value*1e6;
+    const css=+document.getElementById('css').value*1e-15;
+    const dvth=+document.getElementById('dvth').value*1e-3;
+    const vov=+document.getElementById('vov').value*1e-3;
+    const adm_dB=+document.getElementById('adm').value;
+
+    document.getElementById('gm_l').textContent=(gm*1e3).toFixed(2);
+    document.getElementById('rss_l').textContent=(rss/1e6).toFixed(0);
+    document.getElementById('css_l').textContent=(css*1e15).toFixed(0);
+    document.getElementById('dvth_l').textContent=(dvth*1e3).toFixed(1);
+    document.getElementById('vov_l').textContent=(vov*1e3).toFixed(0);
+    document.getElementById('adm_l').textContent=adm_dB.toFixed(0);
+
+    const CMRR_tail_lin = 2*gm*rss;
+    const CMRR_mis_lin = vov/dvth;
+    const CMRR_dc_lin = Math.min(CMRR_tail_lin, CMRR_mis_lin);
+    const fptail = 1/(2*Math.PI*rss*css);
+
+    // CMRR at 10kHz: tail component rolls off
+    const f_10k = 10e3;
+    const Zss_10k = rss/Math.sqrt(1+(f_10k/fptail)**2);
+    const CMRR_tail_10k = 2*gm*Zss_10k;
+    const CMRR_10k = Math.min(CMRR_tail_10k, CMRR_mis_lin);
+
+    document.getElementById('cmrr_tail').textContent=(20*Math.log10(CMRR_tail_lin)).toFixed(1);
+    document.getElementById('cmrr_mis').textContent=(20*Math.log10(CMRR_mis_lin)).toFixed(1);
+    document.getElementById('cmrr_dc').textContent=(20*Math.log10(CMRR_dc_lin)).toFixed(1);
+    document.getElementById('fptail').textContent=fptail.toFixed(1);
+    document.getElementById('cmrr_10k').textContent=(20*Math.log10(CMRR_10k)).toFixed(1);
+
+    draw(gm, rss, css, dvth, vov, fptail, CMRR_tail_lin, CMRR_mis_lin);
+  }
+
+  function draw(gm, rss, css, dvth, vov, fptail, cmrr_tail, cmrr_mis){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=300;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,300);
+    const pL=55,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=300-pT-pB;
+
+    const fmin=1, fmax=1e9;
+    const logFmin=0, logFmax=9;
+    const cmrrMax=Math.max(20*Math.log10(cmrr_tail)+10, 160);
+    const cmrrMin=-10;
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText('CMRR (dB)', 2, pT+ph/2);
+
+    for(let db=0; db<=Math.ceil(cmrrMax/20)*20; db+=20){
+      const y=pT+ph-((db-cmrrMin)/(cmrrMax-cmrrMin))*ph;
+      if(y<pT||y>pT+ph) continue;
+      ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText(db, 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+
+    // CMRR_tail curve (rolls off above fptail)
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2; ctx.setLineDash([]);
+    ctx.beginPath(); let first=true;
+    for(let px=0;px<=pw;px++){
+      const f=Math.pow(10, logFmin+(px/pw)*(logFmax-logFmin));
+      const Zss=rss/Math.sqrt(1+(f/fptail)**2);
+      const cmrr_f=2*gm*Zss;
+      const dB=20*Math.log10(Math.max(cmrr_f,1e-3));
+      const y=pT+ph-((dB-cmrrMin)/(cmrrMax-cmrrMin))*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // Mismatch floor (horizontal)
+    const cmrr_mis_dB=20*Math.log10(cmrr_mis);
+    const ymis=pT+ph-((cmrr_mis_dB-cmrrMin)/(cmrrMax-cmrrMin))*ph;
+    ctx.strokeStyle='#cc2200'; ctx.lineWidth=1.5; ctx.setLineDash([5,4]);
+    ctx.beginPath(); ctx.moveTo(pL,ymis); ctx.lineTo(pL+pw,ymis); ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle='#cc2200'; ctx.font='9px system-ui';
+    ctx.fillText('Mismatch floor '+cmrr_mis_dB.toFixed(0)+' dB', pL+4, ymis-4);
+
+    // Total CMRR = min of both (green)
+    ctx.strokeStyle='#00994d'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+    ctx.beginPath(); first=true;
+    for(let px=0;px<=pw;px++){
+      const f=Math.pow(10, logFmin+(px/pw)*(logFmax-logFmin));
+      const Zss=rss/Math.sqrt(1+(f/fptail)**2);
+      const cmrr_t_f=2*gm*Zss;
+      const total=Math.min(cmrr_t_f, cmrr_mis);
+      const dB=20*Math.log10(Math.max(total,1e-3));
+      const y=pT+ph-((dB-cmrrMin)/(cmrrMax-cmrrMin))*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // f_p,tail marker
+    const xfpt=pL+((Math.log10(fptail)-logFmin)/(logFmax-logFmin))*pw;
+    if(xfpt>pL&&xfpt<pL+pw){
+      ctx.strokeStyle='#ff880066'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(xfpt,pT); ctx.lineTo(xfpt,pT+ph); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle='#ff8800'; ctx.font='8px system-ui';
+      let lbl=fptail>=1e3?'f_p='+(fptail/1e3).toFixed(0)+'kHz':'f_p='+fptail.toFixed(1)+'Hz';
+      ctx.fillText(lbl, xfpt+2, pT+9);
+    }
+
+    // X labels
+    ['1','10','100','1k','10k','100k','1M','10M','100M','1G'].forEach((lbl,i)=>{
+      const x=pL+(i/9)*pw;
+      ctx.fillStyle='#8888aa'; ctx.font='8px system-ui'; ctx.fillText(lbl, x-8, pT+ph+14);
+    });
+
+    // Legend
+    const items=[{c:'#0066cc',lbl:'CMRR_tail',d:[]},{c:'#cc2200',lbl:'Mismatch floor',d:[5,4]},{c:'#00994d',lbl:'Total CMRR',d:[]}];
+    items.forEach(({c,lbl,d},i)=>{
+      ctx.strokeStyle=c; ctx.lineWidth=1.8; ctx.setLineDash(d);
+      ctx.beginPath(); ctx.moveTo(pL+pw-120, pT+12+14*i); ctx.lineTo(pL+pw-100, pT+12+14*i); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle='#8888aa'; ctx.font='10px system-ui'; ctx.fillText(lbl, pL+pw-96, pT+16+14*i);
+    });
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

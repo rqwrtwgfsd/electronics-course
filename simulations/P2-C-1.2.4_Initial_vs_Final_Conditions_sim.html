@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-C-1.2.4 — Initial vs Final Conditions Simulator</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --surface: #f5f5f5;
+    --border: #cccccc;
+    --text: #1a1a1a;
+    --accent: #0066cc;
+    --accent2: #cc4400;
+    --accent3: #008844;
+    --muted: #666666;
+    --warn: #aa6600;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a;
+      --surface: #2a2a2a;
+      --border: #444444;
+      --text: #e8e8e8;
+      --accent: #4499ff;
+      --accent2: #ff6633;
+      --accent3: #44cc88;
+      --muted: #999999;
+      --warn: #ffaa33;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); padding: 20px; max-width: 960px; margin: 0 auto; }
+  header { border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+  .module-id { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+  h1 { font-size: 22px; margin: 4px 0; }
+  .subtitle { font-size: 14px; color: var(--muted); }
+  .top-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .cond-card {
+    background: var(--surface); border: 2px solid var(--border); border-radius: 6px;
+    padding: 14px; text-align: center;
+  }
+  .cond-card.active-init { border-color: var(--accent2); }
+  .cond-card.active-final { border-color: var(--accent3); }
+  .cond-title { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .cond-eq { font-family: monospace; font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+  .cond-sub { font-size: 12px; color: var(--muted); }
+  .eq-init { color: var(--accent2); }
+  .eq-final { color: var(--accent3); }
+  .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+  .diagram-box { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; }
+  canvas.main-cv { border: 1px solid var(--border); border-radius: 4px; display: block; width: 100%; }
+  .ctrl-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 16px; }
+  .ctrl-group { margin-bottom: 16px; }
+  .ctrl-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: baseline; }
+  .ctrl-value { color: var(--accent); font-size: 14px; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+  .readouts { border-top: 1px solid var(--border); padding-top: 12px; margin-top: 12px; }
+  .readout-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13px; }
+  .readout-label { color: var(--muted); }
+  .readout-val { font-family: monospace; font-size: 15px; font-weight: 700; }
+  @media (max-width: 640px) { .top-row { grid-template-columns: 1fr; } .layout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">P2-C-1.2.4 | Analog Electronics</div>
+  <h1>Initial vs Final Conditions</h1>
+  <div class="subtitle">At t = 0⁺: capacitor → voltage source (V<sub>C0</sub>) &nbsp;|&nbsp; At t → ∞: capacitor → open circuit</div>
+</header>
+
+<div class="top-row">
+  <div class="cond-card">
+    <div class="cond-title">Before Switch (t &lt; 0)</div>
+    <div class="cond-eq" style="color:var(--muted)">V<sub>C</sub> = V<sub>C0</sub></div>
+    <div class="cond-sub">Initial charge stored on capacitor</div>
+  </div>
+  <div class="cond-card active-init">
+    <div class="cond-title">At t = 0⁺ (Initial)</div>
+    <div class="cond-eq eq-init">C → V<sub>source</sub>(V<sub>C0</sub>)</div>
+    <div class="cond-sub">Replace C with voltage source = V<sub>C0</sub><br>Solve for I(0⁺)</div>
+  </div>
+  <div class="cond-card active-final">
+    <div class="cond-title">At t → ∞ (Final)</div>
+    <div class="cond-eq eq-final">C → Open Circuit</div>
+    <div class="cond-sub">Replace C with open circuit<br>Solve for V(∞)</div>
+  </div>
+</div>
+
+<div class="layout">
+  <div>
+    <canvas id="circuit-cv" height="260"></canvas>
+    <canvas class="main-cv" id="main-cv" height="260" style="margin-top:8px;"></canvas>
+  </div>
+  <div class="ctrl-panel">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Supply V<sub>s</sub> <span class="ctrl-value" id="vs-display">12.0 V</span></div>
+      <input type="range" id="vs-slider" min="1" max="24" step="0.5" value="12">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">R1 (series) <span class="ctrl-value" id="r1-display">10 kΩ</span></div>
+      <input type="range" id="r1-slider" min="1" max="100" value="40">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">R2 (parallel) <span class="ctrl-value" id="r2-display">10 kΩ</span></div>
+      <input type="range" id="r2-slider" min="1" max="100" value="40">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Initial V<sub>C0</sub> <span class="ctrl-value" id="vc0-display">0.0 V</span></div>
+      <input type="range" id="vc0-slider" min="0" max="100" value="0">
+    </div>
+
+    <div class="readouts">
+      <div class="readout-row">
+        <span class="readout-label" style="color:var(--accent2)">I at t = 0⁺</span>
+        <span class="readout-val" style="color:var(--accent2)" id="rd-i0">—</span>
+      </div>
+      <div class="readout-row">
+        <span class="readout-label" style="color:var(--accent3)">V<sub>C</sub> at t → ∞</span>
+        <span class="readout-val" style="color:var(--accent3)" id="rd-vfinal">—</span>
+      </div>
+      <div class="readout-row">
+        <span class="readout-label">τ = R<sub>Th</sub> × C</span>
+        <span class="readout-val" style="color:var(--accent)" id="rd-tau">—</span>
+      </div>
+      <div class="readout-row">
+        <span class="readout-label">V<sub>initial</sub></span>
+        <span class="readout-val" id="rd-vinit">—</span>
+      </div>
+      <div class="readout-row" style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border)">
+        <span class="readout-label" style="font-size:11px; color:var(--muted)">V<sub>C</sub>(t) = V<sub>∞</sub> + (V<sub>0</sub>−V<sub>∞</sub>)·e<sup>−t/τ</sup></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const circCv = document.getElementById('circuit-cv');
+const mainCv = document.getElementById('main-cv');
+const cctx = circCv.getContext('2d');
+const mctx = mainCv.getContext('2d');
+
+function formatR(r) { return r >= 1000 ? (r/1000).toPrecision(3)+' kΩ' : r.toPrecision(3)+' Ω'; }
+function sliderToR(v) { return Math.round(v * 1000); } // 1k to 100k
+
+function resizeCanvases() {
+  const w = circCv.parentElement.getBoundingClientRect().width;
+  circCv.width = w; circCv.height = 260;
+  mainCv.width = w; mainCv.height = 260;
+}
+
+function getParams() {
+  const Vs = +document.getElementById('vs-slider').value;
+  const R1 = sliderToR(+document.getElementById('r1-slider').value);
+  const R2 = sliderToR(+document.getElementById('r2-slider').value);
+  const Vc0_pct = +document.getElementById('vc0-slider').value;
+  const C = 100e-9; // fixed for this module
+  return { Vs, R1, R2, C, Vc0_pct };
+}
+
+function drawCircuit(Vs, R1, R2, Vc0) {
+  const W = circCv.width, H = circCv.height;
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const fg = isDark ? '#e8e8e8' : '#1a1a1a';
+  const muted = isDark ? '#999' : '#666';
+  const accentV = isDark ? '#4499ff' : '#0066cc';
+  const accentD = isDark ? '#ff6633' : '#cc4400';
+  const accentG = isDark ? '#44cc88' : '#008844';
+
+  cctx.clearRect(0,0,W,H);
+  cctx.fillStyle = isDark ? '#2a2a2a' : '#f5f5f5';
+  cctx.fillRect(0,0,W,H);
+
+  // Draw simplified circuit schematic
+  cctx.strokeStyle = fg; cctx.lineWidth = 2; cctx.fillStyle = fg;
+  cctx.font = '12px system-ui';
+
+  const cx = W/2, cy = H/2;
+  // Draw a simple RC circuit representation as text + boxes
+  // Left node (supply)
+  const x0 = 60, x1 = W - 60, y0 = 80, y1 = 180;
+  const xm = (x0+x1)/2;
+
+  // Top wire
+  cctx.beginPath(); cctx.moveTo(x0,y0); cctx.lineTo(x1,y0); cctx.stroke();
+  // Bottom wire
+  cctx.beginPath(); cctx.moveTo(x0,y1); cctx.lineTo(x1,y1); cctx.stroke();
+  // Left (Vs source)
+  cctx.beginPath(); cctx.moveTo(x0,y0); cctx.lineTo(x0,y1); cctx.stroke();
+  // Draw Vs symbol
+  cctx.beginPath(); cctx.arc(x0, (y0+y1)/2, 18, 0, 2*Math.PI); cctx.stroke();
+  cctx.fillStyle = accentV; cctx.textAlign = 'center';
+  cctx.fillText('Vs', x0, (y0+y1)/2-2);
+  cctx.fillText(Vs.toFixed(1)+'V', x0, (y0+y1)/2+12);
+
+  // R1 on top wire
+  const rx1s = x0+30, rx1e = xm-30;
+  cctx.fillStyle = isDark ? '#3a3a3a' : '#e8e8e8';
+  cctx.strokeStyle = fg;
+  cctx.fillRect(rx1s, y0-12, rx1e-rx1s, 24);
+  cctx.strokeRect(rx1s, y0-12, rx1e-rx1s, 24);
+  cctx.fillStyle = fg; cctx.textAlign='center';
+  cctx.fillText('R1', (rx1s+rx1e)/2, y0-1);
+  cctx.fillStyle = muted; cctx.font='11px system-ui';
+  cctx.fillText(formatR(R1), (rx1s+rx1e)/2, y0+11);
+
+  // Midpoint node
+  cctx.fillStyle = fg;
+  cctx.beginPath(); cctx.arc(xm, y0, 4, 0, 2*Math.PI); cctx.fill();
+
+  // R2 vertical (parallel with C)
+  cctx.fillStyle = isDark ? '#3a3a3a' : '#e8e8e8';
+  cctx.strokeStyle = fg;
+  const rxR2 = xm + 40;
+  cctx.beginPath(); cctx.moveTo(xm,y0); cctx.lineTo(rxR2,y0); cctx.stroke();
+  cctx.beginPath(); cctx.moveTo(xm,y1); cctx.lineTo(rxR2,y1); cctx.stroke();
+  cctx.beginPath(); cctx.moveTo(rxR2,y0); cctx.lineTo(rxR2,y1); cctx.stroke();
+  cctx.fillRect(rxR2-10, (y0+y1)/2-18, 20, 36);
+  cctx.strokeRect(rxR2-10, (y0+y1)/2-18, 20, 36);
+  cctx.fillStyle = fg; cctx.textAlign='center';
+  cctx.font='12px system-ui';
+  cctx.fillText('R2', rxR2, (y0+y1)/2-6);
+  cctx.fillStyle = muted; cctx.font='11px system-ui';
+  cctx.fillText(formatR(R2), rxR2, (y0+y1)/2+8);
+
+  // C vertical
+  const rxC = x1 - 40;
+  cctx.beginPath(); cctx.moveTo(xm,y0); cctx.lineTo(rxC,y0); cctx.stroke();
+  cctx.beginPath(); cctx.moveTo(xm,y1); cctx.lineTo(rxC,y1); cctx.stroke();
+  cctx.strokeStyle = accentV; cctx.lineWidth = 3;
+  cctx.beginPath(); cctx.moveTo(rxC,(y0+y1)/2-8); cctx.lineTo(rxC+0,(y0+y1)/2-8); cctx.stroke();
+  // Capacitor plates
+  cctx.beginPath(); cctx.moveTo(rxC-12,(y0+y1)/2-4); cctx.lineTo(rxC+12,(y0+y1)/2-4); cctx.stroke();
+  cctx.beginPath(); cctx.moveTo(rxC-12,(y0+y1)/2+4); cctx.lineTo(rxC+12,(y0+y1)/2+4); cctx.stroke();
+  cctx.strokeStyle = fg; cctx.lineWidth = 2;
+  cctx.beginPath(); cctx.moveTo(rxC,y0); cctx.lineTo(rxC,(y0+y1)/2-4); cctx.stroke();
+  cctx.beginPath(); cctx.moveTo(rxC,(y0+y1)/2+4); cctx.lineTo(rxC,y1); cctx.stroke();
+  cctx.fillStyle = accentV; cctx.textAlign='center'; cctx.font='12px system-ui';
+  cctx.fillText('C', rxC+22, (y0+y1)/2+4);
+  cctx.fillText('100nF', rxC+22, (y0+y1)/2+18);
+
+  // Vc0 label
+  cctx.fillStyle = accentD;
+  cctx.font = 'bold 11px system-ui';
+  cctx.fillText('V_C0 = '+Vc0.toFixed(1)+'V', rxC, y1+18);
+
+  // Ground symbols
+  cctx.strokeStyle = muted; cctx.lineWidth = 1.5;
+  [x0, xm, rxC].forEach(gx => {
+    cctx.beginPath(); cctx.moveTo(gx,y1); cctx.lineTo(gx,y1+8); cctx.stroke();
+    cctx.beginPath(); cctx.moveTo(gx-8,y1+8); cctx.lineTo(gx+8,y1+8); cctx.stroke();
+    cctx.beginPath(); cctx.moveTo(gx-5,y1+12); cctx.lineTo(gx+5,y1+12); cctx.stroke();
+    cctx.beginPath(); cctx.moveTo(gx-2,y1+16); cctx.lineTo(gx+2,y1+16); cctx.stroke();
+  });
+
+  // Title
+  cctx.fillStyle = fg; cctx.font = 'bold 12px system-ui'; cctx.textAlign = 'center';
+  cctx.fillText('Circuit: R1-series, R2 & C in parallel', W/2, 18);
+}
+
+function drawTransient() {
+  const { Vs, R1, R2, C, Vc0_pct } = getParams();
+  // Vc0 as fraction of Vs
+  const Vc0 = (Vc0_pct / 100) * Vs;
+
+  // Initial condition: replace C with voltage source Vc0
+  // At t=0+: V_node = voltage at middle node
+  // KCL: (Vs - V_node)/R1 = (V_node - 0)/R2 + (V_node - Vc0)/(0) → wrong if Vc0 makes C a source
+  // Simplified: C is at Vc0, so V_mid is constrained by KCL with Vc0 source
+  // With C as voltage source (Vc0): V_mid = Vc0 (capacitor node held at Vc0)
+  // I_R1(0+) = (Vs - Vc0) / R1
+  // I_R2(0+) = Vc0 / R2
+  // I_C(0+) = I_R1 - I_R2
+
+  const I_R1_0 = (Vs - Vc0) / R1;
+  const I_R2_0 = Vc0 / R2;
+  const I_C_0 = I_R1_0 - I_R2_0;
+
+  // Final condition: replace C with open circuit
+  // Current divides through R1 + R2 (C is open)
+  const V_final = Vs * R2 / (R1 + R2);
+
+  // Time constant: R_Th seen at C terminals with Vs = 0 (shorted)
+  const R_Th = (R1 * R2) / (R1 + R2);
+  const tau = R_Th * C;
+
+  // Update readouts
+  document.getElementById('vs-display').textContent = Vs.toFixed(1) + ' V';
+  document.getElementById('r1-display').textContent = formatR(R1);
+  document.getElementById('r2-display').textContent = formatR(R2);
+  document.getElementById('vc0-display').textContent = Vc0.toFixed(1) + ' V';
+  document.getElementById('rd-i0').textContent = (I_C_0 * 1e3).toFixed(3) + ' mA';
+  document.getElementById('rd-vfinal').textContent = V_final.toFixed(3) + ' V';
+  document.getElementById('rd-vinit').textContent = Vc0.toFixed(3) + ' V';
+
+  const tauMs = tau * 1e3;
+  document.getElementById('rd-tau').textContent = tauMs >= 1 ? tauMs.toFixed(2)+' ms' : (tau*1e6).toFixed(2)+' µs';
+
+  drawCircuit(Vs, R1, R2, Vc0);
+
+  // Draw transient plot
+  const W = mainCv.width, H = mainCv.height;
+  const PAD = { top: 28, right: 24, bottom: 44, left: 58 };
+  const pw = W - PAD.left - PAD.right;
+  const ph = H - PAD.top - PAD.bottom;
+  const tMax = 6 * tau;
+  const Vmax = Math.max(Vs, Vc0) * 1.1;
+
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const gridColor = isDark ? '#333' : '#e0e0e0';
+  const textColor = isDark ? '#e8e8e8' : '#1a1a1a';
+  const mutedColor = isDark ? '#999' : '#666';
+  const accentV = isDark ? '#4499ff' : '#0066cc';
+  const accentD = isDark ? '#ff6633' : '#cc4400';
+  const accentG = isDark ? '#44cc88' : '#008844';
+
+  function tx(t) { return PAD.left + (t/tMax)*pw; }
+  function ty(v) { return PAD.top + ph - (v/Vmax)*ph; }
+
+  mctx.clearRect(0,0,W,H);
+  mctx.fillStyle = isDark ? '#2a2a2a' : '#f5f5f5';
+  mctx.fillRect(0,0,W,H);
+
+  // Grid
+  mctx.strokeStyle = gridColor; mctx.lineWidth = 1; mctx.setLineDash([4,4]);
+  for (let n=1; n<=5; n++) { const x=tx(n*tau); mctx.beginPath(); mctx.moveTo(x,PAD.top); mctx.lineTo(x,PAD.top+ph); mctx.stroke(); }
+  [0, 0.5, 1].forEach(f => { const y=ty(f*Vs); mctx.beginPath(); mctx.moveTo(PAD.left,y); mctx.lineTo(PAD.left+pw,y); mctx.stroke(); });
+  mctx.setLineDash([]);
+
+  // Axes
+  mctx.strokeStyle = mutedColor; mctx.lineWidth = 1.5;
+  mctx.beginPath(); mctx.moveTo(PAD.left,PAD.top); mctx.lineTo(PAD.left,PAD.top+ph); mctx.lineTo(PAD.left+pw,PAD.top+ph); mctx.stroke();
+
+  // Labels
+  mctx.fillStyle = mutedColor; mctx.font = '11px system-ui'; mctx.textAlign = 'center';
+  for (let n=0; n<=6; n++) mctx.fillText(n+'τ', tx(n*tau), PAD.top+ph+16);
+  mctx.fillText('Time', PAD.left+pw/2, PAD.top+ph+36);
+  mctx.textAlign = 'right';
+  mctx.fillText('0V', PAD.left-5, ty(0)+4);
+  mctx.fillText(Vs.toFixed(1)+'V', PAD.left-5, ty(Vs)+4);
+  mctx.fillText(V_final.toFixed(1)+'V', PAD.left-5, ty(V_final)+4);
+
+  // V_final asymptote
+  mctx.strokeStyle = accentG; mctx.lineWidth = 1; mctx.setLineDash([6,3]); mctx.globalAlpha = 0.6;
+  mctx.beginPath(); mctx.moveTo(PAD.left,ty(V_final)); mctx.lineTo(PAD.left+pw,ty(V_final)); mctx.stroke();
+  mctx.setLineDash([]); mctx.globalAlpha = 1;
+  mctx.fillStyle = accentG; mctx.font='bold 11px system-ui'; mctx.textAlign='right';
+  mctx.fillText('V∞='+V_final.toFixed(1)+'V', PAD.left+pw, ty(V_final)-4);
+
+  // V_C transient
+  mctx.strokeStyle = accentV; mctx.lineWidth = 2.5;
+  mctx.beginPath();
+  const N = 400;
+  for (let i=0; i<=N; i++) {
+    const t = (i/N)*tMax;
+    const v = V_final + (Vc0 - V_final)*Math.exp(-t/tau);
+    if (i===0) mctx.moveTo(tx(t),ty(v)); else mctx.lineTo(tx(t),ty(v));
+  }
+  mctx.stroke();
+
+  // t=0+ dot and annotation
+  mctx.fillStyle = accentD;
+  mctx.beginPath(); mctx.arc(tx(0), ty(Vc0), 6, 0, 2*Math.PI); mctx.fill();
+  mctx.font = 'bold 11px system-ui'; mctx.textAlign = 'left';
+  mctx.fillText('t=0⁺: V_C='+Vc0.toFixed(1)+'V, I='+( I_C_0*1e3).toFixed(2)+'mA', tx(0)+8, ty(Vc0)-8);
+
+  // Title
+  mctx.fillStyle = textColor; mctx.font='bold 12px system-ui'; mctx.textAlign='center';
+  mctx.fillText('V_C(t) — Universal Formula', PAD.left+pw/2, PAD.top-10);
+}
+
+window.addEventListener('resize', () => { resizeCanvases(); drawTransient(); });
+['vs-slider','r1-slider','r2-slider','vc0-slider'].forEach(id => document.getElementById(id).addEventListener('input', drawTransient));
+resizeCanvases(); drawTransient();
+</script>
+</body>
+</html>

@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-C-1.4.1 — RC Charging Circuit Application</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+  h1 { color: #0066cc; font-size: 1.3em; margin-bottom: 4px; }
+  .subtitle { color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }
+  .layout { display: flex; gap: 20px; flex-wrap: wrap; }
+  .panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+  .controls { width: 280px; flex-shrink: 0; }
+  .plot-area { flex: 1; min-width: 340px; }
+  label { display: block; color: #8b949e; font-size: 0.8em; margin-bottom: 4px; margin-top: 12px; }
+  input[type=range] { width: 100%; accent-color: #0066cc; }
+  .val { color: #0066cc; font-weight: bold; }
+  canvas { background: #0d1117; border-radius: 6px; display: block; }
+  .readouts { margin-top: 14px; }
+  .readout-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #21262d; font-size: 0.85em; }
+  .readout-label { color: #8b949e; }
+  .readout-val { color: #39d353; font-weight: bold; font-family: monospace; }
+  .toggle-row { display: flex; gap: 10px; margin-top: 14px; }
+  button { background: #21262d; border: 1px solid #30363d; color: #e6edf3; padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 0.82em; transition: background 0.2s; }
+  button.active { background: #0066cc; border-color: #0066cc; }
+  button:hover { background: #30363d; }
+  .eq { background: #21262d; border-left: 3px solid #0066cc; padding: 10px 12px; border-radius: 4px; margin-top: 14px; font-family: monospace; font-size: 0.82em; color: #a5d6ff; }
+</style>
+</head>
+<body>
+<h1>P2-C-1.4.1 — RC Charging Circuit Application</h1>
+<div class="subtitle">555-style threshold comparator · adjust R, C, and V_thresh to see timing behaviour</div>
+<div class="layout">
+  <div class="panel controls">
+    <label>Resistance R: <span class="val" id="rLabel">100 kΩ</span></label>
+    <input type="range" id="rSlider" min="1" max="500" value="100" step="1">
+    <label>Capacitance C: <span class="val" id="cLabel">100 nF</span></label>
+    <input type="range" id="cSlider" min="1" max="500" value="100" step="1">
+    <label>Supply voltage V_S: <span class="val" id="vsLabel">5.0 V</span></label>
+    <input type="range" id="vsSlider" min="10" max="120" value="50" step="1">
+    <label>Threshold V_thresh: <span class="val" id="vtLabel">3.3 V</span></label>
+    <input type="range" id="vtSlider" min="5" max="95" value="66" step="1">
+    <div class="toggle-row">
+      <button id="btnFull" class="active">Full Charge</button>
+      <button id="btnThresh">To Threshold</button>
+    </div>
+    <div class="readouts">
+      <div class="readout-row"><span class="readout-label">τ = RC</span><span class="readout-val" id="tau">—</span></div>
+      <div class="readout-row"><span class="readout-label">V_thresh crossing at</span><span class="readout-val" id="tcross">—</span></div>
+      <div class="readout-row"><span class="readout-label">V_thresh / V_S ratio</span><span class="readout-val" id="ratio">—</span></div>
+      <div class="readout-row"><span class="readout-label">Energy stored ½CV²</span><span class="readout-val" id="energy">—</span></div>
+    </div>
+    <div class="eq">V_C(t) = V_S×(1−e^(−t/τ))<br>t_cross = −τ × ln(1 − V_th/V_S)</div>
+  </div>
+  <div class="panel plot-area">
+    <canvas id="cv" width="600" height="380"></canvas>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const W = cv.width, H = cv.height;
+const PAD = { top: 30, right: 30, bottom: 50, left: 60 };
+const PW = W - PAD.left - PAD.right;
+const PH = H - PAD.top - PAD.bottom;
+
+let mode = 'full';
+document.getElementById('btnFull').onclick = () => { mode='full'; document.getElementById('btnFull').classList.add('active'); document.getElementById('btnThresh').classList.remove('active'); draw(); };
+document.getElementById('btnThresh').onclick = () => { mode='thresh'; document.getElementById('btnThresh').classList.add('active'); document.getElementById('btnFull').classList.remove('active'); draw(); };
+
+function getParams() {
+  const R = parseFloat(document.getElementById('rSlider').value) * 1000;
+  const C = parseFloat(document.getElementById('cSlider').value) * 1e-9;
+  const VS = parseFloat(document.getElementById('vsSlider').value) / 10;
+  const k = parseFloat(document.getElementById('vtSlider').value) / 100;
+  const Vt = VS * k;
+  return { R, C, VS, Vt, k };
+}
+
+function updateLabels() {
+  const R = parseFloat(document.getElementById('rSlider').value);
+  const C = parseFloat(document.getElementById('cSlider').value);
+  const VS = parseFloat(document.getElementById('vsSlider').value) / 10;
+  const k = parseFloat(document.getElementById('vtSlider').value) / 100;
+  const Vt = VS * k;
+  document.getElementById('rLabel').textContent = R >= 1000 ? (R/1000).toFixed(1) + ' MΩ' : R + ' kΩ';
+  document.getElementById('cLabel').textContent = C >= 1000 ? (C/1000).toFixed(1) + ' µF' : C + ' nF';
+  document.getElementById('vsLabel').textContent = VS.toFixed(1) + ' V';
+  document.getElementById('vtLabel').textContent = Vt.toFixed(2) + ' V';
+}
+
+function draw() {
+  const { R, C, VS, Vt, k } = getParams();
+  const tau = R * C;
+  const tCross = k < 0.9999 ? -tau * Math.log(1 - k) : Infinity;
+
+  // Update labels & readouts
+  updateLabels();
+  document.getElementById('tau').textContent = tau < 0.001 ? (tau*1000).toFixed(2)+' ms' : tau < 1 ? (tau*1000).toFixed(1)+' ms' : tau.toFixed(2)+' s';
+  document.getElementById('tcross').textContent = tCross === Infinity ? '∞' : tCross < 0.001 ? (tCross*1000).toFixed(2)+' ms' : (tCross*1000).toFixed(2)+' ms';
+  document.getElementById('ratio').textContent = k.toFixed(3) + ' (' + (k*100).toFixed(1) + '%)';
+  const energy = 0.5 * C * VS * VS;
+  document.getElementById('energy').textContent = energy < 1e-6 ? (energy*1e9).toFixed(1)+' nJ' : energy < 1e-3 ? (energy*1e6).toFixed(2)+' µJ' : (energy*1e3).toFixed(2)+' mJ';
+
+  // Determine time axis
+  const tMax = mode === 'thresh' ? Math.min(tCross * 1.5, tau * 7) : tau * 5;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 5; i++) {
+    const x = PAD.left + (i / 5) * PW;
+    ctx.beginPath(); ctx.moveTo(x, PAD.top); ctx.lineTo(x, PAD.top + PH); ctx.stroke();
+  }
+  for (let i = 0; i <= 5; i++) {
+    const y = PAD.top + (i / 5) * PH;
+    ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + PW, y); ctx.stroke();
+  }
+
+  // Axes
+  ctx.strokeStyle = '#484f58'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(PAD.left, PAD.top); ctx.lineTo(PAD.left, PAD.top + PH); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(PAD.left, PAD.top + PH); ctx.lineTo(PAD.left + PW, PAD.top + PH); ctx.stroke();
+
+  // Axis labels
+  ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  for (let i = 0; i <= 5; i++) {
+    const t = (i / 5) * tMax;
+    const x = PAD.left + (i / 5) * PW;
+    const label = t < 0.001 ? (t*1000).toFixed(1)+'ms' : t < 1 ? (t*1000).toFixed(0)+'ms' : t.toFixed(2)+'s';
+    ctx.fillText(label, x, PAD.top + PH + 18);
+  }
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 5; i++) {
+    const v = (i / 5) * VS * 1.05;
+    const y = PAD.top + PH - (i / 5) * PH;
+    ctx.fillText(v.toFixed(1)+'V', PAD.left - 6, y + 4);
+  }
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#e6edf3'; ctx.font = '12px sans-serif';
+  ctx.fillText('Time (t)', PAD.left + PW / 2, H - 8);
+  ctx.save(); ctx.translate(14, PAD.top + PH / 2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('Voltage (V)', 0, 0); ctx.restore();
+
+  // Threshold line
+  const Vmax = VS * 1.05;
+  const yThresh = PAD.top + PH - (Vt / Vmax) * PH;
+  ctx.strokeStyle = '#f78166'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]);
+  ctx.beginPath(); ctx.moveTo(PAD.left, yThresh); ctx.lineTo(PAD.left + PW, yThresh); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#f78166'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('V_thresh = ' + Vt.toFixed(2) + 'V', PAD.left + 4, yThresh - 5);
+
+  // V_S line
+  const yVS = PAD.top + PH - (VS / Vmax) * PH;
+  ctx.strokeStyle = '#3fb950'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(PAD.left, yVS); ctx.lineTo(PAD.left + PW, yVS); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#3fb950'; ctx.textAlign = 'right';
+  ctx.fillText('V_S = ' + VS.toFixed(1) + 'V', PAD.left + PW - 4, yVS - 5);
+
+  // Charging curve
+  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2.5; ctx.beginPath();
+  let started = false;
+  for (let px = 0; px <= PW; px++) {
+    const t = (px / PW) * tMax;
+    const vc = VS * (1 - Math.exp(-t / tau));
+    const y = PAD.top + PH - (vc / Vmax) * PH;
+    if (!started) { ctx.moveTo(PAD.left + px, y); started = true; } else { ctx.lineTo(PAD.left + px, y); }
+  }
+  ctx.stroke();
+
+  // Threshold crossing marker
+  if (tCross <= tMax && tCross > 0 && tCross !== Infinity) {
+    const xCross = PAD.left + (tCross / tMax) * PW;
+    // Vertical line to crossing
+    ctx.strokeStyle = '#f78166'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(xCross, yThresh); ctx.lineTo(xCross, PAD.top + PH); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#f78166';
+    ctx.beginPath(); ctx.arc(xCross, yThresh, 5, 0, 2*Math.PI); ctx.fill();
+    ctx.fillStyle = '#f78166'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+    const tLabel = tCross < 0.001 ? (tCross*1000).toFixed(2)+'ms' : (tCross*1000).toFixed(1)+'ms';
+    ctx.fillText('t = ' + tLabel, xCross, PAD.top + PH + 35);
+  }
+
+  // τ markers
+  for (let n = 1; n <= 5; n++) {
+    const xt = PAD.left + (n * tau / tMax) * PW;
+    if (xt <= PAD.left + PW) {
+      const vc_n = VS * (1 - Math.exp(-n));
+      const yn = PAD.top + PH - (vc_n / Vmax) * PH;
+      ctx.fillStyle = '#30363d';
+      ctx.strokeStyle = '#8b949e'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(xt, yn, 4, 0, 2*Math.PI); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#8b949e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(n + 'τ', xt, yn - 8);
+    }
+  }
+
+  // Title
+  ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('V_C(t) = V_S × (1 − e^(−t/τ))    τ = ' + (tau*1000).toFixed(2) + ' ms', PAD.left, PAD.top - 10);
+}
+
+['rSlider','cSlider','vsSlider','vtSlider'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+draw();
+</script>
+</body>
+</html>

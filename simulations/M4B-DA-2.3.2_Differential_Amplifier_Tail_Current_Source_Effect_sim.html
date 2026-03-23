@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-DA-2.3.2 — Tail Current Source Effect</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-DA-2.3.2</div>
+  <h1>Differential Amplifier — Tail Current Source Effect</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Tail Current Source</h2>
+      <label>I_SS (μA): <b id="iss_l">200</b> μA <input type="range" id="iss" min="10" max="1000" value="200" step="10"></label>
+      <label>V_ov,pair (mV): <b id="vov_l">200</b> mV <input type="range" id="vov" min="50" max="400" value="200" step="10"></label>
+      <label>Tail topology: <b id="topo_l">Simple</b> <input type="range" id="topo" min="0" max="2" value="0" step="1"></label>
+      <label>λ_tail (V⁻¹): <b id="lam_l">0.08</b> <input type="range" id="lam" min="0.01" max="0.5" value="0.08" step="0.01"></label>
+      <label>ΔV_th mismatch (mV): <b id="dvth_l">5</b> mV <input type="range" id="dvth" min="0" max="30" value="5" step="0.5"></label>
+
+      <div class="ro">r_SS (GΩ): <span id="rss_d">--</span></div>
+      <div class="ro" style="margin-top:4px">CMRR_tail (dB): <span id="cmrr_t">--</span></div>
+      <div class="ro" style="margin-top:4px">CMRR_mismatch (dB): <span id="cmrr_m">--</span></div>
+      <div class="ro g" style="margin-top:4px">Total CMRR (dB): <span id="cmrr_tot">--</span></div>
+      <div class="ro" style="margin-top:4px">Headroom used by tail (mV): <span id="headroom_d">--</span></div>
+    </div>
+
+    <div class="card">
+      <h2>CMRR vs Tail Topology</h2>
+      <canvas id="cv" height="280"></canvas>
+      <div class="insight">
+        Bars show CMRR contribution from each source. The mismatch floor (orange) is fixed by V_ov/ΔV_th. The tail CMRR (blue) jumps dramatically with cascode or gain-boosted topology. Total CMRR is the minimum.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  const topoNames=['Simple','Cascode (WS)','Gain-Boosted (A=50)'];
+
+  function compute(){
+    const ISS=+document.getElementById('iss').value*1e-6;
+    const vov=+document.getElementById('vov').value/1000;
+    const topo=+document.getElementById('topo').value;
+    const lam=+document.getElementById('lam').value;
+    const dvth=+document.getElementById('dvth').value/1000;
+
+    document.getElementById('iss_l').textContent=(ISS*1e6).toFixed(0);
+    document.getElementById('vov_l').textContent=(vov*1000).toFixed(0);
+    document.getElementById('topo_l').textContent=topoNames[topo];
+    document.getElementById('lam_l').textContent=lam.toFixed(2);
+    document.getElementById('dvth_l').textContent=(dvth*1000).toFixed(1);
+
+    const ID=ISS/2;
+    const gm_pair=2*ID/vov;
+    const ro_tail=1/(lam*ISS);
+    const gm_tail=2*ISS/vov;
+    const rSS_simple=ro_tail;
+    const rSS_cas=gm_tail*ro_tail*ro_tail;
+    const rSS_reg=50*rSS_cas;
+    const rSSarr=[rSS_simple,rSS_cas,rSS_reg];
+    const rSS=rSSarr[topo];
+
+    const headroom=topo===0?vov*1000:topo===1?2*vov*1000:2*vov*1000;
+
+    const cmrr_t=20*Math.log10(2*gm_pair*rSS);
+    const cmrr_m=dvth>0?20*Math.log10(vov/dvth):160;
+    const cmrr_tot=Math.min(cmrr_t,cmrr_m);
+
+    document.getElementById('rss_d').textContent=(rSS/1e9).toFixed(2);
+    document.getElementById('cmrr_t').textContent=cmrr_t.toFixed(1);
+    document.getElementById('cmrr_m').textContent=cmrr_m.toFixed(1);
+    document.getElementById('cmrr_tot').textContent=cmrr_tot.toFixed(1);
+    document.getElementById('headroom_d').textContent=headroom.toFixed(0);
+
+    draw(gm_pair,vov,dvth,rSSarr);
+  }
+
+  function draw(gm_pair,vov,dvth,rSSarr){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=280;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,280);
+    const pL=55,pR=16,pT=18,pB=50,pw=W-pL-pR,ph=280-pT-pB;
+    const CMRRmax=160;
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='10px system-ui';
+    ctx.fillText('CMRR (dB)', 2, pT+ph/2);
+
+    for(let db=0;db<=CMRRmax;db+=20){
+      const y=pT+ph-(db/CMRRmax)*ph;
+      ctx.fillStyle='#8888aa'; ctx.fillText(db, 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+
+    const topos=['Simple','Cascode','Reg.Cas.'];
+    const bw=pw/topos.length*0.45;
+    rSSarr.forEach((rSS,i)=>{
+      const x=pL+(i+0.5)/topos.length*pw;
+      const cmrr_t=Math.min(20*Math.log10(2*gm_pair*rSS),CMRRmax);
+      const cmrr_m=dvth>0?Math.min(20*Math.log10(vov/dvth),CMRRmax):CMRRmax;
+      const tot=Math.min(cmrr_t,cmrr_m);
+
+      const yT=pT+ph-(cmrr_t/CMRRmax)*ph;
+      ctx.fillStyle='#0066ccaa';
+      ctx.fillRect(x-bw/2-bw/4, yT, bw/2, pT+ph-yT);
+      ctx.fillStyle='#0066cc'; ctx.font='9px system-ui';
+      ctx.fillText(cmrr_t.toFixed(0), x-bw/2-bw/4, yT-3);
+
+      const yM=pT+ph-(cmrr_m/CMRRmax)*ph;
+      ctx.fillStyle='#ff8800aa';
+      ctx.fillRect(x+bw/4, yM, bw/2, pT+ph-yM);
+
+      // Total marker
+      const yTot=pT+ph-(tot/CMRRmax)*ph;
+      ctx.fillStyle='#00994d'; ctx.beginPath(); ctx.arc(x,yTot,5,0,2*Math.PI); ctx.fill();
+
+      ctx.fillStyle='#8888aa'; ctx.font='10px system-ui';
+      ctx.fillText(topos[i], x-15, pT+ph+14);
+    });
+
+    // Legend
+    ctx.fillStyle='#0066cc'; ctx.fillRect(pL+4,pT+4,12,8);
+    ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText('CMRR_tail',pL+18,pT+12);
+    ctx.fillStyle='#ff8800'; ctx.fillRect(pL+4,pT+16,12,8);
+    ctx.fillText('CMRR_mismatch',pL+18,pT+24);
+    ctx.fillStyle='#00994d'; ctx.beginPath(); ctx.arc(pL+10,pT+32,4,0,2*Math.PI); ctx.fill();
+    ctx.fillStyle='#8888aa'; ctx.fillText('Total CMRR',pL+18,pT+36);
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

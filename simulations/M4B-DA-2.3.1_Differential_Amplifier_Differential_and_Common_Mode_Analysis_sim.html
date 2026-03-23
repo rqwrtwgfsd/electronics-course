@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-DA-2.3.1 — Differential and Common Mode Analysis</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-DA-2.3.1</div>
+  <h1>Differential Amplifier — Differential and Common Mode Analysis</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Input Signal Decomposition</h2>
+      <label>V_in+ (mV): <b id="vp_l">900</b> mV <input type="range" id="vp" min="0" max="1800" value="900" step="10"></label>
+      <label>V_in− (mV): <b id="vm_l">800</b> mV <input type="range" id="vm" min="0" max="1800" value="800" step="10"></label>
+      <label>g_m (mA/V): <b id="gm_l">1.65</b> <input type="range" id="gm" min="0.1" max="20" value="1.65" step="0.05"></label>
+      <label>r_o,n (kΩ): <b id="ron_l">125</b> kΩ <input type="range" id="ron" min="10" max="5000" value="125" step="10"></label>
+      <label>r_o,p (kΩ): <b id="rop_l">90</b> kΩ <input type="range" id="rop" min="10" max="5000" value="90" step="10"></label>
+      <label>r_SS tail (kΩ): <b id="rss_l">125</b> kΩ <input type="range" id="rss" min="1" max="100000" value="125" step="10"></label>
+
+      <div class="ro">V_id = V_in+ − V_in− (mV): <span id="vid_d">--</span></div>
+      <div class="ro" style="margin-top:4px">V_ic = (V_in++V_in−)/2 (mV): <span id="vic_d">--</span></div>
+      <div class="ro" style="margin-top:4px">A_DM (V/V): <span id="adm_d">--</span></div>
+      <div class="ro" style="margin-top:4px">A_CM (V/V): <span id="acm_d">--</span></div>
+      <div class="ro g" style="margin-top:4px">CMRR (dB): <span id="cmrr_d">--</span></div>
+      <div class="ro" style="margin-top:4px">V_out = A_DM×V_id + A_CM×V_ic (mV): <span id="vout_d">--</span></div>
+    </div>
+
+    <div class="card">
+      <h2>V_out vs V_id for Various V_ic</h2>
+      <canvas id="cv" height="280"></canvas>
+      <div class="insight">
+        Each line shows V_out = A_DM × V_id for a fixed V_ic. The lines should be parallel (identical slope = A_DM) and shifted by A_CM × V_ic. If CMRR is poor, the lines separate visibly. The orange dot marks the current operating point.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const Vp=+document.getElementById('vp').value/1000;
+    const Vm=+document.getElementById('vm').value/1000;
+    const gm=+document.getElementById('gm').value*1e-3;
+    const ron=+document.getElementById('ron').value*1e3;
+    const rop=+document.getElementById('rop').value*1e3;
+    const rSS=+document.getElementById('rss').value*1e3;
+
+    document.getElementById('vp_l').textContent=(Vp*1e3).toFixed(0);
+    document.getElementById('vm_l').textContent=(Vm*1e3).toFixed(0);
+    document.getElementById('gm_l').textContent=(gm*1e3).toFixed(2);
+    document.getElementById('ron_l').textContent=(ron/1e3).toFixed(0);
+    document.getElementById('rop_l').textContent=(rop/1e3).toFixed(0);
+    document.getElementById('rss_l').textContent=(rSS/1e3).toFixed(0);
+
+    const vid=(Vp-Vm)*1e3; // mV
+    const vic=(Vp+Vm)/2*1e3; // mV
+    const RL=ron*rop/(ron+rop);
+    const Adm=gm*RL;
+    const Acm=-RL/(2*rSS+1/gm);
+    const CMRR=20*Math.log10(Math.abs(Adm/Acm));
+    const Vout=(Adm*(vid/1000)+Acm*(vic/1000))*1e3; // mV
+
+    document.getElementById('vid_d').textContent=vid.toFixed(1);
+    document.getElementById('vic_d').textContent=vic.toFixed(1);
+    document.getElementById('adm_d').textContent=Adm.toFixed(2);
+    document.getElementById('acm_d').textContent=Acm.toExponential(3);
+    document.getElementById('cmrr_d').textContent=CMRR.toFixed(1);
+    document.getElementById('vout_d').textContent=Vout.toFixed(2);
+
+    draw(gm,RL,Acm,vid,Vout);
+  }
+
+  function draw(gm,RL,Acm,vid_op,Vout_op){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=280;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,280);
+    const pL=62,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=280-pT-pB;
+
+    const Adm=gm*RL;
+    const vidRange=500; // mV
+    const VoutMax=Adm*vidRange/1000*1000*1.5;
+    const VoutMin=-VoutMax;
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='10px system-ui';
+    ctx.fillText('V_out (mV)', 2, pT+ph/2);
+    ctx.fillText('V_id (mV)', pL+pw/2-18, 280-4);
+
+    const yCenter=pT+ph/2;
+    for(let i=-2;i<=2;i++){
+      const v=i/2*VoutMax;
+      const y=pT+ph/2-(v/VoutMax)*ph/2;
+      if(y<pT||y>pT+ph) continue;
+      ctx.fillStyle='#8888aa'; ctx.fillText(v.toFixed(0), 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+    [-400,-200,0,200,400].forEach(v=>{
+      const x=pL+((v/vidRange)+0.5)*pw;
+      ctx.fillStyle='#8888aa'; ctx.fillText(v, x-10, pT+ph+14);
+    });
+
+    const vics=[600,800,900,1000,1200]; // mV
+    const colors=['#cc2200','#ff8800','#0066cc','#00994d','#9900cc'];
+    vics.forEach((vic_mv,ci)=>{
+      ctx.strokeStyle=colors[ci]; ctx.lineWidth=1.5; ctx.setLineDash([]);
+      ctx.beginPath(); let first=true;
+      for(let px=0;px<=pw;px++){
+        const vid_mv=(px/pw-0.5)*vidRange*2;
+        const Vout=Adm*(vid_mv/1000)+Acm*(vic_mv/1000);
+        const y=pT+ph/2-(Vout*1000/VoutMax)*ph/2;
+        if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+      }
+      ctx.stroke();
+      ctx.fillStyle=colors[ci]; ctx.font='9px system-ui';
+      ctx.fillText('V_ic='+vic_mv, pL+pw-55, pT+14+14*ci);
+    });
+
+    // Operating point
+    const xop=pL+((vid_op/1000/vidRange/2)+0.5)*pw;
+    const yop=pT+ph/2-(Vout_op/1000/VoutMax)*ph/2;
+    ctx.fillStyle='#ff8800'; ctx.beginPath(); ctx.arc(xop,yop,6,0,2*Math.PI); ctx.fill();
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

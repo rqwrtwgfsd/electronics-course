@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-AL-3.7.2 — Optimize: Load Selection</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  .ro.warn span{color:#cc4400;}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-AL-3.7.2</div>
+  <h1>Active Load — Optimize: Load Selection and Trade-offs</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Design Specifications</h2>
+      <label>A_v required (dB): <b id="av_req_l">80</b> <input type="range" id="av_req" min="20" max="140" value="80" step="1"></label>
+      <label>g_m (mA/V): <b id="gm_l">2.0</b> <input type="range" id="gm" min="0.1" max="20" value="2.0" step="0.1"></label>
+      <label>λ (V⁻¹): <b id="lam_l">0.08</b> <input type="range" id="lam" min="0.01" max="0.5" value="0.08" step="0.01"></label>
+      <label>I_D (μA): <b id="id_l">100</b> μA <input type="range" id="id" min="5" max="500" value="100" step="5"></label>
+      <label>V_DD (V): <b id="vdd_l">1.8</b> V <input type="range" id="vdd" min="0.6" max="3.3" value="1.8" step="0.1"></label>
+      <label>|V_ov,p| (mV): <b id="vovp_l">200</b> mV <input type="range" id="vovp" min="50" max="500" value="200" step="10"></label>
+      <label>Gain-boost A: <b id="gb_l">10</b>× <input type="range" id="gb" min="1" max="50" value="10" step="1"></label>
+
+      <div class="ro" id="sel_ro">Recommended: <span id="sel_d">--</span></div>
+      <div class="insight" id="reason_box">Set parameters to see load selection analysis.</div>
+    </div>
+
+    <div class="card">
+      <h2>Topology Comparison Spider Chart</h2>
+      <canvas id="cv" height="300"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  function score(val, min_good, max_good, invert){
+    // Returns 0..1 score, 1 = best
+    let s = (val - min_good)/(max_good - min_good);
+    s = Math.max(0, Math.min(1, s));
+    return invert ? 1-s : s;
+  }
+
+  function compute(){
+    const av_req_dB=+document.getElementById('av_req').value;
+    const gm=+document.getElementById('gm').value*1e-3;
+    const lam=+document.getElementById('lam').value;
+    const ID=+document.getElementById('id').value*1e-6;
+    const VDD=+document.getElementById('vdd').value;
+    const vovp=+document.getElementById('vovp').value/1000;
+    const gb=+document.getElementById('gb').value;
+
+    document.getElementById('av_req_l').textContent=av_req_dB.toFixed(0);
+    document.getElementById('gm_l').textContent=(gm*1e3).toFixed(1);
+    document.getElementById('lam_l').textContent=lam.toFixed(2);
+    document.getElementById('id_l').textContent=(ID*1e6).toFixed(0);
+    document.getElementById('vdd_l').textContent=VDD.toFixed(1);
+    document.getElementById('vovp_l').textContent=(vovp*1000).toFixed(0);
+    document.getElementById('gb_l').textContent=gb.toFixed(0);
+
+    const ro=1/(lam*ID);
+    const Av_simple=gm*(ro/2);
+    const Av_cas=gm*(gm*ro*ro/2);
+    const Av_gb=gb*Av_cas;
+
+    const av_simple_dB=20*Math.log10(Av_simple);
+    const av_cas_dB=20*Math.log10(Av_cas);
+    const av_gb_dB=20*Math.log10(Av_gb);
+
+    const swing_simple=(VDD-2*vovp)*1000;
+    const swing_cas=(VDD-4*vovp)*1000; // 2 pmos + 2 nmos Vov
+    const swing_gb=swing_cas;
+
+    // Select recommendation
+    let rec, reason;
+    if(av_simple_dB>=av_req_dB){
+      rec='Simple PMOS Mirror';
+      reason='Simple load achieves A_v='+av_simple_dB.toFixed(0)+' dB ≥ required '+av_req_dB+' dB. Use minimum complexity. Swing: '+swing_simple.toFixed(0)+' mV.';
+    } else if(av_cas_dB>=av_req_dB&&swing_cas>200){
+      rec='Cascode PMOS Load';
+      reason='Cascode achieves '+av_cas_dB.toFixed(0)+' dB, meeting '+av_req_dB+' dB. Swing: '+swing_cas.toFixed(0)+' mV. Simple cascode is sufficient — no gain boosting needed.';
+    } else if(av_cas_dB<av_req_dB||swing_cas<=200){
+      rec='Gain-Boosted Cascode (or Two-Stage)';
+      reason='Cascode achieves only '+av_cas_dB.toFixed(0)+' dB'+(swing_cas<=200?' and swing is insufficient ('+swing_cas.toFixed(0)+'mV)':'')+'. Consider gain-boost (A='+gb+'×) for A_v='+av_gb_dB.toFixed(0)+' dB, or two-stage topology for higher swing.';
+    } else {
+      rec='Two-Stage OTA';
+      reason='Standard cascode inadequate. Two-stage: first stage gain + second stage low R_out. Avoids headroom issues.';
+    }
+
+    document.getElementById('sel_d').textContent=rec;
+    document.getElementById('reason_box').textContent=reason;
+
+    // Color sel_ro
+    const selRo=document.getElementById('sel_ro');
+    selRo.className=rec.includes('Simple')?'ro g':rec.includes('Two')?'ro warn':'ro';
+
+    draw(av_simple_dB, av_cas_dB, av_gb_dB, swing_simple, swing_cas, av_req_dB);
+  }
+
+  function draw(avS, avC, avG, swS, swC, av_req){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=300;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,300);
+    const pL=55,pR=16,pT=14,pB=50,pw=W-pL-pR,ph=300-pT-pB;
+
+    // Bar chart: gain for each topology
+    const topos=['Simple','Cascode','Gain-Boost'];
+    const gains=[avS,avC,avG];
+    const swings=[swS,swC,swC];
+    const colors=['#0066cc','#00994d','#ff8800'];
+    const maxGain=Math.max(...gains,av_req)+15;
+    const N=3;
+    const barW=Math.floor(pw/N/2)-4;
+    const groupW=pw/N;
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText('A_v (dB)', 2, pT+ph/2);
+
+    for(let db=0;db<=Math.ceil(maxGain/20)*20;db+=20){
+      const y=pT+ph-((db/maxGain))*ph;
+      if(y<pT||y>pT+ph) continue;
+      ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText(db, 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+
+    // Required line
+    const yreq=pT+ph-((av_req/maxGain))*ph;
+    ctx.strokeStyle='#cc220088'; ctx.lineWidth=1.5; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(pL,yreq); ctx.lineTo(pL+pw,yreq); ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle='#cc2200'; ctx.font='9px system-ui';
+    ctx.fillText('Req: '+av_req+' dB', pL+4, yreq-4);
+
+    topos.forEach((name,i)=>{
+      const xG=pL+i*groupW+4;
+      const xS=xG+barW+4;
+      const hG=((Math.min(gains[i],maxGain)/maxGain))*ph;
+      const hS=(Math.max(0,Math.min(swings[i],1400))/1400)*ph;
+      const yG=pT+ph-hG;
+      const yS=pT+ph-hS;
+
+      // Gain bar
+      ctx.fillStyle=gains[i]>=av_req?colors[i]:colors[i]+'55';
+      ctx.fillRect(xG, yG, barW, hG);
+      ctx.fillStyle='#fff'; ctx.font='8px system-ui'; ctx.textAlign='center';
+      if(hG>12) ctx.fillText(gains[i].toFixed(0), xG+barW/2, yG+11);
+
+      // Swing bar
+      ctx.fillStyle='#88884488';
+      ctx.fillRect(xS, yS, barW, hS);
+      ctx.fillStyle='#888'; ctx.font='8px system-ui';
+      if(hS>12) ctx.fillText(swings[i]>0?swings[i].toFixed(0):'<0', xS+barW/2, yS+11);
+
+      // Label
+      ctx.fillStyle='#8888aa'; ctx.font='9px system-ui';
+      ctx.fillText(name, xG+barW/2, pT+ph+14);
+      ctx.textAlign='left';
+    });
+
+    // Legend
+    ctx.fillStyle='#0066cc44'; ctx.fillRect(pL+pw-90, pT+10, 10, 10);
+    ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText('Gain (left bar)', pL+pw-77, pT+19);
+    ctx.fillStyle='#88884488'; ctx.fillRect(pL+pw-90, pT+24, 10, 10);
+    ctx.fillStyle='#8888aa'; ctx.fillText('Swing/1400 (right)', pL+pw-77, pT+33);
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

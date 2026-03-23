@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-OP-7.2.3 Filter Design</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:10px;padding:10px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:230px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.formula{color:#ffaa00;font-size:11px;margin-top:8px;line-height:1.6}
+.btn{display:block;width:100%;margin-top:4px;padding:5px;background:#1a1a3a;border:1px solid #334;color:#ccc;cursor:pointer;font-family:inherit;font-size:11px;border-radius:3px}
+.btn.active{background:#003366;border-color:#0066cc;color:#00aaff}
+</style>
+</head>
+<body>
+<h1>P2-OP-7.2.3 — Filter Design: Order, f_c, Bode Plot</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="580" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>Filter Parameters</h2>
+<label>Cutoff f_c (Hz)
+<input type="range" id="fc" min="10" max="100000" step="10" value="1000">
+<div class="readout" id="fc_v">f_c = 1000 Hz</div>
+</label>
+<label>Filter Order n
+<input type="range" id="order" min="1" max="4" step="1" value="1">
+<div class="readout" id="order_v">n = 1 (1st order, −20dB/dec)</div>
+</label>
+<label>C value (nF)
+<input type="range" id="Cv" min="1" max="10000" step="1" value="100">
+<div class="readout" id="Cv_v">C = 100 nF</div>
+</label>
+<h2 style="margin-top:10px">Filter Order</h2>
+<button class="btn active" id="b1" onclick="setOrder(1)">1st order (−20dB/dec)</button>
+<button class="btn" id="b2" onclick="setOrder(2)">2nd order (−40dB/dec)</button>
+<button class="btn" id="b3" onclick="setOrder(3)">3rd order (−60dB/dec)</button>
+<button class="btn" id="b4" onclick="setOrder(4)">4th order (−80dB/dec)</button>
+<h2 style="margin-top:10px">Component Values</h2>
+<div class="readout" id="r_calc">R = —</div>
+<div class="readout" id="atten">Atten at 10×f_c: —</div>
+<div class="readout" id="slope_v">Slope: —</div>
+<div class="formula">n=1: −20dB/dec<br>n=2: −40dB/dec<br>H(f)=(1+(f/f_c)²)^(−n/2)</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let fc=1000,order=1,Cv=100;
+const W=580,H=380,PAD={l:65,r:20,t:20,b:40};
+const CW=W-PAD.l-PAD.r,CH=H-PAD.t-PAD.b;
+
+function setOrder(n){order=n;[1,2,3,4].forEach(k=>document.getElementById('b'+k).classList.toggle('active',k===n));document.getElementById('order').value=n;document.getElementById('order_v').textContent='n = '+n+' ('+(n===1?'1st':n===2?'2nd':n===3?'3rd':'4th')+' order, −'+(n*20)+'dB/dec)';draw();}
+['fc','order','Cv'].forEach(id=>{
+  document.getElementById(id).oninput=function(){
+    if(id==='fc'){fc=parseFloat(this.value);document.getElementById('fc_v').textContent='f_c = '+fc+' Hz';}
+    if(id==='order'){order=parseInt(this.value);setOrder(order);}
+    if(id==='Cv'){Cv=parseFloat(this.value);document.getElementById('Cv_v').textContent='C = '+Cv+' nF';}
+    draw();
+  };
+});
+
+function H(f){return Math.pow(1+Math.pow(f/fc,2*order),-0.5);}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const fmin=fc/100,fmax=fc*100;
+  const dBmin=-80,dBmax=10;
+  function toPx(f,dB){
+    const x=PAD.l+CW*(Math.log10(f)-Math.log10(fmin))/(Math.log10(fmax)-Math.log10(fmin));
+    const y=PAD.t+CH*(1-(dB-dBmin)/(dBmax-dBmin));
+    return[x,y];
+  }
+  // Grid
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let dec=0;dec<=4;dec++){
+    for(let i=1;i<=9;i++){
+      const f=fmin*Math.pow(10,dec)*i;
+      const x=PAD.l+CW*(Math.log10(f)-Math.log10(fmin))/(Math.log10(fmax)-Math.log10(fmin));
+      if(x>PAD.l&&x<PAD.l+CW){ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+CH);ctx.stroke();}
+    }
+  }
+  for(let dB=dBmin;dB<=dBmax;dB+=10){const y=PAD.t+CH*(1-(dB-dBmin)/(dBmax-dBmin));ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+CH);ctx.moveTo(PAD.l,PAD.t+CH);ctx.lineTo(PAD.l+CW,PAD.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  [fmin,fmin*10,fc,fmin*1000,fmax/10,fmax].forEach(f=>{
+    const x=PAD.l+CW*(Math.log10(f)-Math.log10(fmin))/(Math.log10(fmax)-Math.log10(fmin));
+    if(x>PAD.l&&x<PAD.l+CW)ctx.fillText(f>=1000?(f/1000).toFixed(0)+'k':f.toFixed(0),x,PAD.t+CH+14);
+  });
+  ctx.textAlign='right';
+  for(let dB=dBmin;dB<=dBmax;dB+=20){const y=PAD.t+CH*(1-(dB-dBmin)/(dBmax-dBmin));ctx.fillText(dB+'dB',PAD.l-4,y+4);}
+  ctx.save();ctx.translate(14,PAD.t+CH/2);ctx.rotate(-Math.PI/2);ctx.fillText('|H(f)| dB',0,0);ctx.restore();
+  ctx.fillStyle='#888';ctx.textAlign='center';ctx.fillText('Frequency (Hz)',PAD.l+CW/2,H-4);
+  // All orders
+  const cols={1:'#2a2a4a',2:'#1a3a1a',3:'#2a2a00',4:'#3a1a00'};
+  const colf={1:'#334',2:'#1a5a1a',3:'#5a5a00',4:'#5a1a00'};
+  [1,2,3,4].forEach(n=>{
+    if(n===order)return;
+    ctx.strokeStyle=colf[n];ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();
+    for(let i=0;i<=300;i++){
+      const f=Math.pow(10,Math.log10(fmin)+i/300*(Math.log10(fmax)-Math.log10(fmin)));
+      const dB=20*Math.log10(Math.pow(1+Math.pow(f/fc,2*n),-0.5));
+      const[x,y]=toPx(f,dB);
+      if(y>PAD.t-5&&y<PAD.t+CH+5){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+    }
+    ctx.stroke();ctx.setLineDash([]);
+  });
+  // Main curve
+  const col_main=order===1?'#00aaff':order===2?'#00ff88':order===3?'#ffaa00':'#ff4444';
+  ctx.strokeStyle=col_main;ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=500;i++){
+    const f=Math.pow(10,Math.log10(fmin)+i/500*(Math.log10(fmax)-Math.log10(fmin)));
+    const dB=20*Math.log10(H(f));
+    const[x,y]=toPx(f,dB);
+    if(y>PAD.t-5&&y<PAD.t+CH+5){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  }
+  ctx.stroke();
+  // −3dB marker
+  const[xfc,yfc]=toPx(fc,-3);
+  ctx.fillStyle='#ffaa00';ctx.beginPath();ctx.arc(xfc,yfc,5,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#ffaa00';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(PAD.l,yfc);ctx.lineTo(xfc,yfc);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#ffaa00';ctx.font='10px Courier New';ctx.textAlign='left';ctx.fillText('f_c = '+fc+'Hz (−3dB)',xfc+6,yfc-4);
+  // Component
+  const R_calc=1/(2*Math.PI*fc*Cv*1e-9)/1000;
+  document.getElementById('r_calc').textContent='R = '+R_calc.toFixed(2)+' kΩ (per stage)';
+  const atten_10x=20*Math.log10(H(fc*10));
+  document.getElementById('atten').textContent='Atten at 10×f_c: '+atten_10x.toFixed(1)+' dB';
+  document.getElementById('slope_v').textContent='Slope: −'+(order*20)+' dB/decade';
+}
+draw();
+</script>
+</body>
+</html>

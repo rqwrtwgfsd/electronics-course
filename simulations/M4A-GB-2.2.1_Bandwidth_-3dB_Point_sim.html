@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-GB-2.2.1 — Bandwidth: -3dB Point</title>
+<style>
+  :root{--bg:#ffffff;--surface:#f5f5f5;--border:#dddddd;--text:#1a1a1a;--accent:#0066cc;--accent2:#cc6600;--green:#007700;--red:#cc0000;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--accent2:#ff9944;--green:#44bb44;--red:#ff5555;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Arial,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;display:flex;align-items:baseline;gap:16px;}
+  header .mid{font-size:12px;opacity:.85;font-family:monospace;}
+  header h1{font-size:18px;font-weight:600;}
+  .main{display:grid;grid-template-columns:280px 1fr;height:calc(100vh - 48px);}
+  .ctrl{background:var(--surface);border-right:1px solid var(--border);padding:20px;overflow-y:auto;}
+  .ctrl h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin-bottom:12px;}
+  .cg{margin-bottom:16px;}
+  .cg label{display:block;font-size:13px;margin-bottom:5px;}
+  .val{font-weight:700;color:var(--accent);}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;}
+  .rbox{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:10px;margin-bottom:9px;}
+  .rl{font-size:11px;text-transform:uppercase;letter-spacing:.05em;opacity:.7;margin-bottom:3px;}
+  .rv{font-size:20px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ru{font-size:12px;opacity:.7;}
+  .carea{padding:20px;overflow-y:auto;display:flex;flex-direction:column;gap:16px;}
+  canvas{border:1px solid var(--border);border-radius:6px;display:block;background:var(--bg);}
+  .clabel{font-size:12px;font-weight:600;margin-bottom:4px;opacity:.8;}
+  .info{background:var(--surface);border-left:3px solid var(--accent);padding:10px 14px;font-size:13px;line-height:1.5;border-radius:0 6px 6px 0;}
+</style>
+</head>
+<body>
+<header>
+  <span class="mid">M4A-GB-2.2.1</span>
+  <h1>Bandwidth: -3 dB Point — RC Pole Explorer</h1>
+</header>
+<div class="main">
+  <div class="ctrl">
+    <h2>Circuit Parameters</h2>
+    <div class="cg">
+      <label>Resistance R: <span class="val" id="r-v">1.0 kΩ</span></label>
+      <input type="range" id="r-s" min="0.1" max="100" step="0.1" value="1.0">
+    </div>
+    <div class="cg">
+      <label>Capacitance C: <span class="val" id="c-v">10 nF</span></label>
+      <input type="range" id="c-s" min="1" max="1000" step="1" value="10">
+    </div>
+    <div class="cg">
+      <label>Midband Gain A₀: <span class="val" id="a0-v">10 V/V</span></label>
+      <input type="range" id="a0-s" min="1" max="100" step="1" value="10">
+    </div>
+
+    <h2 style="margin-top:10px;">Readouts</h2>
+    <div class="rbox">
+      <div class="rl">-3 dB Frequency</div>
+      <div class="rv" id="f3-out">15.9</div>
+      <div class="ru">kHz</div>
+    </div>
+    <div class="rbox">
+      <div class="rl">Time Constant τ = RC</div>
+      <div class="rv" id="tau-out">10.0</div>
+      <div class="ru">µs</div>
+    </div>
+    <div class="rbox">
+      <div class="rl">Gain at f₋₃dB</div>
+      <div class="rv" id="gain3-out">7.07</div>
+      <div class="ru">V/V (0.707 × A₀)</div>
+    </div>
+    <div class="rbox">
+      <div class="rl">Power at f₋₃dB</div>
+      <div class="rv" id="pwr3-out">50%</div>
+      <div class="ru">of midband power</div>
+    </div>
+
+    <div class="info" id="info-box">
+      RC low-pass: f₋₃dB = 1/(2πRC). At this frequency, XC = R — reactive and resistive impedances are equal.
+    </div>
+  </div>
+
+  <div class="carea">
+    <div>
+      <div class="clabel">Bode Magnitude Plot — Gain vs Frequency</div>
+      <canvas id="bodeCanvas" width="820" height="280"></canvas>
+    </div>
+    <div>
+      <div class="clabel">Gain at Specific Frequency — Drag the frequency marker</div>
+      <canvas id="freqCanvas" width="820" height="180"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const rS=document.getElementById('r-s');
+  const cS=document.getElementById('c-s');
+  const a0S=document.getElementById('a0-s');
+
+  let markerFreqHz = null;
+
+  function params(){
+    return {
+      R: parseFloat(rS.value)*1e3,
+      C: parseFloat(cS.value)*1e-9,
+      A0: parseFloat(a0S.value)
+    };
+  }
+
+  function f3db(p){ return 1/(2*Math.PI*p.R*p.C); }
+
+  function gain(p,f){
+    const f3=f3db(p);
+    return p.A0/Math.sqrt(1+(f/f3)**2);
+  }
+
+  function update(){
+    const p=params();
+    const f3=f3db(p);
+    const tau=p.R*p.C;
+    document.getElementById('r-v').textContent=(p.R/1e3).toFixed(1)+' kΩ';
+    document.getElementById('c-v').textContent=(p.C*1e9).toFixed(0)+' nF';
+    document.getElementById('a0-v').textContent=p.A0+' V/V';
+    document.getElementById('f3-out').textContent=f3>=1e6?(f3/1e6).toFixed(2)+' MHz':f3>=1e3?(f3/1e3).toFixed(2)+' kHz':f3.toFixed(1)+' Hz';
+    document.getElementById('tau-out').textContent=tau>=1e-3?(tau*1e3).toFixed(2)+' ms':tau>=1e-6?(tau*1e6).toFixed(2)+' µs':(tau*1e9).toFixed(1)+' ns';
+    document.getElementById('gain3-out').textContent=(p.A0*0.7071).toFixed(2);
+    document.getElementById('pwr3-out').textContent='50%';
+
+    if(markerFreqHz===null) markerFreqHz = f3;
+    drawBode(p,f3);
+    drawFreqMarker(p,f3);
+  }
+
+  function getC(){
+    const dark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+    return{bg:dark?'#1a1a1a':'#fff',grid:dark?'#333':'#eee',text:dark?'#ccc':'#555',blue:dark?'#4499ff':'#0066cc',orange:dark?'#ff9944':'#cc6600',red:dark?'#ff5555':'#cc0000',green:dark?'#44bb44':'#007700'};
+  }
+
+  function drawBode(p,f3){
+    const cv=document.getElementById('bodeCanvas');
+    const ctx=cv.getContext('2d');
+    const W=cv.width,H=cv.height;
+    const c=getC();
+    ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+
+    const pad={l:65,r:30,t:25,b:50};
+    const pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
+
+    // frequency range: 3 decades below f3 to 3 decades above
+    const fMin=Math.max(1,f3/1000), fMax=f3*1000;
+    const logMin=Math.log10(fMin), logMax=Math.log10(fMax);
+
+    // gain range in dB
+    const A0_dB=20*Math.log10(p.A0);
+    const gainMin_dB=A0_dB-80;
+    const gainMax_dB=A0_dB+10;
+
+    function fToX(f){ return pad.l+(Math.log10(f)-logMin)/(logMax-logMin)*pw; }
+    function dBToY(db){ return pad.t+ph-(db-gainMin_dB)/(gainMax_dB-gainMin_dB)*ph; }
+
+    // grid — decades
+    ctx.strokeStyle=c.grid; ctx.lineWidth=1;
+    for(let lf=Math.ceil(logMin);lf<=Math.floor(logMax);lf++){
+      const x=fToX(Math.pow(10,lf));
+      ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,pad.t+ph); ctx.stroke();
+      const f=Math.pow(10,lf);
+      ctx.fillStyle=c.text; ctx.font='11px monospace'; ctx.textAlign='center';
+      ctx.fillText(f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f, x, pad.t+ph+15);
+    }
+    const dbTicks=[...Array(10)].map((_,i)=>gainMin_dB+i*10).filter(d=>d<=gainMax_dB);
+    for(const db of dbTicks){
+      const y=dBToY(db);
+      if(y<pad.t||y>pad.t+ph) continue;
+      ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+pw,y); ctx.stroke();
+      ctx.fillStyle=c.text; ctx.font='10px monospace'; ctx.textAlign='right';
+      ctx.fillText(db.toFixed(0)+' dB', pad.l-4, y+4);
+    }
+
+    ctx.fillStyle=c.text; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Frequency (Hz) →', pad.l+pw/2, H-8);
+    ctx.save(); ctx.translate(16,pad.t+ph/2); ctx.rotate(-Math.PI/2);
+    ctx.fillText('Gain (dB)', 0,0); ctx.restore();
+
+    // ideal -20dB/decade asymptote
+    ctx.beginPath(); ctx.strokeStyle=c.grid; ctx.lineWidth=1; ctx.setLineDash([5,5]);
+    ctx.moveTo(fToX(f3), dBToY(A0_dB));
+    ctx.lineTo(fToX(fMax), dBToY(A0_dB - 20*(Math.log10(fMax)-Math.log10(f3))));
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // actual curve
+    ctx.beginPath(); ctx.strokeStyle=c.blue; ctx.lineWidth=2.5;
+    for(let px=0;px<=pw;px++){
+      const logF=logMin+(px/pw)*(logMax-logMin);
+      const f=Math.pow(10,logF);
+      const g=gain(p,f);
+      const db=20*Math.log10(g);
+      const x=pad.l+px;
+      const y=dBToY(db);
+      px===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    // -3dB marker line
+    const x3=fToX(f3);
+    const y3=dBToY(A0_dB-3);
+    ctx.beginPath(); ctx.strokeStyle=c.orange; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+    ctx.moveTo(pad.l,y3); ctx.lineTo(pad.l+pw,y3); ctx.stroke();
+    ctx.moveTo(x3,pad.t); ctx.lineTo(x3,pad.t+ph); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // dot at -3dB
+    ctx.beginPath(); ctx.arc(x3,y3,7,0,2*Math.PI);
+    ctx.fillStyle=c.orange; ctx.fill();
+    ctx.strokeStyle=c.bg; ctx.lineWidth=2; ctx.stroke();
+
+    // label
+    ctx.fillStyle=c.orange; ctx.font='bold 12px monospace'; ctx.textAlign='left';
+    const f3label=f3>=1e6?(f3/1e6).toFixed(2)+'MHz':f3>=1e3?(f3/1e3).toFixed(1)+'kHz':f3.toFixed(0)+'Hz';
+    ctx.fillText('f₋₃dB = '+f3label, x3+8, y3-8);
+    ctx.fillText(A0_dB.toFixed(1)+'-3 = '+(A0_dB-3).toFixed(1)+' dB', x3+8, y3+16);
+
+    // midband line
+    ctx.beginPath(); ctx.strokeStyle=c.green; ctx.lineWidth=1; ctx.setLineDash([6,3]);
+    ctx.moveTo(pad.l,dBToY(A0_dB)); ctx.lineTo(pad.l+pw,dBToY(A0_dB)); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=c.green; ctx.font='11px monospace'; ctx.textAlign='left';
+    ctx.fillText('Midband: '+A0_dB.toFixed(1)+' dB', pad.l+5, dBToY(A0_dB)-5);
+  }
+
+  function drawFreqMarker(p,f3){
+    const cv=document.getElementById('freqCanvas');
+    const ctx=cv.getContext('2d');
+    const W=cv.width,H=cv.height;
+    const c=getC();
+    ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+
+    const pad={l:65,r:30,t:20,b:40};
+    const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+    const fMin=Math.max(1,f3/1000),fMax=f3*1000;
+    const logMin=Math.log10(fMin),logMax=Math.log10(fMax);
+
+    function fToX(f){return pad.l+(Math.log10(f)-logMin)/(logMax-logMin)*pw;}
+    function gToY(g,gMax){return pad.t+ph-(g/gMax)*ph;}
+
+    const gMax=p.A0*1.1;
+
+    // gain curve (linear)
+    ctx.beginPath(); ctx.strokeStyle=c.blue; ctx.lineWidth=2.5;
+    for(let px=0;px<=pw;px++){
+      const logF=logMin+(px/pw)*(logMax-logMin);
+      const f=Math.pow(10,logF);
+      const g=gain(p,f);
+      const x=pad.l+px;
+      const y=gToY(g,gMax);
+      px===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    // -3dB line
+    const y3db=gToY(p.A0*0.707,gMax);
+    ctx.beginPath(); ctx.strokeStyle=c.orange; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+    ctx.moveTo(pad.l,y3db); ctx.lineTo(pad.l+pw,y3db); ctx.stroke(); ctx.setLineDash([]);
+
+    // x-axis label
+    ctx.fillStyle=c.text; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Frequency →', pad.l+pw/2, H-5);
+    ctx.save(); ctx.translate(14,pad.t+ph/2); ctx.rotate(-Math.PI/2);
+    ctx.fillText('Gain (V/V)', 0,0); ctx.restore();
+
+    // marker point
+    if(markerFreqHz){
+      const mf=Math.max(fMin,Math.min(fMax,markerFreqHz));
+      const mg=gain(p,mf);
+      const mx=fToX(mf);
+      const my=gToY(mg,gMax);
+      ctx.beginPath(); ctx.arc(mx,my,7,0,2*Math.PI);
+      ctx.fillStyle=c.orange; ctx.fill();
+
+      ctx.fillStyle=c.orange; ctx.font='bold 12px monospace'; ctx.textAlign=(mx>W/2?'right':'left');
+      const mfl=mf>=1e6?(mf/1e6).toFixed(2)+'MHz':mf>=1e3?(mf/1e3).toFixed(1)+'kHz':mf.toFixed(0)+'Hz';
+      const mgdb=20*Math.log10(mg/p.A0);
+      ctx.fillText('f='+mfl+' → Av='+mg.toFixed(2)+' ('+mgdb.toFixed(1)+' dB)', mx+(mx>W/2?-10:10), my-10);
+    }
+
+    // y-axis ticks
+    ctx.fillStyle=c.text; ctx.font='10px monospace'; ctx.textAlign='right';
+    for(let g=0;g<=gMax;g+=p.A0/4){
+      const y=gToY(g,gMax);
+      ctx.fillText(g.toFixed(1), pad.l-4, y+4);
+    }
+    ctx.fillStyle=c.orange; ctx.textAlign='right';
+    ctx.fillText((p.A0*0.707).toFixed(2)+' V/V (-3dB)', pad.l-4, y3db+4);
+  }
+
+  // drag frequency marker on bode canvas
+  const bodeCV=document.getElementById('bodeCanvas');
+  function handleDrag(e){
+    const rect=bodeCV.getBoundingClientRect();
+    const mx=(e.touches?e.touches[0].clientX:e.clientX)-rect.left;
+    const p=params();
+    const f3=f3db(p);
+    const fMin=Math.max(1,f3/1000),fMax=f3*1000;
+    const logMin=Math.log10(fMin),logMax=Math.log10(fMax);
+    const pad={l:65,r:30};
+    const pw=bodeCV.width-pad.l-pad.r;
+    const frac=(mx-pad.l)/pw;
+    if(frac<0||frac>1) return;
+    markerFreqHz=Math.pow(10,logMin+frac*(logMax-logMin));
+    update();
+  }
+  bodeCV.addEventListener('mousemove',e=>{if(e.buttons)handleDrag(e);});
+  bodeCV.addEventListener('click',handleDrag);
+  bodeCV.addEventListener('touchmove',e=>{e.preventDefault();handleDrag(e);},{passive:false});
+
+  [rS,cS,a0S].forEach(el=>el.addEventListener('input',update));
+  window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',update);
+  update();
+})();
+</script>
+</body>
+</html>

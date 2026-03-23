@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-L-2.3.2 — Current Rise Curve</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+h1 { color: #0066cc; font-size: 1.3em; margin-bottom: 4px; }
+.subtitle { color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }
+.layout { display: flex; gap: 20px; flex-wrap: wrap; }
+.panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+.controls { width: 280px; flex-shrink: 0; }
+.viz { flex: 1; min-width: 360px; }
+label { display: block; color: #8b949e; font-size: 0.8em; margin-bottom: 4px; margin-top: 12px; }
+input[type=range] { width: 100%; accent-color: #0066cc; }
+.val { color: #0066cc; font-weight: bold; }
+canvas { background: #0d1117; border-radius: 6px; display: block; }
+.readouts { margin-top: 14px; }
+.readout-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #21262d; font-size: 0.82em; }
+.readout-label { color: #8b949e; }
+.readout-val { color: #39d353; font-weight: bold; font-family: monospace; }
+.eq { background: #21262d; border-left: 3px solid #0066cc; padding: 10px 12px; border-radius: 4px; margin-top: 14px; font-family: monospace; font-size: 0.82em; color: #a5d6ff; }
+@media (prefers-color-scheme: light) {
+  body { background: #f6f8fa; color: #24292f; }
+  .panel { background: #fff; border-color: #d0d7de; }
+  canvas { background: #f6f8fa; }
+  .eq { background: #eef2ff; }
+}
+</style>
+</head>
+<body>
+<h1>P2-L-2.3.2 — Current Rise Curve</h1>
+<div class="subtitle">I(t) = (V/R)(1−e^(−t/τ)) · initial tangent (slope = V/L) · milestone markers · live current readout</div>
+<div class="layout">
+  <div class="panel controls">
+    <label>Supply Voltage V (V): <span class="val" id="vLbl">12 V</span></label>
+    <input type="range" id="vSlider" min="1" max="48" value="12" step="1">
+    <label>Inductance L (µH): <span class="val" id="lLbl">500 µH</span></label>
+    <input type="range" id="lSlider" min="10" max="2000" value="500" step="10">
+    <label>Resistance R (Ω): <span class="val" id="rLbl">20 Ω</span></label>
+    <input type="range" id="rSlider" min="1" max="200" value="20" step="1">
+    <label>Time cursor (× τ): <span class="val" id="tcLbl">1.0τ</span></label>
+    <input type="range" id="tcSlider" min="0" max="600" value="100" step="1">
+    <div class="readouts">
+      <div class="readout-row"><span class="readout-label">τ = L/R</span><span class="readout-val" id="tau">—</span></div>
+      <div class="readout-row"><span class="readout-label">I_final = V/R</span><span class="readout-val" id="ifin">—</span></div>
+      <div class="readout-row"><span class="readout-label">Initial slope V/L</span><span class="readout-val" id="slope">—</span></div>
+      <div class="readout-row"><span class="readout-label">I at cursor time</span><span class="readout-val" id="icursor">—</span></div>
+      <div class="readout-row"><span class="readout-label">% of I_final</span><span class="readout-val" id="pctfin">—</span></div>
+      <div class="readout-row"><span class="readout-label">V_L at cursor</span><span class="readout-val" id="vL">—</span></div>
+    </div>
+    <div class="eq">I(t) = (V/R)(1−e^(−t/τ))<br>Slope at t=0: dI/dt = V/L<br>Tangent hits I_final at t = τ</div>
+  </div>
+  <div class="panel viz">
+    <canvas id="cv" width="580" height="420"></canvas>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const W = 580, H = 420;
+
+function getP() {
+  const V = parseFloat(document.getElementById('vSlider').value);
+  const L = parseFloat(document.getElementById('lSlider').value) * 1e-6;
+  const R = parseFloat(document.getElementById('rSlider').value);
+  const tc = parseFloat(document.getElementById('tcSlider').value) / 100;
+  return { V, L, R, tc };
+}
+function fmtT(t) {
+  if (t >= 1e-3) return (t * 1000).toFixed(2) + ' ms';
+  if (t >= 1e-6) return (t * 1e6).toFixed(2) + ' µs';
+  return (t * 1e9).toFixed(1) + ' ns';
+}
+function fmtA(a) { return Math.abs(a) >= 1 ? a.toFixed(4) + ' A' : (a * 1000).toFixed(2) + ' mA'; }
+function fmtAS(a) {
+  if (Math.abs(a) >= 1e6) return (a / 1e6).toFixed(2) + ' MA/s';
+  if (Math.abs(a) >= 1e3) return (a / 1e3).toFixed(2) + ' kA/s';
+  return a.toFixed(1) + ' A/s';
+}
+
+function draw() {
+  const p = getP();
+  const tau = p.L / p.R;
+  const Ifin = p.V / p.R;
+  const slope0 = p.V / p.L;
+  const tc_actual = p.tc * tau;
+  const Icursor = Ifin * (1 - Math.exp(-p.tc));
+  const pct = (1 - Math.exp(-p.tc)) * 100;
+  const VL_cursor = p.V * Math.exp(-p.tc);
+
+  document.getElementById('vLbl').textContent = p.V.toFixed(0) + ' V';
+  document.getElementById('lLbl').textContent = (p.L * 1e6).toFixed(0) + ' µH';
+  document.getElementById('rLbl').textContent = p.R.toFixed(0) + ' Ω';
+  document.getElementById('tcLbl').textContent = p.tc.toFixed(1) + 'τ';
+  document.getElementById('tau').textContent = fmtT(tau);
+  document.getElementById('ifin').textContent = fmtA(Ifin);
+  document.getElementById('slope').textContent = fmtAS(slope0);
+  document.getElementById('icursor').textContent = fmtA(Icursor);
+  document.getElementById('pctfin').textContent = pct.toFixed(2) + '%';
+  document.getElementById('vL').textContent = VL_cursor.toFixed(3) + ' V';
+
+  ctx.clearRect(0, 0, W, H);
+
+  const pad = { l: 70, r: 20, t: 35, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+  const tMax = 6 * tau;
+  const Imax = Ifin * 1.15;
+
+  function tx(t) { return pad.l + (t / tMax) * pw; }
+  function ty(i) { return pad.t + ph - (i / Imax) * ph; }
+
+  // Grid
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let g = 0; g <= 5; g++) {
+    const Ig = Imax * g / 5;
+    const yi = ty(Ig);
+    ctx.beginPath(); ctx.moveTo(pad.l, yi); ctx.lineTo(pad.l + pw, yi); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(fmtA(Ig), pad.l - 4, yi + 4);
+  }
+  for (let g = 0; g <= 6; g++) {
+    const xi = tx(tMax * g / 6);
+    ctx.beginPath(); ctx.moveTo(xi, pad.t); ctx.lineTo(xi, pad.t + ph); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(fmtT(tMax * g / 6), xi, pad.t + ph + 16);
+  }
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t + ph); ctx.lineTo(pad.l + pw, pad.t + ph); ctx.stroke();
+
+  // I_final line
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.moveTo(pad.l, ty(Ifin)); ctx.lineTo(pad.l + pw, ty(Ifin)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#8b949e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('I_final = ' + fmtA(Ifin), pad.l + pw - 4, ty(Ifin) - 6);
+
+  // Initial tangent line (yellow)
+  const t_tangent = tau; // tangent hits I_final at t = tau
+  ctx.strokeStyle = '#e3b341'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 3]);
+  ctx.beginPath();
+  ctx.moveTo(pad.l, ty(0));
+  ctx.lineTo(tx(tau * 1.2), ty(slope0 * tau * 1.2));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // Tangent intersection marker
+  ctx.fillStyle = '#e3b341';
+  ctx.beginPath(); ctx.arc(tx(tau), ty(Ifin), 6, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#e3b341'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('Tangent meets I_final at t=τ', tx(tau) - 8, ty(Ifin) - 8);
+
+  // Main exponential curve
+  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let px = 0; px <= pw; px++) {
+    const t = (px / pw) * tMax;
+    const I = Ifin * (1 - Math.exp(-t / tau));
+    if (px === 0) ctx.moveTo(pad.l, ty(I)); else ctx.lineTo(pad.l + px, ty(I));
+  }
+  ctx.stroke();
+
+  // Milestone markers
+  const milestones = [1, 2, 3, 5];
+  const mColors = ['#39d353', '#56d364', '#7ee787', '#c3e88d'];
+  milestones.forEach((m, idx) => {
+    const t = m * tau;
+    const I = Ifin * (1 - Math.exp(-m));
+    const x = tx(t), y = ty(I);
+    ctx.fillStyle = mColors[idx];
+    ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = mColors[idx]; ctx.font = '10px monospace'; ctx.textAlign = 'left';
+    const pctM = (1 - Math.exp(-m)) * 100;
+    ctx.fillText(m + 'τ:' + pctM.toFixed(1) + '%', x + 6, y - 4);
+  });
+
+  // Cursor
+  if (tc_actual <= tMax) {
+    const xc = tx(tc_actual);
+    const yc = ty(Icursor);
+    // Cursor vertical line
+    ctx.strokeStyle = '#ff7b72'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(xc, pad.t); ctx.lineTo(xc, pad.t + ph); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(pad.l, yc); ctx.lineTo(xc, yc); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#ff7b72';
+    ctx.beginPath(); ctx.arc(xc, yc, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ff7b72'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('t=' + p.tc.toFixed(1) + 'τ: I=' + fmtA(Icursor) + ' (' + pct.toFixed(1) + '%)', xc + 8, yc - 8);
+  }
+
+  // Slope annotation
+  const slopeX1 = pad.l + pw * 0.01;
+  const slopeX2 = pad.l + pw * 0.12;
+  const dt = ((slopeX2 - slopeX1) / pw) * tMax;
+  const slopeY2 = ty(slope0 * dt * 0.85);
+  ctx.strokeStyle = '#ff7b72'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(slopeX1, ty(0)); ctx.lineTo(slopeX2, slopeY2); ctx.stroke();
+  ctx.fillStyle = '#ff7b72'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('Initial slope = V/L = ' + fmtAS(slope0), slopeX2 + 4, slopeY2);
+
+  ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Time', pad.l + pw / 2, H - 8);
+  ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('RL Current Rise Curve — Initial Tangent and Milestone Markers', W / 2, 20);
+}
+
+['vSlider', 'lSlider', 'rSlider', 'tcSlider'].forEach(id =>
+  document.getElementById(id).addEventListener('input', draw));
+draw();
+</script>
+</body>
+</html>

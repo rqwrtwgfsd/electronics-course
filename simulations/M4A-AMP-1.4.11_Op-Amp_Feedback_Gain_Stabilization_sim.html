@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.4.11 — Gain Stabilization via Negative Feedback</title>
+<style>
+  :root{--bg:#f5f5f5;--card:#fff;--text:#1a1a1a;--subtext:#555;--accent:#0066cc;--accent2:#cc3300;--accent3:#007744;--accent4:#aa5500;--border:#ccc;--grid:#ddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--card:#242424;--text:#e8e8e8;--subtext:#aaa;--accent:#4da6ff;--accent2:#ff6644;--accent3:#44cc88;--accent4:#ffaa44;--border:#444;--grid:#333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;line-height:1.6;}
+  header{background:var(--card);border-bottom:2px solid var(--accent);padding:18px 28px;}
+  header h1{font-size:1.2rem;font-weight:700;color:var(--accent);}
+  header p{font-size:0.85rem;color:var(--subtext);margin-top:3px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:20px;padding:20px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px;}
+  .card h2{font-size:0.95rem;font-weight:600;margin-bottom:4px;}
+  .card p.desc{font-size:0.80rem;color:var(--subtext);margin-bottom:10px;line-height:1.4;}
+  canvas{display:block;width:100%;border-radius:4px;}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;}
+  .ctrl{display:flex;flex-direction:column;font-size:0.78rem;color:var(--subtext);min-width:140px;}
+  .ctrl label{margin-bottom:3px;}
+  input[type=range]{accent-color:var(--accent);width:100%;}
+  .readout{font-size:0.82rem;color:var(--accent);font-weight:600;margin-top:2px;}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:0.78rem;}
+  .leg{display:flex;align-items:center;gap:5px;}
+  .leg-dot{width:20px;height:3px;border-radius:2px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>M4A-AMP-1.4.11 — Gain Stabilization via Negative Feedback</h1>
+  <p>How resistors dominate over Avol, and how gain error scales with T, temperature, and resistor matching</p>
+</header>
+<div class="grid">
+
+  <!-- Plot 1: Acl vs Avol for different gain targets -->
+  <div class="card">
+    <h2>Closed-Loop Gain Convergence to Ideal as Avol Rises</h2>
+    <p class="desc">Acl = Avol/(1+Avol×β). As Avol rises, Acl converges to 1/β. Each curve shows a different target gain. The shaded region shows ±1% from ideal. Below a threshold Avol, gain error exceeds 1%.</p>
+    <canvas id="c1" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>Avol range: 10¹ to 10<span id="v1a" class="readout">7</span></label>
+        <input type="range" id="s1a" min="4" max="9" value="7" step="1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Acl_ideal = 1</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> Acl_ideal = 10</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3)"></div> Acl_ideal = 100</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent4)"></div> Acl_ideal = 1000</div>
+    </div>
+  </div>
+
+  <!-- Plot 2: Gain error budget breakdown -->
+  <div class="card">
+    <h2>Gain Error Budget: Avol Term + Resistor Term</h2>
+    <p class="desc">Total gain error = |Acl_real – Acl_ideal| / Acl_ideal. This combines the finite Avol error (1/(1+T)) and the resistor ratio error (set by the slider). Which dominates depends on the system.</p>
+    <canvas id="c2" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>Avol DC (dB): <span id="v2a" class="readout">100</span></label>
+        <input type="range" id="s2a" min="40" max="140" value="100" step="1">
+      </div>
+      <div class="ctrl">
+        <label>Acl target: <span id="v2b" class="readout">10</span></label>
+        <input type="range" id="s2b" min="1" max="100" value="10" step="1">
+      </div>
+      <div class="ctrl">
+        <label>R ratio error (%): <span id="v2c" class="readout">0.10</span></label>
+        <input type="range" id="s2c" min="0.001" max="5" value="0.1" step="0.001">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Total gain error</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> Avol-limited error</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3)"></div> Resistor ratio error</div>
+    </div>
+  </div>
+
+  <!-- Plot 3: Gain drift vs temperature for different resistor TCs -->
+  <div class="card">
+    <h2>Gain Drift vs Temperature (Resistor TC Mismatch)</h2>
+    <p class="desc">ΔAcl/Acl ≈ (R2/R1 × ΔTC × ΔT) / Acl. Resistor TC mismatch is the dominant drift mechanism once Avol is large. Matched pairs outperform individual resistors by 10–50×.</p>
+    <canvas id="c3" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>Acl: <span id="v3a" class="readout">10</span></label>
+        <input type="range" id="s3a" min="1" max="100" value="10" step="1">
+      </div>
+      <div class="ctrl">
+        <label>Tnom (°C): <span id="v3b" class="readout">25</span></label>
+        <input type="range" id="s3b" min="-40" max="85" value="25" step="1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> TC mismatch = 1 ppm/°C</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> TC mismatch = 10 ppm/°C</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3)"></div> TC mismatch = 50 ppm/°C</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent4)"></div> TC mismatch = 200 ppm/°C</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function sc(id){const c=document.getElementById(id);const dpr=window.devicePixelRatio||1;return{canvas:c,resize:()=>{const w=c.clientWidth,h=c.clientHeight;c.width=w*dpr;c.height=h*dpr;const ctx=c.getContext('2d');ctx.scale(dpr,dpr);return{ctx,w,h};}};}
+
+function axes(ctx,w,h,pad,xL,yL,xT,yT){
+  ctx.clearRect(0,0,w,h);ctx.fillStyle=css('--card');ctx.fillRect(0,0,w,h);
+  const pw=w-pad.l-pad.r,ph=h-pad.t-pad.b;
+  ctx.strokeStyle=css('--grid');ctx.lineWidth=0.7;
+  xT.forEach(t=>{const x=pad.l+t.px*pw;ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();});
+  yT.forEach(t=>{const y=pad.t+ph-t.py*ph;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();});
+  ctx.strokeStyle=css('--text');ctx.lineWidth=1.5;ctx.strokeRect(pad.l,pad.t,pw,ph);
+  ctx.fillStyle=css('--subtext');ctx.font='10px system-ui';
+  ctx.textAlign='center';xT.forEach(t=>ctx.fillText(t.label,pad.l+t.px*pw,pad.t+ph+13));
+  ctx.textAlign='right';yT.forEach(t=>ctx.fillText(t.label,pad.l-4,pad.t+ph-t.py*ph+3.5));
+  ctx.fillStyle=css('--text');ctx.font='11px system-ui';ctx.textAlign='center';
+  ctx.fillText(xL,pad.l+pw/2,h-2);
+  ctx.save();ctx.translate(11,pad.t+ph/2);ctx.rotate(-Math.PI/2);ctx.fillText(yL,0,0);ctx.restore();
+  return{pw,ph};
+}
+
+// ─── Plot 1 ───────────────────────────────────────────────────────────────────
+const p1=sc('c1');
+function draw1(){
+  const {ctx,w,h}=p1.resize();
+  const AvMax_exp=parseInt(document.getElementById('s1a').value);
+  document.getElementById('v1a').textContent=AvMax_exp;
+
+  const pad={l:60,r:16,t:18,b:36};
+  const AvMin=10,AvMax=Math.pow(10,AvMax_exp);
+
+  const xTicks=[];
+  for(let e=1;e<=AvMax_exp;e++)xTicks.push({px:(e-1)/(AvMax_exp-1),label:'10^'+e});
+
+  const targets=[{acl:1,c:'--accent'},{acl:10,c:'--accent2'},{acl:100,c:'--accent3'},{acl:1000,c:'--accent4'}];
+  const AclMax=Math.max(...targets.map(t=>t.acl))*1.05;
+  const AclMin=0;
+  const yStep=targets[targets.length-1].acl/5;
+  const yTicks=Array.from({length:6},(_,i)=>({py:(i*yStep-AclMin)/(AclMax-AclMin),label:(i*yStep).toFixed(0)}));
+
+  const {pw,ph}=axes(ctx,w,h,pad,'Avol (V/V)','Acl (V/V)',xTicks,yTicks);
+  const xp=av=>pad.l+Math.log10(av/AvMin)/Math.log10(AvMax/AvMin)*pw;
+  const yp=acl=>pad.t+ph-(Math.max(AclMin,acl)-AclMin)/(AclMax-AclMin)*ph;
+
+  targets.forEach(t=>{
+    const beta=1/t.acl;
+    // ±1% band around ideal
+    ctx.fillStyle=css(t.c);ctx.globalAlpha=0.08;
+    ctx.beginPath();
+    for(let i=0;i<=200;i++){const av=AvMin*Math.pow(AvMax/AvMin,i/200);const a=av/(1+av*beta);ctx.lineTo(xp(av),yp(a*1.01));}
+    for(let i=200;i>=0;i--){const av=AvMin*Math.pow(AvMax/AvMin,i/200);const a=av/(1+av*beta);ctx.lineTo(xp(av),yp(a*0.99));}
+    ctx.closePath();ctx.fill();ctx.globalAlpha=1;
+
+    // Ideal line
+    ctx.strokeStyle=css(t.c);ctx.lineWidth=1;ctx.globalAlpha=0.4;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(pad.l,yp(t.acl));ctx.lineTo(pad.l+pw,yp(t.acl));ctx.stroke();
+    ctx.setLineDash([]);ctx.globalAlpha=1;
+
+    // Actual curve
+    ctx.strokeStyle=css(t.c);ctx.lineWidth=2.3;
+    ctx.beginPath();let f=true;
+    for(let i=0;i<=200;i++){
+      const av=AvMin*Math.pow(AvMax/AvMin,i/200);
+      const acl=av/(1+av*beta);
+      const x=xp(av),y=yp(acl);
+      if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    ctx.fillStyle=css(t.c);ctx.font='bold 9px system-ui';ctx.textAlign='right';
+    ctx.fillText('Acl='+t.acl,pad.l+pw-2,yp(t.acl)-3);
+  });
+}
+
+// ─── Plot 2 ───────────────────────────────────────────────────────────────────
+const p2=sc('c2');
+function draw2(){
+  const {ctx,w,h}=p2.resize();
+  const Avol_dB=parseFloat(document.getElementById('s2a').value);
+  const Acl=parseFloat(document.getElementById('s2b').value);
+  const R_err_pct=parseFloat(document.getElementById('s2c').value);
+  document.getElementById('v2a').textContent=Avol_dB;
+  document.getElementById('v2b').textContent=Acl;
+  document.getElementById('v2c').textContent=R_err_pct.toFixed(3);
+
+  const Avol=Math.pow(10,Avol_dB/20);
+  const beta=1/Acl;
+  const T=Avol*beta;
+  const err_Avol=1/(1+T);      // fractional
+  const err_R=R_err_pct/100;   // fractional
+  const err_total=Math.sqrt(err_Avol**2+err_R**2); // RSS
+
+  ctx.clearRect(0,0,w,h);ctx.fillStyle=css('--card');ctx.fillRect(0,0,w,h);
+
+  const pad={l:70,r:20,t:30,b:36};
+  const pw=w-pad.l-pad.r,ph=h-pad.t-pad.b;
+
+  const bars=[
+    {label:'Avol-limited\n1/(1+T)',val:err_Avol,color:'--accent2'},
+    {label:'Resistor\nratio',val:err_R,color:'--accent3'},
+    {label:'Total\n(RSS)',val:err_total,color:'--accent'},
+  ];
+
+  const maxErr=Math.max(...bars.map(b=>b.val))*1.4;
+
+  // Horizontal axis
+  ctx.strokeStyle=css('--text');ctx.lineWidth=1.5;
+  ctx.strokeRect(pad.l,pad.t,pw,ph);
+
+  const bw=pw/bars.length*0.5;
+  bars.forEach((bar,i)=>{
+    const x=pad.l+(i+0.5)*pw/bars.length;
+    const barH=Math.max(2,bar.val/maxErr*ph*0.85);
+    const y=pad.t+ph-barH;
+    ctx.fillStyle=css(bar.color);ctx.globalAlpha=0.8;
+    ctx.fillRect(x-bw/2,y,bw,barH);ctx.globalAlpha=1;
+
+    const pct=(bar.val*100).toFixed(4);
+    const ppm=(bar.val*1e6).toFixed(0);
+    ctx.fillStyle=css('--text');ctx.font='bold 9px system-ui';ctx.textAlign='center';
+    ctx.fillText(pct+'%',x,y-14);
+    ctx.fillText(ppm+' ppm',x,y-4);
+    ctx.fillStyle=css(bar.color);ctx.font='9px system-ui';
+    const lines=bar.label.split('\n');
+    lines.forEach((l,li)=>ctx.fillText(l,x,pad.t+ph+12+li*11));
+  });
+
+  ctx.fillStyle=css('--text');ctx.font='bold 10px system-ui';ctx.textAlign='center';
+  ctx.fillText(`Avol=${Avol_dB}dB  Acl=${Acl}  T=${T.toFixed(0)}  R_err=${R_err_pct.toFixed(3)}%`,w/2,pad.t-8);
+
+  // Target bands
+  [0.001,0.01,0.1].forEach(lim=>{
+    const yLim=pad.t+ph-lim/maxErr*ph*0.85;
+    if(yLim<pad.t||yLim>pad.t+ph)return;
+    ctx.strokeStyle=css('--accent4');ctx.lineWidth=0.8;ctx.globalAlpha=0.5;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(pad.l,yLim);ctx.lineTo(pad.l+pw,yLim);ctx.stroke();
+    ctx.setLineDash([]);ctx.globalAlpha=1;
+    ctx.fillStyle=css('--accent4');ctx.font='8px system-ui';ctx.textAlign='left';
+    ctx.fillText((lim*100).toFixed(3)+'%',pad.l+2,yLim-2);
+  });
+}
+
+// ─── Plot 3 ───────────────────────────────────────────────────────────────────
+const p3=sc('c3');
+function draw3(){
+  const {ctx,w,h}=p3.resize();
+  const Acl=parseFloat(document.getElementById('s3a').value);
+  const Tnom=parseFloat(document.getElementById('s3b').value);
+  document.getElementById('v3a').textContent=Acl;
+  document.getElementById('v3b').textContent=Tnom;
+
+  const pad={l:60,r:16,t:18,b:36};
+  const Tmin=-40,Tmax=125;
+  const R2R1=Acl-1; // = R2/R1 for non-inverting
+
+  const TCs=[1e-6,10e-6,50e-6,200e-6];
+  const colors=['--accent','--accent2','--accent3','--accent4'];
+
+  // max drift for scaling
+  const maxDrift_ppm=TCs[TCs.length-1]*R2R1*Math.max(Math.abs(Tmax-Tnom),Math.abs(Tmin-Tnom))*1e6;
+  const yRange=maxDrift_ppm*1.2;
+
+  const numXT=5;
+  const xTicks=Array.from({length:numXT+1},(_,i)=>({px:i/numXT,label:(Tmin+(Tmax-Tmin)*i/numXT).toFixed(0)+'°'}));
+  const numYT=6;
+  const yTicks=Array.from({length:numYT+1},(_,i)=>({py:i/numYT,label:(-yRange/2+yRange*i/numYT).toFixed(0)+' ppm'}));
+
+  const {pw,ph}=axes(ctx,w,h,pad,'Temperature (°C)','Gain drift (ppm)',xTicks,yTicks);
+  const xp=T=>pad.l+(T-Tmin)/(Tmax-Tmin)*pw;
+  const yp=ppm=>pad.t+ph-(ppm+yRange/2)/yRange*ph;
+
+  // Zero line
+  ctx.strokeStyle=css('--subtext');ctx.lineWidth=0.8;ctx.globalAlpha=0.4;
+  ctx.beginPath();ctx.moveTo(pad.l,yp(0));ctx.lineTo(pad.l+pw,yp(0));ctx.stroke();ctx.globalAlpha=1;
+
+  TCs.forEach((tc,idx)=>{
+    ctx.strokeStyle=css(colors[idx]);ctx.lineWidth=2;
+    ctx.beginPath();let f=true;
+    for(let T=Tmin;T<=Tmax;T+=1){
+      const drift_ppm=R2R1*(T-Tnom)*tc*1e6/(Acl);
+      const x=xp(T),y=yp(drift_ppm);
+      if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    // Tmax label
+    const drift_at_max=R2R1*(Tmax-Tnom)*tc*1e6/Acl;
+    ctx.fillStyle=css(colors[idx]);ctx.font='9px system-ui';ctx.textAlign='right';
+    const tcStr=tc>=1e-4?(tc*1e6).toFixed(0)+'ppm/°C':(tc*1e6).toFixed(0)+'ppm/°C';
+    ctx.fillText(tcStr,pad.l+pw-2,yp(drift_at_max)-2);
+  });
+
+  ctx.fillStyle=css('--text');ctx.font='bold 9px system-ui';ctx.textAlign='left';
+  ctx.fillText(`Acl=${Acl} (R2/R1=${R2R1})  T_nom=${Tnom}°C`,pad.l+4,pad.t+14);
+}
+
+['s1a'].forEach(id=>document.getElementById(id).addEventListener('input',draw1));
+['s2a','s2b','s2c'].forEach(id=>document.getElementById(id).addEventListener('input',draw2));
+['s3a','s3b'].forEach(id=>document.getElementById(id).addEventListener('input',draw3));
+window.addEventListener('resize',()=>{draw1();draw2();draw3();});
+draw1();draw2();draw3();
+</script>
+</body>
+</html>

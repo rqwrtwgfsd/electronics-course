@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.2.5 — CE Biasing Requirements</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;gap:16px;align-items:baseline;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:270px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .status{padding:4px 8px;border-radius:3px;text-align:center;font-size:11px;font-weight:bold;margin-top:4px;}
+  .ok{background:#005500;color:#fff;}.warn{background:#885500;color:#fff;}.bad{background:#880000;color:#fff;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:14px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.2.5</div>
+  <div class="topic">CE Biasing Requirements — Stability vs β Variation</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>Supply & Target</h3>
+      <label>VCC: <b id="vcc_lbl">12 V</b></label>
+      <input type="range" id="vcc" min="3" max="30" value="12" step="1">
+      <label>Target IC (mA): <b id="ic_lbl">1.0</b></label>
+      <input type="range" id="ic" min="0.1" max="10" value="1" step="0.1">
+    </div>
+    <div class="cg">
+      <h3>Bias Resistors</h3>
+      <label>R1 (kΩ): <b id="r1_lbl">47</b></label>
+      <input type="range" id="r1" min="1" max="500" value="47" step="1">
+      <label>R2 (kΩ): <b id="r2_lbl">10</b></label>
+      <input type="range" id="r2" min="1" max="100" value="10" step="1">
+      <label>RE (Ω): <b id="re_lbl">1000</b></label>
+      <input type="range" id="re" min="100" max="10000" value="1000" step="100">
+      <label>RC (kΩ): <b id="rc_lbl">4.7</b></label>
+      <input type="range" id="rc" min="0.5" max="20" value="4.7" step="0.1">
+    </div>
+    <div class="cg">
+      <h3>β Range</h3>
+      <label>β_min: <b id="bmin_lbl">75</b></label>
+      <input type="range" id="bmin" min="30" max="200" value="75" step="5">
+      <label>β_max: <b id="bmax_lbl">300</b></label>
+      <input type="range" id="bmax" min="100" max="1000" value="300" step="10">
+    </div>
+    <div class="cg">
+      <h3>Bias Analysis</h3>
+      <div class="rd">VTH: <span id="r_vth">—</span> V</div>
+      <div class="rd">RTH: <span id="r_rth">—</span> kΩ</div>
+      <div class="rd">Stability criterion: <span id="r_crit">—</span></div>
+      <div class="rd">IC(β_min): <span id="r_icmin">—</span> mA</div>
+      <div class="rd">IC(β_max): <span id="r_icmax">—</span> mA</div>
+      <div class="rd">IC variation: <span id="r_var">—</span> %</div>
+      <div id="stab_st" class="status ok">STABLE</div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_vth">—</div><div class="l">VTH (V)</div></div>
+      <div class="met"><div class="v" id="m_vc">—</div><div class="l">VC (V)</div></div>
+      <div class="met"><div class="v" id="m_var">—</div><div class="l">IC Var (%)</div></div>
+      <div class="met"><div class="v" id="m_st">—</div><div class="l">Stable?</div></div>
+    </div>
+    <div>
+      <div class="pl">IC vs β — voltage divider stability demonstration</div>
+      <canvas id="stCanvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">Q-Point on Load Line — VCC, RC, current variation</div>
+      <canvas id="loadCanvas" height="180"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+const VBE=0.7,VT=0.026;
+function par(a,b){return a*b/(a+b);}
+
+function getIC(vth,rth,beta,re){
+  return Math.max(0,(vth-VBE)/(re+rth/beta));
+}
+
+function update(){
+  const vcc=parseFloat(document.getElementById('vcc').value);
+  const ic0=parseFloat(document.getElementById('ic').value)*1e-3;
+  const r1=parseFloat(document.getElementById('r1').value)*1e3;
+  const r2=parseFloat(document.getElementById('r2').value)*1e3;
+  const re=parseFloat(document.getElementById('re').value);
+  const rc=parseFloat(document.getElementById('rc').value)*1e3;
+  const bmin=parseFloat(document.getElementById('bmin').value);
+  const bmax=parseFloat(document.getElementById('bmax').value);
+
+  document.getElementById('vcc_lbl').textContent=vcc+' V';
+  document.getElementById('ic_lbl').textContent=(ic0*1000).toFixed(1);
+  document.getElementById('r1_lbl').textContent=(r1/1e3).toFixed(0);
+  document.getElementById('r2_lbl').textContent=(r2/1e3).toFixed(0);
+  document.getElementById('re_lbl').textContent=re.toFixed(0);
+  document.getElementById('rc_lbl').textContent=(rc/1e3).toFixed(1);
+  document.getElementById('bmin_lbl').textContent=bmin;
+  document.getElementById('bmax_lbl').textContent=bmax;
+
+  const vth=vcc*r2/(r1+r2);
+  const rth=par(r1,r2);
+  const stabCrit=rth/(bmin*re);
+  const icMin=getIC(vth,rth,bmin,re);
+  const icMax=getIC(vth,rth,bmax,re);
+  const icVar=icMin>0?Math.abs(icMax-icMin)/Math.min(icMin,icMax)*100:999;
+  const vc=vcc-icMin*rc;
+
+  document.getElementById('r_vth').textContent=vth.toFixed(3);
+  document.getElementById('r_rth').textContent=(rth/1e3).toFixed(2);
+  document.getElementById('r_crit').textContent=(stabCrit*10).toFixed(1)+'% (need <10%)';
+  document.getElementById('r_icmin').textContent=(icMin*1000).toFixed(3);
+  document.getElementById('r_icmax').textContent=(icMax*1000).toFixed(3);
+  document.getElementById('r_var').textContent=icVar.toFixed(1);
+
+  document.getElementById('m_vth').textContent=vth.toFixed(2);
+  document.getElementById('m_vc').textContent=vc.toFixed(2);
+  document.getElementById('m_var').textContent=icVar.toFixed(1)+'%';
+
+  const st=document.getElementById('stab_st');
+  const ms=document.getElementById('m_st');
+  if(stabCrit<0.05){st.textContent='VERY STABLE';st.className='status ok';ms.textContent='GOOD';}
+  else if(stabCrit<0.1){st.textContent='STABLE';st.className='status ok';ms.textContent='OK';}
+  else if(stabCrit<0.2){st.textContent='MARGINAL';st.className='status warn';ms.textContent='MARG';}
+  else{st.textContent='UNSTABLE BIAS';st.className='status bad';ms.textContent='BAD';}
+
+  drawStability(vth,rth,re,bmin,bmax);
+  drawLoadLine(vcc,rc,re,vth,rth,bmin,bmax);
+}
+
+function drawStability(vth,rth,re,bmin,bmax){
+  const canvas=document.getElementById('stCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:55,r:10,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const B_MIN=10,B_MAX=500;
+  const ic_ref=getIC(vth,rth,150,re);
+  const IC_MAX=ic_ref*3;
+  function xOf(b){return pad.l+(b-B_MIN)/(B_MAX-B_MIN)*pw;}
+  function yOf(ic){return pad.t+ph-ic/IC_MAX*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const y=yOf(i/4*IC_MAX);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText((i/4*IC_MAX*1000).toFixed(1)+'mA',2,y+3);
+  }
+
+  // Stable (with RE) curve
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const b=B_MIN+px/pw*(B_MAX-B_MIN);
+    const ic=getIC(vth,rth,b,re);
+    const y=yOf(ic);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  // Fixed bias (no RE) curve — IC ∝ β
+  const ib_fixed=vth>VBE?(vth-VBE)/rth:0;
+  ctx.strokeStyle='#cc0000';ctx.lineWidth=2;ctx.setLineDash([6,3]);
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const b=B_MIN+px/pw*(B_MAX-B_MIN);
+    const ic=ib_fixed*b;
+    const y=yOf(Math.min(ic,IC_MAX));
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();ctx.setLineDash([]);
+
+  // β_min and β_max markers
+  [bmin,bmax].forEach((b,i)=>{
+    const x=xOf(b);
+    const ic=getIC(vth,rth,b,re);
+    ctx.strokeStyle=i===0?'#ff8800':'#00aa00';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=i===0?'#ff8800':'#00aa00';
+    ctx.beginPath();ctx.arc(x,yOf(ic),5,0,2*Math.PI);ctx.fill();
+  });
+
+  ctx.font='10px Courier New';
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.fillText('── With RE (stable)',W-230,20);
+  ctx.fillStyle='#cc0000';ctx.fillText('-- Fixed bias (no RE)',W-230,34);
+  ctx.fillStyle='#ff8800';ctx.fillText('β_min',xOf(bmin)+3,pad.t+14);
+  ctx.fillStyle='#00aa00';ctx.fillText('β_max',xOf(bmax)+3,pad.t+14);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();
+  ctx.fillText('β →',W/2-10,H-1);
+}
+
+function drawLoadLine(vcc,rc,re,vth,rth,bmin,bmax){
+  const canvas=document.getElementById('loadCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:55,r:10,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const IC_MAX=vcc/rc*1.1;
+  const VCE_MAX=vcc;
+  function xOf(vce){return pad.l+vce/VCE_MAX*pw;}
+  function yOf(ic){return pad.t+ph-ic/IC_MAX*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const ic=i/4*IC_MAX;
+    const y=yOf(ic);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText((ic*1000).toFixed(1),2,y+3);
+  }
+  for(let i=0;i<=5;i++){
+    const vce=i/5*VCE_MAX;
+    const x=xOf(vce);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(vce.toFixed(1),x-6,H-4);
+  }
+
+  // Load line
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.moveTo(xOf(vcc),yOf(0));
+  ctx.lineTo(xOf(0),yOf(vcc/rc));
+  ctx.stroke();
+
+  // Q-points for beta_min and beta_max
+  [bmin,bmax].forEach((b,i)=>{
+    const ic=getIC(vth,rth,b,re);
+    const ve=ic*re;
+    const vc=vcc-ic*rc;
+    const vce=vc-ve;
+    const x=xOf(vce);const y=yOf(ic);
+    ctx.fillStyle=i===0?'#ff8800':'#00aa00';
+    ctx.beginPath();ctx.arc(x,y,5,0,2*Math.PI);ctx.fill();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText('β='+(i===0?bmin:bmax),x+7,y+4);
+  });
+
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='10px Courier New';
+  ctx.fillText('VCE (V) →',W/2-30,H-1);
+  ctx.save();ctx.translate(12,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('IC(mA)',0,0);ctx.restore();
+}
+
+['vcc','ic','r1','r2','re','rc','bmin','bmax'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

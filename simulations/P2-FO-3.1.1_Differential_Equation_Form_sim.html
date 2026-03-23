@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-FO-3.1.1 — First-Order ODE Explorer</title>
+<style>
+  :root { --accent: #0066cc; --bg: #1a1a1a; --panel: #242424; --border: #333; --text: #e0e0e0; --muted: #888; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f4f4f4; --panel: #ffffff; --border: #ccc; --text: #1a1a1a; --muted: #555; }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+  h1 { font-size: 1.1rem; color: var(--accent); padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .subtitle { font-size: 0.8rem; color: var(--muted); padding: 0 16px 8px; }
+  .layout { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; }
+  .controls { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px; min-width: 220px; flex: 0 0 220px; }
+  canvas { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: block; }
+  .ctrl-group { margin-bottom: 14px; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .val { font-size: 1rem; font-weight: bold; color: var(--accent); }
+  .eq-box { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 8px; margin-top: 12px; font-family: monospace; font-size: 0.78rem; color: var(--text); line-height: 1.6; }
+  .readout { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 12px; }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; }
+  .card-label { font-size: 0.7rem; color: var(--muted); }
+  .card-val { font-size: 0.9rem; font-weight: bold; color: var(--accent); }
+  .canvas-wrap { flex: 1; min-width: 320px; }
+</style>
+</head>
+<body>
+<h1>P2-FO-3.1.1 — First-Order ODE Explorer</h1>
+<p class="subtitle">τ·dy/dt + y = K·x(t) &nbsp;|&nbsp; Characteristic equation: s = −1/τ</p>
+<div class="layout">
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>Time constant τ (ms): <span class="val" id="vTau">10.0</span></label>
+      <input type="range" id="sTau" min="1" max="50" step="0.5" value="10">
+    </div>
+    <div class="ctrl-group">
+      <label>DC gain K: <span class="val" id="vK">2.0</span></label>
+      <input type="range" id="sK" min="0.2" max="5" step="0.1" value="2">
+    </div>
+    <div class="ctrl-group">
+      <label>Input amplitude x₀: <span class="val" id="vX0">1.0</span></label>
+      <input type="range" id="sX0" min="0.1" max="3" step="0.1" value="1">
+    </div>
+    <div class="eq-box" id="eqBox">
+      ODE: τ·dy/dt + y = K·x<br>
+      τ = 10.0 ms<br>
+      K = 2.0<br>
+      y(∞) = K·x₀ = 2.00<br>
+      s = −1/τ = −100 s⁻¹
+    </div>
+    <div class="readout">
+      <div class="card"><div class="card-label">y(τ) = 63.2% of y(∞)</div><div class="card-val" id="rY63">1.264</div></div>
+      <div class="card"><div class="card-label">Rise time t_r (ms)</div><div class="card-val" id="rTr">22.0</div></div>
+      <div class="card"><div class="card-label">5τ settle (ms)</div><div class="card-val" id="r5tau">50.0</div></div>
+      <div class="card"><div class="card-label">Pole s (s⁻¹)</div><div class="card-val" id="rPole">−100</div></div>
+    </div>
+  </div>
+  <div class="canvas-wrap">
+    <canvas id="cv" width="560" height="400"></canvas>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const sTau = document.getElementById('sTau');
+const sK = document.getElementById('sK');
+const sX0 = document.getElementById('sX0');
+
+function draw() {
+  const tau = parseFloat(sTau.value);
+  const K = parseFloat(sK.value);
+  const x0 = parseFloat(sX0.value);
+  const yInf = K * x0;
+  const s = -1 / (tau / 1000);
+
+  document.getElementById('vTau').textContent = tau.toFixed(1);
+  document.getElementById('vK').textContent = K.toFixed(1);
+  document.getElementById('vX0').textContent = x0.toFixed(1);
+  document.getElementById('eqBox').innerHTML =
+    `ODE: τ·dy/dt + y = K·x<br>τ = ${tau.toFixed(1)} ms<br>K = ${K.toFixed(1)}, x₀ = ${x0.toFixed(1)}<br>y(∞) = K·x₀ = ${yInf.toFixed(3)}<br>s = −1/τ = ${(s).toFixed(0)} s⁻¹`;
+  document.getElementById('rY63').textContent = (yInf * 0.6321).toFixed(3);
+  document.getElementById('rTr').textContent = (2.197 * tau).toFixed(1);
+  document.getElementById('r5tau').textContent = (5 * tau).toFixed(1);
+  document.getElementById('rPole').textContent = s.toFixed(0);
+
+  const W = cv.width, H = cv.height;
+  const padL = 60, padR = 20, padT = 30, padB = 50;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+
+  ctx.clearRect(0, 0, W, H);
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const bgColor = isDark ? '#242424' : '#ffffff';
+  const gridColor = isDark ? '#2e2e2e' : '#e8e8e8';
+  const textColor = isDark ? '#e0e0e0' : '#1a1a1a';
+  const mutedColor = isDark ? '#888' : '#555';
+  ctx.fillStyle = bgColor;
+  ctx.fillRect(0, 0, W, H);
+
+  const tMax = 6 * tau;
+  const yMax = yInf * 1.15 + 0.1;
+  const yMin = -0.05;
+
+  function tx(t) { return padL + (t / tMax) * plotW; }
+  function ty(y) { return padT + (1 - (y - yMin) / (yMax - yMin)) * plotH; }
+
+  // Grid
+  ctx.strokeStyle = gridColor; ctx.lineWidth = 1;
+  for (let i = 0; i <= 6; i++) {
+    const x = padL + i * plotW / 6;
+    ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, padT + plotH); ctx.stroke();
+  }
+  for (let i = 0; i <= 5; i++) {
+    const y = padT + i * plotH / 5;
+    ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL + plotW, y); ctx.stroke();
+  }
+
+  // Axes
+  ctx.strokeStyle = mutedColor; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, padT + plotH); ctx.lineTo(padL + plotW, padT + plotH); ctx.stroke();
+
+  // y(∞) dashed line
+  ctx.setLineDash([5, 4]); ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(padL, ty(yInf)); ctx.lineTo(padL + plotW, ty(yInf)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // τ marker
+  ctx.strokeStyle = '#ff8844'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(tx(tau), padT); ctx.lineTo(tx(tau), padT + plotH); ctx.stroke();
+
+  // Input step
+  ctx.strokeStyle = '#44aa44'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(padL, ty(0));
+  ctx.lineTo(tx(0.01 * tMax), ty(0));
+  ctx.lineTo(tx(0.01 * tMax), ty(x0));
+  ctx.lineTo(padL + plotW, ty(x0));
+  ctx.stroke();
+
+  // Response curve
+  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  let first = true;
+  for (let i = 0; i <= 400; i++) {
+    const t = (i / 400) * tMax;
+    const y = yInf * (1 - Math.exp(-t / (tau / 1000) * 0.001 / 0.001));
+    // y(t) = yInf*(1-exp(-t/tau)) where t in same units
+    const y2 = yInf * (1 - Math.exp(-t / tau));
+    if (first) { ctx.moveTo(tx(t), ty(y2)); first = false; }
+    else ctx.lineTo(tx(t), ty(y2));
+  }
+  ctx.stroke();
+
+  // 63.2% dot
+  const t63 = tau;
+  const y63 = yInf * (1 - Math.exp(-1));
+  ctx.fillStyle = '#ff8844';
+  ctx.beginPath(); ctx.arc(tx(t63), ty(y63), 5, 0, Math.PI * 2); ctx.fill();
+
+  // Labels
+  ctx.fillStyle = textColor; ctx.font = '11px monospace';
+  ctx.fillText('y(t)', padL + 4, padT + 14);
+  ctx.fillStyle = '#0066cc'; ctx.fillText(`y(∞)=${yInf.toFixed(2)}`, padL + plotW - 80, ty(yInf) - 6);
+  ctx.fillStyle = '#ff8844'; ctx.fillText(`τ=${tau}ms`, tx(tau) + 4, padT + 14);
+  ctx.fillStyle = '#44aa44'; ctx.fillText(`x₀=${x0}`, padL + 4, ty(x0) - 6);
+
+  // X axis labels
+  ctx.fillStyle = mutedColor; ctx.font = '10px sans-serif';
+  for (let i = 0; i <= 6; i++) {
+    const t = i * tMax / 6;
+    ctx.fillText((t).toFixed(1), tx(t) - 10, padT + plotH + 18);
+  }
+  ctx.fillText('t (ms)', padL + plotW / 2 - 15, padT + plotH + 36);
+
+  // Y axis labels
+  for (let i = 0; i <= 5; i++) {
+    const y = yMin + i * (yMax - yMin) / 5;
+    ctx.fillText(y.toFixed(1), 4, ty(y) + 4);
+  }
+}
+
+sTau.addEventListener('input', draw);
+sK.addEventListener('input', draw);
+sX0.addEventListener('input', draw);
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+draw();
+</script>
+</body>
+</html>

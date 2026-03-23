@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-SIM-9.1.1 NGSpice .tran Setup</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:10px;padding:10px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:280px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.netlist{background:#050510;border:1px solid #0066cc;padding:10px;margin-top:8px;font-size:11px;line-height:1.8;color:#aaddff;border-radius:3px}
+.hl{color:#ffaa00}
+.comment{color:#555}
+.formula{color:#ffaa00;font-size:11px;margin-top:8px;line-height:1.6}
+</style>
+</head>
+<body>
+<h1>P2-SIM-9.1.1 — NGSpice .tran Setup: Netlist and Simulation</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="480" height="360"></canvas>
+</div>
+<div class="panel">
+<h2>Circuit Parameters</h2>
+<label>R (kΩ)
+<input type="range" id="R" min="1" max="100" step="1" value="10">
+<div class="readout" id="R_v">R = 10 kΩ</div>
+</label>
+<label>C (nF)
+<input type="range" id="C" min="1" max="10000" step="1" value="100">
+<div class="readout" id="C_v">C = 100 nF</div>
+</label>
+<label>V_step (V)
+<input type="range" id="Vin" min="1" max="10" step="0.5" value="5">
+<div class="readout" id="Vin_v">V_in = 5 V</div>
+</label>
+<h2 style="margin-top:10px">Live Netlist</h2>
+<div class="netlist" id="netlist_display"></div>
+<h2 style="margin-top:8px">Simulation Results</h2>
+<div class="readout" id="tau_calc">τ = —</div>
+<div class="readout" id="tstep_rec">tstep = —</div>
+<div class="readout" id="tstop_rec">tstop = —</div>
+<div class="readout" id="npoints">Output points: —</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let R=10,C=100,Vin=5;
+const W=480,H=360,pd={l:60,r:15,t:25,b:35};
+const CW=W-pd.l-pd.r,CH=H-pd.t-pd.b;
+
+['R','C','Vin'].forEach(id=>{
+  document.getElementById(id).oninput=function(){
+    const v=parseFloat(this.value);
+    if(id==='R'){R=v;document.getElementById('R_v').textContent='R = '+v+' kΩ';}
+    if(id==='C'){C=v;document.getElementById('C_v').textContent='C = '+v+' nF';}
+    if(id==='Vin'){Vin=v;document.getElementById('Vin_v').textContent='V_in = '+v+' V';}
+    draw();
+  };
+});
+
+function formatSI(val_ms){
+  if(val_ms<0.001)return (val_ms*1e6).toFixed(0)+'p';
+  if(val_ms<1)return (val_ms*1000).toFixed(0)+'n';
+  if(val_ms<1000)return val_ms.toFixed(0)+'u';
+  return (val_ms/1000).toFixed(2)+'m';
+  // τ is in ms, so:
+}
+function fmtMs(val_ms){
+  if(val_ms<0.001)return (val_ms*1e6).toFixed(2)+'ns';
+  if(val_ms<1)return (val_ms*1000).toFixed(1)+'μs';
+  if(val_ms<1000)return val_ms.toFixed(3)+'ms';
+  return (val_ms/1000).toFixed(2)+'s';
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const tau=R*1e3*C*1e-9*1000; // ms
+  const tstep=tau/100;
+  const tstop=6*tau;
+  const npoints=Math.round(tstop/tstep);
+  const tmax=tstop;
+  function toPx(t,v){return[pd.l+CW*(t/tmax),pd.t+CH*(1-v/(Vin*1.1))];}
+  // Grid
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=6;i++){const x=pd.l+CW*(i/6);ctx.beginPath();ctx.moveTo(x,pd.t);ctx.lineTo(x,pd.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=pd.t+CH*(i/5);ctx.beginPath();ctx.moveTo(pd.l,y);ctx.lineTo(pd.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pd.l,pd.t);ctx.lineTo(pd.l,pd.t+CH);ctx.moveTo(pd.l,pd.t+CH);ctx.lineTo(pd.l+CW,pd.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=6;i++){const t=tmax*i/6;ctx.fillText(fmtMs(t),pd.l+CW*(i/6),pd.t+CH+18);}
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){const v=Vin*1.1*(1-i/5);ctx.fillText(v.toFixed(1)+'V',pd.l-4,pd.t+CH*(i/5)+4);}
+  // Waveform
+  ctx.strokeStyle='#00ff88';ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=600;i++){const t=tmax*i/600;const v=Vin*(1-Math.exp(-t/tau));const[x,y]=toPx(t,v);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  // τ marker
+  const[xt,yt]=toPx(tau,0.632*Vin);
+  ctx.strokeStyle='#ff6600';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pd.l,yt);ctx.lineTo(xt,yt);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(xt,yt);ctx.lineTo(xt,pd.t+CH);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#ff6600';ctx.beginPath();ctx.arc(xt,yt,4,0,Math.PI*2);ctx.fill();
+  ctx.font='10px Courier New';ctx.textAlign='left';ctx.fillText('τ='+fmtMs(tau),xt+5,yt-4);
+  // Sample dots (show coarse sampling)
+  ctx.fillStyle='#0066cc';
+  const num_show=Math.min(30,npoints);
+  for(let i=0;i<=num_show;i++){const t=tmax*i/num_show;const v=Vin*(1-Math.exp(-t/tau));const[x,y]=toPx(t,v);ctx.beginPath();ctx.arc(x,y,2,0,Math.PI*2);ctx.fill();}
+  // Netlist
+  const R_str=R>=1000?(R/1000).toFixed(1)+'meg':R+'k';
+  const C_str=C>=1000?(C/1000).toFixed(0)+'u':C+'n';
+  const tstep_str=fmtMs(tstep).replace('ms','m').replace('μs','u').replace('ns','n');
+  const tstop_str=fmtMs(tstop).replace('ms','m').replace('μs','u').replace('ns','n');
+  document.getElementById('netlist_display').innerHTML=
+    `<span class="comment">* RC charge — R=${R}kΩ, C=${C}nF</span>\n`+
+    `Vin  <span class="hl">1</span>  <span class="hl">0</span>  PULSE(0 ${Vin} 0 1n 1n 10m 20m)\n`+
+    `R1   <span class="hl">1</span>  <span class="hl">2</span>  <span class="hl">${R_str}</span>\n`+
+    `C1   <span class="hl">2</span>  <span class="hl">0</span>  <span class="hl">${C_str}</span>  IC=0\n`+
+    `.tran <span class="hl">${tstep_str}</span> <span class="hl">${tstop_str}</span> UIC\n`+
+    `.measure tran tau_sim WHEN V(2)=<span class="hl">${(0.632*Vin).toFixed(3)}</span> RISE=1\n`+
+    `.end`;
+  document.getElementById('tau_calc').textContent='τ = RC = '+fmtMs(tau);
+  document.getElementById('tstep_rec').textContent='tstep = τ/100 = '+fmtMs(tstep);
+  document.getElementById('tstop_rec').textContent='tstop = 6τ = '+fmtMs(tstop);
+  document.getElementById('npoints').textContent='Output points: '+npoints;
+}
+draw();
+</script>
+</body>
+</html>

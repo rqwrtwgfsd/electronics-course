@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CM-1.7.1 — Sweep Output Voltage</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);} .ro.r span{color:#cc2200;}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CM-1.7.1</div>
+  <h1>Current Mirror — Simulation: Sweep Output Voltage</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Simulation Parameters</h2>
+      <label>I_ref (μA): <b id="iref_l">100</b> μA <input type="range" id="iref" min="10" max="1000" value="100" step="5"></label>
+      <label>λ (V⁻¹): <b id="lam_l">0.08</b> <input type="range" id="lam" min="0.01" max="0.5" value="0.08" step="0.01"></label>
+      <label>V_ov (mV): <b id="vov_l">200</b> mV <input type="range" id="vov" min="50" max="500" value="200" step="10"></label>
+      <label>V_DD (V): <b id="vdd_l">1.8</b> V <input type="range" id="vdd" min="0.6" max="3.3" value="1.8" step="0.05"></label>
+      <label>Topology: <b id="topo_l">Cascode (WS)</b> <input type="range" id="topo" min="0" max="2" value="1" step="1"></label>
+
+      <div class="ro">V_comp (mV): <span id="vcomp_d">--</span></div>
+      <div class="ro g" style="margin-top:4px">r_out extracted (GΩ): <span id="rout_d">--</span></div>
+      <div class="ro" style="margin-top:4px">I_out at V_out=V_DD/2 (μA): <span id="iout_d">--</span></div>
+      <div class="ro r" style="margin-top:4px">CLM error at V_DD/2 (%): <span id="clm_d">--</span></div>
+      <div class="insight">
+        Move the cursor over the canvas to read out I_out at any V_out. The dashed vertical line shows the V_comp boundary. Extract r_out from the inverse slope between V_comp and V_DD−300mV.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>I_out vs V_out (DC Sweep)</h2>
+      <canvas id="cv" height="300"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  const topoNames=['Simple','Cascode (WS)','Std Cascode'];
+
+  function getParams(){
+    return {
+      Iref: +document.getElementById('iref').value*1e-6,
+      lam:  +document.getElementById('lam').value,
+      vov:  +document.getElementById('vov').value/1000,
+      VDD:  +document.getElementById('vdd').value,
+      topo: +document.getElementById('topo').value,
+    };
+  }
+
+  function computeIout(v, p, vcomp){
+    const {Iref, lam, vov} = p;
+    const ID = Iref;
+    const ro = 1/(lam*ID);
+    const gm = 2*ID/vov;
+    const rcas = gm*ro*ro;
+    const vds1 = 0.65;
+    if(p.topo===0){
+      // simple
+      if(v<vov) return ID*(v/vov)**2;
+      return ID*(1+lam*v)/(1+lam*vds1);
+    } else {
+      // cascode
+      if(v<vcomp) return ID*(v/vcomp)**2;
+      return ID + (v-vds1)/rcas;
+    }
+  }
+
+  function getVcomp(p){
+    const Vth=0.45;
+    if(p.topo===0) return p.vov;
+    if(p.topo===1) return 2*p.vov;
+    return Vth+2*p.vov;
+  }
+
+  function compute(){
+    const p = getParams();
+    document.getElementById('iref_l').textContent=(p.Iref*1e6).toFixed(0);
+    document.getElementById('lam_l').textContent=p.lam.toFixed(2);
+    document.getElementById('vov_l').textContent=(p.vov*1000).toFixed(0);
+    document.getElementById('vdd_l').textContent=p.VDD.toFixed(2);
+    document.getElementById('topo_l').textContent=topoNames[p.topo];
+
+    const vcomp=getVcomp(p);
+    const ro=1/(p.lam*p.Iref);
+    const gm=2*p.Iref/p.vov;
+    const rcas=gm*ro*ro;
+    const rout=p.topo===0?ro:rcas;
+
+    const iout_half=computeIout(p.VDD/2, p, vcomp);
+    const clm=Math.abs((iout_half-p.Iref)/p.Iref*100);
+
+    document.getElementById('vcomp_d').textContent=(vcomp*1000).toFixed(0);
+    document.getElementById('rout_d').textContent=(rout/1e9).toFixed(2);
+    document.getElementById('iout_d').textContent=(iout_half*1e6).toFixed(3);
+    document.getElementById('clm_d').textContent=clm.toFixed(3);
+
+    drawSweep(p, vcomp);
+  }
+
+  function drawSweep(p, vcomp){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=300;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,300);
+    const pL=58,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=300-pT-pB;
+    const Vmax=p.VDD;
+    const Imax=p.Iref*1.5*1e6;
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='10px system-ui';
+    ctx.fillText('I_out (μA)', 2, pT+ph/2);
+    ctx.fillText('V_out (V)', pL+pw/2-18, 300-4);
+
+    for(let i=0;i<=5;i++){
+      const v=i/5*Imax; const y=pT+ph-(i/5)*ph;
+      ctx.fillStyle='#8888aa'; ctx.fillText(v.toFixed(0), 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+    for(let v=0;v<=Vmax;v+=0.3){
+      const x=pL+(v/Vmax)*pw;
+      ctx.fillStyle='#8888aa'; ctx.fillText(v.toFixed(1), x-8, pT+ph+14);
+    }
+
+    // Non-compliance shading
+    const xcomp=pL+(vcomp/Vmax)*pw;
+    ctx.fillStyle='rgba(204,34,0,0.07)';
+    ctx.fillRect(pL,pT,Math.min(xcomp-pL,pw),ph);
+
+    // Main curve
+    const colors=['#cc2200','#00994d','#ff8800'];
+    ctx.strokeStyle=colors[p.topo]; ctx.lineWidth=2.5; ctx.setLineDash([]);
+    ctx.beginPath(); let first=true;
+    for(let px=0;px<=pw;px++){
+      const v=px/pw*Vmax;
+      const I=computeIout(v,p,vcomp)*1e6;
+      const y=pT+ph-(Math.min(I,Imax)/Imax)*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // V_comp marker
+    ctx.strokeStyle='#cc220088'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(xcomp,pT); ctx.lineTo(xcomp,pT+ph); ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle='#cc2200'; ctx.font='9px system-ui';
+    ctx.fillText('V_comp='+(vcomp*1000).toFixed(0)+'mV', xcomp+3, pT+12);
+
+    // I_ref line
+    const yref=pT+ph-(p.Iref*1e6/Imax)*ph;
+    ctx.strokeStyle='#00994d88'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(pL,yref); ctx.lineTo(pL+pw,yref); ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle='#00994d'; ctx.font='9px system-ui';
+    ctx.fillText('I_ref='+(p.Iref*1e6).toFixed(0)+'μA', pL+4, yref-4);
+
+    // Topology label
+    ctx.fillStyle=colors[p.topo]; ctx.font='11px system-ui';
+    ctx.fillText(topoNames[p.topo], pL+pw-90, pT+12);
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

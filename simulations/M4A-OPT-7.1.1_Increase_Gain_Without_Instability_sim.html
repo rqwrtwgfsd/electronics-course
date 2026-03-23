@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-OPT-7.1.1 — Increase Gain Without Instability</title>
+<style>
+:root{--bg:#f5f5f5;--surface:#fff;--border:#d0d0d0;--text:#1a1a1a;--text2:#555;--accent:#1a6bbf;--pass:#2a7a2a;--warn:#b87000;--fail:#b82020;--pass-bg:#e8f5e8;--warn-bg:#fff8e0;--fail-bg:#fde8e8;--plot-bg:#fdfdfd;}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#252525;--border:#404040;--text:#e8e8e8;--text2:#aaa;--accent:#4a9eff;--pass:#4aaa4a;--warn:#ddaa30;--fail:#ff5555;--pass-bg:#1a2e1a;--warn-bg:#2e2200;--fail-bg:#2e1010;--plot-bg:#1e1e1e;}}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);font-size:14px;}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 20px;}
+header h1{font-size:17px;font-weight:700;color:var(--accent);}
+header p{font-size:12px;color:var(--text2);margin-top:2px;}
+.tab-bar{display:flex;background:var(--surface);border-bottom:1px solid var(--border);padding:0 16px;}
+.tab{padding:10px 18px;cursor:pointer;border-bottom:3px solid transparent;color:var(--text2);font-size:13px;font-weight:600;transition:color .2s,border-color .2s;}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tab:hover:not(.active){color:var(--text);}
+.panel{display:none;padding:16px;}
+.panel.active{display:block;}
+.layout{display:flex;gap:14px;flex-wrap:wrap;}
+.sidebar{flex:0 0 220px;display:flex;flex-direction:column;gap:10px;}
+.main-area{flex:1 1 400px;display:flex;flex-direction:column;gap:10px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;}
+.card h3{font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;}
+label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--text2);}
+label span{display:flex;justify-content:space-between;}
+input[type=range]{width:100%;accent-color:var(--accent);}
+canvas{width:100%;display:block;border:1px solid var(--border);border-radius:4px;background:var(--plot-bg);}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.metric{background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:8px 10px;}
+.metric .val{font-size:18px;font-weight:700;color:var(--accent);}
+.metric .lbl{font-size:11px;color:var(--text2);}
+.badge{display:inline-block;padding:2px 7px;border-radius:3px;font-size:11px;font-weight:700;}
+.badge.pass{background:var(--pass-bg);color:var(--pass);}
+.badge.warn{background:var(--warn-bg);color:var(--warn);}
+.badge.fail{background:var(--fail-bg);color:var(--fail);}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th{background:var(--bg);color:var(--text2);padding:5px 8px;text-align:left;border:1px solid var(--border);font-weight:600;font-size:11px;}
+td{padding:5px 8px;border:1px solid var(--border);}
+</style>
+</head>
+<body>
+<header>
+  <h1>M4A-OPT-7.1.1 — Increase Gain Without Instability</h1>
+  <p>GBW vs gain, compensation recalculation, and cascade vs single-stage comparison</p>
+</header>
+<div class="tab-bar">
+  <div class="tab active" onclick="showTab(0)">GBW vs Gain</div>
+  <div class="tab" onclick="showTab(1)">Compensation for New Gain</div>
+  <div class="tab" onclick="showTab(2)">Cascade vs Single Stage</div>
+</div>
+
+<!-- TAB 0: GBW vs Gain -->
+<div class="panel active" id="tab0">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="card">
+        <h3>Op-Amp</h3>
+        <label><span>GBW (MHz) <b id="v_gbw0">10</b></span>
+          <input type="range" id="sl_gbw0" min="1" max="1000" step="1" value="10" oninput="upd0()"></label>
+        <label><span>Closed-loop gain <b id="v_g0">10</b></span>
+          <input type="range" id="sl_g0" min="1" max="1000" step="1" value="10" oninput="upd0()"></label>
+        <label><span>Target BW (kHz) <b id="v_tbw">100</b></span>
+          <input type="range" id="sl_tbw" min="1" max="10000" step="1" value="100" oninput="upd0()"></label>
+        <label><span>Stray Cs (pF) <b id="v_cs0">0</b></span>
+          <input type="range" id="sl_cs0" min="0" max="20" step="0.5" value="0" oninput="upd0()"></label>
+        <label><span>Cf (pF) <b id="v_cf0">0</b></span>
+          <input type="range" id="sl_cf0" min="0" max="50" step="0.5" value="0" oninput="upd0()"></label>
+        <label><span>R1 (kΩ) <b id="v_r10">1</b></span>
+          <input type="range" id="sl_r10" min="0.1" max="50" step="0.1" value="1" oninput="upd0()"></label>
+      </div>
+      <div class="card metrics">
+        <div class="metric"><div class="val" id="m_bw0">--</div><div class="lbl">Actual BW (kHz)</div></div>
+        <div class="metric"><div class="val" id="m_pm0">--</div><div class="lbl">Phase Margin</div></div>
+        <div class="metric"><div class="val" id="m_bwreq">--</div><div class="lbl">GBW needed (MHz)</div></div>
+        <div class="metric"><div class="val" id="m_stat0">--</div><div class="lbl">Status</div></div>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="card">
+        <h3>Closed-Loop Bandwidth vs Closed-Loop Gain (GBW Hyperbola)</h3>
+        <canvas id="c0" height="360"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: Compensation -->
+<div class="panel" id="tab1">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="card">
+        <h3>Original Design</h3>
+        <label><span>GBW (MHz) <b id="v_gbw1">100</b></span>
+          <input type="range" id="sl_gbw1" min="10" max="1000" step="10" value="100" oninput="upd1()"></label>
+        <label><span>Original gain G1 <b id="v_g1a">10</b></span>
+          <input type="range" id="sl_g1a" min="2" max="100" step="1" value="10" oninput="upd1()"></label>
+        <label><span>R1 (kΩ) <b id="v_r1a">1</b></span>
+          <input type="range" id="sl_r1a" min="0.1" max="10" step="0.1" value="1" oninput="upd1()"></label>
+        <label><span>Stray Cs (pF) <b id="v_cs1">2</b></span>
+          <input type="range" id="sl_cs1" min="0" max="20" step="0.5" value="2" oninput="upd1()"></label>
+        <label><span>Original Cf (pF) <b id="v_cf1">2</b></span>
+          <input type="range" id="sl_cf1" min="0" max="20" step="0.5" value="2" oninput="upd1()"></label>
+      </div>
+      <div class="card">
+        <h3>New Gain</h3>
+        <label><span>New gain G2 <b id="v_g2">50</b></span>
+          <input type="range" id="sl_g2" min="2" max="1000" step="1" value="50" oninput="upd1()"></label>
+        <label><span>New Cf (user choice, pF) <b id="v_cf2">1</b></span>
+          <input type="range" id="sl_cf2" min="0" max="20" step="0.5" value="1" oninput="upd1()"></label>
+      </div>
+      <div class="card">
+        <h3>Analysis</h3>
+        <table>
+          <tr><th>Condition</th><th>PM</th><th>BW</th></tr>
+          <tr><td>Original G1</td><td id="t_pm1a">--</td><td id="t_bw1a">--</td></tr>
+          <tr><td>New G2, old Cf</td><td id="t_pm2a">--</td><td id="t_bw2a">--</td></tr>
+          <tr><td>New G2, new Cf</td><td id="t_pm3a">--</td><td id="t_bw3a">--</td></tr>
+          <tr><td>Recommended Cf</td><td colspan="2" id="t_cfrec">--</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="card">
+        <h3>Bode Plot — Original vs New Gain (with/without Cf update)</h3>
+        <canvas id="c1" height="380"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: Cascade vs Single -->
+<div class="panel" id="tab2">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="card">
+        <h3>System Requirement</h3>
+        <label><span>Total gain <b id="v_gt">100</b></span>
+          <input type="range" id="sl_gt" min="4" max="1000" step="1" value="100" oninput="upd2()"></label>
+        <label><span>Required BW (kHz) <b id="v_bwt">1000</b></span>
+          <input type="range" id="sl_bwt" min="10" max="100000" step="10" value="1000" oninput="upd2()"></label>
+        <label><span>Op-amp GBW (MHz) <b id="v_gbw2">10</b></span>
+          <input type="range" id="sl_gbw2" min="1" max="1000" step="1" value="10" oninput="upd2()"></label>
+        <label><span>Op-amp noise en (nV/√Hz) <b id="v_en">10</b></span>
+          <input type="range" id="sl_en" min="1" max="100" step="1" value="10" oninput="upd2()"></label>
+      </div>
+      <div class="card">
+        <h3>Comparison</h3>
+        <table>
+          <tr><th>Metric</th><th>Single</th><th>Cascade ×2</th></tr>
+          <tr><td>GBW needed</td><td id="t_gbw_s">--</td><td id="t_gbw_c">--</td></tr>
+          <tr><td>Actual BW</td><td id="t_bw_s">--</td><td id="t_bw_c">--</td></tr>
+          <tr><td>PM</td><td id="t_pm_s">--</td><td id="t_pm_c">--</td></tr>
+          <tr><td>Input noise</td><td id="t_n_s">--</td><td id="t_n_c">--</td></tr>
+          <tr><td>Feasible?</td><td id="t_f_s">--</td><td id="t_f_c">--</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="card">
+        <h3>Frequency Response Comparison</h3>
+        <canvas id="c2" height="340"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const sl=id=>parseFloat($(id).value);
+function dpr(c){const r=window.devicePixelRatio||1;const rect=c.getBoundingClientRect();c.width=rect.width*r;c.height=rect.height*r;const ctx=c.getContext('2d');ctx.scale(r,r);return{ctx,w:rect.width,h:rect.height};}
+function tc(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+function showTab(n){document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));[upd0,upd1,upd2][n]();}
+
+function loopGainFull(fHz,gbw,G,Cs,Rp,Cf,Rf,aol0=1e5){
+  const f1=gbw*1e6/aol0;
+  const T_mag=aol0/Math.sqrt(1+(fHz/f1)**2)/G;
+  let ph=-Math.atan2(fHz,f1)*180/Math.PI;
+  if(Cs>0){const fp=1/(2*Math.PI*Rp*Cs);T_mag_adj=T_mag/Math.sqrt(1+(fHz/fp)**2);ph-=Math.atan2(fHz,fp)*180/Math.PI;}
+  else{var T_mag_adj=T_mag;}
+  if(Cf>0){const fz=1/(2*Math.PI*Rf*Cf);T_mag_adj*=Math.sqrt(1+(fHz/fz)**2);ph+=Math.atan2(fHz,fz)*180/Math.PI;}
+  return{T:T_mag_adj,ph};
+}
+
+function findPM(gbw,G,Cs,Rp,Cf,Rf){
+  const aol=1e5,f1=gbw*1e6/aol;
+  let lo=1,hi=gbw*1e6*20;
+  for(let i=0;i<60;i++){const mid=Math.sqrt(lo*hi);const{T}=loopGainFull(mid,gbw,G,Cs,Rp,Cf,Rf);if(T>1)lo=mid;else hi=mid;}
+  const fc=Math.sqrt(lo*hi);
+  const{ph}=loopGainFull(fc,gbw,G,Cs,Rp,Cf,Rf);
+  return{fc,pm:180+ph};
+}
+
+/* ── TAB 0: GBW vs Gain ── */
+function upd0(){
+  const gbw=sl('sl_gbw0'),G=sl('sl_g0'),tbw=sl('sl_tbw'),Cs=sl('sl_cs0')*1e-12,Cf=sl('sl_cf0')*1e-12,R1=sl('sl_r10')*1e3;
+  $('v_gbw0').textContent=gbw;$('v_g0').textContent=G;$('v_tbw').textContent=tbw;
+  $('v_cs0').textContent=sl('sl_cs0');$('v_cf0').textContent=sl('sl_cf0');$('v_r10').textContent=sl('sl_r10');
+  const Rf=R1*(G-1),Rp=R1*Rf/(R1+Rf+1e-10);
+  const{fc,pm}=findPM(gbw,G,Cs,Rp,Cf,Rf);
+  const bw_kHz=fc/1e3;
+  const gbw_needed=G*tbw/1e3;
+  const status=pm>=45&&bw_kHz>=tbw?'OK':pm<25?'UNSTABLE':bw_kHz<tbw?'BW FAIL':'MARGINAL';
+  $('m_bw0').textContent=bw_kHz.toFixed(0);$('m_pm0').textContent=pm.toFixed(0)+'°';
+  $('m_bwreq').textContent=gbw_needed.toFixed(1);
+  $('m_stat0').innerHTML=`<span class="badge ${status==='OK'?'pass':status==='UNSTABLE'?'fail':'warn'}">${status}</span>`;
+  drawGBWvsGain(gbw,G,tbw,Cs,Cf,R1,fc,pm);
+}
+
+function drawGBWvsGain(gbw,G,tbw,Cs,Cf,R1,fc_cur,pm_cur){
+  const c=$('c0');const{ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=55,padR=20,padT=20,padB=50;
+  const pw=w-padL-padR,ph=h-padT-padB;
+  const text=tc('--text'),text2=tc('--text2'),border=tc('--border'),accent=tc('--accent');
+
+  // X: gain 1 to 1000 (log), Y: BW kHz (log)
+  const logGmin=0,logGmax=3;
+  const bwMin_kHz=0.1,bwMax_kHz=gbw*1e3;
+  const logBWmin=Math.log10(bwMin_kHz),logBWmax=Math.log10(bwMax_kHz);
+
+  function gx(G){return padL+(Math.log10(G)-logGmin)/(logGmax-logGmin)*pw;}
+  function bwy(bw){return padT+(1-(Math.log10(Math.max(bwMin_kHz,bw))-logBWmin)/(logBWmax-logBWmin))*ph;}
+
+  // Grid
+  ctx.strokeStyle=border;ctx.lineWidth=.5;
+  for(let lg=0;lg<=3;lg++){for(let m=1;m<10;m++){const G2=m*Math.pow(10,lg);if(G2<1||G2>1000)continue;
+    const x=gx(G2);ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();
+    if(m===1){ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText(G2+'',x,padT+ph+16);}}}
+  for(let lb=Math.floor(logBWmin);lb<=Math.ceil(logBWmax);lb++){for(let m=1;m<10;m++){const bw=m*Math.pow(10,lb);
+    if(bw<bwMin_kHz||bw>bwMax_kHz)continue;const y=bwy(bw);
+    ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();
+    if(m===1){ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';
+      const lbl=bw>=1000?(bw/1000).toFixed(0)+'M':bw>=1?bw.toFixed(0):'<1';
+      ctx.fillText(lbl+'k',padL-4,y+4);}}}
+
+  // GBW hyperbola: BW = GBW/G
+  ctx.beginPath();ctx.strokeStyle='#888';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  for(let lg=logGmin;lg<=logGmax;lg+=0.01){const G2=Math.pow(10,lg);
+    const bw=gbw*1000/G2;const x=gx(G2),y=bwy(bw);lg===logGmin?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='left';ctx.fillText('BW = GBW/G',padL+pw-80,padT+20);
+
+  // Target BW line
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#2ecc71';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(padL,bwy(tbw));ctx.lineTo(padL+pw,bwy(tbw));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#2ecc71';ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText('Target BW',padL+pw,bwy(tbw)-4);
+
+  // Current operating point
+  const x_cur=gx(G),y_cur=bwy(fc_cur/1e3);
+  ctx.fillStyle=pm_cur>=45?'#2ecc71':pm_cur>=25?'#e67e22':'#e74c3c';
+  ctx.beginPath();ctx.arc(x_cur,y_cur,6,0,2*Math.PI);ctx.fill();
+  ctx.fillStyle=text;ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+  ctx.fillText('G='+G+', BW='+(fc_cur/1e3).toFixed(0)+'kHz, PM='+pm_cur.toFixed(0)+'°',x_cur+10,y_cur+4);
+
+  // PM color zones (rough): below GBW/10 = low risk, above GBW/2 = high risk
+  ctx.strokeStyle=border;ctx.lineWidth=1;ctx.strokeRect(padL,padT,pw,ph);
+  ctx.fillStyle=text;ctx.font='bold 11px sans-serif';ctx.textAlign='left';ctx.fillText('BW (kHz) vs Gain',padL+4,padT+14);
+  ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('Closed-Loop Gain (V/V)',padL+pw/2,padT+ph+38);
+}
+
+/* ── TAB 1: Compensation ── */
+function upd1(){
+  const gbw=sl('sl_gbw1'),G1=sl('sl_g1a'),R1=sl('sl_r1a')*1e3,Cs=sl('sl_cs1')*1e-12;
+  const Cf1=sl('sl_cf1')*1e-12,G2=sl('sl_g2'),Cf2=sl('sl_cf2')*1e-12;
+  $('v_gbw1').textContent=gbw;$('v_g1a').textContent=G1;$('v_r1a').textContent=sl('sl_r1a');
+  $('v_cs1').textContent=sl('sl_cs1');$('v_cf1').textContent=sl('sl_cf1');
+  $('v_g2').textContent=G2;$('v_cf2').textContent=sl('sl_cf2');
+
+  const Rf1=R1*(G1-1),Rp1=R1*Rf1/(R1+Rf1+1e-10);
+  const Rf2=R1*(G2-1),Rp2=R1*Rf2/(R1+Rf2+1e-10);
+  const{fc:fc1,pm:pm1}=findPM(gbw,G1,Cs,Rp1,Cf1,Rf1);
+  const{fc:fc2a,pm:pm2a}=findPM(gbw,G2,Cs,Rp2,Cf1,Rf2); // old Cf
+  const{fc:fc2b,pm:pm2b}=findPM(gbw,G2,Cs,Rp2,Cf2,Rf2); // new Cf
+  const Cf_rec=Cs>0?Math.sqrt(Cs/(2*Math.PI*gbw*1e6*Rf2))*1e12:0;
+
+  const fmt=v=>v>=1e3?(v/1e3).toFixed(1)+'MHz':v.toFixed(0)+'kHz';
+  $('t_pm1a').textContent=pm1.toFixed(0)+'°';$('t_bw1a').textContent=fmt(fc1/1e3);
+  $('t_pm2a').innerHTML=`<span style="color:${pm2a>=45?'var(--pass)':pm2a>=25?'var(--warn)':'var(--fail)'}">${pm2a.toFixed(0)}°</span>`;
+  $('t_bw2a').textContent=fmt(fc2a/1e3);
+  $('t_pm3a').innerHTML=`<span style="color:${pm2b>=45?'var(--pass)':pm2b>=25?'var(--warn)':'var(--fail)'}">${pm2b.toFixed(0)}°</span>`;
+  $('t_bw3a').textContent=fmt(fc2b/1e3);
+  $('t_cfrec').textContent=Cf_rec>0?Cf_rec.toFixed(2)+' pF':'0 pF (no stray)';
+
+  drawBode1(gbw,G1,G2,Cs,Rf1,Rp1,Rf2,Rp2,Cf1,Cf2,Cf_rec);
+}
+
+function drawBode1(gbw,G1,G2,Cs,Rf1,Rp1,Rf2,Rp2,Cf1,Cf2,Cf_rec){
+  const c=$('c1');const{ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=55,padR=20,padT=20,padB=60;
+  const pw=w-padL-padR,ph=h-padT-padB;
+  const text=tc('--text'),text2=tc('--text2'),border=tc('--border'),accent=tc('--accent');
+
+  const logMin=Math.log10(gbw*1e6/Math.max(G1,G2)/100),logMax=Math.log10(gbw*2e6);
+  const yMin=-40,yMax=Math.max(20*Math.log10(G1),20*Math.log10(G2))+15,yStep=20;
+
+  function fx(f){return padL+(Math.log10(f)-logMin)/(logMax-logMin)*pw;}
+  function fy(dB){return padT+(1-(dB-yMin)/(yMax-yMin))*ph;}
+
+  // Grid
+  ctx.strokeStyle=border;ctx.lineWidth=.5;
+  for(let g=yMin;g<=yMax;g+=yStep){const y=fy(g);ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(g+'',padL-4,y+4);}
+  for(let e=Math.floor(logMin);e<=Math.ceil(logMax);e++){for(let m=1;m<10;m++){const f=m*Math.pow(10,e);
+    if(f<Math.pow(10,logMin)||f>Math.pow(10,logMax))continue;
+    const x=fx(f);ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();
+    if(m===1){ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';
+      const lbl=f>=1e6?(f/1e6).toFixed(1)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f+'';ctx.fillText(lbl,x,padT+ph+14);}}}
+
+  const N=300;
+  function drawCL(G,Rf,Rp,Cf,col,dash){
+    ctx.setLineDash(dash);ctx.strokeStyle=col;ctx.lineWidth=2;ctx.beginPath();
+    for(let i=0;i<=N;i++){const f=Math.pow(10,logMin+i*(logMax-logMin)/N);
+      const{T}=loopGainFull(f,gbw,G,Cs,Rp,Cf,Rf);
+      const cl=20*Math.log10(Math.max(1e-9,T*G/(1+T)));
+      const x=fx(f),y=fy(Math.max(yMin,Math.min(yMax,cl)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+    ctx.stroke();ctx.setLineDash([]);}
+
+  drawCL(G1,Rf1,Rp1,Cf1,'#2ecc71',[]);
+  drawCL(G2,Rf2,Rp2,Cf1,'#e74c3c',[5,3]);
+  drawCL(G2,Rf2,Rp2,Cf2,accent,[]);
+
+  ctx.strokeStyle=border;ctx.lineWidth=1;ctx.strokeRect(padL,padT,pw,ph);
+  ctx.fillStyle=text;ctx.font='bold 11px sans-serif';ctx.textAlign='left';ctx.fillText('Closed-Loop Gain (dB)',padL+4,padT+14);
+
+  const lx=padL,ly=h-padB+14;
+  ctx.fillStyle='#2ecc71';ctx.fillRect(lx,ly,16,3);ctx.fillStyle=text;ctx.font='11px sans-serif';ctx.textAlign='left';ctx.fillText('G1='+G1+' (original)',lx+20,ly+4);
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#e74c3c';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(lx+170,ly+1);ctx.lineTo(lx+186,ly+1);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=text;ctx.fillText('G2='+G2+', old Cf',lx+190,ly+4);
+  ctx.strokeStyle=accent;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(lx+310,ly+1);ctx.lineTo(lx+326,ly+1);ctx.stroke();
+  ctx.fillStyle=text;ctx.fillText('G2='+G2+', new Cf',lx+330,ly+4);
+  ctx.fillStyle=tc('--text2');ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('Frequency (Hz)',padL+pw/2,padT+ph+38);
+}
+
+/* ── TAB 2: Cascade vs Single ── */
+function upd2(){
+  const Gt=sl('sl_gt'),bwt=sl('sl_bwt')*1e3,gbw=sl('sl_gbw2')*1e6,en=sl('sl_en');
+  $('v_gt').textContent=Gt;$('v_bwt').textContent=sl('sl_bwt');$('v_gbw2').textContent=sl('sl_gbw2');$('v_en').textContent=en;
+
+  // Single stage
+  const bw_single=gbw/Gt/1e3;
+  const pm_single=65; // rough
+  const gbw_needed_single=Gt*bwt/1e6;
+  const feasible_single=gbw>=Gt*bwt;
+  const noise_single=en;
+
+  // Two-stage cascade
+  const G_each=Math.sqrt(Gt);
+  const bw_each_needed=bwt/0.64/1e3;
+  const gbw_needed_each=G_each*bwt/0.64/1e6;
+  const bw_cascade=Math.min(gbw/G_each,bwt/0.64/1e3)*0.64;
+  const feasible_cascade=gbw>=G_each*bwt/0.64;
+  const noise_cascade=Math.sqrt(en*en+en*en/(G_each*G_each));
+
+  const fmtBW=v=>v>=1e3?(v/1e3).toFixed(1)+' MHz':v.toFixed(0)+' kHz';
+  const fmtGBW=v=>v>=1?v.toFixed(0)+' MHz':(v*1e3).toFixed(0)+' kHz';
+  $('t_gbw_s').textContent=fmtGBW(gbw_needed_single);
+  $('t_bw_s').textContent=fmtBW(bw_single);
+  $('t_pm_s').textContent='~'+pm_single+'°';
+  $('t_n_s').textContent=noise_single.toFixed(0)+' nV/√Hz';
+  $('t_f_s').innerHTML=feasible_single?'<span class="badge pass">YES</span>':'<span class="badge fail">NO</span>';
+  $('t_gbw_c').textContent=fmtGBW(gbw_needed_each);
+  $('t_bw_c').textContent=fmtBW(bw_cascade);
+  $('t_pm_c').textContent='~'+pm_single+'°';
+  $('t_n_c').textContent=noise_cascade.toFixed(1)+' nV/√Hz';
+  $('t_f_c').innerHTML=feasible_cascade?'<span class="badge pass">YES</span>':'<span class="badge fail">NO</span>';
+
+  drawCascade(gbw,Gt,bwt,gbw_needed_single,gbw_needed_each*1e6,bw_single,bw_cascade);
+}
+
+function drawCascade(gbw,Gt,bwt,gbw_req_s,gbw_req_c,bw_s,bw_c){
+  const c=$('c2');const{ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=55,padR=20,padT=20,padB=50;
+  const pw=w-padL-padR,ph=h-padT-padB;
+  const text=tc('--text'),text2=tc('--text2'),border=tc('--border'),accent=tc('--accent');
+  const G_each=Math.sqrt(Gt);
+  const logMin=Math.log10(Math.min(bw_s,bw_c)/100*1e3),logMax=Math.log10(gbw*10e6);
+  const yMin=-40,yMax=20*Math.log10(Gt)+15,yStep=20;
+
+  function fx(f){return padL+(Math.log10(f)-logMin)/(logMax-logMin)*pw;}
+  function fy(dB){return padT+(1-(dB-yMin)/(yMax-yMin))*ph;}
+
+  ctx.strokeStyle=border;ctx.lineWidth=.5;
+  for(let g=yMin;g<=yMax;g+=yStep){const y=fy(g);ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(g+'dB',padL-4,y+4);}
+  for(let e=Math.floor(logMin);e<=Math.ceil(logMax);e++){for(let m=1;m<10;m++){const f=m*Math.pow(10,e);
+    if(f<Math.pow(10,logMin)||f>Math.pow(10,logMax))continue;const x=fx(f);
+    ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();
+    if(m===1){ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';
+      const lbl=f>=1e6?(f/1e6).toFixed(0)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f+'';ctx.fillText(lbl,x,padT+ph+14);}}}
+
+  const N=300;
+  const Gdb=20*Math.log10(Gt);
+  // Single stage
+  ctx.beginPath();ctx.strokeStyle='#e74c3c';ctx.lineWidth=2;
+  for(let i=0;i<=N;i++){const f=Math.pow(10,logMin+i*(logMax-logMin)/N);
+    const fc_s=gbw/Gt;const dB=Gdb-20*Math.log10(Math.sqrt(1+(f/(fc_s))**2));
+    const x=fx(f),y=fy(Math.max(yMin,Math.min(yMax,dB)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  // Cascade
+  ctx.beginPath();ctx.strokeStyle=accent;ctx.lineWidth=2;
+  for(let i=0;i<=N;i++){const f=Math.pow(10,logMin+i*(logMax-logMin)/N);
+    const fc_e=gbw/G_each;const stageDB=20*Math.log10(G_each)-20*Math.log10(Math.sqrt(1+(f/fc_e)**2));
+    const dB=2*stageDB;
+    const x=fx(f),y=fy(Math.max(yMin,Math.min(yMax,dB)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+
+  // BW markers
+  [[bw_s*1e3,'#e74c3c'],[bw_c*1e3,accent]].forEach(([bw,col])=>{
+    if(bw<Math.pow(10,logMin)||bw>Math.pow(10,logMax))return;
+    const x=fx(bw);ctx.setLineDash([3,3]);ctx.strokeStyle=col;ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();ctx.setLineDash([]);});
+
+  // Target BW
+  if(bwt>=Math.pow(10,logMin)&&bwt<=Math.pow(10,logMax)){
+    const x=fx(bwt);ctx.setLineDash([5,2]);ctx.strokeStyle='#2ecc71';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#2ecc71';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('Target BW',x,padT+10);}
+
+  ctx.strokeStyle=border;ctx.lineWidth=1;ctx.strokeRect(padL,padT,pw,ph);
+  ctx.fillStyle=text;ctx.font='bold 11px sans-serif';ctx.textAlign='left';ctx.fillText('CL Gain vs Frequency',padL+4,padT+14);
+  const lx=padL,ly=h-padB+16;
+  ctx.fillStyle='#e74c3c';ctx.fillRect(lx,ly,16,3);ctx.fillStyle=text;ctx.font='11px sans-serif';ctx.textAlign='left';ctx.fillText('Single stage G='+Gt,lx+20,ly+4);
+  ctx.fillStyle=accent;ctx.fillRect(lx+180,ly,16,3);ctx.fillStyle=text;ctx.fillText('2-stage cascade G='+Gt,lx+200,ly+4);
+  ctx.fillStyle=tc('--text2');ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('Frequency (Hz)',padL+pw/2,padT+ph+38);
+}
+
+window.addEventListener('load',()=>{upd0();upd1();upd2();});
+window.addEventListener('resize',()=>{upd0();upd1();upd2();});
+</script>
+</body>
+</html>

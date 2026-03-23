@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M3-D-1.4.3 — When NOT to Use a Diode</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--text2:#8b949e;--accent:#0066cc;--accent2:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922}
+@media(prefers-color-scheme:light){:root{--bg:#ffffff;--surface:#f6f8fa;--border:#d0d7de;--text:#24292f;--text2:#656d76;--accent:#0066cc;--accent2:#0969da;--green:#2da44e;--red:#cf222e;--yellow:#9a6700}}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;font-size:14px;padding:16px}
+h2{color:var(--accent2);font-size:16px;margin-bottom:12px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px}
+canvas{width:100%;border-radius:6px;background:var(--bg);display:block}
+.controls{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px}
+.ctrl{flex:1;min-width:180px}
+label{display:block;color:var(--text2);font-size:12px;margin-bottom:4px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.readout{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.ro{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;font-size:12px;font-family:monospace}
+.ro span{color:var(--accent2);font-weight:bold}
+.note{color:var(--text2);font-size:12px;margin-top:8px;line-height:1.5}
+</style></head>
+<body>
+<h2>M3-D-1.4.3 — Synchronous vs Diode Rectification</h2>
+<div class="panel">
+<canvas id="cv1" height="260"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>V_supply (V): <b id="lVs">5.0</b></label>
+    <input type="range" id="Vs" min="1" max="24" step="0.1" value="5"></div>
+  <div class="ctrl"><label>Load Current I_L (A): <b id="lIL">1.0</b></label>
+    <input type="range" id="IL" min="0.1" max="10" step="0.1" value="1"></div>
+  <div class="ctrl"><label>MOSFET R_on (mΩ): <b id="lRon">10</b></label>
+    <input type="range" id="Ron" min="1" max="100" step="1" value="10"></div>
+</div>
+<div class="readout">
+  <div class="ro">Diode loss: <span id="rDloss">0.00</span> W</div>
+  <div class="ro">Sync rect loss: <span id="rSloss">0.00</span> W</div>
+  <div class="ro">Diode efficiency: <span id="rDeff">0.0</span>%</div>
+  <div class="ro">Sync efficiency: <span id="rSeff">0.0</span>%</div>
+</div>
+<p class="note">Synchronous rectification uses a MOSFET (R_on = milliohms) instead of a diode to eliminate V_F loss. Essential for high-current, low-voltage supplies like CPU power (1.0 V, 100 A).</p>
+</div>
+
+<div class="panel">
+<canvas id="cv2" height="260"></canvas>
+<p class="note">Power loss comparison as current increases: Diode loss = constant V_F × I; Sync loss = I² × R_on (grows faster at high current).</p>
+</div>
+
+<script>
+
+const isDark=()=>window.matchMedia('(prefers-color-scheme:dark)').matches;
+function gs(id){return parseFloat(document.getElementById(id).value);}
+function sv(id,val){document.getElementById(id).textContent=val;}
+function resize(cv,draw){cv.width=cv.offsetWidth*devicePixelRatio;cv.height=260*devicePixelRatio;cv.getContext('2d').scale(devicePixelRatio,devicePixelRatio);draw();}
+function drawAxes(ctx,W,H,pad,xl,yl,color){
+  ctx.strokeStyle=color;ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  ctx.fillStyle=color;ctx.font='11px system-ui';
+  ctx.fillText(yl,pad+4,pad+12);ctx.fillText(xl,W-pad-2,H-pad-4);
+}
+
+const cv1=document.getElementById('cv1'),ctx1=cv1.getContext('2d');
+const cv2=document.getElementById('cv2'),ctx2=cv2.getContext('2d');
+
+function draw(){
+  const vs=gs('Vs'),il=gs('IL'),ron=gs('Ron')/1000;
+  document.getElementById('lVs').textContent=vs.toFixed(1);
+  document.getElementById('lIL').textContent=il.toFixed(1);
+  document.getElementById('lRon').textContent=(ron*1000).toFixed(0);
+  const dLoss=0.7*il,sLoss=il*il*ron;
+  const dEff=(vs-0.7)/vs*100,sEff=(vs-il*ron)/vs*100;
+  sv('rDloss',dLoss.toFixed(3));sv('rSloss',sLoss.toFixed(3));
+  sv('rDeff',Math.max(0,dEff).toFixed(1));sv('rSeff',Math.max(0,sEff).toFixed(1));
+
+  const W=cv1.offsetWidth,H=260,pad=40;
+  ctx1.clearRect(0,0,W,H);
+  const bg=isDark()?'#0d1117':'#fff',fg=isDark()?'#8b949e':'#656d76';
+  ctx1.fillStyle=bg;ctx1.fillRect(0,0,W,H);
+
+  const maxLoss=Math.max(dLoss,sLoss,1)*1.5;
+  const ysc=(H-2*pad)/maxLoss;
+  const bars=[['Diode 1N4007',dLoss,'#f85149'],['Schottky',0.35*il,'#d29922'],['Sync MOSFET',sLoss,'#3fb950']];
+  const bw=(W-2*pad)/bars.length-12;
+  bars.forEach(([name,loss,color],i)=>{
+    const bh=loss*ysc;
+    const bx=pad+i*(bw+12);
+    const by=H-pad-bh;
+    ctx1.fillStyle=color;ctx1.fillRect(bx,by,bw,bh);
+    ctx1.fillStyle=fg;ctx1.font='11px system-ui';
+    ctx1.fillText(name,bx+2,H-pad+14);
+    ctx1.fillText(loss.toFixed(2)+'W',bx+2,by-4);
+  });
+  ctx1.fillStyle=fg;ctx1.font='12px system-ui';
+  ctx1.fillText('Power loss at V_s='+vs+'V, I_L='+il.toFixed(1)+'A',pad,pad-5);
+
+  const W2=cv2.offsetWidth;
+  ctx2.clearRect(0,0,W2,H);
+  ctx2.fillStyle=bg;ctx2.fillRect(0,0,W2,H);
+  drawAxes(ctx2,W2,H,pad,'I (A) →','P_loss (W) ↑',fg);
+  const maxI=10,xsc=(W2-2*pad)/maxI;
+  const maxY=7*0.7;const yscy=(H-2*pad)/maxY;
+  ctx2.fillStyle=fg;ctx2.font='10px system-ui';
+  ctx2.fillText('0',pad,H-pad+14);ctx2.fillText('10A',W2-pad-20,H-pad+14);
+  [['Silicon diode',0.7,'#f85149',false],['Schottky',0.35,'#d29922',false],['Sync ('+ron*1000+'mΩ)',ron,'#3fb950',true]].forEach(([name,param,color,isSync])=>{
+    ctx2.strokeStyle=color;ctx2.lineWidth=2;ctx2.beginPath();
+    for(let ii=0;ii<=maxI;ii+=0.1){
+      const p=isSync?ii*ii*param:param*ii;
+      const x=pad+ii*xsc,y=H-pad-p*yscy;
+      if(ii===0)ctx2.moveTo(x,Math.max(pad,y));else ctx2.lineTo(x,Math.max(pad,y));
+    }
+    ctx2.stroke();
+    const p=isSync?5*5*param:param*5;
+    ctx2.fillStyle=color;ctx2.font='11px system-ui';
+    ctx2.fillText(name,pad+5*xsc+5,H-pad-p*yscy);
+  });
+  // Operating point
+  const xop=pad+il*xsc,yop=H-pad-dLoss*yscy;
+  ctx2.fillStyle='#f85149';ctx2.beginPath();ctx2.arc(xop,yop,5,0,Math.PI*2);ctx2.fill();
+  const yopS=H-pad-sLoss*yscy;
+  ctx2.fillStyle='#3fb950';ctx2.beginPath();ctx2.arc(xop,yopS,5,0,Math.PI*2);ctx2.fill();
+}
+
+document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',draw));
+window.addEventListener('resize',()=>{resize(cv1,draw);resize(cv2,draw);});
+resize(cv1,draw);resize(cv2,draw);
+</script>
+</body></html>

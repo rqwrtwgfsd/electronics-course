@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-FC-6.5.1 — Cascode Compensation</title>
+<style>
+  :root { --bg:#ffffff; --bg2:#f5f5f5; --text:#1a1a1a; --text2:#555; --border:#ddd; --accent:#0066cc; --green:#00994d; --canvas-bg:#fafafa; --warn:#cc4400; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1a1a1a; --bg2:#242424; --text:#e8e8e8; --text2:#aaa; --border:#444; --canvas-bg:#1f1f1f; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); font-size:14px; }
+  header { background:var(--bg2); border-bottom:2px solid var(--accent); padding:12px 20px; }
+  header .id { font-family:monospace; font-size:12px; color:var(--accent); font-weight:700; }
+  header h1 { font-size:16px; margin-top:2px; }
+  .container { display:flex; gap:16px; padding:16px; flex-wrap:wrap; }
+  .panel { background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:14px; }
+  .sim-panel { flex:1; min-width:380px; }
+  .ctrl-panel { width:270px; min-width:240px; }
+  canvas { background:var(--canvas-bg); border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .readouts { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+  .readout { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 10px; }
+  .readout label { font-size:11px; color:var(--text2); display:block; }
+  .readout .val { font-family:monospace; font-size:14px; font-weight:700; color:var(--accent); }
+  .ctrl { margin-bottom:12px; }
+  .ctrl label { display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px; }
+  .ctrl label span { font-family:monospace; color:var(--accent); font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .section-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text2); margin-bottom:8px; }
+  .insight { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 12px; margin-top:10px; font-size:12px; color:var(--text2); line-height:1.5; }
+  .comp-table { width:100%; border-collapse:collapse; margin-top:10px; font-size:12px; }
+  .comp-table th { background:var(--bg2); padding:5px 8px; text-align:left; font-size:11px; color:var(--text2); border:1px solid var(--border); }
+  .comp-table td { padding:5px 8px; border:1px solid var(--border); font-family:monospace; }
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4B-FC-6.5.1</div>
+  <h1>Frequency Compensation — Cascode Compensation</h1>
+</header>
+<div class="container">
+  <div class="panel sim-panel">
+    <canvas id="cv" height="320"></canvas>
+    <table class="comp-table">
+      <tr><th>Method</th><th>PM</th><th>Zero Type</th><th>Zero Freq</th></tr>
+      <tr><td>No compensation</td><td id="td-pm0" style="color:var(--warn)">—</td><td>none</td><td>—</td></tr>
+      <tr><td>Miller (no Rs)</td><td id="td-pmm" style="color:var(--warn)">—</td><td style="color:var(--warn)">RHP (bad)</td><td id="td-fzm">—</td></tr>
+      <tr><td>Miller + Rs</td><td id="td-pmmrs" style="color:var(--accent)">—</td><td style="color:#888">None (cancelled)</td><td>∞</td></tr>
+      <tr><td>Cascode comp</td><td id="td-pmc" style="color:var(--green)">—</td><td style="color:var(--green)">LHP (good)</td><td id="td-fzc">—</td></tr>
+    </table>
+    <div class="insight" id="ins">—</div>
+  </div>
+  <div class="panel ctrl-panel">
+    <div class="section-title">Amplifier</div>
+    <div class="ctrl">
+      <label>gm1 (mA/V) <span id="lbl-gm1">2.0</span></label>
+      <input type="range" id="sl-gm1" min="0.2" max="5" step="0.1" value="2.0" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>gm_c (mA/V) <span id="lbl-gmc">4.0</span></label>
+      <input type="range" id="sl-gmc" min="0.5" max="15" step="0.5" value="4.0" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>fp2 (GHz) <span id="lbl-fp2">1.5</span></label>
+      <input type="range" id="sl-fp2" min="0.1" max="5" step="0.05" value="1.5" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>A₀ (dB) <span id="lbl-a0">80</span></label>
+      <input type="range" id="sl-a0" min="40" max="120" step="5" value="80" oninput="update()">
+    </div>
+    <div class="section-title" style="margin-top:8px">Compensation</div>
+    <div class="ctrl">
+      <label>Cc (fF) <span id="lbl-cc">500</span></label>
+      <input type="range" id="sl-cc" min="50" max="5000" step="50" value="500" oninput="update()">
+    </div>
+    <div class="section-title" style="margin-top:8px">Show Curves</div>
+    <div class="ctrl">
+      <label style="align-items:center">No compensation (gray)
+        <input type="checkbox" id="chk-nc" checked onchange="update()" style="width:auto;margin-left:8px">
+      </label>
+    </div>
+    <div class="ctrl">
+      <label style="align-items:center">Miller w/o Rs (red)
+        <input type="checkbox" id="chk-miller" checked onchange="update()" style="width:auto;margin-left:8px">
+      </label>
+    </div>
+    <div class="ctrl">
+      <label style="align-items:center">Miller + Rs (blue)
+        <input type="checkbox" id="chk-millerrs" checked onchange="update()" style="width:auto;margin-left:8px">
+      </label>
+    </div>
+    <div class="ctrl">
+      <label style="align-items:center">Cascode comp (green)
+        <input type="checkbox" id="chk-casc" checked onchange="update()" style="width:auto;margin-left:8px">
+      </label>
+    </div>
+  </div>
+</div>
+<script>
+function mag2p(f,a0,fp1,fp2){return a0/Math.sqrt(1+(f/fp1)**2)/Math.sqrt(1+(f/fp2)**2);}
+function phase2p(f,fp1,fp2){return -(Math.atan(f/fp1)+Math.atan(f/fp2))*180/Math.PI;}
+function magRHP(f,a0,fp1,fp2,fz){return a0*Math.sqrt(1+(f/fz)**2)/Math.sqrt(1+(f/fp1)**2)/Math.sqrt(1+(f/fp2)**2);}
+function phaseRHP(f,fp1,fp2,fz){return -(Math.atan(f/fz)+Math.atan(f/fp1)+Math.atan(f/fp2))*180/Math.PI;}
+function magLHP(f,a0,fp1,fp2,fz){return a0*Math.sqrt(1+(f/fz)**2)/Math.sqrt(1+(f/fp1)**2)/Math.sqrt(1+(f/fp2)**2);}
+function phaseLHP(f,fp1,fp2,fz){return (Math.atan(f/fz)-Math.atan(f/fp1)-Math.atan(f/fp2))*180/Math.PI;}
+
+function findCross(fn,a0){
+  let lo=1e3,hi=1e13;
+  for(let i=0;i<60;i++){const m=Math.sqrt(lo*hi);fn(m,a0)>1?lo=m:hi=m;}
+  return Math.sqrt(lo*hi);
+}
+
+function fmt(f){return f>=1e9?(f/1e9).toFixed(2)+'GHz':f>=1e6?(f/1e6).toFixed(2)+'MHz':f>=1e3?(f/1e3).toFixed(1)+'kHz':f.toFixed(0)+'Hz';}
+
+function update(){
+  const gm1=parseFloat(document.getElementById('sl-gm1').value)/1000;
+  const gmc=parseFloat(document.getElementById('sl-gmc').value)/1000;
+  const fp2=parseFloat(document.getElementById('sl-fp2').value)*1e9;
+  const a0dB=parseFloat(document.getElementById('sl-a0').value);
+  const a0=Math.pow(10,a0dB/20);
+  const cc=parseFloat(document.getElementById('sl-cc').value)*1e-15;
+
+  document.getElementById('lbl-gm1').textContent=(gm1*1000).toFixed(1);
+  document.getElementById('lbl-gmc').textContent=(gmc*1000).toFixed(1);
+  document.getElementById('lbl-fp2').textContent=(fp2/1e9).toFixed(2);
+  document.getElementById('lbl-a0').textContent=a0dB;
+  document.getElementById('lbl-cc').textContent=(cc*1e15).toFixed(0);
+
+  const GBW=gm1/(2*Math.PI*cc);
+  const fp1=GBW/a0;
+  const fz_rhp=gm1/(2*Math.PI*cc); // Miller RHP zero ≈ gm2/Cc, using gm1 for simplicity
+  const fz_lhp=gmc/(2*Math.PI*cc); // Cascode LHP zero
+
+  // No compensation poles
+  const fp1_nat=fp2/a0; // approximate natural fp1
+  const fc0=findCross((f,a)=>mag2p(f,a,fp1_nat,fp2),a0);
+  const pm0=180+phase2p(fc0,fp1_nat,fp2);
+
+  // Miller without Rs (with RHP zero)
+  const fc_m=findCross((f,a)=>magRHP(f,a,fp1,fp2,fz_rhp),a0);
+  const pm_m=180+phaseRHP(fc_m,fp1,fp2,fz_rhp);
+
+  // Miller with Rs (zero cancelled)
+  const fc_mrs=findCross((f,a)=>mag2p(f,a,fp1,fp2),a0);
+  const pm_mrs=180+phase2p(fc_mrs,fp1,fp2);
+
+  // Cascode (LHP zero)
+  const fc_c=findCross((f,a)=>magLHP(f,a,fp1,fp2,fz_lhp),a0);
+  const pm_c=180+phaseLHP(fc_c,fp1,fp2,fz_lhp);
+
+  const colorPM=pm=>pm>=60?'var(--green)':pm>=45?'#cc8800':'var(--warn)';
+  document.getElementById('td-pm0').textContent=pm0.toFixed(1)+'°';document.getElementById('td-pm0').style.color=colorPM(pm0);
+  document.getElementById('td-pmm').textContent=pm_m.toFixed(1)+'°';document.getElementById('td-pmm').style.color=colorPM(pm_m);
+  document.getElementById('td-pmmrs').textContent=pm_mrs.toFixed(1)+'°';document.getElementById('td-pmmrs').style.color=colorPM(pm_mrs);
+  document.getElementById('td-pmc').textContent=pm_c.toFixed(1)+'°';document.getElementById('td-pmc').style.color=colorPM(pm_c);
+  document.getElementById('td-fzm').textContent=fmt(fz_rhp);
+  document.getElementById('td-fzc').textContent=fmt(fz_lhp);
+
+  document.getElementById('ins').textContent=
+    `GBW=${fmt(GBW)}, Cc=${(cc*1e15).toFixed(0)}fF. ` +
+    `LHP zero at ${fmt(fz_lhp)} (=${(fz_lhp/GBW).toFixed(2)}×GBW). ` +
+    `Cascode comp PM=${pm_c.toFixed(1)}° vs Miller+Rs PM=${pm_mrs.toFixed(1)}°. ` +
+    `Advantage: +${(pm_c-pm_mrs).toFixed(1)}° from LHP zero.`;
+
+  draw(a0,fp1_nat,fp1,fp2,fz_rhp,fz_lhp,fc0,fc_m,fc_mrs,fc_c,pm0,pm_m,pm_mrs,pm_c,GBW);
+}
+
+function draw(a0,fp1n,fp1,fp2,fz_r,fz_l,fc0,fcm,fcmrs,fcc,pm0,pmm,pmmrs,pmc,GBW){
+  const canvas=document.getElementById('cv');
+  const W=canvas.offsetWidth||500;canvas.width=W;canvas.height=320;
+  const ctx=canvas.getContext('2d');
+  const pad={l:52,r:15,t:20,b:35};
+  const pw=W-pad.l-pad.r,ph=320-pad.t-pad.b;
+  ctx.fillStyle='var(--canvas-bg)';ctx.fillRect(0,0,W,320);
+
+  const magH=ph*0.47,phH=ph*0.47;
+  const magTop=pad.t,phTop=pad.t+magH+5;
+  const fMin=1e4,fMax=1e13;
+  const lMin=Math.log10(fMin),lMax=Math.log10(fMax);
+  const fToX=f=>pad.l+(Math.log10(Math.max(f,fMin))-lMin)/(lMax-lMin)*pw;
+  const mToY=(m,top,h)=>top+h-((m+20)/140)*h;
+  const pToY=(p,top,h)=>top+h-((p+270)/270)*h;
+
+  ctx.strokeStyle='var(--border)';ctx.lineWidth=0.7;
+  [-20,0,20,40,60,80].forEach(m=>{const y=mToY(m,magTop,magH);if(y<magTop-2||y>magTop+magH+2)return;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='right';ctx.fillText(m+'dB',pad.l-3,y+3);});
+  [-270,-180,-90,0].forEach(p=>{const y=pToY(p,phTop,phH);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='right';ctx.fillText(p+'°',pad.l-3,y+3);});
+  ctx.strokeStyle='rgba(0,0,0,0.15)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  const y0=mToY(0,magTop,magH);ctx.beginPath();ctx.moveTo(pad.l,y0);ctx.lineTo(pad.l+pw,y0);ctx.stroke();
+  const y180=pToY(-180,phTop,phH);ctx.strokeStyle='rgba(204,68,0,0.3)';ctx.beginPath();ctx.moveTo(pad.l,y180);ctx.lineTo(pad.l+pw,y180);ctx.stroke();ctx.setLineDash([]);
+
+  const showNC=document.getElementById('chk-nc').checked;
+  const showM=document.getElementById('chk-miller').checked;
+  const showMrs=document.getElementById('chk-millerrs').checked;
+  const showC=document.getElementById('chk-casc').checked;
+
+  const plotCurve=(fn_mag,fn_phase,col,lw,dash)=>{
+    if(dash)ctx.setLineDash(dash);else ctx.setLineDash([]);
+    ctx.strokeStyle=col;ctx.lineWidth=lw;
+    ctx.beginPath();let first=true;
+    for(let i=0;i<=300;i++){const f=Math.pow(10,lMin+i/300*(lMax-lMin));const m=20*Math.log10(Math.max(fn_mag(f),1e-9));const x=fToX(f);const y=mToY(m,magTop,magH);if(y<magTop-10||y>magTop+magH+10){first=true;continue;}first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;}ctx.stroke();
+    ctx.beginPath();first=true;
+    for(let i=0;i<=300;i++){const f=Math.pow(10,lMin+i/300*(lMax-lMin));const p=fn_phase(f);const x=fToX(f);const y=pToY(Math.max(-270,p),phTop,phH);first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;}ctx.stroke();
+    ctx.setLineDash([]);
+  };
+
+  if(showNC) plotCurve(f=>mag2p(f,a0,fp1n,fp2),f=>phase2p(f,fp1n,fp2),'rgba(128,128,128,0.6)',1.5,[4,3]);
+  if(showM)  plotCurve(f=>magRHP(f,a0,fp1,fp2,fz_r),f=>phaseRHP(f,fp1,fp2,fz_r),'#cc4400',1.5,null);
+  if(showMrs) plotCurve(f=>mag2p(f,a0,fp1,fp2),f=>phase2p(f,fp1,fp2),'#0066cc',2,null);
+  if(showC)  plotCurve(f=>magLHP(f,a0,fp1,fp2,fz_l),f=>phaseLHP(f,fp1,fp2,fz_l),'#00994d',2,null);
+
+  // Markers
+  const markPM=(fc,pm,col,label)=>{
+    if(fc<fMin||fc>fMax)return;
+    const x=fToX(fc);ctx.strokeStyle=col+'66';ctx.lineWidth=1;ctx.setLineDash([2,2]);
+    ctx.beginPath();ctx.moveTo(x,phTop);ctx.lineTo(x,phTop+phH);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=pm>=60?'#00994d':pm>=45?'#cc8800':'#cc4400';
+    ctx.font='bold 8px monospace';ctx.textAlign='center';ctx.fillText(label,x,phTop+phH-3);
+  };
+  if(showNC) markPM(fc0,pm0,'#888','nc');
+  if(showM) markPM(fcm,pmm,'#cc4400','M');
+  if(showMrs) markPM(fcmrs,pmmrs,'#0066cc','M+Rs');
+  if(showC) markPM(fcc,pmc,'#00994d','Casc');
+
+  // fz markers on phase plot
+  const markFz=(fz,col,label)=>{
+    if(fz<fMin||fz>fMax)return;
+    const x=fToX(fz);ctx.strokeStyle=col+'55';ctx.lineWidth=1;ctx.setLineDash([2,2]);
+    ctx.beginPath();ctx.moveTo(x,phTop);ctx.lineTo(x,phTop+20);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=col;ctx.font='8px monospace';ctx.textAlign='center';ctx.fillText(label,x,phTop+30);
+  };
+  if(showM) markFz(fz_r,'#cc4400','fz_RHP');
+  if(showC) markFz(fz_l,'#00994d','fz_LHP');
+
+  ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='center';
+  ['100k','1M','10M','100M','1G','10G','100G'].forEach((l,i)=>ctx.fillText(l,fToX(Math.pow(10,5+i)),phTop+phH+14));
+
+  ctx.fillStyle='#888';ctx.font='9px sans-serif';ctx.textAlign='left';ctx.fillText('gray=uncomp, red=Miller, blue=Miller+Rs, green=Cascode',pad.l+2,magTop+8);
+}
+update();
+</script>
+</body>
+</html>

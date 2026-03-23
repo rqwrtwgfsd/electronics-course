@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.4.5 — Op-Amp Practical: Bandwidth Limitation</title>
+<style>
+  :root {
+    --bg:#f5f5f5;--card:#fff;--text:#1a1a1a;--subtext:#555;
+    --accent:#0066cc;--accent2:#cc3300;--accent3:#007744;--accent4:#aa5500;
+    --border:#ccc;--grid:#ddd;
+  }
+  @media(prefers-color-scheme:dark){:root{
+    --bg:#1a1a1a;--card:#242424;--text:#e8e8e8;--subtext:#aaa;
+    --accent:#4da6ff;--accent2:#ff6644;--accent3:#44cc88;--accent4:#ffaa44;
+    --border:#444;--grid:#333;
+  }}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;line-height:1.6;}
+  header{background:var(--card);border-bottom:2px solid var(--accent);padding:18px 28px;}
+  header h1{font-size:1.2rem;font-weight:700;color:var(--accent);}
+  header p{font-size:0.85rem;color:var(--subtext);margin-top:3px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:20px;padding:20px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px;}
+  .card h2{font-size:0.95rem;font-weight:600;margin-bottom:4px;}
+  .card p.desc{font-size:0.80rem;color:var(--subtext);margin-bottom:10px;line-height:1.4;}
+  canvas{display:block;width:100%;border-radius:4px;}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;}
+  .ctrl{display:flex;flex-direction:column;font-size:0.78rem;color:var(--subtext);min-width:140px;}
+  .ctrl label{margin-bottom:3px;}
+  input[type=range]{accent-color:var(--accent);width:100%;}
+  .readout{font-size:0.82rem;color:var(--accent);font-weight:600;margin-top:2px;}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:0.78rem;}
+  .leg{display:flex;align-items:center;gap:5px;}
+  .leg-dot{width:20px;height:3px;border-radius:2px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>M4A-AMP-1.4.5 — Op-Amp Practical: Bandwidth Limitation</h1>
+  <p>GBW product, slew rate, noise gain peaking, and settling time — interactive exploration</p>
+</header>
+<div class="grid">
+
+  <!-- Plot 1: BW vs gain (GBW budget) -->
+  <div class="card">
+    <h2>Closed-Loop Bandwidth vs Gain (GBW Budget)</h2>
+    <p class="desc">f_3dB = GBW / noise_gain. Each curve shows a different GBW. The product is constant — every decade of gain costs a decade of bandwidth. The marker shows a chosen operating point.</p>
+    <canvas id="c1" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>Closed-loop gain: <span id="v1a" class="readout">10</span></label>
+        <input type="range" id="s1a" min="1" max="1000" value="10" step="1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> GBW=100MHz</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> GBW=10MHz</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3)"></div> GBW=1MHz</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent4)"></div> GBW=100kHz</div>
+    </div>
+  </div>
+
+  <!-- Plot 2: Slew rate vs FPBW -->
+  <div class="card">
+    <h2>Slew Rate and Full-Power Bandwidth</h2>
+    <p class="desc">FPBW = SR / (2π·Vpeak). Above FPBW the output becomes a triangle wave regardless of GBW. The green region is distortion-free. Drag Vpeak and SR to map the safe operating zone.</p>
+    <canvas id="c2" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>Slew rate (V/µs): <span id="v2a" class="readout">10</span></label>
+        <input type="range" id="s2a" min="0.5" max="500" value="10" step="0.5">
+      </div>
+      <div class="ctrl">
+        <label>GBW (MHz): <span id="v2b" class="readout">10</span></label>
+        <input type="range" id="s2b" min="1" max="200" value="10" step="1">
+      </div>
+      <div class="ctrl">
+        <label>V<sub>peak</sub> (V): <span id="v2c" class="readout">5.0</span></label>
+        <input type="range" id="s2c" min="0.1" max="15" value="5" step="0.1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Small-signal BW limit</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> FPBW (SR limit)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3);opacity:0.3;height:8px;border-radius:2px"></div> Safe zone</div>
+    </div>
+  </div>
+
+  <!-- Plot 3: Noise gain and TIA stability -->
+  <div class="card">
+    <h2>TIA Noise Gain vs Frequency — Stability Check</h2>
+    <p class="desc">Without Cf, noise gain peaks at f_peak driving the intersection slope to –40 dB/dec → oscillation. Adding correct Cf moves the zero below the peak, restoring –20 dB/dec crossing.</p>
+    <canvas id="c3" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>GBW (MHz): <span id="v3a" class="readout">10</span></label>
+        <input type="range" id="s3a" min="1" max="200" value="10" step="1">
+      </div>
+      <div class="ctrl">
+        <label>R_f (kΩ): <span id="v3b" class="readout">100</span></label>
+        <input type="range" id="s3b" min="1" max="1000" value="100" step="1">
+      </div>
+      <div class="ctrl">
+        <label>C_in (pF): <span id="v3c" class="readout">10</span></label>
+        <input type="range" id="s3c" min="1" max="200" value="10" step="1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Avol(f)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> NG (no Cf)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3)"></div> NG (with Cf)</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function sc(id){
+  const c=document.getElementById(id);
+  const dpr=window.devicePixelRatio||1;
+  return {canvas:c, resize:()=>{
+    const w=c.clientWidth,h=c.clientHeight;
+    c.width=w*dpr;c.height=h*dpr;
+    const ctx=c.getContext('2d');ctx.scale(dpr,dpr);
+    return {ctx,w,h};
+  }};
+}
+
+function axes(ctx,w,h,pad,xLabel,yLabel,xTicks,yTicks){
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle=css('--card');ctx.fillRect(0,0,w,h);
+  const pw=w-pad.l-pad.r,ph=h-pad.t-pad.b;
+  ctx.strokeStyle=css('--grid');ctx.lineWidth=0.7;
+  xTicks.forEach(t=>{const x=pad.l+t.px*pw;ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();});
+  yTicks.forEach(t=>{const y=pad.t+ph-t.py*ph;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();});
+  ctx.strokeStyle=css('--text');ctx.lineWidth=1.5;ctx.strokeRect(pad.l,pad.t,pw,ph);
+  ctx.fillStyle=css('--subtext');ctx.font='10px system-ui';
+  ctx.textAlign='center';
+  xTicks.forEach(t=>ctx.fillText(t.label,pad.l+t.px*pw,pad.t+ph+13));
+  ctx.textAlign='right';
+  yTicks.forEach(t=>ctx.fillText(t.label,pad.l-4,pad.t+ph-t.py*ph+3.5));
+  ctx.fillStyle=css('--text');ctx.font='11px system-ui';ctx.textAlign='center';
+  ctx.fillText(xLabel,pad.l+pw/2,h-2);
+  ctx.save();ctx.translate(11,pad.t+ph/2);ctx.rotate(-Math.PI/2);ctx.fillText(yLabel,0,0);ctx.restore();
+  return {pw,ph};
+}
+
+function logTick(vMin,vMax){
+  const ticks=[];
+  let v=Math.pow(10,Math.floor(Math.log10(vMin)));
+  while(v<=vMax*1.01){
+    if(v>=vMin*0.99){
+      const e=Math.round(Math.log10(v));
+      const labs={'-3':'1m','-2':'10m','-1':'100m','0':'1','1':'10','2':'100','3':'1k','4':'10k','5':'100k','6':'1M','7':'10M','8':'100M','9':'1G'};
+      ticks.push({v,px:Math.log10(v/vMin)/Math.log10(vMax/vMin),label:labs[e]||v.toFixed(0)});
+    }
+    v*=10;
+  }
+  return ticks;
+}
+
+// ─── Plot 1 ───────────────────────────────────────────────────────────────────
+const p1=sc('c1');
+function draw1(){
+  const {ctx,w,h}=p1.resize();
+  const Acl=parseFloat(document.getElementById('s1a').value);
+  document.getElementById('v1a').textContent=Acl;
+  const pad={l:56,r:16,t:18,b:36};
+  const gMin=1,gMax=1000,bwMin=1e3,bwMax=200e6;
+  const xTicks=logTick(gMin,gMax);
+  const yTicks=logTick(bwMin,bwMax);
+  const {pw,ph}=axes(ctx,w,h,pad,'Closed-loop gain (V/V)','f_3dB (Hz)',xTicks,yTicks);
+  const xp=g=>pad.l+Math.log10(g/gMin)/Math.log10(gMax/gMin)*pw;
+  const yp=bw=>pad.t+ph-Math.log10(Math.max(bw,bwMin)/bwMin)/Math.log10(bwMax/bwMin)*ph;
+
+  const curves=[
+    {gbw:100e6,color:'--accent'},
+    {gbw:10e6,color:'--accent2'},
+    {gbw:1e6,color:'--accent3'},
+    {gbw:100e3,color:'--accent4'},
+  ];
+  curves.forEach(c=>{
+    ctx.strokeStyle=css(c.color);ctx.lineWidth=2;
+    ctx.beginPath();let f=true;
+    for(let i=0;i<=200;i++){
+      const g=gMin*Math.pow(gMax/gMin,i/200);
+      const bw=c.gbw/g;
+      if(bw<bwMin||bw>bwMax){f=true;continue;}
+      const x=xp(g),y=yp(bw);
+      if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  });
+
+  // Marker for selected gain
+  curves.forEach(c=>{
+    const bw=c.gbw/Acl;
+    if(bw<bwMin||bw>bwMax)return;
+    ctx.fillStyle=css(c.color);
+    ctx.beginPath();ctx.arc(xp(Acl),yp(bw),5,0,2*Math.PI);ctx.fill();
+  });
+
+  // Selected gain vertical line
+  ctx.strokeStyle=css('--text');ctx.lineWidth=1;ctx.globalAlpha=0.3;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(xp(Acl),pad.t);ctx.lineTo(xp(Acl),pad.t+ph);ctx.stroke();
+  ctx.setLineDash([]);ctx.globalAlpha=1;
+
+  // Annotation
+  const bw10=10e6/Acl;
+  if(bw10>=bwMin&&bw10<=bwMax){
+    const bwStr=bw10>=1e6?(bw10/1e6).toFixed(1)+'MHz':bw10>=1e3?(bw10/1e3).toFixed(0)+'kHz':bw10.toFixed(0)+'Hz';
+    ctx.fillStyle=css('--accent2');ctx.font='bold 9px system-ui';ctx.textAlign='left';
+    ctx.fillText('GBW=10M → f_3dB='+bwStr+' @ gain='+Acl,pad.l+4,pad.t+14);
+  }
+}
+
+// ─── Plot 2 ───────────────────────────────────────────────────────────────────
+const p2=sc('c2');
+function draw2(){
+  const {ctx,w,h}=p2.resize();
+  const SR=parseFloat(document.getElementById('s2a').value)*1e6;
+  const GBW=parseFloat(document.getElementById('s2b').value)*1e6;
+  const Vp=parseFloat(document.getElementById('s2c').value);
+  document.getElementById('v2a').textContent=document.getElementById('s2a').value;
+  document.getElementById('v2b').textContent=document.getElementById('s2b').value;
+  document.getElementById('v2c').textContent=Vp.toFixed(1);
+
+  const FPBW=SR/(2*Math.PI*Vp);
+
+  const pad={l:56,r:16,t:18,b:36};
+  const fMin=1e3,fMax=GBW*5;
+  const VMin=0.01,VMax=20;
+  const xTicks=logTick(fMin,fMax);
+  const yTicks=logTick(VMin,VMax);
+  const {pw,ph}=axes(ctx,w,h,pad,'Frequency (Hz)','Peak Amplitude (V)',xTicks,yTicks);
+  const xp=f=>pad.l+Math.log10(f/fMin)/Math.log10(fMax/fMin)*pw;
+  const yp=v=>pad.t+ph-Math.log10(Math.max(v,VMin)/VMin)/Math.log10(VMax/VMin)*ph;
+
+  // Safe zone fill
+  ctx.fillStyle=css('--accent3');ctx.globalAlpha=0.12;
+  ctx.fillRect(pad.l,pad.t,xp(Math.min(FPBW,GBW))-pad.l,ph);
+  ctx.globalAlpha=1;
+
+  // FPBW line (SR limit): V = SR / (2π f)
+  ctx.strokeStyle=css('--accent2');ctx.lineWidth=2.2;
+  ctx.beginPath();let f=true;
+  for(let i=0;i<=300;i++){
+    const fv=fMin*Math.pow(fMax/fMin,i/300);
+    const Vmax_sr=SR/(2*Math.PI*fv);
+    if(Vmax_sr<VMin||Vmax_sr>VMax){f=true;continue;}
+    const x=xp(fv),y=yp(Vmax_sr);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // GBW = unity gain BW vertical
+  ctx.strokeStyle=css('--accent');ctx.lineWidth=2;
+  ctx.setLineDash([5,4]);
+  ctx.beginPath();ctx.moveTo(xp(GBW),pad.t);ctx.lineTo(xp(GBW),pad.t+ph);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Vpeak horizontal
+  ctx.strokeStyle=css('--subtext');ctx.lineWidth=1;ctx.globalAlpha=0.5;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,yp(Vp));ctx.lineTo(pad.l+pw,yp(Vp));ctx.stroke();
+  ctx.setLineDash([]);ctx.globalAlpha=1;
+
+  // FPBW marker
+  if(FPBW>=fMin&&FPBW<=fMax){
+    ctx.fillStyle=css('--accent2');
+    ctx.beginPath();ctx.arc(xp(FPBW),yp(Vp),5,0,2*Math.PI);ctx.fill();
+    const FPBWstr=FPBW>=1e6?(FPBW/1e6).toFixed(1)+'MHz':FPBW>=1e3?(FPBW/1e3).toFixed(1)+'kHz':FPBW.toFixed(0)+'Hz';
+    ctx.font='bold 9px system-ui';ctx.textAlign='left';
+    ctx.fillText('FPBW='+FPBWstr,xp(FPBW)+6,yp(Vp)-5);
+  }
+
+  ctx.fillStyle=css('--accent');ctx.font='bold 9px system-ui';ctx.textAlign='right';
+  const GBWstr=GBW>=1e6?(GBW/1e6).toFixed(0)+'MHz':(GBW/1e3).toFixed(0)+'kHz';
+  ctx.fillText('GBW='+GBWstr,xp(GBW)-4,pad.t+12);
+}
+
+// ─── Plot 3 ───────────────────────────────────────────────────────────────────
+const p3=sc('c3');
+function draw3(){
+  const {ctx,w,h}=p3.resize();
+  const GBW=parseFloat(document.getElementById('s3a').value)*1e6;
+  const Rf=parseFloat(document.getElementById('s3b').value)*1e3;
+  const Cin=parseFloat(document.getElementById('s3c').value)*1e-12;
+  document.getElementById('v3a').textContent=document.getElementById('s3a').value;
+  document.getElementById('v3b').textContent=document.getElementById('s3b').value;
+  document.getElementById('v3c').textContent=document.getElementById('s3c').value;
+
+  // noise gain peak without Cf: f_peak = sqrt(GBW/(2π*Rf*Cin))
+  const f_peak=Math.sqrt(GBW/(2*Math.PI*Rf*Cin));
+  // With optimal Cf: Cf = sqrt(Cin/(2π*Rf*GBW)) → fz = f_peak (geometric mean)
+  const Cf=Math.sqrt(Cin/(2*Math.PI*Rf*GBW));
+  const fz_cf=1/(2*Math.PI*Rf*Cf); // zero of NG with Cf
+
+  const pad={l:56,r:16,t:18,b:36};
+  const fMin=100,fMax=GBW*20;
+  const NGmin=0,NGmax=50;
+  const xTicks=logTick(fMin,fMax);
+  const yStep=10;
+  const yTicks=[];
+  for(let y=0;y<=NGmax;y+=yStep) yTicks.push({py:(y-NGmin)/(NGmax-NGmin),label:y+'dB'});
+
+  const {pw,ph}=axes(ctx,w,h,pad,'Frequency (Hz)','Gain / Noise Gain (dB)',xTicks,yTicks);
+  const xp=f=>pad.l+Math.log10(f/fMin)/Math.log10(fMax/fMin)*pw;
+  const yp=dB=>pad.t+ph-(Math.max(dB,NGmin)-NGmin)/(NGmax-NGmin)*ph;
+
+  // Avol curve
+  const Avol_dc=GBW/1; // assume fp=1 Hz for precision part
+  ctx.strokeStyle=css('--accent');ctx.lineWidth=2.3;
+  ctx.beginPath();let f=true;
+  for(let i=0;i<=300;i++){
+    const fv=fMin*Math.pow(fMax/fMin,i/300);
+    const av_dB=20*Math.log10(GBW/fv); // single pole ≈ GBW/f for f>>fp
+    if(av_dB<NGmin-5){f=true;continue;}
+    const x=xp(fv),y=yp(Math.min(av_dB,NGmax));
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Noise gain without Cf: NG = 1 + s*Rf*Cin (high-freq limit: Rf*Cin pole gives NG → ∞ at Cin pole = 1/(2π*Rf*Cin)... simplified model)
+  // NG(f) = sqrt(1 + (f/fz_Cin)^2) * (1/beta_dc) ... simplified: β(f) = 1/(1+j*f/fz) where fz=1/(2πRf*Cin)
+  // Actually for TIA: noise gain = 1 + Rin in parallel feedback, but Rin→∞ so NG_base = 1 at DC
+  // NG(f) rises at 1/(2π*Cin*Rf) due to Cin at input
+  // NG_noCf(f) = sqrt(1 + (f*2π*Rf*Cin)^2)  (simplified zero + DC=1)
+  ctx.strokeStyle=css('--accent2');ctx.lineWidth=2;
+  ctx.beginPath();f=true;
+  for(let i=0;i<=300;i++){
+    const fv=fMin*Math.pow(fMax/fMin,i/300);
+    const ng=Math.sqrt(1+Math.pow(fv*2*Math.PI*Rf*Cin,2));
+    const ng_dB=20*Math.log10(ng);
+    if(ng_dB>NGmax+5){f=true;continue;}
+    const x=xp(fv),y=yp(ng_dB);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Noise gain with Cf: NG(f) = (1+j*f/fz_cf) / (1+j*f/fp_cf) where fp_cf ~ GBW level
+  // Simplified: NG_Cf(f) = sqrt(1+(f/fz_cf)^2) / sqrt(1+(f*2*π*Cf*Rf)^2) but Cf small...
+  // NG_Cf(f): zero at fz_cf = 1/(2π*Rf*Cf), pole at fp_cf ~ 1/(2π*(Rf||Rin)*Cf) but Rin→∞ so just same
+  // In practice NG_Cf gives controlled peak = sqrt(f_peak/fz_cf) ≈ sqrt(2)
+  ctx.strokeStyle=css('--accent3');ctx.lineWidth=2;
+  ctx.beginPath();f=true;
+  for(let i=0;i<=300;i++){
+    const fv=fMin*Math.pow(fMax/fMin,i/300);
+    const ng_no_cf=Math.sqrt(1+Math.pow(fv*2*Math.PI*Rf*Cin,2));
+    // With Cf adding feedback zero: modified NG
+    const ng_cf=Math.sqrt(1+Math.pow(fv*2*Math.PI*Rf*Cin,2)) / Math.sqrt(1+Math.pow(fv*2*Math.PI*Rf*Cf,2));
+    const ng_dB=20*Math.log10(ng_cf);
+    if(ng_dB<NGmin-10){f=true;continue;}
+    const x=xp(fv),y=yp(Math.min(ng_dB,NGmax));
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // f_peak marker
+  if(f_peak>=fMin&&f_peak<=fMax){
+    ctx.strokeStyle=css('--accent2');ctx.lineWidth=1;ctx.globalAlpha=0.5;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(xp(f_peak),pad.t);ctx.lineTo(xp(f_peak),pad.t+ph);ctx.stroke();
+    ctx.setLineDash([]);ctx.globalAlpha=1;
+    const fpStr=f_peak>=1e6?(f_peak/1e6).toFixed(1)+'M':f_peak>=1e3?(f_peak/1e3).toFixed(1)+'k':f_peak.toFixed(0);
+    ctx.fillStyle=css('--accent2');ctx.font='9px system-ui';ctx.textAlign='left';
+    ctx.fillText('f_peak='+fpStr,xp(f_peak)+3,pad.t+12);
+  }
+
+  // Cf annotation
+  const CfpF=(Cf*1e12).toFixed(1);
+  ctx.fillStyle=css('--accent3');ctx.font='bold 9px system-ui';ctx.textAlign='left';
+  ctx.fillText('Cf_opt = '+CfpF+' pF',pad.l+4,pad.t+14);
+}
+
+['s1a'].forEach(id=>document.getElementById(id).addEventListener('input',draw1));
+['s2a','s2b','s2c'].forEach(id=>document.getElementById(id).addEventListener('input',draw2));
+['s3a','s3b','s3c'].forEach(id=>document.getElementById(id).addEventListener('input',draw3));
+window.addEventListener('resize',()=>{draw1();draw2();draw3();});
+draw1();draw2();draw3();
+</script>
+</body>
+</html>

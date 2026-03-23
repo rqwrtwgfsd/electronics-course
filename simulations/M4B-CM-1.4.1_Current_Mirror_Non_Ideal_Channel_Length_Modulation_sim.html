@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CM-1.4.1 — Channel Length Modulation</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:11px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 14px;margin-top:5px;font-size:13px;}
+  .ro span{font-size:18px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}.ro.r span{color:#cc2200;}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:12px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CM-1.4.1</div>
+  <h1>Current Mirror Non-Ideal — Channel Length Modulation</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>CLM Parameters</h2>
+      <label>Reference Current I_ref (μA): <b id="ir_l">100</b> μA
+        <input type="range" id="iref" min="10" max="1000" value="100" step="10">
+      </label>
+      <label>λ at L_min (V⁻¹): <b id="lmin_l">0.25</b>
+        <input type="range" id="lmin" min="0.01" max="0.5" value="0.25" step="0.01">
+      </label>
+      <label>Channel Length L (normalized, 1=L_min): <b id="lnorm_l">1.0</b>×
+        <input type="range" id="lnorm" min="1" max="10" value="1" step="0.5">
+      </label>
+      <label>V_DS output range max (V): <b id="vmax_l">3.0</b> V
+        <input type="range" id="vmax" min="0.5" max="5" value="3.0" step="0.1">
+      </label>
+      <label>V_DS reference M1 (V): <b id="vds1_l">0.65</b> V
+        <input type="range" id="vds1" min="0.3" max="1.5" value="0.65" step="0.05">
+      </label>
+
+      <div class="ro">Effective λ: <span id="leff_d">--</span> V⁻¹</div>
+      <div class="ro" style="margin-top:5px">Output resistance r_o (kΩ): <span id="ro_d">--</span></div>
+      <div class="ro r" style="margin-top:5px">CLM Error at V_DS max: <span id="clm_d">--</span> %</div>
+      <div class="ro g" style="margin-top:5px">Cascode r_out (MΩ): <span id="rcas_d">--</span></div>
+      <div class="ro" style="margin-top:5px">Cascode CLM Error: <span id="cas_err">--</span> %</div>
+    </div>
+
+    <div class="card">
+      <h2>I_out vs V_DS: Simple vs Cascode</h2>
+      <canvas id="cv" height="280"></canvas>
+      <div class="insight">
+        Red: simple mirror (slopes upward with λ). Green: cascode mirror (nearly flat). Blue dashed: ideal. The cascode eliminates CLM by setting V_DS1 ≈ V_DS2. Output compliance boundary is shown on both curves.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const Iref=+document.getElementById('iref').value;
+    const lmin=+document.getElementById('lmin').value;
+    const lnorm=+document.getElementById('lnorm').value;
+    const vmax=+document.getElementById('vmax').value;
+    const vds1=+document.getElementById('vds1').value;
+
+    document.getElementById('ir_l').textContent=Iref;
+    document.getElementById('lmin_l').textContent=lmin.toFixed(2);
+    document.getElementById('lnorm_l').textContent=lnorm.toFixed(1);
+    document.getElementById('vmax_l').textContent=vmax.toFixed(1);
+    document.getElementById('vds1_l').textContent=vds1.toFixed(2);
+
+    const leff=lmin/lnorm;
+    document.getElementById('leff_d').textContent=leff.toFixed(4);
+
+    const ro=1/(leff*Iref*1e-6)/1e3;
+    document.getElementById('ro_d').textContent=ro.toFixed(0);
+
+    const clm_err=((1+leff*vmax)/(1+leff*vds1)-1)*100;
+    document.getElementById('clm_d').textContent=(clm_err>=0?'+':'')+clm_err.toFixed(2);
+
+    // Cascode: assume gm = 2*Iref/Vov, Vov = 0.2V
+    const vov=0.2;
+    const gm=2*Iref*1e-6/vov;
+    const ro_abs=ro*1e3;
+    const rcas=gm*ro_abs*ro_abs/1e6;
+    document.getElementById('rcas_d').textContent=rcas.toFixed(0);
+
+    const cas_err=(vmax-vds1)/(rcas*1e6*Iref*1e-6)*100;
+    document.getElementById('cas_err').textContent=cas_err.toFixed(6)+' (≈0)';
+
+    drawSweep(Iref,leff,vds1,vmax,gm,ro_abs,vov);
+  }
+
+  function drawSweep(Iref,leff,vds1_ref,vmax,gm,ro_abs,vov){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=280;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,280);
+    const pL=52,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=280-pT-pB;
+    const Imax=Iref*(1+leff*vmax)/(1+leff*vds1_ref)*1.1;
+
+    ctx.strokeStyle='#8888aa';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(pL,pT);ctx.lineTo(pL,pT+ph);ctx.lineTo(pL+pw,pT+ph);ctx.stroke();
+    ctx.fillStyle='#8888aa';ctx.font='11px system-ui';
+    ctx.fillText('I_out (μA)',2,pT+ph/2);
+    ctx.fillText('V_DS (V)',pL+pw/2-20,280-4);
+
+    for(let i=0;i<=4;i++){
+      const v=i/4*Imax;
+      const y=pT+ph-(i/4)*ph;
+      ctx.fillText(v.toFixed(0),2,y+4);
+      ctx.strokeStyle='#8888aa22';ctx.beginPath();ctx.moveTo(pL,y);ctx.lineTo(pL+pw,y);ctx.stroke();
+    }
+    const xticksV=[];for(let v=0;v<=vmax;v+=0.5)xticksV.push(v);
+    xticksV.forEach(v=>{
+      const x=pL+(v/vmax)*pw;
+      ctx.fillStyle='#8888aa';ctx.fillText(v.toFixed(1),x-8,pT+ph+16);
+    });
+
+    // Compliance boundary (V_DS,sat = Vov)
+    const xSat=pL+(vov/vmax)*pw;
+    ctx.strokeStyle='#cc550077';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(xSat,pT);ctx.lineTo(xSat,pT+ph);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#cc5500';ctx.font='10px system-ui';ctx.fillText('V_sat',xSat+2,pT+14);
+
+    function xp(v){return pL+(v/vmax)*pw;}
+    function yp(I){return pT+ph-(Math.min(I,Imax)/Imax)*ph;}
+
+    // Ideal
+    ctx.strokeStyle='#0066cc55';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+    const yIdeal=yp(Iref);
+    ctx.beginPath();ctx.moveTo(pL,yIdeal);ctx.lineTo(pL+pw,yIdeal);ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Simple mirror
+    ctx.strokeStyle='#cc2200';ctx.lineWidth=2.5;ctx.setLineDash([]);
+    ctx.beginPath();let first=true;
+    for(let px=0;px<=pw;px++){
+      const v=px/pw*vmax;
+      let I;
+      if(v<vov){I=Iref*Math.pow(v/vov,2);}
+      else{I=Iref*(1+leff*v)/(1+leff*vds1_ref);}
+      const y=yp(I);
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // Cascode mirror (almost flat above V_out,min = 2*Vov)
+    const vout_min=2*vov;
+    ctx.strokeStyle='#00994d';ctx.lineWidth=2.5;
+    ctx.beginPath();first=true;
+    for(let px=0;px<=pw;px++){
+      const v=px/pw*vmax;
+      let I;
+      if(v<vout_min){I=Iref*Math.pow(v/vout_min,2);}
+      else{
+        const deltaI=(v-vout_min)/(gm*ro_abs*ro_abs);
+        I=Iref+deltaI*1e6;
+      }
+      const y=yp(I);
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // Cascode compliance marker
+    const xCas=pL+(vout_min/vmax)*pw;
+    ctx.strokeStyle='#00994d55';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(xCas,pT);ctx.lineTo(xCas,pT+ph);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#00994d';ctx.font='10px system-ui';ctx.fillText('Cas V_min',xCas-4,pT+28);
+
+    // Legend
+    const items=[['#0066cc55','Ideal',[4,3]],['#cc2200','Simple',[]],['#00994d','Cascode',[]]];
+    items.forEach(([c,lbl,d],i)=>{
+      ctx.strokeStyle=c;ctx.lineWidth=1.8;ctx.setLineDash(d);
+      ctx.beginPath();ctx.moveTo(pL+pw-120,pT+14+14*i);ctx.lineTo(pL+pw-100,pT+14+14*i);ctx.stroke();
+      ctx.setLineDash([]);ctx.fillStyle='#8888aa';ctx.font='11px system-ui';ctx.fillText(lbl,pL+pw-96,pT+18+14*i);
+    });
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

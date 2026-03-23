@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-WI-5.1.1 Exponential Rise Pattern</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:12px;padding:12px}
+canvas{background:#0a0a1a;border:1px solid #333;display:block}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:220px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:10px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:13px;margin-top:4px}
+.method-btn{display:block;width:100%;margin-top:6px;padding:6px;background:#1a1a3a;border:1px solid #0066cc;color:#0066cc;cursor:pointer;font-family:inherit;font-size:11px;border-radius:3px;text-align:left}
+.method-btn.active{background:#0066cc;color:#fff}
+.info{font-size:11px;color:#888;margin-top:10px;line-height:1.5}
+.formula{color:#ffaa00;font-size:12px;margin-top:6px}
+</style>
+</head>
+<body>
+<h1>P2-WI-5.1.1 — Exponential Rise Pattern | RC Circuit Charge</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="680" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>Controls</h2>
+<label>Time Constant τ (ms)
+<input type="range" id="tau" min="0.2" max="5" step="0.1" value="1.5">
+<div class="readout" id="tau_v">τ = 1.5 ms</div>
+</label>
+<label>Supply Voltage V_in (V)
+<input type="range" id="vin" min="1" max="10" step="0.5" value="5">
+<div class="readout" id="vin_v">V_in = 5.0 V</div>
+</label>
+<h2 style="margin-top:14px">Measurement Method</h2>
+<button class="method-btn active" id="btn_632" onclick="setMethod('632')">63.2% Crossing Method</button>
+<button class="method-btn" id="btn_tan" onclick="setMethod('tan')">Tangent at t=0 Method</button>
+<button class="method-btn" id="btn_5tau" onclick="setMethod('5tau')">5τ Settling Rule</button>
+<h2 style="margin-top:14px">Live Readouts</h2>
+<div class="readout" id="v_tau">V at τ: —</div>
+<div class="readout" id="t_settle">5τ settle: —</div>
+<div class="readout" id="fc">f_c = —</div>
+<div class="readout" id="tr">t_rise = —</div>
+<div class="formula">V(t) = V_in(1 − e<sup>−t/τ</sup>)</div>
+<div class="info">R×C = τ<br>At τ: V = 63.2% of V_in<br>Settled at 5τ: 99.3%</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let tau=1.5,vin=5,method='632';
+const W=680,H=380,PAD={l:60,r:20,t:20,b:40};
+const CW=W-PAD.l-PAD.r, CH=H-PAD.t-PAD.b;
+
+function setMethod(m){
+  method=m;
+  ['632','tan','5tau'].forEach(x=>{
+    document.getElementById('btn_'+x).classList.toggle('active',x===m);
+  });
+  draw();
+}
+
+document.getElementById('tau').oninput=function(){
+  tau=parseFloat(this.value);
+  document.getElementById('tau_v').textContent='τ = '+tau.toFixed(1)+' ms';
+  updateReadouts();draw();
+};
+document.getElementById('vin').oninput=function(){
+  vin=parseFloat(this.value);
+  document.getElementById('vin_v').textContent='V_in = '+vin.toFixed(1)+' V';
+  updateReadouts();draw();
+};
+
+function updateReadouts(){
+  document.getElementById('v_tau').textContent='V at τ: '+(0.632*vin).toFixed(3)+' V';
+  document.getElementById('t_settle').textContent='5τ settle: '+(5*tau).toFixed(1)+' ms';
+  document.getElementById('fc').textContent='f_c = '+(1000/(2*Math.PI*tau)).toFixed(1)+' Hz';
+  document.getElementById('tr').textContent='t_rise(10-90%) = '+(2.2*tau).toFixed(2)+' ms';
+}
+
+function toPx(t,v){
+  const tmax=7*tau;
+  const x=PAD.l+CW*(t/tmax);
+  const y=PAD.t+CH*(1-v/(vin*1.15));
+  return[x,y];
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const tmax=7*tau;
+  // Grid
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=7;i++){
+    const x=PAD.l+CW*(i/7);
+    ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+CH);ctx.stroke();
+  }
+  for(let i=0;i<=5;i++){
+    const y=PAD.t+CH*(i/5);
+    ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+CW,y);ctx.stroke();
+  }
+  // Axes
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+CH);
+  ctx.moveTo(PAD.l,PAD.t+CH);ctx.lineTo(PAD.l+CW,PAD.t+CH);ctx.stroke();
+  // Axis labels
+  ctx.fillStyle='#888';ctx.font='11px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=7;i++){
+    const t=tmax*i/7;
+    const x=PAD.l+CW*(i/7);
+    ctx.fillText((t).toFixed(1)+'ms',x,PAD.t+CH+14);
+  }
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){
+    const v=vin*1.15*i/5;
+    const y=PAD.t+CH*(1-i/5);
+    ctx.fillText(v.toFixed(1)+'V',PAD.l-4,y+4);
+  }
+  ctx.save();ctx.translate(14,PAD.t+CH/2);ctx.rotate(-Math.PI/2);
+  ctx.textAlign='center';ctx.fillStyle='#888';ctx.fillText('Voltage (V)',0,0);ctx.restore();
+  ctx.textAlign='center';ctx.fillStyle='#888';ctx.fillText('Time',PAD.l+CW/2,H-4);
+
+  // Final value line
+  const [fx0,fy]=toPx(0,vin);const [fx1,_fy]=toPx(tmax,vin);
+  ctx.strokeStyle='#333';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(fx0,fy);ctx.lineTo(fx1,fy);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#555';ctx.font='10px Courier New';ctx.textAlign='left';
+  ctx.fillText('V_in = '+vin+'V',PAD.l+4,fy-4);
+
+  // Waveform
+  ctx.strokeStyle='#00ff88';ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=800;i++){
+    const t=tmax*i/800;
+    const v=vin*(1-Math.exp(-t/tau));
+    const[x,y]=toPx(t,v);
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Method overlays
+  if(method==='632'){
+    const v63=0.632*vin;
+    const[tx,ty]=toPx(tau,v63);
+    // horizontal dash from y-axis
+    ctx.strokeStyle='#ff6600';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+    ctx.beginPath();ctx.moveTo(PAD.l,ty);ctx.lineTo(tx,ty);ctx.stroke();
+    // vertical dash down
+    ctx.beginPath();ctx.moveTo(tx,ty);ctx.lineTo(tx,PAD.t+CH);ctx.stroke();
+    ctx.setLineDash([]);
+    // dot
+    ctx.fillStyle='#ff6600';ctx.beginPath();ctx.arc(tx,ty,5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#ff6600';ctx.font='bold 11px Courier New';ctx.textAlign='left';
+    ctx.fillText('63.2% → τ = '+tau.toFixed(1)+'ms',tx+8,ty-6);
+    ctx.fillText(v63.toFixed(3)+'V',PAD.l-52,ty+4);
+  }
+  if(method==='tan'){
+    // tangent line at t=0: slope = vin/tau, passes through (0,0)
+    const slope=vin/tau; // V/ms
+    const t_end=tau*1.5;
+    const[x0,y0]=toPx(0,0);
+    const[xt,yt]=toPx(t_end,slope*t_end);
+    ctx.strokeStyle='#ffaa00';ctx.lineWidth=1.5;ctx.setLineDash([6,3]);
+    ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(xt,yt);ctx.stroke();
+    ctx.setLineDash([]);
+    // intersection with V_in line
+    const[ix,iy]=toPx(tau,vin);
+    ctx.fillStyle='#ffaa00';ctx.beginPath();ctx.arc(ix,iy,5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#ffaa00';ctx.font='bold 11px Courier New';ctx.textAlign='left';
+    ctx.fillText('Tangent intercepts V_in at τ='+tau.toFixed(1)+'ms',ix+8,iy+14);
+    ctx.fillText('slope = V_in/τ = '+slope.toFixed(0)+' V/s × 10³',PAD.l+4,PAD.t+20);
+  }
+  if(method==='5tau'){
+    const t5=5*tau,v5=vin*(1-Math.exp(-5));
+    const[x5,y5]=toPx(t5,v5);
+    ctx.strokeStyle='#aa44ff';ctx.lineWidth=1.5;ctx.setLineDash([4,2]);
+    ctx.beginPath();ctx.moveTo(x5,PAD.t);ctx.lineTo(x5,PAD.t+CH);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#aa44ff';ctx.beginPath();ctx.arc(x5,y5,5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#aa44ff';ctx.font='bold 11px Courier New';ctx.textAlign='left';
+    ctx.fillText('5τ = '+(t5).toFixed(1)+'ms | 99.3% settled',x5+6,PAD.t+16);
+    // shade after 5tau
+    ctx.fillStyle='rgba(100,50,200,0.1)';
+    ctx.fillRect(x5,PAD.t,PAD.l+CW-x5,CH);
+  }
+  updateReadouts();
+}
+updateReadouts();draw();
+</script>
+</body>
+</html>

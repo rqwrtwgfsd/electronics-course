@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.4.9 — Voltage Follower Configuration</title>
+<style>
+  :root{--bg:#f5f5f5;--card:#fff;--text:#1a1a1a;--subtext:#555;--accent:#0066cc;--accent2:#cc3300;--accent3:#007744;--accent4:#aa5500;--border:#ccc;--grid:#ddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--card:#242424;--text:#e8e8e8;--subtext:#aaa;--accent:#4da6ff;--accent2:#ff6644;--accent3:#44cc88;--accent4:#ffaa44;--border:#444;--grid:#333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;line-height:1.6;}
+  header{background:var(--card);border-bottom:2px solid var(--accent);padding:18px 28px;}
+  header h1{font-size:1.2rem;font-weight:700;color:var(--accent);}
+  header p{font-size:0.85rem;color:var(--subtext);margin-top:3px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:20px;padding:20px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px;}
+  .card h2{font-size:0.95rem;font-weight:600;margin-bottom:4px;}
+  .card p.desc{font-size:0.80rem;color:var(--subtext);margin-bottom:10px;line-height:1.4;}
+  canvas{display:block;width:100%;border-radius:4px;}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;}
+  .ctrl{display:flex;flex-direction:column;font-size:0.78rem;color:var(--subtext);min-width:140px;}
+  .ctrl label{margin-bottom:3px;}
+  input[type=range]{accent-color:var(--accent);width:100%;}
+  .readout{font-size:0.82rem;color:var(--accent);font-weight:600;margin-top:2px;}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:0.78rem;}
+  .leg{display:flex;align-items:center;gap:5px;}
+  .leg-dot{width:20px;height:3px;border-radius:2px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>M4A-AMP-1.4.9 — Voltage Follower Configuration</h1>
+  <p>Phase margin vs capacitive load, step response with slewing, and impedance transformation</p>
+</header>
+<div class="grid">
+
+  <!-- Plot 1: Phase margin vs CL (with and without Riso) -->
+  <div class="card">
+    <h2>Phase Margin vs Capacitive Load</h2>
+    <p class="desc">The load capacitor creates a pole that degrades phase margin. Unity-gain follower is most sensitive. Adding R_iso (series at output, outside feedback) moves the pole to higher frequency, restoring stability.</p>
+    <canvas id="c1" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>GBW (MHz): <span id="v1a" class="readout">10</span></label>
+        <input type="range" id="s1a" min="1" max="200" value="10" step="1">
+      </div>
+      <div class="ctrl">
+        <label>Zout_open (Ω): <span id="v1b" class="readout">100</span></label>
+        <input type="range" id="s1b" min="10" max="2000" value="100" step="10">
+      </div>
+      <div class="ctrl">
+        <label>R_iso (Ω): <span id="v1c" class="readout">0</span></label>
+        <input type="range" id="s1c" min="0" max="500" value="0" step="5">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> PM (no R_iso)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> PM (with R_iso)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3);opacity:0.5"></div> 45° margin limit</div>
+    </div>
+  </div>
+
+  <!-- Plot 2: Step response — slewing vs linear -->
+  <div class="card">
+    <h2>Voltage Follower Step Response</h2>
+    <p class="desc">For small steps (within linear range), settling is exponential. For large steps, slewing dominates first, then exponential settling follows. The total time = t_slew + t_settle. Drag step size to see the transition.</p>
+    <canvas id="c2" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>Step ΔV (V): <span id="v2a" class="readout">1.0</span></label>
+        <input type="range" id="s2a" min="0.01" max="10" value="1" step="0.01">
+      </div>
+      <div class="ctrl">
+        <label>SR (V/µs): <span id="v2b" class="readout">10</span></label>
+        <input type="range" id="s2b" min="0.5" max="500" value="10" step="0.5">
+      </div>
+      <div class="ctrl">
+        <label>GBW (MHz): <span id="v2c" class="readout">10</span></label>
+        <input type="range" id="s2c" min="1" max="200" value="10" step="1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Vout(t)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2);opacity:0.5"></div> Linear settling only</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3)"></div> Input step</div>
+    </div>
+  </div>
+
+  <!-- Plot 3: Impedance transformation — Zin and Zout vs Avol -->
+  <div class="card">
+    <h2>Impedance Transformation vs Loop Gain</h2>
+    <p class="desc">Zin,cl = Zcm × (1+Avol). Zout,cl = Zout_open / (1+Avol). Both transform by the same factor. A 10,000× increase in Avol gives 10,000× higher Zin and 10,000× lower Zout — simultaneously.</p>
+    <canvas id="c3" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>Zcm (GΩ): <span id="v3a" class="readout">1</span></label>
+        <input type="range" id="s3a" min="0.01" max="100" value="1" step="0.01">
+      </div>
+      <div class="ctrl">
+        <label>Zout_open (Ω): <span id="v3b" class="readout">100</span></label>
+        <input type="range" id="s3b" min="10" max="5000" value="100" step="10">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Zin,cl</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> Zout,cl</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3);opacity:0.5"></div> Zcm (reference)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent4);opacity:0.5"></div> Zout_open (reference)</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function sc(id){const c=document.getElementById(id);const dpr=window.devicePixelRatio||1;return{canvas:c,resize:()=>{const w=c.clientWidth,h=c.clientHeight;c.width=w*dpr;c.height=h*dpr;const ctx=c.getContext('2d');ctx.scale(dpr,dpr);return{ctx,w,h};}};}
+
+function axes(ctx,w,h,pad,xL,yL,xT,yT){
+  ctx.clearRect(0,0,w,h);ctx.fillStyle=css('--card');ctx.fillRect(0,0,w,h);
+  const pw=w-pad.l-pad.r,ph=h-pad.t-pad.b;
+  ctx.strokeStyle=css('--grid');ctx.lineWidth=0.7;
+  xT.forEach(t=>{const x=pad.l+t.px*pw;ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();});
+  yT.forEach(t=>{const y=pad.t+ph-t.py*ph;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();});
+  ctx.strokeStyle=css('--text');ctx.lineWidth=1.5;ctx.strokeRect(pad.l,pad.t,pw,ph);
+  ctx.fillStyle=css('--subtext');ctx.font='10px system-ui';
+  ctx.textAlign='center';xT.forEach(t=>ctx.fillText(t.label,pad.l+t.px*pw,pad.t+ph+13));
+  ctx.textAlign='right';yT.forEach(t=>ctx.fillText(t.label,pad.l-4,pad.t+ph-t.py*ph+3.5));
+  ctx.fillStyle=css('--text');ctx.font='11px system-ui';ctx.textAlign='center';
+  ctx.fillText(xL,pad.l+pw/2,h-2);
+  ctx.save();ctx.translate(11,pad.t+ph/2);ctx.rotate(-Math.PI/2);ctx.fillText(yL,0,0);ctx.restore();
+  return{pw,ph};
+}
+
+// ─── Plot 1: Phase margin vs CL ──────────────────────────────────────────────
+const p1=sc('c1');
+function draw1(){
+  const {ctx,w,h}=p1.resize();
+  const GBW=parseFloat(document.getElementById('s1a').value)*1e6;
+  const Zout=parseFloat(document.getElementById('s1b').value);
+  const Riso=parseFloat(document.getElementById('s1c').value);
+  document.getElementById('v1a').textContent=document.getElementById('s1a').value;
+  document.getElementById('v1b').textContent=Zout;
+  document.getElementById('v1c').textContent=Riso;
+
+  const pad={l:48,r:16,t:18,b:36};
+  const CMin=1e-12,CMax=100e-9;
+  const xTicks=[{v:1e-12,px:0,label:'1p'},{v:1e-11,px:1/5,label:'10p'},{v:1e-10,px:2/5,label:'100p'},{v:1e-9,px:3/5,label:'1n'},{v:1e-8,px:4/5,label:'10n'},{v:1e-7,px:5/5,label:'100n'}];
+  const yTicks=[{v:0,py:0,label:'0°'},{v:15,py:1/6,label:'15°'},{v:30,py:2/6,label:'30°'},{v:45,py:3/6,label:'45°'},{v:60,py:4/6,label:'60°'},{v:75,py:5/6,label:'75°'},{v:90,py:6/6,label:'90°'}];
+  const {pw,ph}=axes(ctx,w,h,pad,'C_load','Phase Margin',xTicks,yTicks);
+  const xp=C=>pad.l+Math.log10(C/CMin)/Math.log10(CMax/CMin)*pw;
+  const yp=pm=>pad.t+ph-(Math.max(0,Math.min(90,pm))/90)*ph;
+
+  // 45° line
+  ctx.strokeStyle=css('--accent3');ctx.lineWidth=1.2;ctx.globalAlpha=0.6;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,yp(45));ctx.lineTo(pad.l+pw,yp(45));ctx.stroke();
+  ctx.setLineDash([]);ctx.globalAlpha=1;
+  ctx.fillStyle=css('--accent3');ctx.font='9px system-ui';ctx.textAlign='left';
+  ctx.fillText('45°',pad.l+2,yp(45)-3);
+
+  // Unstable shading
+  ctx.fillStyle=css('--accent2');ctx.globalAlpha=0.07;
+  ctx.fillRect(pad.l,yp(45),pw,ph-(ph-yp(45)+pad.t));
+  ctx.globalAlpha=1;
+
+  // No Riso
+  ctx.strokeStyle=css('--accent');ctx.lineWidth=2.2;
+  ctx.beginPath();let f=true;
+  for(let i=0;i<=300;i++){
+    const C=CMin*Math.pow(CMax/CMin,i/300);
+    const fp=1/(2*Math.PI*Zout*C);
+    const theta=Math.atan(GBW/fp)*180/Math.PI;
+    const pm=90-theta;
+    const x=xp(C),y=yp(pm);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // With Riso
+  if(Riso>0){
+    ctx.strokeStyle=css('--accent2');ctx.lineWidth=2.2;
+    ctx.beginPath();f=true;
+    for(let i=0;i<=300;i++){
+      const C=CMin*Math.pow(CMax/CMin,i/300);
+      const fp=1/(2*Math.PI*(Zout+Riso)*C);
+      const fz=1/(2*Math.PI*Riso*C);
+      const theta=Math.atan(GBW/fp)*180/Math.PI;
+      const tz=Math.atan(GBW/fz)*180/Math.PI;
+      const pm=90-theta+tz;
+      const x=xp(C),y=yp(pm);
+      if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+
+  const Ccrit=1/(2*Math.PI*Zout*GBW);
+  if(Ccrit>=CMin&&Ccrit<=CMax){
+    const CStr=Ccrit<1e-9?(Ccrit*1e12).toFixed(1)+'pF':(Ccrit*1e9).toFixed(2)+'nF';
+    ctx.fillStyle=css('--accent');ctx.font='bold 9px system-ui';ctx.textAlign='left';
+    ctx.fillText('Critical CL≈'+CStr,pad.l+4,pad.t+14);
+  }
+}
+
+// ─── Plot 2: Step response ────────────────────────────────────────────────────
+const p2=sc('c2');
+function draw2(){
+  const {ctx,w,h}=p2.resize();
+  const dV=parseFloat(document.getElementById('s2a').value);
+  const SR=parseFloat(document.getElementById('s2b').value)*1e6;
+  const GBW=parseFloat(document.getElementById('s2c').value)*1e6;
+  document.getElementById('v2a').textContent=dV.toFixed(2);
+  document.getElementById('v2b').textContent=parseFloat(document.getElementById('s2b').value).toFixed(1);
+  document.getElementById('v2c').textContent=document.getElementById('s2c').value;
+
+  const tau=1/(2*Math.PI*GBW);
+  const t_slew=dV/SR;
+  const t_total=t_slew+tau*10; // show to 10 tau after slew end
+
+  const pad={l:52,r:16,t:18,b:36};
+  const tMax=t_total*1.2;
+  const numXT=5;
+  const xTicks=Array.from({length:numXT+1},(_,i)=>{
+    const t=i/numXT*tMax;
+    const ts=t>=1e-3?(t*1e6).toFixed(1)+'µs':(t*1e9).toFixed(0)+'ns';
+    return{px:i/numXT,label:ts};
+  });
+  const yTicks=[{py:0,label:'0'},{py:0.25,label:(dV*0.25).toFixed(2)+'V'},{py:0.5,label:(dV*0.5).toFixed(2)+'V'},{py:0.75,label:(dV*0.75).toFixed(2)+'V'},{py:1.0,label:dV.toFixed(2)+'V'}];
+  const {pw,ph}=axes(ctx,w,h,pad,'Time','Voltage',xTicks,yTicks);
+  const xp=t=>pad.l+(t/tMax)*pw;
+  const yp=v=>pad.t+ph-(Math.max(0,Math.min(dV,v))/dV)*ph;
+
+  // Input step
+  ctx.strokeStyle=css('--accent3');ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(xp(0),yp(0));ctx.lineTo(xp(0),yp(dV));ctx.lineTo(xp(tMax),yp(dV));ctx.stroke();
+
+  // Linear settling only (no slew)
+  ctx.strokeStyle=css('--accent2');ctx.lineWidth=1.8;ctx.globalAlpha=0.5;ctx.setLineDash([4,3]);
+  ctx.beginPath();let f=true;
+  for(let i=0;i<=300;i++){
+    const t=i/300*tMax;
+    const v=dV*(1-Math.exp(-t/tau));
+    const x=xp(t),y=yp(v);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
+
+  // Actual (with slew)
+  ctx.strokeStyle=css('--accent');ctx.lineWidth=2.5;
+  ctx.beginPath();f=true;
+  for(let i=0;i<=400;i++){
+    const t=i/400*tMax;
+    let v;
+    if(t<=t_slew){
+      v=SR*t; // slewing
+    } else {
+      const t2=t-t_slew;
+      const v0=Math.min(dV,SR*t_slew);
+      v=dV-(dV-v0)*Math.exp(-t2/tau);
+    }
+    const x=xp(t),y=yp(v);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Slew period marker
+  if(t_slew>0&&t_slew<tMax){
+    ctx.strokeStyle=css('--accent');ctx.lineWidth=1;ctx.globalAlpha=0.4;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(xp(t_slew),pad.t);ctx.lineTo(xp(t_slew),pad.t+ph);ctx.stroke();
+    ctx.setLineDash([]);ctx.globalAlpha=1;
+    const tsStr=t_slew>=1e-6?(t_slew*1e6).toFixed(2)+'µs':(t_slew*1e9).toFixed(0)+'ns';
+    ctx.fillStyle=css('--accent');ctx.font='9px system-ui';ctx.textAlign='left';
+    ctx.fillText('Slew ends: '+tsStr,xp(t_slew)+3,pad.t+12);
+  }
+
+  ctx.fillStyle=css('--accent');ctx.font='bold 9px system-ui';ctx.textAlign='left';
+  const slewStr=(t_slew*1e9).toFixed(0)+'ns';
+  ctx.fillText('t_slew='+slewStr+'  τ='+(tau*1e9).toFixed(0)+'ns',pad.l+4,pad.t+14);
+}
+
+// ─── Plot 3: Impedance transformation ────────────────────────────────────────
+const p3=sc('c3');
+function draw3(){
+  const {ctx,w,h}=p3.resize();
+  const Zcm=parseFloat(document.getElementById('s3a').value)*1e9;
+  const Zout_open=parseFloat(document.getElementById('s3b').value);
+  document.getElementById('v3a').textContent=parseFloat(document.getElementById('s3a').value).toFixed(2);
+  document.getElementById('v3b').textContent=Zout_open;
+
+  const pad={l:70,r:16,t:18,b:36};
+  const AvMin=1,AvMax=1e7;
+  // Zin ranges from Zcm to Zcm*1e7; Zout ranges from Zout_open to Zout_open/1e7
+  const ZMin_plot=Math.min(Zout_open/1e7,1e-3),ZMax_plot=Math.max(Zcm*1e7,1e15);
+
+  const xTicks=[{v:1,px:0,label:'1'},{v:10,px:1/7,label:'10'},{v:1e2,px:2/7,label:'100'},{v:1e3,px:3/7,label:'1k'},{v:1e4,px:4/7,label:'10k'},{v:1e5,px:5/7,label:'100k'},{v:1e6,px:6/7,label:'1M'},{v:1e7,px:7/7,label:'10M'}];
+  const yDec=[1e-6,1e-3,1,1e3,1e6,1e9,1e12,1e15,1e18].filter(v=>v>=ZMin_plot*0.1&&v<=ZMax_plot*10);
+  const yTicks=yDec.map(v=>{const e=Math.round(Math.log10(v));const l={'-6':'µΩ','-3':'mΩ','0':'1Ω','3':'kΩ','6':'MΩ','9':'GΩ','12':'TΩ','15':'PΩ','18':'EΩ'};return{py:Math.log10(v/ZMin_plot)/Math.log10(ZMax_plot/ZMin_plot),label:l[e]||v.toExponential(0)};});
+
+  const {pw,ph}=axes(ctx,w,h,pad,'Avol (loop gain)','Impedance',xTicks,yTicks);
+  const xp=av=>pad.l+Math.log10(av/AvMin)/Math.log10(AvMax/AvMin)*pw;
+  const yp=z=>pad.t+ph-Math.log10(Math.max(z,ZMin_plot)/ZMin_plot)/Math.log10(ZMax_plot/ZMin_plot)*ph;
+
+  // Reference lines (bare)
+  ctx.strokeStyle=css('--accent3');ctx.lineWidth=1;ctx.globalAlpha=0.4;ctx.setLineDash([5,4]);
+  ctx.beginPath();ctx.moveTo(pad.l,yp(Zcm));ctx.lineTo(pad.l+pw,yp(Zcm));ctx.stroke();
+  ctx.strokeStyle=css('--accent4');
+  ctx.beginPath();ctx.moveTo(pad.l,yp(Zout_open));ctx.lineTo(pad.l+pw,yp(Zout_open));ctx.stroke();
+  ctx.setLineDash([]);ctx.globalAlpha=1;
+
+  // Zout_cl
+  ctx.strokeStyle=css('--accent2');ctx.lineWidth=2.3;
+  ctx.beginPath();let f=true;
+  for(let i=0;i<=200;i++){
+    const av=AvMin*Math.pow(AvMax/AvMin,i/200);
+    const z=Zout_open/(1+av);
+    const x=xp(av),y=yp(z);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Zin_cl
+  ctx.strokeStyle=css('--accent');ctx.lineWidth=2.3;
+  ctx.beginPath();f=true;
+  for(let i=0;i<=200;i++){
+    const av=AvMin*Math.pow(AvMax/AvMin,i/200);
+    const z=Math.min(ZMax_plot,Zcm*(1+av));
+    const x=xp(av),y=yp(z);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Labels at Avol=1e6
+  const av_label=1e5;
+  ctx.fillStyle=css('--accent');ctx.font='bold 9px system-ui';ctx.textAlign='left';
+  ctx.fillText('Z_in,cl',xp(av_label)+2,yp(Zcm*(1+av_label))-4);
+  ctx.fillStyle=css('--accent2');
+  ctx.fillText('Z_out,cl',xp(av_label)+2,yp(Zout_open/(1+av_label))+12);
+
+  ctx.fillStyle=css('--accent');ctx.font='9px system-ui';ctx.textAlign='left';
+  ctx.fillText('↑ Zcm='+parseFloat(document.getElementById('s3a').value).toFixed(2)+'GΩ',pad.l+4,yp(Zcm)-3);
+  ctx.fillStyle=css('--accent4');
+  ctx.fillText('Zout_open='+Zout_open+'Ω',pad.l+4,yp(Zout_open)-3);
+}
+
+['s1a','s1b','s1c'].forEach(id=>document.getElementById(id).addEventListener('input',draw1));
+['s2a','s2b','s2c'].forEach(id=>document.getElementById(id).addEventListener('input',draw2));
+['s3a','s3b'].forEach(id=>document.getElementById(id).addEventListener('input',draw3));
+window.addEventListener('resize',()=>{draw1();draw2();draw3();});
+draw1();draw2();draw3();
+</script>
+</body>
+</html>

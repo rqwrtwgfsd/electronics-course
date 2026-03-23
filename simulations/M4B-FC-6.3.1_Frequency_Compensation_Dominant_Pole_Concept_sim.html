@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-FC-6.3.1 — Dominant Pole Concept</title>
+<style>
+  :root { --bg:#ffffff; --bg2:#f5f5f5; --text:#1a1a1a; --text2:#555; --border:#ddd; --accent:#0066cc; --green:#00994d; --canvas-bg:#fafafa; --warn:#cc4400; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1a1a1a; --bg2:#242424; --text:#e8e8e8; --text2:#aaa; --border:#444; --canvas-bg:#1f1f1f; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); font-size:14px; }
+  header { background:var(--bg2); border-bottom:2px solid var(--accent); padding:12px 20px; }
+  header .id { font-family:monospace; font-size:12px; color:var(--accent); font-weight:700; }
+  header h1 { font-size:16px; margin-top:2px; }
+  .container { display:flex; gap:16px; padding:16px; flex-wrap:wrap; }
+  .panel { background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:14px; }
+  .sim-panel { flex:1; min-width:380px; }
+  .ctrl-panel { width:260px; min-width:240px; }
+  canvas { background:var(--canvas-bg); border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .readouts { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+  .readout { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 10px; }
+  .readout label { font-size:11px; color:var(--text2); display:block; }
+  .readout .val { font-family:monospace; font-size:14px; font-weight:700; color:var(--accent); }
+  .ctrl { margin-bottom:12px; }
+  .ctrl label { display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px; }
+  .ctrl label span { font-family:monospace; color:var(--accent); font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .section-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text2); margin-bottom:8px; }
+  .insight { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 12px; margin-top:10px; font-size:12px; color:var(--text2); line-height:1.5; }
+  .formula-box { background:var(--bg); border-left:3px solid var(--accent); padding:8px 12px; margin-top:8px; font-family:monospace; font-size:12px; color:var(--text); line-height:1.8; }
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4B-FC-6.3.1</div>
+  <h1>Frequency Compensation — Dominant Pole Concept</h1>
+</header>
+<div class="container">
+  <div class="panel sim-panel">
+    <canvas id="cv" height="350"></canvas>
+    <div class="readouts">
+      <div class="readout"><label>Dominant fp1</label><span class="val" id="r-fp1">—</span></div>
+      <div class="readout"><label>Second fp2</label><span class="val" id="r-fp2">—</span></div>
+      <div class="readout"><label>GBW</label><span class="val" id="r-gbw">—</span></div>
+      <div class="readout"><label>Phase Margin</label><span class="val" id="r-pm">—</span></div>
+      <div class="readout"><label>fc crossover</label><span class="val" id="r-fc">—</span></div>
+      <div class="readout"><label>fp2/fc ratio</label><span class="val" id="r-ratio">—</span></div>
+    </div>
+    <div class="formula-box" id="formula">
+      PM rule: arctan(fc/fp2) = 180° − 90° − PM_target
+    </div>
+    <div class="insight" id="ins">—</div>
+  </div>
+  <div class="panel ctrl-panel">
+    <div class="section-title">Amplifier</div>
+    <div class="ctrl">
+      <label>DC Gain A₀ (dB) <span id="lbl-a0">80</span></label>
+      <input type="range" id="sl-a0" min="40" max="120" step="5" value="80" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>fp2 (MHz) <span id="lbl-fp2">50</span></label>
+      <input type="range" id="sl-fp2" min="1" max="500" step="1" value="50" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>gm1 (mA/V) <span id="lbl-gm1">1.0</span></label>
+      <input type="range" id="sl-gm1" min="0.1" max="5" step="0.1" value="1.0" oninput="update()">
+    </div>
+    <div class="section-title" style="margin-top:8px">Compensation Capacitor</div>
+    <div class="ctrl">
+      <label>Cc (pF) <span id="lbl-cc">5.0</span></label>
+      <input type="range" id="sl-cc" min="0.2" max="50" step="0.2" value="5.0" oninput="update()">
+    </div>
+    <div class="section-title" style="margin-top:8px">Target Phase Margin</div>
+    <div class="ctrl">
+      <label>PM target (°) <span id="lbl-tgt">60</span></label>
+      <input type="range" id="sl-tgt" min="30" max="85" value="60" oninput="update()">
+    </div>
+    <div style="margin-top:8px">
+      <button style="width:100%;padding:6px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700" onclick="autoCC()">Auto-size Cc for Target PM</button>
+    </div>
+    <div class="section-title" style="margin-top:12px">Display Options</div>
+    <div class="ctrl">
+      <label style="align-items:center">Show phase contributions
+        <input type="checkbox" id="chk-contrib" onchange="update()" checked style="width:auto;margin-left:8px">
+      </label>
+    </div>
+    <div class="ctrl">
+      <label style="align-items:center">Show 3-pole effect
+        <input type="checkbox" id="chk-fp3" onchange="update()" style="width:auto;margin-left:8px">
+      </label>
+    </div>
+    <div class="ctrl" id="fp3-ctrl" style="display:none">
+      <label>fp3 (×GBW) <span id="lbl-fp3">5</span></label>
+      <input type="range" id="sl-fp3" min="1" max="20" step="0.5" value="5" oninput="update()">
+    </div>
+  </div>
+</div>
+<script>
+function magAt(f,a0,fp1,fp2){return a0/Math.sqrt(1+(f/fp1)**2)/Math.sqrt(1+(f/fp2)**2);}
+function phaseAt2(f,fp1,fp2){return -(Math.atan(f/fp1)+Math.atan(f/fp2))*180/Math.PI;}
+function phaseAt3(f,fp1,fp2,fp3){return -(Math.atan(f/fp1)+Math.atan(f/fp2)+Math.atan(f/fp3))*180/Math.PI;}
+function findCross(a0,fp1,fp2){
+  let lo=1e1,hi=1e12;
+  for(let i=0;i<60;i++){const m=Math.sqrt(lo*hi);magAt(m,a0,fp1,fp2)>1?lo=m:hi=m;}
+  return Math.sqrt(lo*hi);
+}
+
+function autoCC(){
+  const fp2=parseFloat(document.getElementById('sl-fp2').value)*1e6;
+  const gm1=parseFloat(document.getElementById('sl-gm1').value)/1000;
+  const tgt=parseFloat(document.getElementById('sl-tgt').value);
+  const phi_needed=tgt; // arctan(fc/fp2)=180-90-tgt
+  const fc_max=fp2*Math.tan((90-phi_needed)*Math.PI/180);
+  const cc_opt=gm1/(2*Math.PI*fc_max)*1e12;
+  document.getElementById('sl-cc').value=Math.min(50,Math.max(0.2,cc_opt)).toFixed(1);
+  update();
+}
+
+document.getElementById('chk-fp3').addEventListener('change',function(){
+  document.getElementById('fp3-ctrl').style.display=this.checked?'block':'none';
+  update();
+});
+
+function update(){
+  const a0dB=parseFloat(document.getElementById('sl-a0').value);
+  const a0=Math.pow(10,a0dB/20);
+  const fp2=parseFloat(document.getElementById('sl-fp2').value)*1e6;
+  const gm1=parseFloat(document.getElementById('sl-gm1').value)/1000;
+  const cc=parseFloat(document.getElementById('sl-cc').value)*1e-12;
+  const tgt=parseFloat(document.getElementById('sl-tgt').value);
+  const showC=document.getElementById('chk-contrib').checked;
+  const show3=document.getElementById('chk-fp3').checked;
+  const fp3mult=parseFloat(document.getElementById('sl-fp3').value);
+
+  document.getElementById('lbl-a0').textContent=a0dB;
+  document.getElementById('lbl-fp2').textContent=(fp2/1e6).toFixed(0);
+  document.getElementById('lbl-gm1').textContent=(gm1*1000).toFixed(1);
+  document.getElementById('lbl-cc').textContent=(cc*1e12).toFixed(1);
+  document.getElementById('lbl-tgt').textContent=tgt;
+
+  const GBW=gm1/(2*Math.PI*cc);
+  const fp1=GBW/a0;
+  const fc=findCross(a0,fp1,fp2);
+  const fp3val=show3?GBW*fp3mult:Infinity;
+  document.getElementById('lbl-fp3').textContent=fp3mult.toFixed(1);
+
+  const pm_base=180+phaseAt2(fc,fp1,fp2);
+  const pm_full=show3?(180+phaseAt3(fc,fp1,fp2,fp3val)):pm_base;
+  const ratio=fp2/fc;
+
+  const fmt=f=>f>=1e9?(f/1e9).toFixed(2)+'GHz':f>=1e6?(f/1e6).toFixed(2)+'MHz':f>=1e3?(f/1e3).toFixed(1)+'kHz':f.toFixed(0)+'Hz';
+  document.getElementById('r-fp1').textContent=fmt(fp1);
+  document.getElementById('r-fp2').textContent=fmt(fp2);
+  document.getElementById('r-gbw').textContent=fmt(GBW);
+  const pmEl=document.getElementById('r-pm');
+  pmEl.textContent=pm_full.toFixed(1)+'°';
+  pmEl.style.color=pm_full>=tgt?'var(--green)':pm_full>=45?'#cc8800':'var(--warn)';
+  document.getElementById('r-fc').textContent=fmt(fc);
+  const ratEl=document.getElementById('r-ratio');
+  ratEl.textContent=ratio.toFixed(2)+'×';
+  ratEl.style.color=ratio>=1.73?'var(--green)':ratio>=1.0?'#cc8800':'var(--warn)';
+
+  document.getElementById('formula').textContent=
+    `Required: fp2 ≥ ${(1/Math.tan((90-tgt)*Math.PI/180)).toFixed(2)}×fc for PM≥${tgt}°\n` +
+    `Current: fp2/fc = ${ratio.toFixed(2)}× → PM from fp2 = ${(Math.atan(fc/fp2)*180/Math.PI).toFixed(1)}°\n` +
+    `Optimal Cc = gm1/(2π×${fmt(fp2/1/Math.tan((90-tgt)*Math.PI/180)).split('Hz')[0]}) = ${(gm1/(2*Math.PI*fp2*Math.tan((90-tgt)*Math.PI/180))*1e12).toFixed(2)}pF`;
+
+  document.getElementById('ins').textContent=
+    `Dominant fp1=${fmt(fp1)} (GBW/A₀). GBW=${fmt(GBW)}. fc=${fmt(fc)}. ` +
+    `fp2/fc=${ratio.toFixed(2)} — need ≥1.73 for PM≥60°. ` +
+    (pm_full>=tgt?`Meets target: PM=${pm_full.toFixed(1)}° ≥ ${tgt}°.`:`Below target: PM=${pm_full.toFixed(1)}° < ${tgt}°. Increase Cc.`)+
+    (show3?` fp3 at ${fmt(fp3val)} costs ${(Math.atan(fc/fp3val)*180/Math.PI).toFixed(1)}° additional phase.`:'');
+
+  draw(a0,fp1,fp2,fp3val,show3,fc,pm_full,GBW,tgt,showC,cc);
+}
+
+function draw(a0,fp1,fp2,fp3,show3,fc,pm,GBW,tgt,showC,cc){
+  const canvas=document.getElementById('cv');
+  const W=canvas.offsetWidth||520; canvas.width=W; canvas.height=350;
+  const ctx=canvas.getContext('2d');
+  const pad={l:52,r:15,t:20,b:35};
+  const pw=W-pad.l-pad.r, ph=350-pad.t-pad.b;
+  ctx.fillStyle='var(--canvas-bg)'; ctx.fillRect(0,0,W,350);
+
+  const magH=ph*0.48, phH=ph*0.48;
+  const magTop=pad.t, phTop=pad.t+magH+6;
+  const fMin=1,fMax=1e11;
+  const lMin=Math.log10(fMin),lMax=Math.log10(fMax);
+  const fToX=f=>pad.l+(Math.log10(Math.max(f,fMin))-lMin)/(lMax-lMin)*pw;
+  const mToY=(m,top,h)=>top+h-((m+20)/140)*h;
+  const pToY=(p,top,h)=>top+h-((p+270)/270)*h;
+
+  // Grids
+  ctx.strokeStyle='var(--border)'; ctx.lineWidth=0.7;
+  [-20,0,20,40,60,80,100,120].forEach(m=>{const y=mToY(m,magTop,magH);if(y<magTop-2||y>magTop+magH+2)return;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='right';ctx.fillText(m+'dB',pad.l-3,y+3);});
+  [-270,-180,-90,0].forEach(p=>{const y=pToY(p,phTop,phH);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='right';ctx.fillText(p+'°',pad.l-3,y+3);});
+
+  const y0=mToY(0,magTop,magH);
+  ctx.strokeStyle='rgba(0,0,0,0.15)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,y0);ctx.lineTo(pad.l+pw,y0);ctx.stroke();
+  const y180=pToY(-180,phTop,phH);
+  ctx.strokeStyle='rgba(204,68,0,0.3)';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(pad.l,y180);ctx.lineTo(pad.l+pw,y180);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Phase contributions (dashed individual poles)
+  if(showC){
+    const drawContrib=(fpole,col)=>{
+      ctx.strokeStyle=col;ctx.lineWidth=1;ctx.setLineDash([2,3]);ctx.beginPath();let first=true;
+      for(let i=0;i<=300;i++){const f=Math.pow(10,lMin+i/300*(lMax-lMin));const p=-Math.atan(f/fpole)*180/Math.PI;const x=fToX(f);const y=pToY(Math.max(-270,p-90),phTop,phH);first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;}
+      ctx.stroke();ctx.setLineDash([]);
+    };
+    drawContrib(fp1,'rgba(0,102,204,0.4)');
+    drawContrib(fp2,'rgba(0,68,170,0.4)');
+    if(show3&&fp3<1e12) drawContrib(fp3,'rgba(180,0,200,0.4)');
+  }
+
+  // Magnitude
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2;ctx.beginPath();let first=true;
+  for(let i=0;i<=400;i++){const f=Math.pow(10,lMin+i/400*(lMax-lMin));const m=20*Math.log10(Math.max(magAt(f,a0,fp1,fp2),1e-9));const x=fToX(f);const y=mToY(m,magTop,magH);if(y<magTop-10||y>magTop+magH+10){first=true;continue;}first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;}
+  ctx.stroke();
+
+  // Phase
+  ctx.strokeStyle='#00994d';ctx.lineWidth=2;ctx.beginPath();first=true;
+  for(let i=0;i<=400;i++){const f=Math.pow(10,lMin+i/400*(lMax-lMin));const p=show3?phaseAt3(f,fp1,fp2,fp3):phaseAt2(f,fp1,fp2);const x=fToX(f);const y=pToY(Math.max(-270,p),phTop,phH);first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;}
+  ctx.stroke();
+
+  // Target PM line
+  const tgtPhase=-(180-tgt);
+  const yTgt=pToY(tgtPhase,phTop,phH);
+  ctx.strokeStyle='#cc8800';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(pad.l,yTgt);ctx.lineTo(pad.l+pw,yTgt);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#cc8800';ctx.font='9px monospace';ctx.textAlign='left';ctx.fillText('Target PM='+tgt+'°',pad.l+2,yTgt-3);
+
+  // Pole markers
+  [fp1,fp2].concat(show3&&fp3<1e12?[fp3]:[]).forEach((f,i)=>{
+    if(f<fMin||f>fMax)return;
+    const x=fToX(f);const col=['#0066cc','#0044aa','#aa00cc'][i];const lbl=['fp1','fp2','fp3'][i];
+    ctx.strokeStyle=col+'88';ctx.lineWidth=1;ctx.setLineDash([2,2]);
+    ctx.beginPath();ctx.moveTo(x,magTop);ctx.lineTo(x,magTop+magH);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=col;ctx.font='8px monospace';ctx.textAlign='center';ctx.fillText(lbl,x,magTop+10+i*9);
+  });
+
+  // fc marker
+  if(fc>=fMin&&fc<=fMax){
+    const xcf=fToX(fc);
+    const phAtFc=show3?phaseAt3(fc,fp1,fp2,fp3):phaseAt2(fc,fp1,fp2);
+    ctx.strokeStyle='#cc4400';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(xcf,magTop);ctx.lineTo(xcf,phTop+phH);ctx.stroke();ctx.setLineDash([]);
+    const ycf=pToY(phAtFc,phTop,phH);
+    ctx.fillStyle=pm>=(tgt)?'#00994d':'#cc4400';
+    ctx.beginPath();ctx.arc(xcf,ycf,4,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='var(--text)';ctx.font='bold 9px monospace';ctx.textAlign='left';
+    ctx.fillText('PM='+pm.toFixed(0)+'°',xcf+5,ycf-3);
+  }
+
+  ctx.fillStyle='#0066cc';ctx.font='bold 9px sans-serif';ctx.textAlign='left';ctx.fillText('|T|',pad.l+3,magTop+11);
+  ctx.fillStyle='#00994d';ctx.fillText('∠T',pad.l+3,phTop+11);
+  if(showC){ctx.fillStyle='rgba(0,68,170,0.6)';ctx.fillText('pole contributions (dashed)',pad.l+20,phTop+11);}
+  ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='center';
+  ['1','10','100','1k','10k','100k','1M','10M','100M','1G','10G'].forEach((l,i)=>ctx.fillText(l,fToX(Math.pow(10,i)),phTop+phH+14));
+}
+update();
+</script>
+</body>
+</html>

@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CM-1.7.2 — Observe Current Stability</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  .tabs{display:flex;gap:8px;margin-bottom:12px;}
+  .tab{padding:5px 12px;border-radius:6px;border:1px solid var(--border);cursor:pointer;font-size:12px;background:var(--bg2);}
+  .tab.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CM-1.7.2</div>
+  <h1>Current Mirror — Simulation: Observe Current Stability</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Mirror Parameters</h2>
+      <label>I_ref (μA): <b id="iref_l">100</b> μA <input type="range" id="iref" min="10" max="1000" value="100" step="5"></label>
+      <label>λ (V⁻¹): <b id="lam_l">0.08</b> <input type="range" id="lam" min="0.01" max="0.5" value="0.08" step="0.01"></label>
+      <label>V_ov (mV): <b id="vov_l">200</b> mV <input type="range" id="vov" min="50" max="500" value="200" step="10"></label>
+      <label>TC_I (ppm/°C): <b id="tc_l">200</b> <input type="range" id="tc" min="-3000" max="3300" value="200" step="50"></label>
+      <label>Boost gain A: <b id="ga_l">1</b> <input type="range" id="ga" min="1" max="200" value="1" step="1"></label>
+
+      <div class="ro">r_out (GΩ): <span id="rout_d">--</span></div>
+      <div class="ro" style="margin-top:4px">Supply sensitivity (nA/V): <span id="ss_d">--</span></div>
+      <div class="ro g" style="margin-top:4px">ΔI over supply range (nA): <span id="di_vdd">--</span></div>
+      <div class="ro" style="margin-top:4px">ΔI over temp range (μA): <span id="di_t">--</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Stability Sweep</h2>
+      <div class="tabs">
+        <div class="tab active" id="tab0" onclick="setTab(0)">Supply</div>
+        <div class="tab" id="tab1" onclick="setTab(1)">Temperature</div>
+        <div class="tab" id="tab2" onclick="setTab(2)">Z_out(f)</div>
+      </div>
+      <canvas id="cv" height="260"></canvas>
+      <div class="insight" id="ins_txt">
+        Supply sweep: I_out vs V_DD from 0.6V to 3.3V. Slope = 1/r_out. Flat line = high supply rejection. Gain boost multiplies r_out and flattens the curve.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  let currentTab=0;
+  function setTab(t){
+    currentTab=t;
+    [0,1,2].forEach(i=>{
+      document.getElementById('tab'+i).classList.toggle('active',i===t);
+    });
+    compute();
+  }
+
+  const insTexts=[
+    'Supply sweep: I_out vs V_DD from 0.6V to 3.3V. Slope = 1/r_out. Flat line = high supply rejection. Gain boost multiplies r_out and flattens the curve.',
+    'Temperature sweep: I_out vs T from −40°C to 125°C. TC>0 means PTAT behaviour. TC=0 is ideal temperature-independent current.',
+    'Output impedance Z_out vs frequency. At high frequency the output capacitor (1 pF assumed) shunts r_out. Gain-boosted mirrors may show a peak if the boost amplifier pole is near the corner frequency.'
+  ];
+
+  function compute(){
+    const Iref=+document.getElementById('iref').value*1e-6;
+    const lam=+document.getElementById('lam').value;
+    const vov=+document.getElementById('vov').value/1000;
+    const tc=+document.getElementById('tc').value*1e-6; // per °C fractional
+    const ga=+document.getElementById('ga').value;
+
+    document.getElementById('iref_l').textContent=(Iref*1e6).toFixed(0);
+    document.getElementById('lam_l').textContent=lam.toFixed(2);
+    document.getElementById('vov_l').textContent=(vov*1000).toFixed(0);
+    document.getElementById('tc_l').textContent=(tc*1e6).toFixed(0);
+    document.getElementById('ga_l').textContent=ga;
+
+    const ro=1/(lam*Iref);
+    const gm=2*Iref/vov;
+    const rcas=ga*gm*ro*ro;
+    const rout=ga>1?rcas:(ga===1&&vov<0.2?gm*ro*ro:ro);
+    // simplified: if ga=1 use ro (simple), else ga*gm*ro^2
+    const rout2=ga===1?ro:ga*gm*ro*ro;
+
+    const ss=1/rout2; // A/V
+    const di_vdd=ss*(3.3-0.6)*1e9; // nA over full range
+    const di_t=(tc*Iref)*(125-(-40))*1e6; // μA
+
+    document.getElementById('rout_d').textContent=(rout2/1e9).toFixed(2);
+    document.getElementById('ss_d').textContent=(ss*1e9).toFixed(3);
+    document.getElementById('di_vdd').textContent=di_vdd.toFixed(1);
+    document.getElementById('di_t').textContent=di_t.toFixed(2);
+
+    document.getElementById('ins_txt').textContent=insTexts[currentTab];
+    drawPlot(Iref,lam,vov,tc,ga,rout2);
+  }
+
+  function drawPlot(Iref,lam,vov,tc,ga,rout){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=260;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,260);
+    const pL=60,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=260-pT-pB;
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+
+    if(currentTab===0){
+      // Supply sweep
+      ctx.fillStyle='#8888aa'; ctx.font='10px system-ui';
+      ctx.fillText('I_out (μA)', 2, pT+ph/2);
+      ctx.fillText('V_DD (V)', pL+pw/2-18, 260-4);
+
+      const VDDmin=0.6, VDDmax=3.3;
+      const Imin=Iref*(1+1/rout*(VDDmin-1.8))*1e6;
+      const Imax_val=Iref*(1+1/rout*(VDDmax-1.8))*1e6;
+      const Iscale_min=Math.min(Imin,Imax_val)*0.98;
+      const Iscale_max=Math.max(Imin,Imax_val)*1.02;
+
+      for(let i=0;i<=4;i++){
+        const v=Iscale_min+(i/4)*(Iscale_max-Iscale_min);
+        const y=pT+ph-(i/4)*ph;
+        ctx.fillStyle='#8888aa'; ctx.fillText(v.toFixed(2), 2, y+4);
+        ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+      }
+      [0.6,1.2,1.8,2.4,3.0].forEach(v=>{
+        const x=pL+((v-VDDmin)/(VDDmax-VDDmin))*pw;
+        ctx.fillStyle='#8888aa'; ctx.fillText(v.toFixed(1), x-8, pT+ph+14);
+      });
+
+      ctx.strokeStyle='#0066cc'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+      ctx.beginPath(); let first=true;
+      for(let px=0;px<=pw;px++){
+        const vdd=VDDmin+(px/pw)*(VDDmax-VDDmin);
+        const I=(Iref+1/rout*(vdd-1.8))*1e6;
+        const y=pT+ph-((I-Iscale_min)/(Iscale_max-Iscale_min))*ph;
+        if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+      }
+      ctx.stroke();
+
+    } else if(currentTab===1){
+      // Temperature sweep
+      const Tmin=-40, Tmax=125;
+      ctx.fillStyle='#8888aa'; ctx.font='10px system-ui';
+      ctx.fillText('I_out (μA)', 2, pT+ph/2);
+      ctx.fillText('Temp (°C)', pL+pw/2-18, 260-4);
+
+      const ItMin=Iref*(1+tc*(Tmin-27))*1e6;
+      const ItMax=Iref*(1+tc*(Tmax-27))*1e6;
+      const Iscale_min=Math.min(ItMin,ItMax)*0.98;
+      const Iscale_max=Math.max(ItMin,ItMax)*1.02;
+
+      for(let i=0;i<=4;i++){
+        const v=Iscale_min+(i/4)*(Iscale_max-Iscale_min);
+        const y=pT+ph-(i/4)*ph;
+        ctx.fillStyle='#8888aa'; ctx.fillText(v.toFixed(2), 2, y+4);
+      }
+      [-40,0,27,85,125].forEach(t=>{
+        const x=pL+((t-Tmin)/(Tmax-Tmin))*pw;
+        ctx.fillStyle='#8888aa'; ctx.fillText(t, x-8, pT+ph+14);
+      });
+
+      ctx.strokeStyle='#ff8800'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+      ctx.beginPath(); let first=true;
+      for(let px=0;px<=pw;px++){
+        const T=Tmin+(px/pw)*(Tmax-Tmin);
+        const I=(Iref*(1+tc*(T-27)))*1e6;
+        const y=pT+ph-((I-Iscale_min)/(Iscale_max-Iscale_min))*ph;
+        if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+      }
+      ctx.stroke();
+      // 27°C marker
+      const x27=pL+((27-Tmin)/(Tmax-Tmin))*pw;
+      ctx.strokeStyle='#00994d88'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(x27,pT); ctx.lineTo(x27,pT+ph); ctx.stroke();
+      ctx.setLineDash([]);
+
+    } else {
+      // Z_out vs f
+      ctx.fillStyle='#8888aa'; ctx.font='10px system-ui';
+      ctx.fillText('|Z_out|(Ω)', 2, pT+ph/2);
+      ctx.fillText('Frequency (Hz)', pL+pw/2-24, 260-4);
+
+      const fmin=1, fmax=1e10;
+      const logFmin=Math.log10(fmin), logFmax=Math.log10(fmax);
+      const Cload=1e-12;
+      const logZmax=Math.log10(rout)+0.5;
+      const logZmin=Math.log10(1/(2*Math.PI*fmax*Cload))-0.5;
+
+      for(let e=Math.floor(logZmin);e<=Math.ceil(logZmax);e++){
+        const y=pT+ph-((e-logZmin)/(logZmax-logZmin))*ph;
+        if(y<pT||y>pT+ph) continue;
+        ctx.fillStyle='#8888aa'; ctx.fillText('1e'+e, 2, y+4);
+        ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+      }
+      [1,10,1e3,1e6,1e9].forEach(f=>{
+        const x=pL+((Math.log10(f)-logFmin)/(logFmax-logFmin))*pw;
+        ctx.fillStyle='#8888aa'; ctx.fillText(f>=1e9?'1G':f>=1e6?'1M':f>=1e3?'1k':f+'', x-8, pT+ph+14);
+      });
+
+      ctx.strokeStyle='#00994d'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+      ctx.beginPath(); let first=true;
+      for(let px=0;px<=pw;px++){
+        const f=Math.pow(10, logFmin+(px/pw)*(logFmax-logFmin));
+        const Zrc=rout/(Math.sqrt(1+(2*Math.PI*f*Cload*rout)**2));
+        const logZ=Math.log10(Math.max(Zrc,1));
+        const y=pT+ph-((logZ-logZmin)/(logZmax-logZmin))*ph;
+        if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+      }
+      ctx.stroke();
+
+      // Corner frequency
+      const fc=1/(2*Math.PI*Cload*rout);
+      if(fc>=fmin && fc<=fmax){
+        const xf=pL+((Math.log10(fc)-logFmin)/(logFmax-logFmin))*pw;
+        ctx.strokeStyle='#cc220088'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+        ctx.beginPath(); ctx.moveTo(xf,pT); ctx.lineTo(xf,pT+ph); ctx.stroke();
+        ctx.setLineDash([]); ctx.fillStyle='#cc2200'; ctx.font='9px system-ui';
+        const fcStr=fc>=1e6?'f_c='+(fc/1e6).toFixed(1)+'MHz':fc>=1e3?'f_c='+(fc/1e3).toFixed(0)+'kHz':'f_c='+fc.toFixed(0)+'Hz';
+        ctx.fillText(fcStr, xf+3, pT+12);
+      }
+    }
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

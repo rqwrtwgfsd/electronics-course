@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-OTA-7.1.1 — OTA Introduction</title>
+<style>
+  :root { --bg:#ffffff; --bg2:#f5f5f5; --text:#1a1a1a; --text2:#555; --border:#ddd; --accent:#0066cc; --green:#00994d; --canvas-bg:#fafafa; --warn:#cc4400; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1a1a1a; --bg2:#242424; --text:#e8e8e8; --text2:#aaa; --border:#444; --canvas-bg:#1f1f1f; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); font-size:14px; }
+  header { background:var(--bg2); border-bottom:2px solid var(--accent); padding:12px 20px; }
+  header .id { font-family:monospace; font-size:12px; color:var(--accent); font-weight:700; }
+  header h1 { font-size:16px; margin-top:2px; }
+  .tabs { display:flex; border-bottom:1px solid var(--border); background:var(--bg2); padding:0 16px; }
+  .tab { padding:8px 16px; cursor:pointer; font-size:13px; border-bottom:3px solid transparent; color:var(--text2); }
+  .tab.active { border-bottom-color:var(--accent); color:var(--accent); font-weight:700; }
+  .tab-content { display:none; }
+  .tab-content.active { display:flex; gap:16px; padding:16px; flex-wrap:wrap; }
+  .panel { background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:14px; }
+  .sim-panel { flex:1; min-width:380px; }
+  .ctrl-panel { width:260px; min-width:240px; }
+  canvas { background:var(--canvas-bg); border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .readouts { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+  .readout { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 10px; }
+  .readout label { font-size:11px; color:var(--text2); display:block; }
+  .readout .val { font-family:monospace; font-size:14px; font-weight:700; color:var(--accent); }
+  .ctrl { margin-bottom:12px; }
+  .ctrl label { display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px; }
+  .ctrl label span { font-family:monospace; color:var(--accent); font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .section-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text2); margin-bottom:8px; }
+  .insight { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 12px; margin-top:10px; font-size:12px; color:var(--text2); line-height:1.5; }
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4B-OTA-7.1.1</div>
+  <h1>OTA Introduction — What Is an OTA and Why Use One?</h1>
+</header>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">OTA Operating Point</div>
+  <div class="tab" onclick="showTab(1)">OTA Frequency Response</div>
+</div>
+
+<!-- TAB 0 -->
+<div class="tab-content active" id="tab0">
+  <div class="panel sim-panel">
+    <canvas id="cv0" height="320"></canvas>
+    <div class="readouts">
+      <div class="readout"><label>gm (mA/V)</label><span class="val" id="r0-gm">—</span></div>
+      <div class="readout"><label>Rout (kΩ)</label><span class="val" id="r0-ro">—</span></div>
+      <div class="readout"><label>DC Gain (dB)</label><span class="val" id="r0-av">—</span></div>
+      <div class="readout"><label>Iout at Vid=10mV</label><span class="val" id="r0-iout">—</span></div>
+      <div class="readout"><label>GBW (MHz)</label><span class="val" id="r0-gbw">—</span></div>
+      <div class="readout"><label>Slew Rate</label><span class="val" id="r0-sr">—</span></div>
+    </div>
+    <div class="insight" id="ins0">—</div>
+  </div>
+  <div class="panel ctrl-panel">
+    <div class="section-title">OTA Bias</div>
+    <div class="ctrl">
+      <label>ID (µA) <span id="lbl0-id">100</span></label>
+      <input type="range" id="sl0-id" min="10" max="500" step="10" value="100" oninput="update0()">
+    </div>
+    <div class="ctrl">
+      <label>Vov (mV) <span id="lbl0-vov">200</span></label>
+      <input type="range" id="sl0-vov" min="50" max="400" step="10" value="200" oninput="update0()">
+    </div>
+    <div class="ctrl">
+      <label>λ (V⁻¹) <span id="lbl0-lam">0.05</span></label>
+      <input type="range" id="sl0-lam" min="0.01" max="0.3" step="0.01" value="0.05" oninput="update0()">
+    </div>
+    <div class="section-title" style="margin-top:8px">Load</div>
+    <div class="ctrl">
+      <label>CL (pF) <span id="lbl0-cl">2</span></label>
+      <input type="range" id="sl0-cl" min="0.1" max="20" step="0.1" value="2" oninput="update0()">
+    </div>
+    <div class="section-title" style="margin-top:8px">Process</div>
+    <div class="ctrl">
+      <label>
+        <select id="sel0-proc" onchange="update0()" style="width:100%;padding:4px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px">
+          <option value="180">TSMC 180nm (λ=0.08)</option>
+          <option value="65">TSMC 65nm (λ=0.15)</option>
+          <option value="28">TSMC 28nm (λ=0.25)</option>
+          <option value="custom">Custom λ</option>
+        </select>
+      </label>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1 -->
+<div class="tab-content" id="tab1">
+  <div class="panel sim-panel">
+    <canvas id="cv1" height="320"></canvas>
+    <div class="readouts">
+      <div class="readout"><label>fp1 (dominant)</label><span class="val" id="r1-fp1">—</span></div>
+      <div class="readout"><label>GBW</label><span class="val" id="r1-gbw">—</span></div>
+      <div class="readout"><label>CL bandwidth</label><span class="val" id="r1-bw">—</span></div>
+      <div class="readout"><label>DC Gain</label><span class="val" id="r1-av">—</span></div>
+    </div>
+    <div class="insight" id="ins1">—</div>
+  </div>
+  <div class="panel ctrl-panel">
+    <div class="section-title">OTA Parameters</div>
+    <div class="ctrl">
+      <label>gm (mA/V) <span id="lbl1-gm">1.0</span></label>
+      <input type="range" id="sl1-gm" min="0.1" max="5" step="0.1" value="1.0" oninput="update1()">
+    </div>
+    <div class="ctrl">
+      <label>Rout (kΩ) <span id="lbl1-ro">50</span></label>
+      <input type="range" id="sl1-ro" min="5" max="1000" step="5" value="50" oninput="update1()">
+    </div>
+    <div class="ctrl">
+      <label>CL (pF) <span id="lbl1-cl">2</span></label>
+      <input type="range" id="sl1-cl" min="0.1" max="50" step="0.1" value="2" oninput="update1()">
+    </div>
+    <div class="section-title" style="margin-top:8px">Topology Preset</div>
+    <div class="ctrl">
+      <label>
+        <select id="sel1-topo" onchange="applyTopo()" style="width:100%;padding:4px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px">
+          <option value="5t">5T OTA: gm=1mA, Rout=22kΩ</option>
+          <option value="tel">Telescopic: gm=1mA, Rout=1MΩ</option>
+          <option value="fold">Folded cascode: gm=1mA, Rout=500kΩ</option>
+          <option value="2s">Two-stage: gm=1mA, Rout=50kΩ (after MC)</option>
+        </select>
+      </label>
+    </div>
+  </div>
+</div>
+
+<script>
+function showTab(n){
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.tab-content').forEach((t,i)=>t.classList.toggle('active',i===n));
+  if(n===0)update0();else update1();
+}
+
+function fmt(f){return f>=1e9?(f/1e9).toFixed(2)+'GHz':f>=1e6?(f/1e6).toFixed(2)+'MHz':f>=1e3?(f/1e3).toFixed(1)+'kHz':f.toFixed(1)+'Hz';}
+function fmtI(i){return i>=1e-3?(i*1000).toFixed(2)+'mA':(i*1e6).toFixed(1)+'µA';}
+
+function update0(){
+  const proc=document.getElementById('sel0-proc').value;
+  let id=parseFloat(document.getElementById('sl0-id').value)*1e-6;
+  let vov=parseFloat(document.getElementById('sl0-vov').value)*1e-3;
+  let lam=parseFloat(document.getElementById('sl0-lam').value);
+  const cl=parseFloat(document.getElementById('sl0-cl').value)*1e-12;
+
+  if(proc!=='custom'){
+    const lams={'180':0.08,'65':0.15,'28':0.25};
+    lam=lams[proc];
+    document.getElementById('sl0-lam').value=lam;
+  }
+
+  document.getElementById('lbl0-id').textContent=(id*1e6).toFixed(0);
+  document.getElementById('lbl0-vov').textContent=(vov*1000).toFixed(0);
+  document.getElementById('lbl0-lam').textContent=lam.toFixed(2);
+  document.getElementById('lbl0-cl').textContent=(cl*1e12).toFixed(1);
+
+  const gm=2*id/vov;
+  const ro=1/(lam*id); // output resistance each branch
+  const rout=ro/2; // parallel of PMOS and NMOS
+  const av=gm*rout;
+  const gbw=gm/(2*Math.PI*cl);
+  const sr=id/cl; // slew rate = tail current / CL
+
+  document.getElementById('r0-gm').textContent=(gm*1000).toFixed(2);
+  document.getElementById('r0-ro').textContent=(rout/1e3).toFixed(1);
+  const avEl=document.getElementById('r0-av');avEl.textContent=(20*Math.log10(av)).toFixed(1)+'dB ('+av.toFixed(0)+'×)';avEl.style.color=av>=1000?'var(--green)':av>=100?'#cc8800':'var(--warn)';
+  document.getElementById('r0-iout').textContent=fmtI(gm*0.01);
+  document.getElementById('r0-gbw').textContent=fmt(gbw);
+  document.getElementById('r0-sr').textContent=(sr/1e6).toFixed(0)+'V/µs';
+
+  document.getElementById('ins0').textContent=
+    `gm=2ID/Vov=${(gm*1000).toFixed(2)}mA/V. ro=1/(λ·ID)=${(ro/1e3).toFixed(0)}kΩ per device. Rout=${(rout/1e3).toFixed(0)}kΩ. ` +
+    `Av=gm·Rout=${av.toFixed(0)} (${(20*Math.log10(av)).toFixed(0)}dB). GBW=${fmt(gbw)}. SR=${(sr/1e6).toFixed(0)}V/µs. ` +
+    (av>=4096?'Sufficient for 12-bit precision.':`Only ${(Math.log2(av)).toFixed(1)}-bit precision — need cascode or second stage.`);
+
+  drawOP(gm,rout,av,gbw,sr,id,vov,cl);
+}
+
+function drawOP(gm,rout,av,gbw,sr,id,vov,cl){
+  const canvas=document.getElementById('cv0');
+  const W=canvas.offsetWidth||500;canvas.width=W;canvas.height=320;
+  const ctx=canvas.getContext('2d');
+  const pad={l:50,r:20,t:30,b:40};
+  const pw=W-pad.l-pad.r,ph=320-pad.t-pad.b;
+  ctx.fillStyle='var(--canvas-bg)';ctx.fillRect(0,0,W,320);
+
+  // Bar chart: gm, 1/Rout, GBW relative
+  const cats=['gm(mA/V)','Rout(kΩ)','Av(dB)','GBW(MHz)','SR(V/µs)'];
+  const vals=[gm*1000, rout/1e3, 20*Math.log10(av), gbw/1e6, sr/1e6];
+  const maxV=[5, 200, 100, 500, 100];
+  const cols=['#0066cc','#00994d','#cc8800','#6600cc','#cc4400'];
+
+  const barW=(pw-20)/(cats.length*2);
+  ctx.fillStyle='var(--text2)';ctx.font='11px sans-serif';ctx.textAlign='center';ctx.fillText('OTA Specifications',pad.l+pw/2,pad.t-5);
+
+  cats.forEach((label,i)=>{
+    const x=pad.l+10+i*(barW*2+8);
+    const frac=Math.min(1,vals[i]/maxV[i]);
+    const barH=frac*ph;
+    ctx.fillStyle=cols[i];ctx.fillRect(x,pad.t+ph-barH,barW,barH);
+    ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='center';
+    ctx.fillText(vals[i].toFixed(vals[i]>=100?0:1),x+barW/2,pad.t+ph-barH-3);
+    ctx.fillText(label,x+barW/2,pad.t+ph+12);
+    ctx.fillStyle='var(--text2)';ctx.font='7px sans-serif';ctx.fillText('max='+maxV[i],x+barW/2,pad.t+ph+22);
+  });
+
+  // Target line at 60%
+  ctx.strokeStyle='rgba(204,68,0,0.4)';ctx.lineWidth=1;ctx.setLineDash([3,2]);
+  const y60=pad.t+ph*0.4;ctx.beginPath();ctx.moveTo(pad.l,y60);ctx.lineTo(pad.l+pw,y60);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='var(--warn)';ctx.font='8px sans-serif';ctx.textAlign='right';ctx.fillText('60% of max',pad.l+pw-2,y60-3);
+}
+
+function applyTopo(){
+  const topo=document.getElementById('sel1-topo').value;
+  const presets={
+    '5t':[1.0,22],'tel':[1.0,1000],'fold':[1.0,500],'2s':[1.0,50]
+  };
+  const [gm,ro]=presets[topo];
+  document.getElementById('sl1-gm').value=gm;
+  document.getElementById('sl1-ro').value=ro;
+  update1();
+}
+
+function update1(){
+  const gm=parseFloat(document.getElementById('sl1-gm').value)/1000;
+  const ro=parseFloat(document.getElementById('sl1-ro').value)*1e3;
+  const cl=parseFloat(document.getElementById('sl1-cl').value)*1e-12;
+
+  document.getElementById('lbl1-gm').textContent=(gm*1000).toFixed(1);
+  document.getElementById('lbl1-ro').textContent=(ro/1e3).toFixed(0);
+  document.getElementById('lbl1-cl').textContent=(cl*1e12).toFixed(1);
+
+  const av=gm*ro;
+  const fp1=1/(2*Math.PI*ro*cl);
+  const gbw=gm/(2*Math.PI*cl);
+  const bw_cl=gbw; // unity gain
+
+  document.getElementById('r1-fp1').textContent=fmt(fp1);
+  document.getElementById('r1-gbw').textContent=fmt(gbw);
+  document.getElementById('r1-bw').textContent=fmt(bw_cl)+' (unity-gain)';
+  const avEl2=document.getElementById('r1-av');avEl2.textContent=(20*Math.log10(av)).toFixed(1)+'dB';avEl2.style.color=av>=1000?'var(--green)':av>=100?'#cc8800':'var(--warn)';
+
+  document.getElementById('ins1').textContent=
+    `Single-pole model: fp1=1/(2π·Rout·CL)=${fmt(fp1)}, GBW=gm/(2π·CL)=${fmt(gbw)}. ` +
+    `DC gain=${av.toFixed(0)} (${(20*Math.log10(av)).toFixed(0)}dB). ` +
+    `Unity-gain closed-loop BW≈GBW=${fmt(gbw)}. ` +
+    `Note: real OTA has non-dominant poles at output node from device parasitics.`;
+
+  drawBode(gm,ro,cl,av,fp1,gbw);
+}
+
+function drawBode(gm,ro,cl,av,fp1,gbw){
+  const canvas=document.getElementById('cv1');
+  const W=canvas.offsetWidth||500;canvas.width=W;canvas.height=320;
+  const ctx=canvas.getContext('2d');
+  const pad={l:52,r:15,t:20,b:35};
+  const pw=W-pad.l-pad.r,ph=320-pad.t-pad.b;
+  ctx.fillStyle='var(--canvas-bg)';ctx.fillRect(0,0,W,320);
+
+  const magH=ph*0.47,phH=ph*0.47;
+  const magTop=pad.t,phTop=pad.t+magH+5;
+  const fMin=1,fMax=Math.max(1e11,gbw*100);
+  const lMin=Math.log10(fMin),lMax=Math.log10(fMax);
+  const fToX=f=>pad.l+(Math.log10(Math.max(f,fMin))-lMin)/(lMax-lMin)*pw;
+  const avdB=20*Math.log10(av);
+  const mToY=(m,top,h)=>top+h-((m+10)/(avdB+20))*h;
+  const pToY=(p,top,h)=>top+h-((p+180)/180)*h;
+
+  ctx.strokeStyle='var(--border)';ctx.lineWidth=0.7;
+  [0,20,40,60,80,100].filter(m=>m<=avdB+10).forEach(m=>{const y=mToY(m,magTop,magH);if(y<magTop-2||y>magTop+magH+2)return;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='right';ctx.fillText(m+'dB',pad.l-3,y+3);});
+  [-180,-90,0].forEach(p=>{const y=pToY(p,phTop,phH);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='right';ctx.fillText(p+'°',pad.l-3,y+3);});
+
+  const y0=mToY(0,magTop,magH);
+  ctx.strokeStyle='rgba(0,0,0,0.15)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,y0);ctx.lineTo(pad.l+pw,y0);ctx.stroke();ctx.setLineDash([]);
+
+  // Magnitude: av / sqrt(1+(f/fp1)²)
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2;ctx.beginPath();let first=true;
+  for(let i=0;i<=300;i++){
+    const f=Math.pow(10,lMin+i/300*(lMax-lMin));
+    const m=20*Math.log10(av/Math.sqrt(1+(f/fp1)**2));
+    const x=fToX(f);const y=mToY(m,magTop,magH);
+    if(y<magTop-10||y>magTop+magH+10){first=true;continue;}
+    first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;
+  }ctx.stroke();
+
+  // Phase
+  ctx.strokeStyle='#00994d';ctx.lineWidth=2;ctx.beginPath();first=true;
+  for(let i=0;i<=300;i++){
+    const f=Math.pow(10,lMin+i/300*(lMax-lMin));
+    const p=-Math.atan(f/fp1)*180/Math.PI;
+    const x=fToX(f);const y=pToY(p,phTop,phH);
+    first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;
+  }ctx.stroke();
+
+  // fp1 and GBW markers
+  if(fp1>=fMin&&fp1<=fMax){
+    const x=fToX(fp1);ctx.strokeStyle='#0066cc55';ctx.lineWidth=1;ctx.setLineDash([2,2]);
+    ctx.beginPath();ctx.moveTo(x,magTop);ctx.lineTo(x,magTop+magH);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#0066cc';ctx.font='8px monospace';ctx.textAlign='center';ctx.fillText('fp1',x,magTop+8);
+  }
+  if(gbw>=fMin&&gbw<=fMax){
+    const x=fToX(gbw);ctx.strokeStyle='#cc440088';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(x,magTop);ctx.lineTo(x,magTop+magH);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#cc4400';ctx.font='8px monospace';ctx.textAlign='center';ctx.fillText('GBW',x,magTop+18);
+  }
+
+  ctx.fillStyle='#0066cc';ctx.font='9px sans-serif';ctx.textAlign='left';ctx.fillText('|T(jω)| (OTA open loop)',pad.l+3,magTop+8);
+  ctx.fillStyle='#00994d';ctx.fillText('∠T(jω)',pad.l+3,phTop+8);
+  ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='center';
+  const ticks=[];let ftick=1;while(ftick<=fMax){ticks.push(ftick);ftick*=10;}
+  ticks.forEach(f=>{if(f>=fMin&&f<=fMax){const x=fToX(f);ctx.fillText(f>=1e9?'1G':f>=1e6?(f/1e6).toFixed(0)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f.toFixed(0),x,phTop+phH+14);}});
+}
+update0();
+</script>
+</body>
+</html>

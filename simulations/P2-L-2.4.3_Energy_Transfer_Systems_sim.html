@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-L-2.4.3 — Energy Transfer Systems</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+h1 { color: #0066cc; font-size: 1.3em; margin-bottom: 4px; }
+.subtitle { color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }
+.layout { display: flex; gap: 20px; flex-wrap: wrap; }
+.panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+.controls { width: 280px; flex-shrink: 0; }
+.viz { flex: 1; min-width: 360px; }
+label { display: block; color: #8b949e; font-size: 0.8em; margin-bottom: 4px; margin-top: 12px; }
+input[type=range] { width: 100%; accent-color: #0066cc; }
+.val { color: #0066cc; font-weight: bold; }
+canvas { background: #0d1117; border-radius: 6px; display: block; }
+.readouts { margin-top: 14px; }
+.readout-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #21262d; font-size: 0.82em; }
+.readout-label { color: #8b949e; }
+.readout-val { color: #39d353; font-weight: bold; font-family: monospace; }
+.eq { background: #21262d; border-left: 3px solid #0066cc; padding: 10px 12px; border-radius: 4px; margin-top: 14px; font-family: monospace; font-size: 0.82em; color: #a5d6ff; }
+@media (prefers-color-scheme: light) {
+  body { background: #f6f8fa; color: #24292f; }
+  .panel { background: #fff; border-color: #d0d7de; }
+  canvas { background: #f6f8fa; }
+  .eq { background: #eef2ff; }
+}
+</style>
+</head>
+<body>
+<h1>P2-L-2.4.3 — Energy Transfer Systems</h1>
+<div class="subtitle">E = ½LI²_peak per cycle · P_avg = E × f_sw · flyback energy balance · frequency vs inductance trade-off</div>
+<div class="layout">
+  <div class="panel controls">
+    <label>Inductance L (µH): <span class="val" id="lLbl">100 µH</span></label>
+    <input type="range" id="lSlider" min="1" max="1000" value="100" step="1">
+    <label>Peak Current I_peak (A): <span class="val" id="iLbl">2.0 A</span></label>
+    <input type="range" id="iSlider" min="1" max="200" value="20" step="1">
+    <label>Switching Frequency f_sw (kHz): <span class="val" id="fLbl">100 kHz</span></label>
+    <input type="range" id="fSlider" min="10" max="2000" value="100" step="10">
+    <label>Duty Cycle D (%): <span class="val" id="dLbl">50%</span></label>
+    <input type="range" id="dSlider" min="10" max="90" value="50" step="5">
+    <div class="readouts">
+      <div class="readout-row"><span class="readout-label">Energy per cycle E</span><span class="readout-val" id="epercycle">—</span></div>
+      <div class="readout-row"><span class="readout-label">Average Power P_avg</span><span class="readout-val" id="pavg">—</span></div>
+      <div class="readout-row"><span class="readout-label">Period T</span><span class="readout-val" id="period">—</span></div>
+      <div class="readout-row"><span class="readout-label">t_on</span><span class="readout-val" id="ton">—</span></div>
+      <div class="readout-row"><span class="readout-label">V_required (V_in×D=V_L×t_on/L)</span><span class="readout-val" id="vreq">—</span></div>
+      <div class="readout-row"><span class="readout-label">ΔI ripple</span><span class="readout-val" id="dIrip">—</span></div>
+    </div>
+    <div class="eq">E = ½ × L × I²_peak<br>P_avg = E × f_sw<br>V_L = L × ΔI / t_on<br>Same P: double f → half L</div>
+  </div>
+  <div class="panel viz">
+    <canvas id="cv" width="580" height="420"></canvas>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const W = 580, H = 420;
+
+function getP() {
+  const L = parseFloat(document.getElementById('lSlider').value) * 1e-6;
+  const Ipeak = parseFloat(document.getElementById('iSlider').value) / 10;
+  const f = parseFloat(document.getElementById('fSlider').value) * 1e3;
+  const D = parseFloat(document.getElementById('dSlider').value) / 100;
+  return { L, Ipeak, f, D };
+}
+
+function fmtE(e) {
+  if (e >= 1) return e.toFixed(3) + ' J';
+  if (e >= 1e-3) return (e * 1e3).toFixed(3) + ' mJ';
+  if (e >= 1e-6) return (e * 1e6).toFixed(2) + ' µJ';
+  return (e * 1e9).toFixed(1) + ' nJ';
+}
+function fmtP(p) {
+  if (p >= 1000) return (p / 1000).toFixed(2) + ' kW';
+  if (p >= 1) return p.toFixed(2) + ' W';
+  return (p * 1000).toFixed(1) + ' mW';
+}
+function fmtT(t) {
+  if (t >= 1e-3) return (t * 1000).toFixed(2) + ' ms';
+  if (t >= 1e-6) return (t * 1e6).toFixed(2) + ' µs';
+  return (t * 1e9).toFixed(1) + ' ns';
+}
+function fmtA(a) {
+  if (Math.abs(a) >= 1) return a.toFixed(3) + ' A';
+  return (a * 1000).toFixed(1) + ' mA';
+}
+
+function draw() {
+  const p = getP();
+  const T = 1 / p.f;
+  const ton = p.D * T;
+  const Epercy = 0.5 * p.L * p.Ipeak * p.Ipeak;
+  const Pavg = Epercy * p.f;
+  // Assume valley current = 0 (DCM-like, full energy transfer) for energy calc
+  const Imin_val = 0;
+  const dI = p.Ipeak - Imin_val;
+  const V_required = p.L * dI / ton;
+
+  document.getElementById('lLbl').textContent = (p.L * 1e6).toFixed(0) + ' µH';
+  document.getElementById('iLbl').textContent = p.Ipeak.toFixed(1) + ' A';
+  document.getElementById('fLbl').textContent = (p.f / 1e3).toFixed(0) + ' kHz';
+  document.getElementById('dLbl').textContent = (p.D * 100).toFixed(0) + '%';
+  document.getElementById('epercycle').textContent = fmtE(Epercy);
+  document.getElementById('pavg').textContent = fmtP(Pavg);
+  document.getElementById('period').textContent = fmtT(T);
+  document.getElementById('ton').textContent = fmtT(ton);
+  document.getElementById('vreq').textContent = V_required.toFixed(1) + ' V';
+  document.getElementById('dIrip').textContent = fmtA(dI);
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Layout: top half = current waveform, bottom half = energy bar + P vs f curve
+  const pad = { l: 70, r: 20, t: 35, b: 25 };
+  const pw = W - pad.l - pad.r;
+  const midY = H / 2 - 10;
+  const phTop = midY - pad.t - 10;
+  const phBot = H - midY - pad.b - 30;
+
+  // === TOP: Current waveform ===
+  const nCycles = 4;
+  const tMax = nCycles * T;
+  const Imax = p.Ipeak * 1.3;
+
+  function tx(t) { return pad.l + (t / tMax) * pw; }
+  function ty_top(i) { return pad.t + phTop - (i / Imax) * phTop; }
+
+  // Grid top
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let g = 0; g <= 4; g++) {
+    const Iv = Imax * g / 4;
+    const yi = ty_top(Iv);
+    ctx.beginPath(); ctx.moveTo(pad.l, yi); ctx.lineTo(pad.l + pw, yi); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(fmtA(Iv), pad.l - 4, yi + 4);
+  }
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t + phTop); ctx.lineTo(pad.l + pw, pad.t + phTop); ctx.stroke();
+
+  // Current waveform (triangular DCM-style)
+  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(pad.l, ty_top(0));
+  for (let c = 0; c < nCycles; c++) {
+    const t0 = c * T;
+    ctx.lineTo(tx(t0 + ton), ty_top(p.Ipeak));
+    ctx.lineTo(tx(t0 + T), ty_top(0));
+  }
+  ctx.stroke();
+
+  // Energy shading under each pulse
+  for (let c = 0; c < nCycles; c++) {
+    const t0 = c * T;
+    ctx.fillStyle = 'rgba(0,102,204,0.15)';
+    ctx.beginPath();
+    ctx.moveTo(tx(t0), ty_top(0));
+    ctx.lineTo(tx(t0 + ton), ty_top(p.Ipeak));
+    ctx.lineTo(tx(t0 + T), ty_top(0));
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // I_peak annotation
+  ctx.fillStyle = '#0066cc'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('I_peak = ' + fmtA(p.Ipeak), tx(ton * 0.5) + 4, ty_top(p.Ipeak) - 6);
+  ctx.fillStyle = '#a5d6ff'; ctx.font = '10px sans-serif';
+  ctx.fillText('E = ½LI² = ' + fmtE(Epercy) + ' (shaded area)', tx(T * 0.1), ty_top(p.Ipeak * 0.5));
+
+  ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Flyback Inductor Current — Energy Stored per Cycle', W / 2, 18);
+
+  // === BOTTOM: Power vs Frequency bar chart and trade-off ===
+  const botTop = midY + 20;
+  const botH = H - botTop - pad.b - 10;
+  const divX = pad.l + pw * 0.5;
+
+  // Left side: Energy visualization bar
+  const leftW = pw * 0.45;
+  ctx.fillStyle = '#8b949e'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Energy per Cycle', pad.l + leftW / 2, botTop + 14);
+
+  const maxBar = H * 0.8;
+  const barH = Math.min((Epercy / 1e-3) * botH * 0.6, botH * 0.85); // scale to 1 mJ
+  const barX = pad.l + leftW * 0.3;
+  const barW = leftW * 0.35;
+
+  ctx.fillStyle = '#21262d';
+  ctx.fillRect(barX, botTop + 20, barW, botH - 20);
+  const grad = ctx.createLinearGradient(barX, botTop + 20 + (botH - 20 - barH), barX, botTop + 20 + botH - 20);
+  grad.addColorStop(0, '#0066cc');
+  grad.addColorStop(1, '#003d7a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(barX, botTop + 20 + (botH - 20 - barH), barW, barH);
+  ctx.fillStyle = '#39d353'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
+  ctx.fillText(fmtE(Epercy), barX + barW / 2, botTop + 20 + (botH - 20 - barH) - 6);
+
+  // Right side: P_avg vs f sweep
+  const rightX = divX + 10;
+  const rightW = pad.l + pw - rightX - 10;
+  ctx.fillStyle = '#8b949e'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('P_avg vs Frequency', rightX + rightW / 2, botTop + 14);
+
+  const fMin = 1e3, fMax = 2e6;
+  const PmaxPlot = Epercy * fMax * 1.1;
+
+  function bx(f) { return rightX + ((f - fMin) / (fMax - fMin)) * rightW; }
+  function by(pwr) { return botTop + 20 + botH - 20 - (pwr / PmaxPlot) * (botH - 20); }
+
+  // Grid lines
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let g = 0; g <= 4; g++) {
+    const Pv = PmaxPlot * g / 4;
+    const yi2 = by(Pv);
+    ctx.beginPath(); ctx.moveTo(rightX, yi2); ctx.lineTo(rightX + rightW, yi2); ctx.stroke();
+  }
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(rightX, botTop + 20); ctx.lineTo(rightX, botTop + 20 + botH - 20); ctx.lineTo(rightX + rightW, botTop + 20 + botH - 20); ctx.stroke();
+
+  // P vs f line (linear: P = E * f)
+  ctx.strokeStyle = '#39d353'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let px2 = 0; px2 <= rightW; px2++) {
+    const f2 = fMin + (px2 / rightW) * (fMax - fMin);
+    const P2 = Epercy * f2;
+    const xi = rightX + px2;
+    const yi2 = by(P2);
+    if (px2 === 0) ctx.moveTo(xi, yi2); else ctx.lineTo(xi, yi2);
+  }
+  ctx.stroke();
+
+  // Current operating point
+  const xOp = bx(p.f);
+  const yOp = by(Pavg);
+  ctx.fillStyle = '#ff7b72';
+  ctx.beginPath(); ctx.arc(xOp, yOp, 6, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ff7b72'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(fmtP(Pavg) + ' @ ' + (p.f / 1e3).toFixed(0) + ' kHz', xOp + 8, yOp - 4);
+
+  ctx.fillStyle = '#8b949e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Frequency', rightX + rightW / 2, botTop + 20 + botH);
+}
+
+['lSlider', 'iSlider', 'fSlider', 'dSlider'].forEach(id =>
+  document.getElementById(id).addEventListener('input', draw));
+draw();
+</script>
+</body>
+</html>

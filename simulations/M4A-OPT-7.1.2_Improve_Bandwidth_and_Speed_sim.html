@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-OPT-7.1.2 — Improve Bandwidth and Speed</title>
+<style>
+:root{--bg:#f5f5f5;--surface:#fff;--border:#d0d0d0;--text:#1a1a1a;--text2:#555;--accent:#1a6bbf;--pass:#2a7a2a;--warn:#b87000;--fail:#b82020;--pass-bg:#e8f5e8;--warn-bg:#fff8e0;--fail-bg:#fde8e8;--plot-bg:#fdfdfd;}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#252525;--border:#404040;--text:#e8e8e8;--text2:#aaa;--accent:#4a9eff;--pass:#4aaa4a;--warn:#ddaa30;--fail:#ff5555;--pass-bg:#1a2e1a;--warn-bg:#2e2200;--fail-bg:#2e1010;--plot-bg:#1e1e1e;}}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);font-size:14px;}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 20px;}
+header h1{font-size:17px;font-weight:700;color:var(--accent);}
+header p{font-size:12px;color:var(--text2);margin-top:2px;}
+.tab-bar{display:flex;background:var(--surface);border-bottom:1px solid var(--border);padding:0 16px;}
+.tab{padding:10px 18px;cursor:pointer;border-bottom:3px solid transparent;color:var(--text2);font-size:13px;font-weight:600;transition:color .2s,border-color .2s;}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tab:hover:not(.active){color:var(--text);}
+.panel{display:none;padding:16px;}
+.panel.active{display:block;}
+.layout{display:flex;gap:14px;flex-wrap:wrap;}
+.sidebar{flex:0 0 220px;display:flex;flex-direction:column;gap:10px;}
+.main-area{flex:1 1 400px;display:flex;flex-direction:column;gap:10px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;}
+.card h3{font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;}
+label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--text2);}
+label span{display:flex;justify-content:space-between;}
+input[type=range]{width:100%;accent-color:var(--accent);}
+canvas{width:100%;display:block;border:1px solid var(--border);border-radius:4px;background:var(--plot-bg);}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.metric{background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:8px 10px;}
+.metric .val{font-size:18px;font-weight:700;color:var(--accent);}
+.metric .lbl{font-size:11px;color:var(--text2);}
+.badge{display:inline-block;padding:2px 7px;border-radius:3px;font-size:11px;font-weight:700;}
+.badge.pass{background:var(--pass-bg);color:var(--pass);}
+.badge.warn{background:var(--warn-bg);color:var(--warn);}
+.badge.fail{background:var(--fail-bg);color:var(--fail);}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th{background:var(--bg);color:var(--text2);padding:5px 8px;text-align:left;border:1px solid var(--border);font-weight:600;font-size:11px;}
+td{padding:5px 8px;border:1px solid var(--border);}
+</style>
+</head>
+<body>
+<header>
+  <h1>M4A-OPT-7.1.2 — Improve Bandwidth and Speed</h1>
+  <p>Slew rate limiting, FPBW, TIA optimization, and bandwidth vs GBW mapping</p>
+</header>
+<div class="tab-bar">
+  <div class="tab active" onclick="showTab(0)">Slew Rate & FPBW</div>
+  <div class="tab" onclick="showTab(1)">TIA Bandwidth Optimization</div>
+  <div class="tab" onclick="showTab(2)">BW vs GBW Landscape</div>
+</div>
+
+<!-- TAB 0: Slew Rate -->
+<div class="panel active" id="tab0">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="card">
+        <h3>Op-Amp</h3>
+        <label><span>GBW (MHz) <b id="v_gbw0">100</b></span>
+          <input type="range" id="sl_gbw0" min="1" max="1000" step="1" value="100" oninput="upd0()"></label>
+        <label><span>Slew rate (V/µs) <b id="v_sr">10</b></span>
+          <input type="range" id="sl_sr" min="0.5" max="10000" step="0.5" value="10" oninput="upd0()"></label>
+        <label><span>Closed-loop gain <b id="v_g0">10</b></span>
+          <input type="range" id="sl_g0" min="1" max="100" step="1" value="10" oninput="upd0()"></label>
+      </div>
+      <div class="card">
+        <h3>Signal</h3>
+        <label><span>Output amplitude (V pk) <b id="v_vp">2</b></span>
+          <input type="range" id="sl_vp" min="0.1" max="15" step="0.1" value="2" oninput="upd0()"></label>
+        <label><span>Frequency (kHz) <b id="v_freq0">100</b></span>
+          <input type="range" id="sl_freq0" min="1" max="10000" step="1" value="100" oninput="upd0()"></label>
+      </div>
+      <div class="card metrics">
+        <div class="metric"><div class="val" id="m_bw0">--</div><div class="lbl">Small-signal BW</div></div>
+        <div class="metric"><div class="val" id="m_fpbw">--</div><div class="lbl">FPBW</div></div>
+        <div class="metric"><div class="val" id="m_srreq">--</div><div class="lbl">SR required</div></div>
+        <div class="metric"><div class="val" id="m_stat0">--</div><div class="lbl">SR Status</div></div>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="card">
+        <h3>Output Waveform — Linear vs Slew-Rate Limited</h3>
+        <canvas id="c0" height="300"></canvas>
+      </div>
+      <div class="card">
+        <h3>FPBW Map (Amplitude vs Frequency)</h3>
+        <canvas id="c0b" height="200"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: TIA Optimization -->
+<div class="panel" id="tab1">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="card">
+        <h3>TIA Parameters</h3>
+        <label><span>GBW (MHz) <b id="v_gbw1">100</b></span>
+          <input type="range" id="sl_gbw1" min="1" max="1000" step="1" value="100" oninput="upd1()"></label>
+        <label><span>Rf (kΩ) <b id="v_rf1">10</b></span>
+          <input type="range" id="sl_rf1" min="0.1" max="1000" step="0.1" value="10" oninput="upd1()"></label>
+        <label><span>Input Cs (pF) <b id="v_cs1">5</b></span>
+          <input type="range" id="sl_cs1" min="0.1" max="50" step="0.1" value="5" oninput="upd1()"></label>
+      </div>
+      <div class="card">
+        <h3>User's Cf</h3>
+        <label><span>Cf (pF) <b id="v_cf1">0</b></span>
+          <input type="range" id="sl_cf1" min="0" max="10" step="0.1" value="0" oninput="upd1()"></label>
+      </div>
+      <div class="card">
+        <h3>Analysis</h3>
+        <table>
+          <tr><th>Condition</th><th>BW</th></tr>
+          <tr><td>Optimal Cf</td><td id="t_bw_opt">--</td></tr>
+          <tr><td>User's Cf</td><td id="t_bw_u">--</td></tr>
+          <tr><td>Optimal Cf value</td><td id="t_cf_opt">--</td></tr>
+          <tr><td>Stray pole f</td><td id="t_sp">--</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="card">
+        <h3>TIA Gain vs Frequency — Cf Optimization</h3>
+        <canvas id="c1" height="360"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: BW vs GBW Landscape -->
+<div class="panel" id="tab2">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="card">
+        <h3>Design Point</h3>
+        <label><span>Required gain <b id="v_g2">10</b></span>
+          <input type="range" id="sl_g2" min="1" max="1000" step="1" value="10" oninput="upd2()"></label>
+        <label><span>Required BW (MHz) <b id="v_bw2">1</b></span>
+          <input type="range" id="sl_bw2" min="0.01" max="100" step="0.01" value="1" oninput="upd2()"></label>
+        <label><span>Stray Cs (pF) <b id="v_cs2">2</b></span>
+          <input type="range" id="sl_cs2" min="0" max="20" step="0.5" value="2" oninput="upd2()"></label>
+        <label><span>R1 (kΩ) <b id="v_r12">1</b></span>
+          <input type="range" id="sl_r12" min="0.1" max="50" step="0.1" value="1" oninput="upd2()"></label>
+      </div>
+      <div class="card">
+        <h3>Requirement</h3>
+        <table>
+          <tr><th>Parameter</th><th>Value</th></tr>
+          <tr><td>GBW needed (VFA)</td><td id="t_gbwn">--</td></tr>
+          <tr><td>GBW for stray</td><td id="t_gbws">--</td></tr>
+          <tr><td>Binding constraint</td><td id="t_bind">--</td></tr>
+          <tr><td>Suggested Cf</td><td id="t_cfv">--</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="card">
+        <h3>BW vs GBW — Operating Region Map</h3>
+        <canvas id="c2" height="380"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const sl=id=>parseFloat($(id).value);
+function dpr(c){const r=window.devicePixelRatio||1;const rect=c.getBoundingClientRect();c.width=rect.width*r;c.height=rect.height*r;const ctx=c.getContext('2d');ctx.scale(r,r);return{ctx,w:rect.width,h:rect.height};}
+function tc(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+function showTab(n){document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));[upd0,upd1,upd2][n]();}
+
+/* ── TAB 0: Slew Rate ── */
+function upd0(){
+  const gbw=sl('sl_gbw0'),sr=sl('sl_sr'),G=sl('sl_g0'),vp=sl('sl_vp'),freq=sl('sl_freq0')*1e3;
+  $('v_gbw0').textContent=gbw;$('v_sr').textContent=sr;$('v_g0').textContent=G;
+  $('v_vp').textContent=vp;$('v_freq0').textContent=sl('sl_freq0');
+  const bw_kHz=gbw*1e6/G/1e3;
+  const fpbw=sr*1e6/(2*Math.PI*vp)/1e3;
+  const sr_req=2*Math.PI*freq*vp/1e6;
+  const slew_ok=sr>=sr_req;
+  const bw_ok=freq<=bw_kHz*1e3;
+  const status=slew_ok&&bw_ok?'LINEAR':!slew_ok?'SR LIMITED':'BW LIMITED';
+  const fmtF=v=>v>=1e3?(v/1e3).toFixed(1)+' MHz':v.toFixed(0)+' kHz';
+  $('m_bw0').textContent=fmtF(bw_kHz);$('m_fpbw').textContent=fmtF(fpbw);
+  $('m_srreq').textContent=sr_req.toFixed(2)+' V/µs';
+  $('m_stat0').innerHTML=`<span class="badge ${status==='LINEAR'?'pass':status==='SR LIMITED'?'fail':'warn'}">${status}</span>`;
+  drawWaveform(sr,vp,freq,bw_kHz*1e3);
+  drawFPBWMap(sr,gbw,G,vp,freq);
+}
+
+function drawWaveform(sr,vp,freq,bw){
+  const c=$('c0');const{ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=50,padR=20,padT=20,padB=35;
+  const pw=w-padL-padR,ph=h-padT-padB;
+  const text=tc('--text'),text2=tc('--text2'),border=tc('--border'),accent=tc('--accent');
+
+  const T=1/freq, tmax=3*T;
+  function tx(t){return padL+t/tmax*pw;}
+  function ty(v){return padT+(1-v/vp/1.2)*ph/2+ph/4;}
+
+  ctx.strokeStyle=border;ctx.lineWidth=.5;
+  for(let i=0;i<=4;i++){const x=padL+i*pw/4;ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();
+    ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText((i*tmax/4*1e6).toFixed(1)+'µs',x,padT+ph+16);}
+  for(let v=-vp*1.1;v<=vp*1.1;v+=vp/2){const y=ty(v);ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();
+    ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(v.toFixed(1)+'V',padL-4,y+4);}
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,ty(0));ctx.lineTo(padL+pw,ty(0));ctx.stroke();ctx.setLineDash([]);
+
+  const N=500;
+  // Input sine
+  ctx.beginPath();ctx.strokeStyle='#888';ctx.lineWidth=1;ctx.setLineDash([3,2]);
+  for(let i=0;i<=N;i++){const t=i*tmax/N;const v=vp*Math.sin(2*Math.PI*freq*t);
+    const x=tx(t),y=ty(v);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();ctx.setLineDash([]);
+
+  // Output — slew limited + BW limited
+  ctx.beginPath();ctx.strokeStyle=accent;ctx.lineWidth=2;
+  let v_out=0;
+  const dt=tmax/N;
+  for(let i=0;i<=N;i++){
+    const t=i*tmax/N;
+    const v_ideal=vp*Math.sin(2*Math.PI*freq*t);
+    const bw_rate=2*Math.PI*bw;
+    const v_target=v_ideal;
+    // Apply BW limitation: RC filter
+    v_out+=(v_target-v_out)*Math.min(1,bw_rate*dt);
+    // Apply slew rate
+    const max_dv=sr*1e6*dt;
+    if(i>0){const dv=v_out-v_out_prev;if(Math.abs(dv)>max_dv)v_out=v_out_prev+(dv>0?max_dv:-max_dv);}
+    var v_out_prev=v_out;
+    const x=tx(t),y=ty(v_out);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle=border;ctx.lineWidth=1;ctx.strokeRect(padL,padT,pw,ph);
+  ctx.fillStyle=text;ctx.font='bold 11px sans-serif';ctx.textAlign='left';ctx.fillText('Output Waveform',padL+4,padT+14);
+  const lx=padL+pw-200,ly=padT+10;
+  ctx.strokeStyle='#888';ctx.lineWidth=1;ctx.setLineDash([3,2]);ctx.beginPath();ctx.moveTo(lx,ly);ctx.lineTo(lx+16,ly);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=tc('--text2');ctx.font='11px sans-serif';ctx.textAlign='left';ctx.fillText('Input',lx+20,ly+4);
+  ctx.strokeStyle=accent;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(lx+70,ly);ctx.lineTo(lx+86,ly);ctx.stroke();
+  ctx.fillStyle=tc('--text');ctx.fillText('Output',lx+90,ly+4);
+}
+
+function drawFPBWMap(sr,gbw,G,vp,freq){
+  const c=$('c0b');const{ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=55,padR=20,padT=15,padB=35;
+  const pw=w-padL-padR,ph=h-padT-padB;
+  const text=tc('--text'),text2=tc('--text2'),border=tc('--border'),accent=tc('--accent');
+
+  const fMin=1e3,fMax=Math.max(freq*10,gbw*1e6/G*5);
+  const vpMin=0.1,vpMax=Math.max(vp*3,15);
+  const logFmin=Math.log10(fMin),logFmax=Math.log10(fMax);
+
+  function fx(f){return padL+(Math.log10(f)-logFmin)/(logFmax-logFmin)*pw;}
+  function vy(v){return padT+(1-(v-vpMin)/(vpMax-vpMin))*ph;}
+
+  ctx.strokeStyle=border;ctx.lineWidth=.5;
+  for(let e=3;e<=Math.ceil(logFmax);e++){for(let m=1;m<10;m++){const f=m*Math.pow(10,e);if(f<fMin||f>fMax)continue;
+    const x=fx(f);ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();
+    if(m===1){ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';
+      const lbl=f>=1e6?(f/1e6).toFixed(0)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f+'';ctx.fillText(lbl,x,padT+ph+16);}}}
+  for(let i=0;i<=4;i++){const v=vpMin+i*(vpMax-vpMin)/4;const y=vy(v);
+    ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(v.toFixed(1)+'V',padL-4,y+4);}
+
+  // FPBW boundary: v = SR/(2π*f)
+  ctx.beginPath();ctx.strokeStyle='#e74c3c';ctx.lineWidth=2;
+  let first=true;
+  for(let e=logFmin;e<=logFmax;e+=0.02){const f=Math.pow(10,e);const v=sr*1e6/(2*Math.PI*f);
+    if(v<vpMin||v>vpMax){first=true;continue;}
+    const x=fx(f),y=vy(v);first?(ctx.moveTo(x,y),first=false):ctx.lineTo(x,y);}
+  ctx.stroke();
+
+  // BW boundary: vertical line at BW
+  const bw=gbw*1e6/G;
+  if(bw>=fMin&&bw<=fMax){
+    const x=fx(bw);ctx.setLineDash([4,3]);ctx.strokeStyle=accent;ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();ctx.setLineDash([]);}
+
+  // Current operating point
+  const x_op=fx(freq),y_op=vy(vp);
+  const sr_req=2*Math.PI*freq*vp/1e6;
+  const ok=sr_req<=sr&&freq<=bw;
+  ctx.fillStyle=ok?'#2ecc71':'#e74c3c';ctx.beginPath();ctx.arc(x_op,y_op,5,0,2*Math.PI);ctx.fill();
+
+  // Fill SR-limited region (above the FPBW curve) with light red
+  ctx.globalAlpha=0.1;ctx.fillStyle='#e74c3c';
+  ctx.beginPath();ctx.moveTo(padL,padT);
+  for(let e=logFmin;e<=logFmax;e+=0.02){const f=Math.pow(10,e);const v=sr*1e6/(2*Math.PI*f);
+    ctx.lineTo(fx(f),vy(Math.min(v,vpMax)));}
+  ctx.lineTo(padL+pw,padT);ctx.closePath();ctx.fill();ctx.globalAlpha=1;
+
+  ctx.strokeStyle=border;ctx.lineWidth=1;ctx.strokeRect(padL,padT,pw,ph);
+  ctx.fillStyle=text;ctx.font='bold 11px sans-serif';ctx.textAlign='left';ctx.fillText('FPBW Map (red zone = SR limited)',padL+4,padT+13);
+  ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('Frequency',padL+pw/2,padT+ph+32);
+}
+
+/* ── TAB 1: TIA ── */
+function upd1(){
+  const gbw=sl('sl_gbw1')*1e6,Rf=sl('sl_rf1')*1e3,Cs=sl('sl_cs1')*1e-12,Cf=sl('sl_cf1')*1e-12;
+  $('v_gbw1').textContent=sl('sl_gbw1');$('v_rf1').textContent=sl('sl_rf1');
+  $('v_cs1').textContent=sl('sl_cs1');$('v_cf1').textContent=sl('sl_cf1');
+
+  const Cf_opt=Math.sqrt(Cs/(2*Math.PI*gbw*Rf));
+  const bw_opt=Cf_opt>0?1/(2*Math.PI*Rf*Cf_opt)/1e3:gbw/2/Math.PI/1e3;
+  const bw_user=Cf>0?1/(2*Math.PI*Rf*Cf)/1e3:gbw/2/Math.PI/1e3;
+  const f_stray=Cs>0?1/(2*Math.PI*Rf*Cs)/1e3:Infinity;
+  const fmtF=v=>v>=1e3?(v/1e3).toFixed(1)+' MHz':v.toFixed(0)+' kHz';
+  $('t_bw_opt').textContent=fmtF(bw_opt);
+  $('t_bw_u').textContent=fmtF(bw_user);
+  $('t_cf_opt').textContent=(Cf_opt*1e12).toFixed(2)+' pF';
+  $('t_sp').textContent=isFinite(f_stray)?fmtF(f_stray):'∞';
+  drawTIA(gbw,Rf,Cs,Cf,Cf_opt,bw_opt);
+}
+
+function drawTIA(gbw,Rf,Cs,Cf,Cf_opt,bw_opt){
+  const c=$('c1');const{ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=60,padR=20,padT=20,padB=60;
+  const pw=w-padL-padR,ph=h-padT-padB;
+  const text=tc('--text'),text2=tc('--text2'),border=tc('--border'),accent=tc('--accent');
+  const Rfdb=20*Math.log10(Rf);
+
+  const logMin=Math.log10(Math.max(1e2,bw_opt*1e3/1000)),logMax=Math.log10(gbw*5);
+  const yMin=Rfdb-60,yMax=Rfdb+10,yStep=20;
+
+  function fx(f){return padL+(Math.log10(f)-logMin)/(logMax-logMin)*pw;}
+  function fy(dB){return padT+(1-(dB-yMin)/(yMax-yMin))*ph;}
+
+  ctx.strokeStyle=border;ctx.lineWidth=.5;
+  for(let g=yMin;g<=yMax;g+=yStep){const y=fy(g);ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(g+'',padL-4,y+4);}
+  for(let e=Math.floor(logMin);e<=Math.ceil(logMax);e++){for(let m=1;m<10;m++){const f=m*Math.pow(10,e);
+    if(f<Math.pow(10,logMin)||f>Math.pow(10,logMax))continue;const x=fx(f);
+    ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();
+    if(m===1){ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';
+      const lbl=f>=1e6?(f/1e6).toFixed(0)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f+'';ctx.fillText(lbl,x,padT+ph+14);}}}
+
+  const N=300;
+  function tiaMag(f,Cf_eff){
+    const fc=Cf_eff>0?1/(2*Math.PI*Rf*Cf_eff):gbw;
+    const fc2=Cs>0?1/(2*Math.PI*Rf*Cs):gbw;
+    const aol0=1e5,f1=gbw/aol0;
+    const Aol=aol0/Math.sqrt(1+(f/f1)**2);
+    const beta_c=Cf_eff>0?Math.sqrt(1+(f/(1/(2*Math.PI*Rf*Cf_eff)))**2):1;
+    const stray_pole=Cs>0?1/Math.sqrt(1+(f/fc2)**2):1;
+    return Rfdb-20*Math.log10(1+1/(Aol*stray_pole));
+  }
+
+  // No Cf
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#e74c3c';ctx.lineWidth=1.5;
+  ctx.beginPath();for(let i=0;i<=N;i++){const f=Math.pow(10,logMin+i*(logMax-logMin)/N);
+    const fc=Cs>0?1/(2*Math.PI*Rf*Cs):gbw;
+    const dB=Rfdb-20*Math.log10(Math.sqrt(1+(f/Math.min(fc,gbw))**2));
+    const x=fx(f),y=fy(Math.max(yMin,Math.min(yMax,dB)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();ctx.setLineDash([]);
+
+  // Optimal Cf
+  ctx.strokeStyle='#2ecc71';ctx.lineWidth=2;
+  ctx.beginPath();for(let i=0;i<=N;i++){const f=Math.pow(10,logMin+i*(logMax-logMin)/N);
+    const fc=Cf_opt>0?1/(2*Math.PI*Rf*Cf_opt):gbw;
+    const dB=Rfdb-20*Math.log10(Math.sqrt(1+(f/fc)**2));
+    const x=fx(f),y=fy(Math.max(yMin,Math.min(yMax,dB)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+
+  // User's Cf
+  if(Cf>0){
+    ctx.strokeStyle=accent;ctx.lineWidth=2;
+    ctx.beginPath();for(let i=0;i<=N;i++){const f=Math.pow(10,logMin+i*(logMax-logMin)/N);
+      const fc=1/(2*Math.PI*Rf*Cf);
+      const dB=Rfdb-20*Math.log10(Math.sqrt(1+(f/fc)**2));
+      const x=fx(f),y=fy(Math.max(yMin,Math.min(yMax,dB)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+    ctx.stroke();}
+
+  ctx.strokeStyle=border;ctx.lineWidth=1;ctx.strokeRect(padL,padT,pw,ph);
+  ctx.fillStyle=text;ctx.font='bold 11px sans-serif';ctx.textAlign='left';ctx.fillText('TIA Transimpedance (dBΩ)',padL+4,padT+14);
+  const lx=padL,ly=h-padB+14;
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#e74c3c';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(lx,ly+1);ctx.lineTo(lx+16,ly+1);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=text;ctx.font='11px sans-serif';ctx.textAlign='left';ctx.fillText('No Cf (Cs pole)',lx+20,ly+4);
+  ctx.strokeStyle='#2ecc71';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(lx+160,ly+1);ctx.lineTo(lx+176,ly+1);ctx.stroke();
+  ctx.fillStyle=text;ctx.fillText('Optimal Cf='+((Cf_opt)*1e12).toFixed(2)+'pF',lx+180,ly+4);
+  if(Cf>0){ctx.strokeStyle=accent;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(lx+340,ly+1);ctx.lineTo(lx+356,ly+1);ctx.stroke();
+    ctx.fillStyle=text;ctx.fillText('User Cf',lx+360,ly+4);}
+  ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('Frequency (Hz)',padL+pw/2,padT+ph+38);
+}
+
+/* ── TAB 2: Landscape ── */
+function upd2(){
+  const G=sl('sl_g2'),bw_req=sl('sl_bw2')*1e6,Cs=sl('sl_cs2')*1e-12,R1=sl('sl_r12')*1e3;
+  $('v_g2').textContent=G;$('v_bw2').textContent=sl('sl_bw2').toFixed(2);$('v_cs2').textContent=sl('sl_cs2');$('v_r12').textContent=sl('sl_r12');
+  const Rf=R1*(G-1);const Rp=R1*Rf/(R1+Rf+1e-10);
+  const gbw_for_gain=G*bw_req/1e6;
+  const f_cs=Cs>0?1/(2*Math.PI*Rp*Cs):Infinity;
+  const gbw_for_stray=Cs>0?(f_cs*G)/1e6:0;
+  const binding=gbw_for_gain>gbw_for_stray?'GBW/gain limit':'Stray Cs pole';
+  const Cf_opt=Cs>0?Math.sqrt(Cs/(2*Math.PI*(gbw_for_gain*1e6)*Rf))*1e12:0;
+  $('t_gbwn').textContent=gbw_for_gain.toFixed(0)+' MHz';
+  $('t_gbws').textContent=isFinite(f_cs)?gbw_for_stray.toFixed(0)+' MHz':'N/A';
+  $('t_bind').textContent=binding;
+  $('t_cfv').textContent=Cf_opt>0?Cf_opt.toFixed(2)+' pF':'N/A';
+  drawLandscape(G,bw_req,gbw_for_gain,Cs,Rp);
+}
+
+function drawLandscape(G,bw_req,gbw_needed,Cs,Rp){
+  const c=$('c2');const{ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=55,padR=20,padT=20,padB=50;
+  const pw=w-padL-padR,ph=h-padT-padB;
+  const text=tc('--text'),text2=tc('--text2'),border=tc('--border'),accent=tc('--accent');
+
+  // X: GBW (MHz), Y: BW (MHz) both log
+  const gbwMin=0.1,gbwMax=10000;
+  const bwMin=0.001,bwMax=gbwMax/G;
+  const logGmin=Math.log10(gbwMin),logGmax=Math.log10(gbwMax);
+  const logBmin=Math.log10(bwMin),logBmax=Math.log10(bwMax);
+
+  function gx(gbw){return padL+(Math.log10(gbw)-logGmin)/(logGmax-logGmin)*pw;}
+  function by(bw){return padT+(1-(Math.log10(Math.max(bwMin,bw))-logBmin)/(logBmax-logBmin))*ph;}
+
+  ctx.strokeStyle=border;ctx.lineWidth=.5;
+  for(let e=Math.floor(logGmin);e<=Math.ceil(logGmax);e++){for(let m=1;m<10;m++){const gbw=m*Math.pow(10,e);if(gbw<gbwMin||gbw>gbwMax)continue;
+    const x=gx(gbw);ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();
+    if(m===1){ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText(gbw>=1?gbw.toFixed(0)+'M':(gbw*1e3).toFixed(0)+'k',x,padT+ph+16);}}}
+  for(let e=Math.floor(logBmin);e<=Math.ceil(logBmax);e++){for(let m=1;m<10;m++){const bw=m*Math.pow(10,e);if(bw<bwMin||bw>bwMax)continue;
+    const y=by(bw);ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();
+    if(m===1){ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(bw>=1?bw.toFixed(0)+'M':(bw*1e3).toFixed(0)+'k',padL-4,y+4);}}}
+
+  // BW = GBW/G line
+  ctx.beginPath();ctx.strokeStyle='#888';ctx.lineWidth=1;
+  for(let e=logGmin;e<=logGmax;e+=0.05){const gbw=Math.pow(10,e);const bw=gbw/G;if(bw<bwMin||bw>bwMax)continue;
+    const x=gx(gbw),y=by(bw);e===logGmin?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='left';ctx.fillText('BW=GBW/'+G,gx(gbwMax)-60,by(gbwMax/G)+12);
+
+  // Stray pole line
+  if(Cs>0){
+    const f_cs=1/(2*Math.PI*Rp*Cs)/1e6;
+    const y_cs=by(f_cs);ctx.setLineDash([4,3]);ctx.strokeStyle='#e74c3c';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(padL,y_cs);ctx.lineTo(padL+pw,y_cs);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#e74c3c';ctx.font='10px sans-serif';ctx.textAlign='left';ctx.fillText('Stray pole '+f_cs.toFixed(1)+'MHz',padL+4,y_cs-4);}
+
+  // Required BW line
+  const y_req=by(bw_req/1e6);ctx.setLineDash([4,3]);ctx.strokeStyle='#2ecc71';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(padL,y_req);ctx.lineTo(padL+pw,y_req);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#2ecc71';ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText('Required BW',padL+pw,y_req-4);
+
+  // Required GBW vertical
+  const x_req=gx(gbw_needed);ctx.setLineDash([4,3]);ctx.strokeStyle='#2ecc71';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(x_req,padT);ctx.lineTo(x_req,padT+ph);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#2ecc71';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('GBW needed',x_req,padT+10);
+
+  // Operating point
+  const x_op=x_req,y_op=by(bw_req/1e6);
+  ctx.fillStyle=accent;ctx.beginPath();ctx.arc(x_op,y_op,6,0,2*Math.PI);ctx.fill();
+
+  ctx.strokeStyle=border;ctx.lineWidth=1;ctx.strokeRect(padL,padT,pw,ph);
+  ctx.fillStyle=text;ctx.font='bold 11px sans-serif';ctx.textAlign='left';ctx.fillText('BW (MHz) vs GBW (MHz) — G='+G,padL+4,padT+14);
+  ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('GBW (MHz)',padL+pw/2,padT+ph+38);
+}
+
+window.addEventListener('load',()=>{upd0();upd1();upd2();});
+window.addEventListener('resize',()=>{upd0();upd1();upd2();});
+</script>
+</body>
+</html>

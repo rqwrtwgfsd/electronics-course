@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-DB-6.1.1 Fault: No Output</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:12px;padding:12px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:240px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+.fault-btn{display:block;width:100%;margin-top:6px;padding:7px 10px;background:#1a1a3a;border:1px solid #334;color:#ccc;cursor:pointer;font-family:inherit;font-size:11px;border-radius:3px;text-align:left}
+.fault-btn.active{background:#440000;border-color:#ff4444;color:#ff6666}
+.fault-btn.normal{background:#004400;border-color:#00ff88;color:#00ff88}
+.sym{margin-top:10px;font-size:11px;color:#ffaa00;line-height:1.6;border-top:1px solid #2a2a4a;padding-top:8px}
+.meas{font-size:12px;color:#00ff88;margin-top:6px;line-height:1.6}
+.label-r{color:#888;font-size:11px}
+</style>
+</head>
+<body>
+<h1>P2-DB-6.1.1 — Fault Scenario: No Output / Zero Output</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="560" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>Fault Selector</h2>
+<button class="fault-btn normal" id="b_none" onclick="setFault('none')">Normal Operation</button>
+<button class="fault-btn" id="b_opencap" onclick="setFault('opencap')">Open Capacitor</button>
+<button class="fault-btn" id="b_shortr" onclick="setFault('shortr')">Shorted Resistor</button>
+<button class="fault-btn" id="b_nosupply" onclick="setFault('nosupply')">Missing Supply (V_in = 0)</button>
+<button class="fault-btn" id="b_openr" onclick="setFault('openr')">Open Resistor (R = ∞)</button>
+<div class="sym" id="sym">Select a fault to see symptoms and diagnosis procedure.</div>
+<h2 style="margin-top:10px">Measurement Readouts</h2>
+<div class="meas" id="meas"></div>
+<h2 style="margin-top:10px">Half-Split Probe Points</h2>
+<div class="label-r" id="probe">Click fault to see diagnosis steps.</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let fault='none';
+const W=560,H=380,PAD={l:60,r:20,t:30,b:40};
+const CW=W-PAD.l-PAD.r,CH=H-PAD.t-PAD.b;
+
+const faults={
+  none:{label:'Normal',color:'#00ff88',fn:(t,tm,vf)=>vf*(1-Math.exp(-t/(tm/5))),sym:'RC charge: V_out rises to V_in with τ = RC.',meas:'V(in)=5V, V(out) rises 0→5V, τ=1ms, I=V/R=5mA peak',probe:'All nodes active. Check V(in), V(R_top), V(C) normal.'},
+  opencap:{label:'Open Cap',color:'#ff4444',fn:(t,tm,vf)=>vf,sym:'Open capacitor: no charge path. V_out = V_in immediately (resistor divider with infinite load).',meas:'V(in)=5V, V(out)=5V instantly, I_supply≈0 (no DC path)',probe:'Probe 1: V(in)=5V OK. Probe 2: V(out)=5V instantly → cap open. Measure I<1μA.'},
+  shortr:{label:'Shorted R',color:'#ff6600',fn:(t,tm,vf)=>vf,sym:'Shorted resistor: V_out = V_in instantly. Identical symptom to open cap but high current.',meas:'V(in)=5V, V(out)=5V instantly, I_supply=V_in/R_remaining→HIGH',probe:'Measure I: high current → shorted R. Low current → open cap. Half-split distinguishes.'},
+  nosupply:{label:'No Supply',color:'#888',fn:(t,tm,vf)=>0,sym:'V_in = 0V: no energy source. V_out = 0 always. Circuit is "dead".',meas:'V(in)=0V, V(out)=0V, I_supply=0',probe:'Probe V_in first. If 0V, check supply fuse, connector, power switch before probing further.'},
+  openr:{label:'Open R',color:'#aa44ff',fn:(t,tm,vf)=>0,sym:'Open resistor: no charging current. V_out stays at 0V (capacitor never charges).',meas:'V(in)=5V, V(out)=0V, I=0, V across R = 5V',probe:'V(in)=5V but V(out)=0V → open element between. Probe mid-point: V(mid)=? If 5V, open is after mid.'},
+};
+
+function setFault(f){
+  fault=f;
+  Object.keys(faults).forEach(k=>document.getElementById('b_'+k).className='fault-btn'+(k===f?(k==='none'?' normal':' active'):''));
+  const fd=faults[f];
+  document.getElementById('sym').textContent=fd.sym;
+  document.getElementById('meas').textContent=fd.meas;
+  document.getElementById('probe').textContent=fd.probe;
+  draw();
+}
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const tmax=10,vf=5;
+  function toPx(t,v){return[PAD.l+CW*(t/tmax),PAD.t+CH*(1-v/(vf*1.1))];}
+  // Grid
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=10;i++){const x=PAD.l+CW*(i/10);ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=PAD.t+CH*(i/5);ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+CH);ctx.moveTo(PAD.l,PAD.t+CH);ctx.lineTo(PAD.l+CW,PAD.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=10;i++){const x=PAD.l+CW*(i/10);ctx.fillText((tmax*i/10).toFixed(0)+'ms',x,PAD.t+CH+14);}
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){const v=vf*1.1*(1-i/5);const y=PAD.t+CH*(i/5);ctx.fillText(v.toFixed(1)+'V',PAD.l-4,y+4);}
+  // V_in reference (dashed)
+  const[,yvf]=toPx(0,vf);
+  ctx.strokeStyle='#333';ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(PAD.l,yvf);ctx.lineTo(PAD.l+CW,yvf);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#444';ctx.textAlign='left';ctx.fillText('V_in = 5V',PAD.l+4,yvf-4);
+  // Normal reference (always shown faint)
+  ctx.strokeStyle='#1a3a1a';ctx.lineWidth=1.5;ctx.setLineDash([2,4]);
+  ctx.beginPath();
+  for(let i=0;i<=400;i++){const t=tmax*i/400;const v=faults.none.fn(t,tmax,vf);const[x,y]=toPx(t,v);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#2a4a2a';ctx.font='10px Courier New';ctx.textAlign='left';ctx.fillText('Expected (normal)',PAD.l+4,PAD.t+14);
+  // Fault waveform
+  const fd=faults[fault];
+  ctx.strokeStyle=fd.color;ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=600;i++){
+    const t=tmax*i/600;
+    const v=fd.fn(t,tmax,vf);
+    const[x,y]=toPx(t,v);
+    if(y>PAD.t-5&&y<PAD.t+CH+5){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  }
+  ctx.stroke();
+  ctx.fillStyle=fd.color;ctx.font='bold 12px Courier New';ctx.textAlign='left';
+  ctx.fillText('Fault: '+fd.label,PAD.l+10,PAD.t+CH-10);
+  // Probe annotation
+  if(fault==='openr'){
+    const[x1,y1]=toPx(0,vf);const[x2,y2]=toPx(5,0);
+    ctx.fillStyle='#ffaa00';ctx.font='11px Courier New';ctx.textAlign='center';
+    ctx.fillText('← R open: V drops here',x1+CW*0.3,y1+20);
+  }
+}
+setFault('none');
+</script>
+</body>
+</html>

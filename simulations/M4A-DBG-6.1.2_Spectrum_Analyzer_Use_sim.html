@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-DBG-6.1.2 Spectrum Analyzer Use</title>
+<style>
+  :root {
+    --bg: #f5f5f5; --panel: #ffffff; --border: #d0d0d0;
+    --text: #1a1a1a; --muted: #666; --accent: #1a6eb5;
+    --pass: #2d7a2d; --fail: #b52a2a; --warn: #b57a00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a; --panel: #242424; --border: #3a3a3a;
+      --text: #e8e8e8; --muted: #999; --accent: #4da3f5;
+      --pass: #4caf50; --fail: #ef5350; --warn: #ffb300;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; padding: 16px; }
+  h1 { font-size: 1.2em; color: var(--accent); margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 0.85em; margin-bottom: 16px; }
+  .layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .panel h3 { font-size: 0.9em; color: var(--accent); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .slider-row { margin-bottom: 9px; }
+  .slider-row label { display: flex; justify-content: space-between; font-size: 0.82em; color: var(--muted); margin-bottom: 3px; }
+  .slider-row label span { color: var(--text); font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .right-col { display: flex; flex-direction: column; gap: 14px; }
+  .sa-screen { width: 100%; aspect-ratio: 16/9; background: #050a0a; border-radius: 6px; border: 2px solid #1a3030; display: block; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.78em; font-weight: 700; }
+  .badge.pass { background: #1a2e1a; color: #4caf50; }
+  .badge.fail { background: #2e1a1a; color: #ef5350; }
+  .badge.warn { background: #2e2200; color: #ffb300; }
+  .meas-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .meas { flex: 1; min-width: 80px; background: #050a0a; border: 1px solid #1a3030; border-radius: 4px; padding: 6px; text-align: center; }
+  .meas .val { font-size: 1em; font-weight: 700; color: #00ddcc; font-family: monospace; }
+  .meas .lbl { font-size: 0.7em; color: #3a6060; margin-top: 1px; }
+  .section-divider { font-size: 0.75em; color: var(--muted); margin: 8px 0 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+  select { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px; font-size: 0.85em; width: 100%; margin-bottom: 8px; }
+  @media (max-width: 720px) { .layout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<h1>M4A-DBG-6.1.2 — Spectrum Analyzer Use</h1>
+<p class="subtitle">Simulated spectrum analyzer: harmonic distortion, noise floor, IM3, and spurious identification</p>
+
+<div class="layout">
+<div>
+  <div class="panel" style="margin-bottom:12px">
+    <h3>Signal Under Test</h3>
+    <div class="section-divider">Source Type</div>
+    <select id="sel-mode" onchange="update()">
+      <option value="harmonic">Single-tone (THD measurement)</option>
+      <option value="twotone">Two-tone (IM3 measurement)</option>
+      <option value="noise">Noise floor measurement</option>
+      <option value="switching">Switching power supply</option>
+    </select>
+    <div class="slider-row">
+      <label>f1 (kHz) <span id="lbl-f1">1000</span></label>
+      <input type="range" id="sl-f1" min="1" max="10000" step="1" value="1000" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>f2 (kHz) [2-tone] <span id="lbl-f2">1100</span></label>
+      <input type="range" id="sl-f2" min="2" max="12000" step="1" value="1100" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Input level (dBm) <span id="lbl-pin">-10</span></label>
+      <input type="range" id="sl-pin" min="-60" max="10" step="1" value="-10" oninput="update()">
+    </div>
+    <div class="section-divider">Amplifier Under Test</div>
+    <div class="slider-row">
+      <label>Gain (dB) <span id="lbl-agn">20</span></label>
+      <input type="range" id="sl-agn" min="0" max="40" step="1" value="20" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>OIP3 (dBm) <span id="lbl-oip3">20</span></label>
+      <input type="range" id="sl-oip3" min="-10" max="50" step="1" value="20" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Noise figure (dB) <span id="lbl-nf">5</span></label>
+      <input type="range" id="sl-nf" min="0" max="30" step="0.5" value="5" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>H2 (dBc, asym) <span id="lbl-h2">-60</span></label>
+      <input type="range" id="sl-h2" min="-100" max="-20" step="1" value="-60" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>H3 (dBc, sym) <span id="lbl-h3">-70</span></label>
+      <input type="range" id="sl-h3" min="-100" max="-20" step="1" value="-70" oninput="update()">
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom:12px">
+    <h3>Analyzer Settings</h3>
+    <div class="slider-row">
+      <label>Center freq (kHz) <span id="lbl-cf">2000</span></label>
+      <input type="range" id="sl-cf" min="100" max="50000" step="100" value="2000" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Span (kHz) <span id="lbl-span">5000</span></label>
+      <input type="range" id="sl-span" min="100" max="50000" step="100" value="5000" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>RBW (Hz) <span id="lbl-rbw">1000</span></label>
+      <input type="range" id="sl-rbw" min="1" max="100000" step="1" value="1000" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Ref level (dBm) <span id="lbl-ref">10</span></label>
+      <input type="range" id="sl-ref" min="-60" max="30" step="1" value="10" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Input attenuation (dB) <span id="lbl-att">0</span></label>
+      <input type="range" id="sl-att" min="0" max="40" step="5" value="0" oninput="update()">
+    </div>
+  </div>
+</div>
+
+<div class="right-col">
+  <div class="panel" style="background:#050a0a; border-color:#1a3030;">
+    <div class="meas-row" id="meas-row"></div>
+    <canvas id="sa" class="sa-screen"></canvas>
+    <div style="margin-top:6px; font-size:0.75em; color:#3a6060; text-align:center" id="sa-info"></div>
+  </div>
+
+  <div class="panel">
+    <h3>Measurement Results</h3>
+    <table style="width:100%;border-collapse:collapse;font-size:0.82em" id="result-table">
+      <thead><tr style="background:var(--border)"><th style="padding:5px 8px;text-align:left">Measurement</th><th>Value</th><th>Notes</th></tr></thead>
+      <tbody id="result-body"></tbody>
+    </table>
+  </div>
+</div>
+</div>
+
+<script>
+function v(id) { return parseFloat(document.getElementById(id).value); }
+function lbl(id, val, dec) { const el = document.getElementById(id); if(el) el.textContent = typeof val==='number' ? val.toFixed(dec!==undefined?dec:1) : val; }
+
+function dBm_to_V2(dBm, Z=50) { return Math.pow(10, dBm/10) * 1e-3 * Z; }
+function V2_to_dBm(V2, Z=50) { return 10*Math.log10(V2/Z/1e-3); }
+
+function update() {
+  const mode = document.getElementById('sel-mode').value;
+  const f1 = v('sl-f1') * 1e3;
+  const f2 = v('sl-f2') * 1e3;
+  const pin = v('sl-pin');
+  const agn = v('sl-agn');
+  const oip3 = v('sl-oip3');
+  const nf = v('sl-nf');
+  const h2_dbc = v('sl-h2');
+  const h3_dbc = v('sl-h3');
+  const cf = v('sl-cf') * 1e3;
+  const span = v('sl-span') * 1e3;
+  const rbw = v('sl-rbw');
+  const refLevel = v('sl-ref');
+  const att = v('sl-att');
+
+  lbl('lbl-f1', v('sl-f1'), 0);
+  lbl('lbl-f2', v('sl-f2'), 0);
+  lbl('lbl-pin', pin, 0);
+  lbl('lbl-agn', agn, 0);
+  lbl('lbl-oip3', oip3, 0);
+  lbl('lbl-nf', nf, 1);
+  lbl('lbl-h2', h2_dbc, 0);
+  lbl('lbl-h3', h3_dbc, 0);
+  lbl('lbl-cf', v('sl-cf'), 0);
+  lbl('lbl-span', v('sl-span'), 0);
+  lbl('lbl-rbw', rbw, 0);
+  lbl('lbl-ref', refLevel, 0);
+  lbl('lbl-att', att, 0);
+
+  // Signal processing
+  const p_out = pin + agn - att;  // output power in dBm (attenuated)
+  const noiseFloor = -174 + nf + 10 * Math.log10(rbw); // dBm
+
+  // Build list of spectral lines
+  const lines = [];
+
+  if (mode === 'harmonic') {
+    lines.push({ f: f1, dBm: p_out, label: 'F ('+v('sl-f1')+'kHz)' });
+    // Harmonics
+    for (let h = 2; h <= 7; h++) {
+      const hdBm = p_out + (h === 2 ? h2_dbc : h === 3 ? h3_dbc : h3_dbc - 10*(h-3));
+      lines.push({ f: f1 * h, dBm: hdBm, label: 'H'+h });
+    }
+    // Mixer overload spurs (if input too high)
+    if (pin > -10) {
+      lines.push({ f: f1 * 2.5, dBm: p_out + h2_dbc + 5, label: 'SPUR*', spurious: true });
+    }
+  } else if (mode === 'twotone') {
+    lines.push({ f: f1, dBm: p_out, label: 'F1' });
+    lines.push({ f: f2, dBm: p_out, label: 'F2' });
+    // IM3
+    const iip3 = oip3 - agn;
+    const im3_dBc = 2 * (iip3 - pin) * (-1); // IM3 relative to fundamental: -(2*(OIP3-Pout))
+    const im3_dBm = p_out + im3_dBc;
+    lines.push({ f: 2*f1 - f2, dBm: im3_dBm, label: '2F1-F2' });
+    lines.push({ f: 2*f2 - f1, dBm: im3_dBm, label: '2F2-F1' });
+    // IM2
+    lines.push({ f: f2 - f1, dBm: p_out + h2_dbc + 6, label: 'F2-F1' });
+    lines.push({ f: f1 + f2, dBm: p_out + h2_dbc, label: 'F1+F2' });
+    // IM5
+    lines.push({ f: 3*f1 - 2*f2, dBm: im3_dBm - 12, label: 'IM5' });
+    lines.push({ f: 3*f2 - 2*f1, dBm: im3_dBm - 12, label: 'IM5' });
+  } else if (mode === 'switching') {
+    const fsw = f1;
+    for (let h = 1; h <= 8; h++) {
+      const hdBm = p_out - 20*Math.log10(h) * 0.8;
+      lines.push({ f: fsw * h, dBm: hdBm, label: 'H'+h });
+    }
+    // Beat tones
+    lines.push({ f: fsw * 2.1, dBm: p_out - 35, label: 'BEAT', spurious: true });
+    lines.push({ f: fsw * 0.9, dBm: p_out - 40, label: 'BEAT', spurious: true });
+  }
+  // Noise mode: just noise floor visible
+  if (mode === 'noise') {
+    lines.push({ f: f1, dBm: p_out, label: 'Signal' });
+  }
+
+  drawSA(lines, noiseFloor, cf, span, refLevel, rbw, mode, p_out, oip3);
+  computeResults(lines, noiseFloor, p_out, oip3, agn, h2_dbc, h3_dbc, rbw, mode, f1, f2);
+}
+
+function drawSA(lines, noiseFloor, cf, span, refLevel, rbw, mode, p_out, oip3) {
+  const canvas = document.getElementById('sa');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  if (canvas._lw !== rect.width || canvas._lh !== rect.height) {
+    canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+    canvas._lw = rect.width; canvas._lh = rect.height;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const W = rect.width, H = rect.height;
+
+  const VDIVS = 10, HDIVS = 10, dBperDiv = 10;
+  const PAD = { l: 50, r: 10, t: 20, b: 35 };
+  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+
+  ctx.fillStyle = '#050a0a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = '#1a3030';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= HDIVS; i++) {
+    const x = PAD.l + (i / HDIVS) * cW;
+    ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, PAD.t + cH); ctx.stroke();
+  }
+  for (let j = 0; j <= VDIVS; j++) {
+    const y = PAD.t + (j / VDIVS) * cH;
+    ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l + cW, y); ctx.stroke();
+    ctx.fillStyle = '#2a6060';
+    ctx.font = '9px monospace'; ctx.textAlign = 'right';
+    const dBval = refLevel - j * dBperDiv;
+    ctx.fillText(dBval.toFixed(0), PAD.l - 3, y + 4);
+  }
+
+  function xp(f) { return PAD.l + (f - (cf - span/2)) / span * cW; }
+  function yp(dBm) { return PAD.t + (refLevel - dBm) / (VDIVS * dBperDiv) * cH; }
+
+  // Noise floor trace
+  const nfY = yp(noiseFloor);
+  const nfYclip = Math.max(PAD.t, Math.min(PAD.t + cH, nfY));
+  ctx.strokeStyle = '#1a4a4a';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([2,4]);
+  ctx.beginPath(); ctx.moveTo(PAD.l, nfYclip); ctx.lineTo(PAD.l + cW, nfYclip); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#2a6060'; ctx.textAlign = 'left'; ctx.font = '9px monospace';
+  ctx.fillText('NF='+noiseFloor.toFixed(0)+'dBm', PAD.l + 3, nfYclip - 3);
+
+  // Noise floor fill
+  ctx.fillStyle = '#0a2020';
+  ctx.fillRect(PAD.l, nfYclip, cW, PAD.t + cH - nfYclip);
+
+  // Draw spectral lines
+  lines.forEach(line => {
+    const x = xp(line.f);
+    if (x < PAD.l - 2 || x > PAD.l + cW + 2) return;
+    const y_top = yp(line.dBm);
+    const y_clip = Math.max(PAD.t, Math.min(PAD.t + cH, y_top));
+    const y_bot = PAD.t + cH;
+
+    const color = line.spurious ? '#ff5555' : line.label.includes('IM') || line.label.includes('F2-F1') || line.label.includes('F1+F2') ? '#ffaa00' : '#00ddcc';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x, y_bot); ctx.lineTo(x, y_clip); ctx.stroke();
+
+    // Peak dot
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(x, y_clip, 3, 0, 2*Math.PI); ctx.fill();
+
+    // Label
+    if (y_clip > PAD.t + 15) {
+      ctx.fillStyle = color; ctx.font = '9px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(line.label, x, y_clip - 5);
+      ctx.fillText(line.dBm.toFixed(0)+'dBm', x, y_clip - 14);
+    }
+  });
+
+  // X axis labels
+  ctx.fillStyle = '#2a6060'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
+  for (let i = 0; i <= 5; i++) {
+    const f = (cf - span/2) + (i/5) * span;
+    const x = PAD.l + (i/5) * cW;
+    const lbl2 = f >= 1e6 ? (f/1e6).toFixed(1)+'M' : f >= 1e3 ? (f/1e3).toFixed(0)+'k' : f.toFixed(0);
+    ctx.fillText(lbl2, x, PAD.t + cH + 14);
+  }
+
+  // Analyzer info
+  document.getElementById('sa-info').textContent =
+    'CF: '+(cf/1e3).toFixed(0)+'kHz  |  SPAN: '+(span/1e3).toFixed(0)+'kHz  |  RBW: '+v('sl-rbw').toFixed(0)+'Hz  |  Ref: '+v('sl-ref')+'dBm';
+
+  // Measurements display
+  const fund = lines.find(l => l.label.includes('F') && !l.label.includes('2F') && !l.spurious);
+  const fundPow = fund ? fund.dBm : p_out;
+  document.getElementById('meas-row').innerHTML = [
+    { val: fundPow.toFixed(1)+' dBm', lbl: 'MARKER1 (Fund)' },
+    { val: noiseFloor.toFixed(1)+' dBm', lbl: 'NOISE FLOOR' },
+    { val: (fundPow - noiseFloor).toFixed(1)+' dB', lbl: 'SNR' },
+    { val: rbw.toFixed(0)+' Hz', lbl: 'RBW' },
+  ].map(m => `<div class="meas"><div class="val">${m.val}</div><div class="lbl">${m.lbl}</div></div>`).join('');
+}
+
+function computeResults(lines, noiseFloor, p_out, oip3, agn, h2_dbc, h3_dbc, rbw, mode, f1, f2) {
+  const rows = [];
+
+  if (mode === 'harmonic') {
+    const fund = lines[0];
+    const harmonics = lines.slice(1).filter(l => !l.spurious);
+    let thd_power = 0;
+    harmonics.forEach(h => { thd_power += Math.pow(10, (h.dBm - fund.dBm) / 10); });
+    const thd_pct = Math.sqrt(thd_power) * 100;
+    const thd_dBc = 20 * Math.log10(Math.sqrt(thd_power));
+    rows.push({ m: 'Fundamental', v: fund.dBm.toFixed(1)+' dBm', n: 'Output power' });
+    rows.push({ m: 'H2', v: (h2_dbc).toFixed(1)+' dBc', n: h2_dbc < -60 ? 'Good' : 'Check DC bias' });
+    rows.push({ m: 'H3', v: (h3_dbc).toFixed(1)+' dBc', n: h3_dbc < -70 ? 'Good' : 'Check crossover/clipping' });
+    rows.push({ m: 'THD', v: thd_pct.toFixed(3)+'% ('+thd_dBc.toFixed(1)+' dBc)', n: thd_pct < 0.01 ? 'Excellent' : thd_pct < 0.1 ? 'Good' : 'Investigate distortion sources' });
+    rows.push({ m: 'Noise floor', v: noiseFloor.toFixed(1)+' dBm', n: 'RBW = '+rbw.toFixed(0)+' Hz' });
+    const sfdr = p_out - noiseFloor;
+    rows.push({ m: 'SFDR (dyn range)', v: sfdr.toFixed(1)+' dBc', n: sfdr > 80 ? 'Good' : 'Limited by noise floor or spurs' });
+  } else if (mode === 'twotone') {
+    const im3_line = lines.find(l => l.label === '2F1-F2');
+    const im3_dBc = im3_line ? im3_line.dBm - p_out : -999;
+    const iip3 = oip3 - agn;
+    const oip3_calc = p_out - im3_dBc / 2;
+    rows.push({ m: 'F1 Power', v: p_out.toFixed(1)+' dBm', n: '' });
+    rows.push({ m: 'IM3 Level', v: (im3_line ? im3_line.dBm.toFixed(1) : '---')+' dBm', n: im3_dBc.toFixed(1)+' dBc' });
+    rows.push({ m: 'OIP3 (measured)', v: oip3_calc.toFixed(1)+' dBm', n: 'From 2×IP3 rule' });
+    rows.push({ m: 'IIP3', v: iip3.toFixed(1)+' dBm', n: 'OIP3 − Gain' });
+    const sfdr_im3 = (2/3) * (oip3 - noiseFloor);
+    rows.push({ m: 'SFDR (IM3-limited)', v: sfdr_im3.toFixed(1)+' dBc', n: '(2/3)(OIP3 − noise)' });
+  } else if (mode === 'noise') {
+    const snr = p_out - noiseFloor;
+    rows.push({ m: 'Signal', v: p_out.toFixed(1)+' dBm', n: '' });
+    rows.push({ m: 'Noise floor (RBW)', v: noiseFloor.toFixed(1)+' dBm', n: '' });
+    rows.push({ m: 'SNR', v: snr.toFixed(1)+' dB', n: snr > 20 ? 'Measurable' : 'Signal buried in noise — reduce RBW' });
+    rows.push({ m: 'Noise density', v: (noiseFloor - 10*Math.log10(rbw)).toFixed(1)+' dBm/Hz', n: '' });
+  } else if (mode === 'switching') {
+    const h1 = lines[0];
+    rows.push({ m: 'Fundamental', v: h1.dBm.toFixed(1)+' dBm', n: 'Switching freq: '+v('sl-f1')+' kHz' });
+    lines.slice(1, 5).forEach((l, i) => {
+      rows.push({ m: l.label, v: l.dBm.toFixed(1)+' dBm  ('+(l.dBm - h1.dBm).toFixed(0)+' dBc)', n: '' });
+    });
+  }
+
+  document.getElementById('result-body').innerHTML = rows.map(r =>
+    `<tr><td style="padding:4px 8px;color:var(--muted)">${r.m}</td><td style="padding:4px 8px;font-family:monospace">${r.v}</td><td style="padding:4px 8px;font-size:0.78em;color:var(--muted)">${r.n}</td></tr>`
+  ).join('');
+}
+
+window.addEventListener('resize', update);
+update();
+</script>
+</body>
+</html>

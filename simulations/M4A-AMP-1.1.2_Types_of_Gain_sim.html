@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.1.2 — Types of Gain</title>
+<style>
+  :root { --bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--red:#cc2200;--green:#007700;--grid:#dddddd; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--red:#ff5533;--green:#44cc44;--grid:#333333; } }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:13px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;align-items:baseline;gap:16px;}
+  header .id{font-weight:bold;font-size:14px;}
+  header .topic{font-size:12px;opacity:0.9;}
+  .main{display:grid;grid-template-columns:280px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:14px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;}
+  .ctrl-group{border:1px solid var(--border);border-radius:4px;padding:10px;}
+  .ctrl-group h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:8px;letter-spacing:.05em;}
+  label{display:block;font-size:11px;margin-bottom:3px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .readout{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:5px 8px;margin-top:5px;font-size:11px;}
+  .readout span{color:var(--accent);font-weight:bold;}
+  .plots{padding:14px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .plot-label{font-size:11px;color:var(--accent);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;}
+  .metrics-row{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+  .metric{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:8px;text-align:center;}
+  .metric .val{font-size:16px;font-weight:bold;color:var(--accent);}
+  .metric .lbl{font-size:10px;opacity:0.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.1.2</div>
+  <div class="topic">Types of Gain (V, I, Power) — Interactive Comparison</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="ctrl-group">
+      <h3>Amplifier Parameters</h3>
+      <label>Voltage Gain Av: <b id="av_lbl">50 V/V</b></label>
+      <input type="range" id="av" min="1" max="500" value="50">
+      <label>Input Impedance Zin: <b id="zin_lbl">10 kΩ</b></label>
+      <input type="range" id="zin" min="500" max="200000" value="10000" step="500">
+      <label>Load Resistance ZL: <b id="zl_lbl">1 kΩ</b></label>
+      <input type="range" id="zl" min="8" max="100000" value="1000" step="8">
+      <label>Input Signal Vin: <b id="vin_lbl">100 mV</b></label>
+      <input type="range" id="vin" min="1" max="500" value="100" step="1">
+    </div>
+    <div class="ctrl-group">
+      <h3>Gain Readouts</h3>
+      <div class="readout">Av: <span id="r_av">50.0</span> V/V = <span id="r_av_db">34.0</span> dB</div>
+      <div class="readout">Ai: <span id="r_ai">500.0</span> A/A = <span id="r_ai_db">54.0</span> dB</div>
+      <div class="readout">Ap: <span id="r_ap">25000</span> = <span id="r_ap_db">43.9</span> dB</div>
+    </div>
+    <div class="ctrl-group">
+      <h3>Signal Levels</h3>
+      <div class="readout">Vin: <span id="r_vin">100</span> mV RMS</div>
+      <div class="readout">Iin: <span id="r_iin">10.0</span> µA RMS</div>
+      <div class="readout">Vout: <span id="r_vout">5.00</span> V RMS</div>
+      <div class="readout">Iout: <span id="r_iout">5.00</span> mA RMS</div>
+      <div class="readout">Pin: <span id="r_pin">1.00</span> µW</div>
+      <div class="readout">Pout: <span id="r_pout">25.0</span> mW</div>
+    </div>
+    <div class="ctrl-group">
+      <h3>dB Note</h3>
+      <div class="readout">V gain (×20 log): <span id="r_vnote">34.0</span> dB</div>
+      <div class="readout">P gain (×10 log): <span id="r_pnote">43.9</span> dB</div>
+      <div class="readout">Difference: <span id="r_diff">9.9</span> dB</div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="metrics-row">
+      <div class="metric"><div class="val" id="m_av">50</div><div class="lbl">Voltage Gain (V/V)</div></div>
+      <div class="metric"><div class="val" id="m_ai">500</div><div class="lbl">Current Gain (A/A)</div></div>
+      <div class="metric"><div class="val" id="m_ap">25k</div><div class="lbl">Power Gain (×)</div></div>
+    </div>
+    <div>
+      <div class="plot-label">Gain Types vs Load Resistance (log scale)</div>
+      <canvas id="gainCanvas" height="220"></canvas>
+    </div>
+    <div>
+      <div class="plot-label">dB Comparison: Av vs Ap as Zin/ZL ratio changes</div>
+      <canvas id="dbCanvas" height="180"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+function fmt(v, unit) {
+  if (Math.abs(v) >= 1e9) return (v/1e9).toFixed(2)+'G'+unit;
+  if (Math.abs(v) >= 1e6) return (v/1e6).toFixed(2)+'M'+unit;
+  if (Math.abs(v) >= 1e3) return (v/1e3).toFixed(2)+'k'+unit;
+  if (Math.abs(v) >= 1) return v.toFixed(2)+unit;
+  if (Math.abs(v) >= 1e-3) return (v*1e3).toFixed(2)+'m'+unit;
+  if (Math.abs(v) >= 1e-6) return (v*1e6).toFixed(2)+'µ'+unit;
+  return (v*1e9).toFixed(2)+'n'+unit;
+}
+function fmtR(v) {
+  if (v >= 1e6) return (v/1e6).toFixed(1)+'MΩ';
+  if (v >= 1e3) return (v/1e3).toFixed(1)+'kΩ';
+  return v+'Ω';
+}
+
+function update() {
+  const av = parseFloat(document.getElementById('av').value);
+  const zin = parseFloat(document.getElementById('zin').value);
+  const zl = parseFloat(document.getElementById('zl').value);
+  const vin = parseFloat(document.getElementById('vin').value) / 1000;
+
+  document.getElementById('av_lbl').textContent = av+' V/V';
+  document.getElementById('zin_lbl').textContent = fmtR(zin);
+  document.getElementById('zl_lbl').textContent = fmtR(zl);
+  document.getElementById('vin_lbl').textContent = (vin*1000).toFixed(0)+' mV';
+
+  const ai = av * zin / zl;
+  const ap = av * ai;
+  const av_db = 20 * Math.log10(av);
+  const ai_db = 20 * Math.log10(ai);
+  const ap_db = 10 * Math.log10(ap);
+
+  const iin = vin / zin;
+  const vout = av * vin;
+  const iout = vout / zl;
+  const pin = vin * iin;
+  const pout = vout * iout;
+
+  document.getElementById('r_av').textContent = av.toFixed(1);
+  document.getElementById('r_av_db').textContent = av_db.toFixed(1);
+  document.getElementById('r_ai').textContent = ai >= 1000 ? ai.toFixed(0) : ai.toFixed(1);
+  document.getElementById('r_ai_db').textContent = ai_db.toFixed(1);
+  document.getElementById('r_ap').textContent = ap >= 1e6 ? (ap/1e6).toFixed(2)+'M' : ap >= 1000 ? (ap/1000).toFixed(1)+'k' : ap.toFixed(0);
+  document.getElementById('r_ap_db').textContent = ap_db.toFixed(1);
+
+  document.getElementById('r_vin').textContent = (vin*1000).toFixed(1);
+  document.getElementById('r_iin').textContent = fmt(iin,'A').replace('A','').trim() + ' µA';
+  document.getElementById('r_vout').textContent = vout.toFixed(3);
+  document.getElementById('r_iout').textContent = fmt(iout,'A');
+  document.getElementById('r_pin').textContent = fmt(pin,'W');
+  document.getElementById('r_pout').textContent = fmt(pout,'W');
+
+  document.getElementById('r_vnote').textContent = av_db.toFixed(1);
+  document.getElementById('r_pnote').textContent = ap_db.toFixed(1);
+  document.getElementById('r_diff').textContent = (ap_db - av_db).toFixed(1);
+
+  document.getElementById('m_av').textContent = av.toFixed(0);
+  document.getElementById('m_ai').textContent = ai >= 1000 ? (ai/1000).toFixed(1)+'k' : ai.toFixed(1);
+  document.getElementById('m_ap').textContent = ap >= 1e6 ? (ap/1e6).toFixed(1)+'M' : ap >= 1000 ? (ap/1000).toFixed(0)+'k' : ap.toFixed(0);
+
+  drawGainVsLoad(av, zin);
+  drawDbComparison(av, zl);
+}
+
+function drawGainVsLoad(av, zin) {
+  const canvas = document.getElementById('gainCanvas');
+  const W = canvas.clientWidth || 600; canvas.width = W;
+  const H = canvas.height;
+  const ctx = canvas.getContext('2d');
+  const cs = getComputedStyle(document.documentElement);
+  ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle = cs.getPropertyValue('--grid').trim(); ctx.lineWidth = 0.5;
+
+  const RL_MIN = 10, RL_MAX = 1e6;
+  const pad = {l:45, r:10, t:10, b:30};
+  const pw = W - pad.l - pad.r, ph = H - pad.t - pad.b;
+
+  function xOf(rl) { return pad.l + (Math.log10(rl)-Math.log10(RL_MIN))/(Math.log10(RL_MAX)-Math.log10(RL_MIN))*pw; }
+
+  // Draw grid
+  [10,100,1000,10000,100000,1000000].forEach(rl => {
+    const x = xOf(rl);
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t+ph); ctx.stroke();
+    ctx.fillStyle = cs.getPropertyValue('--fg').trim(); ctx.font='9px Courier New';
+    ctx.fillText(rl>=1000?(rl/1000)+'k':rl, x-8, H-6);
+  });
+
+  // Max gain values for scaling
+  const maxAv = av;
+  const maxAi = av * zin / RL_MIN;
+  const maxAp = maxAv * maxAi;
+  // Use log scale for y-axis
+  const LOG_MAX = Math.log10(Math.max(maxAp, 10));
+  const LOG_MIN = 0;
+  function yOf(val) {
+    if (val <= 0) return pad.t + ph;
+    const lv = Math.max(Math.log10(val), LOG_MIN);
+    return pad.t + ph - (lv - LOG_MIN) / (LOG_MAX - LOG_MIN) * ph;
+  }
+
+  // Y labels
+  for (let p = 0; p <= Math.ceil(LOG_MAX); p++) {
+    const y = yOf(Math.pow(10, p));
+    ctx.strokeStyle = cs.getPropertyValue('--grid').trim(); ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+pw, y); ctx.stroke();
+    ctx.fillStyle = cs.getPropertyValue('--fg').trim(); ctx.font='9px Courier New';
+    const lbl = p < 3 ? Math.pow(10,p).toFixed(0) : '10^'+p;
+    ctx.fillText(lbl, 2, y+3);
+  }
+
+  // Av line (constant)
+  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(pad.l, yOf(av)); ctx.lineTo(pad.l+pw, yOf(av));
+  ctx.stroke();
+
+  // Ai line: Ai = av * zin / rl
+  ctx.strokeStyle = '#cc6600'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let px = 0; px <= pw; px++) {
+    const frac = px/pw;
+    const logrl = Math.log10(RL_MIN)+frac*(Math.log10(RL_MAX)-Math.log10(RL_MIN));
+    const rl = Math.pow(10, logrl);
+    const ai = av * zin / rl;
+    const y = yOf(ai);
+    if (px===0) ctx.moveTo(pad.l+px, y); else ctx.lineTo(pad.l+px, y);
+  }
+  ctx.stroke();
+
+  // Ap line: Ap = av * ai = av² * zin/rl
+  ctx.strokeStyle = '#006633'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let px = 0; px <= pw; px++) {
+    const frac = px/pw;
+    const logrl = Math.log10(RL_MIN)+frac*(Math.log10(RL_MAX)-Math.log10(RL_MIN));
+    const rl = Math.pow(10, logrl);
+    const ap = av * av * zin / rl;
+    const y = yOf(ap);
+    if (px===0) ctx.moveTo(pad.l+px, y); else ctx.lineTo(pad.l+px, y);
+  }
+  ctx.stroke();
+
+  // Legend
+  ctx.font = '10px Courier New';
+  ctx.fillStyle='#0066cc'; ctx.fillText('── Av (V/V)', W-150, 22);
+  ctx.fillStyle='#cc6600'; ctx.fillText('── Ai (A/A)', W-150, 36);
+  ctx.fillStyle='#006633'; ctx.fillText('── Ap (×)', W-150, 50);
+
+  ctx.fillStyle = cs.getPropertyValue('--fg').trim();
+  ctx.fillText('Load Resistance →', W/2-40, H-1);
+}
+
+function drawDbComparison(av, currentZl) {
+  const canvas = document.getElementById('dbCanvas');
+  const W = canvas.clientWidth||600; canvas.width = W;
+  const H = canvas.height;
+  const ctx = canvas.getContext('2d');
+  const cs = getComputedStyle(document.documentElement);
+  ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0,0,W,H);
+
+  const ZIN = 10000; // fixed for this plot
+  const RL_MIN = 8, RL_MAX = 1e5;
+  const pad = {l:45, r:10, t:10, b:28};
+  const pw = W-pad.l-pad.r, ph = H-pad.t-pad.b;
+
+  function xOf(rl){ return pad.l+(Math.log10(rl)-Math.log10(RL_MIN))/(Math.log10(RL_MAX)-Math.log10(RL_MIN))*pw; }
+  const DB_MAX = 100, DB_MIN = 0;
+  function yOf(db){ return pad.t+ph-(db-DB_MIN)/(DB_MAX-DB_MIN)*ph; }
+
+  ctx.strokeStyle = cs.getPropertyValue('--grid').trim(); ctx.lineWidth=0.5;
+  [0,20,40,60,80,100].forEach(db=>{
+    const y=yOf(db);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(db+'dB',2,y+3);
+  });
+  [8,80,800,8000,80000].forEach(rl=>{
+    const x=xOf(rl);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(rl>=1000?(rl/1000)+'k':rl,x-8,H-4);
+  });
+
+  const av_db = 20*Math.log10(av);
+  // Av(dB) = constant horizontal line
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(pad.l,yOf(av_db));ctx.lineTo(pad.l+pw,yOf(av_db));ctx.stroke();
+
+  // Ap(dB) = av_db + 20*log10(ZIN/RL) ... changes with RL
+  ctx.strokeStyle='#006633';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const frac=px/pw;
+    const logrl=Math.log10(RL_MIN)+frac*(Math.log10(RL_MAX)-Math.log10(RL_MIN));
+    const rl=Math.pow(10,logrl);
+    const ap_db = 10*Math.log10(av*av*ZIN/rl);
+    const y=yOf(Math.max(0,ap_db));
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  // Current ZL marker
+  const xCur=xOf(currentZl);
+  ctx.strokeStyle='#ff8800';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(xCur,pad.t);ctx.lineTo(xCur,pad.t+ph);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#ff8800';ctx.font='10px Courier New';
+  ctx.fillText('ZL',xCur+3,pad.t+14);
+
+  ctx.font='10px Courier New';
+  ctx.fillStyle='#0066cc';ctx.fillText('── Av(dB) — constant',W-200,22);
+  ctx.fillStyle='#006633';ctx.fillText('── Ap(dB) — varies with ZL',W-200,36);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();
+  ctx.fillText('Load Resistance →',W/2-40,H-1);
+}
+
+['av','zin','zl','vin'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

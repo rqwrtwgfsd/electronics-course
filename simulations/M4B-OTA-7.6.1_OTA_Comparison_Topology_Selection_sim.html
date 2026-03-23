@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>M4B-OTA-7.6.1 — OTA Topology Comparison Simulator</title>
+<style>
+  body { font-family: 'Courier New', monospace; background: #0a0a0a; color: #e0e0e0; margin: 0; padding: 20px; }
+  h1 { color: #00bcd4; font-size: 1.1em; margin-bottom: 4px; }
+  .subtitle { color: #888; font-size: 0.85em; margin-bottom: 20px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .tab { padding: 8px 16px; background: #1a1a1a; border: 1px solid #333; cursor: pointer; font-family: inherit; font-size: 0.85em; color: #aaa; }
+  .tab.active { background: #00bcd4; color: #000; border-color: #00bcd4; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  canvas { background: #111; border: 1px solid #333; display: block; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+  .ctrl { background: #1a1a1a; border: 1px solid #333; padding: 8px 12px; min-width: 180px; }
+  .ctrl label { display: block; color: #aaa; font-size: 0.78em; margin-bottom: 4px; }
+  .ctrl input[type=range] { width: 100%; accent-color: #00bcd4; }
+  .ctrl .val { color: #00bcd4; font-size: 0.85em; }
+  .readouts { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .ro { background: #1a1a1a; border: 1px solid #444; padding: 6px 12px; font-size: 0.82em; }
+  .ro span { color: #00bcd4; }
+  .topology-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin: 12px 0; }
+  .topo-card { background: #1a1a1a; border: 2px solid #333; padding: 10px; font-size: 0.78em; cursor: pointer; transition: border-color 0.2s; }
+  .topo-card.selected { border-color: #00bcd4; }
+  .topo-card h3 { color: #00bcd4; margin: 0 0 6px 0; font-size: 0.9em; }
+  .topo-card .metric { display: flex; justify-content: space-between; margin: 2px 0; }
+  .topo-card .metric .label { color: #888; }
+  .topo-card .metric .value { color: #e0e0e0; }
+  .decision-box { background: #1a1a1a; border: 1px solid #444; padding: 14px; margin: 10px 0; }
+  .decision-box h3 { color: #ffeb3b; margin: 0 0 10px 0; font-size: 0.9em; }
+  .decision-step { display: flex; align-items: center; margin: 5px 0; font-size: 0.82em; }
+  .decision-step .step-num { background: #333; color: #aaa; padding: 2px 6px; margin-right: 8px; min-width: 20px; text-align: center; }
+  .decision-step .step-result { margin-left: 8px; color: #4caf50; font-weight: bold; }
+  .decision-step .step-result.fail { color: #f44336; }
+  .decision-step .step-result.warn { color: #ffeb3b; }
+  .recommendation { background: #0d2b0d; border: 2px solid #4caf50; padding: 12px; margin: 10px 0; font-size: 0.9em; }
+  .recommendation .topo-name { color: #4caf50; font-size: 1.1em; font-weight: bold; }
+  .recommendation .reason { color: #aaa; margin-top: 4px; font-size: 0.82em; }
+  .fom-display { background: #1a2233; border: 1px solid #1565c0; padding: 12px; margin: 10px 0; font-size: 0.85em; }
+  .bar-row { display: flex; align-items: center; margin: 5px 0; }
+  .bar-label { width: 140px; color: #aaa; font-size: 0.8em; }
+  .bar-track { flex: 1; background: #222; height: 18px; position: relative; }
+  .bar-fill { height: 100%; transition: width 0.4s; position: relative; }
+  .bar-val { position: absolute; right: 4px; top: 0; height: 100%; display: flex; align-items: center; font-size: 0.75em; color: #fff; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 0.8em; }
+  th { background: #1a1a1a; color: #00bcd4; padding: 6px 10px; border: 1px solid #333; text-align: left; }
+  td { padding: 5px 10px; border: 1px solid #2a2a2a; }
+  tr:hover td { background: #1a1a1a; }
+  .best { color: #4caf50; }
+  .worst { color: #f44336; }
+  .mid { color: #ffeb3b; }
+  .note { color: #888; font-size: 0.78em; margin: 6px 0; }
+</style>
+</head>
+<body>
+<h1>M4B-OTA-7.6.1 — OTA Topology Comparison and Selection</h1>
+<div class="subtitle">Interactive topology comparison, FoM calculator, and decision-tree selector</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab(0)">Comparison Charts</div>
+  <div class="tab" onclick="switchTab(1)">Decision Tree</div>
+  <div class="tab" onclick="switchTab(2)">FoM Calculator</div>
+  <div class="tab" onclick="switchTab(3)">Comparison Table</div>
+</div>
+
+<!-- TAB 0: Comparison Charts -->
+<div class="panel active" id="tab0">
+  <div class="controls">
+    <div class="ctrl">
+      <label>VDD (V): <span class="val" id="vdd_v">1.8</span></label>
+      <input type="range" id="vdd" min="0.6" max="3.3" step="0.1" value="1.8" oninput="updateAll()">
+    </div>
+    <div class="ctrl">
+      <label>Vov (V): <span class="val" id="vov_v">0.15</span></label>
+      <input type="range" id="vov" min="0.05" max="0.35" step="0.01" value="0.15" oninput="updateAll()">
+    </div>
+    <div class="ctrl">
+      <label>Tail Current ISS (µA): <span class="val" id="iss_v">200</span></label>
+      <input type="range" id="iss" min="10" max="2000" step="10" value="200" oninput="updateAll()">
+    </div>
+    <div class="ctrl">
+      <label>Load Cap CL (pF): <span class="val" id="cl_v">1.0</span></label>
+      <input type="range" id="cl" min="0.1" max="20" step="0.1" value="1.0" oninput="updateAll()">
+    </div>
+    <div class="ctrl">
+      <label>gm×ro per device: <span class="val" id="gmro_v">50</span></label>
+      <input type="range" id="gmro" min="10" max="200" step="5" value="50" oninput="updateAll()">
+    </div>
+    <div class="ctrl">
+      <label>Boost gain A_b: <span class="val" id="ab_v">30</span></label>
+      <input type="range" id="ab" min="5" max="100" step="5" value="30" oninput="updateAll()">
+    </div>
+  </div>
+  <canvas id="chart0" width="860" height="420"></canvas>
+  <div class="readouts" id="readouts0"></div>
+</div>
+
+<!-- TAB 1: Decision Tree -->
+<div class="panel" id="tab1">
+  <div class="controls">
+    <div class="ctrl">
+      <label>Required Gain (dB): <span class="val" id="req_gain_v">72</span></label>
+      <input type="range" id="req_gain" min="30" max="140" step="1" value="72" oninput="runDecision()">
+    </div>
+    <div class="ctrl">
+      <label>Required Swing (% VDD): <span class="val" id="req_swing_v">70</span></label>
+      <input type="range" id="req_swing" min="20" max="100" step="1" value="70" oninput="runDecision()">
+    </div>
+    <div class="ctrl">
+      <label>Power Budget IDD (µA): <span class="val" id="req_pwr_v">500</span></label>
+      <input type="range" id="req_pwr" min="10" max="5000" step="10" value="500" oninput="runDecision()">
+    </div>
+    <div class="ctrl">
+      <label>GBW Target (MHz): <span class="val" id="req_gbw_v">100</span></label>
+      <input type="range" id="req_gbw" min="1" max="5000" step="1" value="100" oninput="runDecision()">
+    </div>
+    <div class="ctrl">
+      <label>Supply VDD (V): <span class="val" id="req_vdd_v">1.8</span></label>
+      <input type="range" id="req_vdd" min="0.5" max="5.0" step="0.1" value="1.8" oninput="runDecision()">
+    </div>
+    <div class="ctrl">
+      <label>Design Complexity OK?</label>
+      <select id="complexity_ok" onchange="runDecision()" style="background:#222;color:#e0e0e0;border:1px solid #444;padding:4px;font-family:inherit;width:100%">
+        <option value="high">High complexity OK</option>
+        <option value="med" selected>Medium preferred</option>
+        <option value="low">Low (fast turnaround)</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="decision-box" id="decision_steps"></div>
+  <div class="recommendation" id="recommendation"></div>
+  <canvas id="chart1" width="860" height="200"></canvas>
+</div>
+
+<!-- TAB 2: FoM Calculator -->
+<div class="panel" id="tab2">
+  <div class="controls">
+    <div class="ctrl">
+      <label>GBW (MHz): <span class="val" id="fom_gbw_v">200</span></label>
+      <input type="range" id="fom_gbw" min="1" max="5000" step="1" value="200" oninput="updateFoM()">
+    </div>
+    <div class="ctrl">
+      <label>CL (pF): <span class="val" id="fom_cl_v">2.0</span></label>
+      <input type="range" id="fom_cl" min="0.1" max="50" step="0.1" value="2.0" oninput="updateFoM()">
+    </div>
+    <div class="ctrl">
+      <label>IDD (µA): <span class="val" id="fom_idd_v">400</span></label>
+      <input type="range" id="fom_idd" min="10" max="10000" step="10" value="400" oninput="updateFoM()">
+    </div>
+  </div>
+
+  <div class="fom-display" id="fom_display"></div>
+  <canvas id="chart2" width="860" height="300"></canvas>
+  <div class="note">FoM_S = GBW × CL / IDD [GHz·pF/A]. Higher is better. Telescopic maximizes FoM because all tail current goes to gm1 with no extra branches.</div>
+</div>
+
+<!-- TAB 3: Full Comparison Table -->
+<div class="panel" id="tab3">
+  <div class="controls">
+    <div class="ctrl">
+      <label>VDD (V): <span class="val" id="tbl_vdd_v">1.8</span></label>
+      <input type="range" id="tbl_vdd" min="0.6" max="3.3" step="0.1" value="1.8" oninput="updateTable()">
+    </div>
+    <div class="ctrl">
+      <label>Vov (V): <span class="val" id="tbl_vov_v">0.15</span></label>
+      <input type="range" id="tbl_vov" min="0.05" max="0.35" step="0.01" value="0.15" oninput="updateTable()">
+    </div>
+    <div class="ctrl">
+      <label>gm×ro: <span class="val" id="tbl_gmro_v">50</span></label>
+      <input type="range" id="tbl_gmro" min="10" max="200" step="5" value="50" oninput="updateTable()">
+    </div>
+    <div class="ctrl">
+      <label>Boost A_b: <span class="val" id="tbl_ab_v">30</span></label>
+      <input type="range" id="tbl_ab" min="5" max="100" step="5" value="30" oninput="updateTable()">
+    </div>
+  </div>
+  <div id="table_container"></div>
+</div>
+
+<script>
+const COLORS = {
+  '5T':      '#4caf50',
+  'Tele':    '#2196f3',
+  'Folded':  '#ff9800',
+  'Boosted': '#9c27b0',
+  'TwoStg':  '#f44336'
+};
+
+function getParams() {
+  return {
+    vdd:  parseFloat(document.getElementById('vdd').value),
+    vov:  parseFloat(document.getElementById('vov').value),
+    iss:  parseFloat(document.getElementById('iss').value) * 1e-6,
+    cl:   parseFloat(document.getElementById('cl').value) * 1e-12,
+    gmro: parseFloat(document.getElementById('gmro').value),
+    ab:   parseFloat(document.getElementById('ab').value)
+  };
+}
+
+function computeTopologies(p) {
+  // gm1 from tail current: ID = ISS/2, gm = 2*ID/Vov
+  const gm1 = (p.iss / 2) / p.vov * 2; // = ISS/Vov
+  const ro   = p.gmro / gm1;
+  const GBW  = gm1 / (2 * Math.PI * p.cl); // Hz
+
+  // Gain in dB
+  const gain_5T     = 20 * Math.log10(gm1 * (ro / 2));   // gm × (ron||rop)
+  const gain_tele   = 20 * Math.log10(gm1 * Math.pow(p.gmro, 2) * ro / 2); // gm × (gmc*roc*ro)²/2
+  const gain_folded = gain_tele - 3;   // slightly less due to extra parasitics
+  const gain_boost  = 20 * Math.log10(gm1 * p.ab * Math.pow(p.gmro, 2) * ro / 2);
+  const gain_2stg   = gain_tele + 25;  // second stage adds ~25 dB
+
+  // Output swing (fraction of VDD)
+  const swing_5T     = 1.0 - 2*p.vov/p.vdd;           // full rail minus Vov each side
+  const swing_tele   = 1.0 - 5*p.vov/p.vdd;           // 5 Vov stack
+  const swing_folded = 1.0 - 4*p.vov/p.vdd;           // 4 Vov
+  const swing_boost  = swing_tele;                     // same as telescopic
+  const swing_2stg   = 1.0 - 2*p.vov/p.vdd;           // common-source second stage → full rail
+
+  // Relative GBW (normalized to 5T = 1)
+  const gbw_5T     = GBW;
+  const gbw_tele   = GBW;           // same gm1 → same GBW
+  const gbw_folded = GBW * 0.80;    // ~20% less due to folding node pole
+  const gbw_boost  = GBW * 0.95;    // slight overhead from inner loop
+  const gbw_2stg   = GBW * 0.85;    // Miller Cc reduces effective GBW
+
+  // Power (relative to 5T)
+  const pwr_5T     = p.iss;
+  const pwr_tele   = p.iss;                 // same ISS
+  const pwr_folded = p.iss * 1.7;           // extra bias branches
+  const pwr_boost  = p.iss * 1.25;          // boost amps
+  const pwr_2stg   = p.iss * 1.3;           // second stage bias
+
+  // FoM = GBW * CL / IDD
+  const fom_5T     = gbw_5T     / 1e6 * p.cl / 1e-12 / (pwr_5T / 1e-3);
+  const fom_tele   = gbw_tele   / 1e6 * p.cl / 1e-12 / (pwr_tele / 1e-3);
+  const fom_folded = gbw_folded / 1e6 * p.cl / 1e-12 / (pwr_folded / 1e-3);
+  const fom_boost  = gbw_boost  / 1e6 * p.cl / 1e-12 / (pwr_boost / 1e-3);
+  const fom_2stg   = gbw_2stg   / 1e6 * p.cl / 1e-12 / (pwr_2stg / 1e-3);
+
+  return {
+    gm1, ro, GBW,
+    topologies: {
+      '5T':      { gain: gain_5T,     swing: swing_5T,     gbw: gbw_5T,     pwr: pwr_5T,     fom: fom_5T,     name: '5T OTA',           complexity: 1 },
+      'Tele':    { gain: gain_tele,   swing: swing_tele,   gbw: gbw_tele,   pwr: pwr_tele,   fom: fom_tele,   name: 'Telescopic',        complexity: 2 },
+      'Folded':  { gain: gain_folded, swing: swing_folded, gbw: gbw_folded, pwr: pwr_folded, fom: fom_folded, name: 'Folded Cascode',    complexity: 2 },
+      'Boosted': { gain: gain_boost,  swing: swing_boost,  gbw: gbw_boost,  pwr: pwr_boost,  fom: fom_boost,  name: 'Gain-Boosted',     complexity: 4 },
+      'TwoStg':  { gain: gain_2stg,   swing: swing_2stg,   gbw: gbw_2stg,   pwr: pwr_2stg,   fom: fom_2stg,   name: 'Two-Stage',        complexity: 3 }
+    }
+  };
+}
+
+function updateAll() {
+  ['vdd','vov','iss','cl','gmro','ab'].forEach(id => {
+    const el = document.getElementById(id);
+    document.getElementById(id+'_v').textContent = parseFloat(el.value).toFixed(id === 'gmro' || id === 'ab' || id === 'iss' ? 0 : 2);
+  });
+  drawComparisonChart();
+}
+
+function drawComparisonChart() {
+  const p = getParams();
+  const d = computeTopologies(p);
+  const topos = Object.keys(d.topologies);
+  const data  = d.topologies;
+
+  const canvas = document.getElementById('chart0');
+  const ctx    = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw 4 bar groups: Gain, Swing, GBW, Power
+  const groups = [
+    { label: 'DC Gain (dB)', values: topos.map(k => data[k].gain), maxVal: 150, unit: 'dB' },
+    { label: 'Output Swing (% VDD)', values: topos.map(k => Math.max(0, data[k].swing * 100)), maxVal: 100, unit: '%' },
+    { label: 'GBW (MHz)', values: topos.map(k => data[k].gbw / 1e6), maxVal: null, unit: 'MHz' },
+    { label: 'Current (µA)', values: topos.map(k => data[k].pwr * 1e6), maxVal: null, unit: 'µA' }
+  ];
+
+  groups.forEach((g, gi) => {
+    if (!g.maxVal) g.maxVal = Math.max(...g.values) * 1.2;
+  });
+
+  const margin = { top: 40, bottom: 30, left: 20, right: 20 };
+  const groupW = (W - margin.left - margin.right) / 4;
+  const barW   = groupW / (topos.length + 1.5);
+  const plotH  = H - margin.top - margin.bottom;
+
+  // Draw group backgrounds
+  groups.forEach((g, gi) => {
+    const gx = margin.left + gi * groupW;
+    ctx.fillStyle = gi % 2 === 0 ? '#111' : '#141414';
+    ctx.fillRect(gx, margin.top, groupW, plotH);
+
+    ctx.fillStyle = '#555';
+    ctx.font = '10px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(g.label, gx + groupW / 2, margin.top - 8);
+
+    // Bars
+    topos.forEach((k, ti) => {
+      const val = g.values[ti];
+      const barH = Math.max(0, (val / g.maxVal) * plotH);
+      const bx   = gx + (ti + 0.75) * barW;
+      const by   = margin.top + plotH - barH;
+
+      ctx.fillStyle = COLORS[k];
+      ctx.fillRect(bx, by, barW * 0.8, barH);
+
+      // Value label
+      ctx.fillStyle = '#ccc';
+      ctx.font = '8px Courier New';
+      ctx.textAlign = 'center';
+      const dispVal = g.unit === 'dB' ? val.toFixed(0) : g.unit === '%' ? val.toFixed(0) : val > 1000 ? (val/1000).toFixed(1)+'k' : val.toFixed(0);
+      if (barH > 12) {
+        ctx.fillText(dispVal, bx + barW * 0.4, by + 10);
+      } else {
+        ctx.fillText(dispVal, bx + barW * 0.4, by - 2);
+      }
+    });
+  });
+
+  // Legend
+  const legX = 20;
+  ctx.font = '9px Courier New';
+  topos.forEach((k, i) => {
+    ctx.fillStyle = COLORS[k];
+    ctx.fillRect(legX + i * 150, H - 18, 10, 10);
+    ctx.fillStyle = '#aaa';
+    ctx.textAlign = 'left';
+    ctx.fillText(data[k].name, legX + i * 150 + 14, H - 9);
+  });
+
+  // Readouts
+  const ro = document.getElementById('readouts0');
+  const fmt = v => v > 1e9 ? (v/1e9).toFixed(2)+'GHz' : v > 1e6 ? (v/1e6).toFixed(1)+'MHz' : v > 1e3 ? (v/1e3).toFixed(0)+'kHz' : v.toFixed(0)+'Hz';
+  ro.innerHTML = `
+    <div class="ro">gm1: <span>${(d.gm1*1000).toFixed(2)} mA/V</span></div>
+    <div class="ro">ro: <span>${(d.ro/1000).toFixed(0)} kΩ</span></div>
+    <div class="ro">GBW (base): <span>${fmt(d.GBW)}</span></div>
+    <div class="ro">Best FoM: <span>Telescopic (${data['Tele'].fom.toFixed(0)} GHz·pF/A)</span></div>
+  `;
+}
+
+// ─── TAB 1: DECISION TREE ─────────────────────────────────────────
+function runDecision() {
+  ['req_gain','req_swing','req_pwr','req_gbw','req_vdd'].forEach(id => {
+    document.getElementById(id+'_v').textContent = parseFloat(document.getElementById(id).value).toFixed(
+      id === 'req_vdd' ? 1 : 0
+    );
+  });
+
+  const gain  = parseFloat(document.getElementById('req_gain').value);
+  const swing = parseFloat(document.getElementById('req_swing').value); // % VDD
+  const pwr   = parseFloat(document.getElementById('req_pwr').value);   // µA
+  const gbw   = parseFloat(document.getElementById('req_gbw').value);   // MHz
+  const vdd   = parseFloat(document.getElementById('req_vdd').value);
+  const cplx  = document.getElementById('complexity_ok').value;
+
+  const steps = [];
+  const eliminated = new Set();
+
+  // Step 1: Gain
+  let gainClass;
+  if (gain < 50) {
+    gainClass = '5T only preferred';
+    ['Tele','Folded','Boosted','TwoStg'].forEach(k => { /* all capable, 5T preferred */ });
+  } else if (gain <= 80) {
+    gainClass = '50–80 dB: Telescopic or Folded';
+    eliminated.add('5T');
+  } else if (gain <= 100) {
+    gainClass = '80–100 dB: Gain-boosted or Two-stage';
+    eliminated.add('5T');
+  } else {
+    gainClass = '>100 dB: Gain-boosted or Three-stage';
+    eliminated.add('5T');
+    eliminated.add('Tele');
+    eliminated.add('Folded');
+    eliminated.add('TwoStg');
+  }
+  steps.push({ num: 1, label: `Required gain: ${gain} dB`, result: gainClass, ok: true });
+
+  // Step 2: Swing
+  let swingElim = '';
+  if (swing > 60) {
+    eliminated.add('Tele');
+    eliminated.add('Boosted');
+    swingElim = `>60% VDD: Telescopic/Boosted eliminated (limited swing)`;
+  } else {
+    swingElim = `≤60% VDD: Telescopic and Boosted remain feasible`;
+  }
+  steps.push({ num: 2, label: `Required swing: ${swing}% VDD`, result: swingElim, ok: swing <= 60 });
+
+  // Step 3: Power
+  let pwrNote;
+  if (pwr < 100) {
+    eliminated.add('Tele');
+    eliminated.add('Folded');
+    eliminated.add('Boosted');
+    eliminated.add('TwoStg');
+    pwrNote = `<100 µA: Only 5T OTA works at micropower`;
+  } else {
+    pwrNote = `Budget ${pwr} µA: All topologies feasible`;
+  }
+  steps.push({ num: 3, label: `Power budget: ${pwr} µA`, result: pwrNote, ok: pwr >= 100 });
+
+  // Step 4: Speed
+  let speedNote;
+  if (gbw > 1000) {
+    eliminated.add('Folded');
+    speedNote = `GBW >1 GHz: Avoid folded cascode (extra pole), prefer telescopic or two-stage`;
+  } else {
+    speedNote = `GBW ${gbw} MHz: All topologies feasible`;
+  }
+  steps.push({ num: 4, label: `GBW target: ${gbw} MHz`, result: speedNote, ok: gbw <= 1000 });
+
+  // Step 5: Supply
+  let vddNote;
+  if (vdd < 1.0) {
+    eliminated.add('Tele');
+    eliminated.add('Folded');
+    eliminated.add('Boosted');
+    vddNote = `VDD <1.0V: Cascode impossible. Use 5T or low-voltage two-stage`;
+  } else if (vdd < 1.5) {
+    vddNote = `VDD 1.0–1.5V: Cascode feasible with careful Vov planning`;
+  } else {
+    vddNote = `VDD ≥1.5V: All topologies feasible`;
+  }
+  steps.push({ num: 5, label: `Supply: ${vdd}V`, result: vddNote, ok: vdd >= 1.0 });
+
+  // Step 6: Complexity
+  let cplxNote;
+  if (cplx === 'low') {
+    eliminated.add('Boosted');
+    cplxNote = `Low complexity: Gain-boosted eliminated (4 aux amps)`;
+  } else if (cplx === 'med') {
+    cplxNote = `Medium complexity: Gain-boosted tolerated if necessary`;
+  } else {
+    cplxNote = `High complexity OK: All topologies considered`;
+  }
+  steps.push({ num: 6, label: `Complexity: ${cplx}`, result: cplxNote, ok: true });
+
+  // Determine recommendation
+  const candidates = ['5T','Tele','Folded','Boosted','TwoStg'].filter(k => !eliminated.has(k));
+  const names = { '5T':'5T OTA', 'Tele':'Telescopic Cascode', 'Folded':'Folded Cascode', 'Boosted':'Gain-Boosted Telescopic', 'TwoStg':'Two-Stage OTA' };
+  const reasons = {
+    '5T':     'Lowest power, simplest design, sufficient gain for low-precision applications',
+    'Tele':   'Maximum GBW per µA, best FoM when swing allows',
+    'Folded': 'Best swing + extended input CM range, moderate power penalty',
+    'Boosted':'Highest DC gain from single stage, 20–30% power overhead',
+    'TwoStg': 'Best general-purpose choice: wide swing + high gain + flexible sizing'
+  };
+
+  // Render steps
+  const stepsDiv = document.getElementById('decision_steps');
+  stepsDiv.innerHTML = '<h3>Decision Tree Analysis</h3>' + steps.map(s =>
+    `<div class="decision-step">
+      <span class="step-num">${s.num}</span>
+      <span style="color:#aaa">${s.label}</span>
+      <span class="step-result ${s.ok?'':' warn'}">→ ${s.result}</span>
+    </div>`
+  ).join('') +
+  (candidates.length > 0 ?
+    `<div style="margin-top:8px;color:#aaa;font-size:0.8em">Remaining candidates: <span style="color:#ffeb3b">${candidates.map(k=>names[k]).join(', ')}</span></div>` :
+    `<div style="margin-top:8px;color:#f44336;font-size:0.8em">No single topology satisfies all constraints — use Two-Stage or consider relaxing specs.</div>`
+  );
+
+  // Render recommendation
+  const recDiv = document.getElementById('recommendation');
+  if (candidates.length > 0) {
+    const pick = candidates[candidates.length - 1]; // last = most capable
+    const prefer = candidates.includes('TwoStg') && gain > 50 ? 'TwoStg' :
+                   candidates.includes('Tele') && swing <= 60 ? 'Tele' :
+                   candidates[0];
+    recDiv.innerHTML = `<div><strong style="color:#4caf50">Recommended:</strong> <span class="topo-name">${names[prefer]}</span></div>
+      <div class="reason">${reasons[prefer]}</div>
+      <div style="margin-top:6px;color:#666;font-size:0.78em">All viable: ${candidates.map(k=>names[k]).join(' | ')}</div>`;
+  } else {
+    recDiv.innerHTML = `<div style="color:#f44336">Constraints are over-determined. Consider Two-Stage OTA with gain boosting or relax one specification.</div>`;
+  }
+
+  drawDecisionBar(candidates);
+}
+
+function drawDecisionBar(candidates) {
+  const canvas = document.getElementById('chart1');
+  const ctx    = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const topos   = ['5T','Tele','Folded','Boosted','TwoStg'];
+  const names   = { '5T':'5T OTA', 'Tele':'Telescopic', 'Folded':'Folded Cascode', 'Boosted':'Gain-Boosted', 'TwoStg':'Two-Stage' };
+  const tw      = W / topos.length;
+
+  topos.forEach((k, i) => {
+    const isCandidate = candidates.includes(k);
+    ctx.fillStyle = isCandidate ? COLORS[k] : '#2a2a2a';
+    ctx.fillRect(i * tw + 10, 20, tw - 20, H - 50);
+
+    ctx.fillStyle = isCandidate ? '#fff' : '#555';
+    ctx.font = isCandidate ? 'bold 11px Courier New' : '10px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText(names[k], i * tw + tw/2, H/2);
+
+    if (!isCandidate) {
+      ctx.strokeStyle = '#f44336';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(i * tw + 10, 20);
+      ctx.lineTo(i * tw + tw - 10, H - 30);
+      ctx.moveTo(i * tw + tw - 10, 20);
+      ctx.lineTo(i * tw + 10, H - 30);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = isCandidate ? '#ccc' : '#555';
+    ctx.font = '9px Courier New';
+    ctx.fillText(isCandidate ? 'VIABLE' : 'ELIMINATED', i * tw + tw/2, H - 15);
+  });
+}
+
+// ─── TAB 2: FoM Calculator ─────────────────────────────────────────
+function updateFoM() {
+  ['fom_gbw','fom_cl','fom_idd'].forEach(id => {
+    document.getElementById(id+'_v').textContent = parseFloat(document.getElementById(id).value).toFixed(
+      id === 'fom_cl' ? 1 : 0
+    );
+  });
+
+  const gbw = parseFloat(document.getElementById('fom_gbw').value); // MHz
+  const cl  = parseFloat(document.getElementById('fom_cl').value);  // pF
+  const idd = parseFloat(document.getElementById('fom_idd').value); // µA
+
+  const fom = gbw * cl / (idd / 1000); // GHz·pF/A
+
+  const benchmarks = {
+    '5T OTA':          { min: 100, max: 200 },
+    'Telescopic':      { min: 200, max: 400 },
+    'Folded Cascode':  { min: 100, max: 200 },
+    'Two-Stage':       { min: 150, max: 300 },
+    'Recycled/FF':     { min: 400, max: 800 }
+  };
+
+  let tier = '', tierColor = '';
+  if (fom >= 400)       { tier = 'State-of-the-art (recycled/feedforward)'; tierColor = '#9c27b0'; }
+  else if (fom >= 200)  { tier = 'Excellent (telescopic-class)'; tierColor = '#2196f3'; }
+  else if (fom >= 100)  { tier = 'Good (folded/two-stage class)'; tierColor = '#4caf50'; }
+  else if (fom >= 50)   { tier = 'Below average — check topology'; tierColor = '#ffeb3b'; }
+  else                  { tier = 'Poor — consider topology change'; tierColor = '#f44336'; }
+
+  const div = document.getElementById('fom_display');
+  div.innerHTML = `
+    <div style="font-size:1.2em">FoM_S = <span style="color:#00bcd4">${fom.toFixed(1)}</span> GHz·pF/A</div>
+    <div style="margin-top:6px;color:${tierColor}">${tier}</div>
+    <div style="margin-top:4px;color:#888;font-size:0.8em">= ${gbw} MHz × ${cl} pF / ${(idd/1000).toFixed(3)} mA</div>
+  `;
+
+  drawFoMChart(fom, benchmarks);
+}
+
+function drawFoMChart(userFoM, benchmarks) {
+  const canvas = document.getElementById('chart2');
+  const ctx    = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const topoList  = Object.keys(benchmarks);
+  const maxFoM    = 900;
+  const margin    = { top: 30, bottom: 30, left: 150, right: 60 };
+  const plotW     = W - margin.left - margin.right;
+  const rowH      = (H - margin.top - margin.bottom) / (topoList.length + 1.5);
+
+  ctx.fillStyle = '#888';
+  ctx.font      = '10px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('FoM_S = GBW × CL / IDD  [GHz·pF/A]', W/2, 16);
+
+  topoList.forEach((name, i) => {
+    const b  = benchmarks[name];
+    const y  = margin.top + i * rowH + rowH * 0.3;
+    const x1 = margin.left + (b.min / maxFoM) * plotW;
+    const x2 = margin.left + (b.max / maxFoM) * plotW;
+
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(margin.left, y, plotW, rowH * 0.6);
+
+    ctx.fillStyle = ['#4caf50','#2196f3','#ff9800','#f44336','#9c27b0'][i];
+    ctx.globalAlpha = 0.8;
+    ctx.fillRect(x1, y+2, x2-x1, rowH * 0.6 - 4);
+    ctx.globalAlpha = 1.0;
+
+    ctx.fillStyle = '#aaa';
+    ctx.font      = '10px Courier New';
+    ctx.textAlign = 'right';
+    ctx.fillText(name, margin.left - 5, y + rowH * 0.4);
+
+    ctx.fillStyle = '#ccc';
+    ctx.textAlign = 'left';
+    ctx.fillText(`${b.min}–${b.max}`, x2 + 5, y + rowH * 0.4);
+  });
+
+  // User FoM line
+  const ux = margin.left + (userFoM / maxFoM) * plotW;
+  if (ux >= margin.left && ux <= W - margin.right) {
+    ctx.strokeStyle = '#ffeb3b';
+    ctx.lineWidth   = 2;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(ux, margin.top - 10);
+    ctx.lineTo(ux, H - margin.bottom + 10);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle   = '#ffeb3b';
+    ctx.font        = 'bold 10px Courier New';
+    ctx.textAlign   = 'center';
+    ctx.fillText(`Your design: ${userFoM.toFixed(0)}`, ux, H - margin.bottom + 22);
+  }
+
+  // X-axis ticks
+  [0, 100, 200, 300, 400, 600, 800].forEach(v => {
+    const x = margin.left + (v / maxFoM) * plotW;
+    ctx.fillStyle   = '#555';
+    ctx.font        = '9px Courier New';
+    ctx.textAlign   = 'center';
+    ctx.fillText(v, x, H - 8);
+    ctx.strokeStyle = '#2a2a2a';
+    ctx.lineWidth   = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, margin.top);
+    ctx.lineTo(x, H - margin.bottom);
+    ctx.stroke();
+  });
+}
+
+// ─── TAB 3: Comparison Table ──────────────────────────────────────
+function updateTable() {
+  ['tbl_vdd','tbl_vov','tbl_gmro','tbl_ab'].forEach(id => {
+    document.getElementById(id+'_v').textContent = parseFloat(document.getElementById(id).value).toFixed(
+      id === 'tbl_gmro' || id === 'tbl_ab' ? 0 : 2
+    );
+  });
+
+  const vdd  = parseFloat(document.getElementById('tbl_vdd').value);
+  const vov  = parseFloat(document.getElementById('tbl_vov').value);
+  const gmro = parseFloat(document.getElementById('tbl_gmro').value);
+  const ab   = parseFloat(document.getElementById('tbl_ab').value);
+
+  // Compute symbolic values
+  const swing_5T     = Math.max(0, (1 - 2*vov/vdd)*100).toFixed(0);
+  const swing_tele   = Math.max(0, (1 - 5*vov/vdd)*100).toFixed(0);
+  const swing_folded = Math.max(0, (1 - 4*vov/vdd)*100).toFixed(0);
+  const swing_boost  = swing_tele;
+  const swing_2stg   = swing_5T;
+
+  const gain_5T     = (20*Math.log10(gmro/2)).toFixed(0);
+  const gain_tele   = (20*Math.log10(gmro*gmro/2)).toFixed(0);
+  const gain_folded = (parseFloat(gain_tele) - 3).toFixed(0);
+  const gain_boost  = (20*Math.log10(ab*gmro*gmro/2)).toFixed(0);
+  const gain_2stg   = (parseFloat(gain_tele) + 25).toFixed(0);
+
+  const C = (v, cls) => `<span class="${cls}">${v}</span>`;
+
+  const html = `<table>
+    <tr>
+      <th>Topology</th><th>DC Gain (dB)</th><th>Output Swing</th><th>GBW</th>
+      <th>Power</th><th>Noise</th><th>Complexity</th><th>Best Use</th>
+    </tr>
+    <tr>
+      <td style="color:${COLORS['5T']}">5T OTA</td>
+      <td>${C(gain_5T,'mid')} dB</td>
+      <td>${C(swing_5T+'%','best')} VDD</td>
+      <td>${C('High','best')}</td>
+      <td>${C('Lowest','best')}</td>
+      <td>Mod.</td>
+      <td>${C('Low','best')}</td>
+      <td>Micropower, &lt;10-bit ADC</td>
+    </tr>
+    <tr>
+      <td style="color:${COLORS['Tele']}">Telescopic</td>
+      <td>${C(gain_tele,'best')} dB</td>
+      <td>${C(swing_tele+'%','worst')} VDD</td>
+      <td>${C('Highest','best')}</td>
+      <td>${C('Low','best')}</td>
+      <td>${C('Low','best')}</td>
+      <td>Mod.</td>
+      <td>High-speed ADC, best FoM</td>
+    </tr>
+    <tr>
+      <td style="color:${COLORS['Folded']}">Folded Cascode</td>
+      <td>${C(gain_folded,'best')} dB</td>
+      <td>${C(swing_folded+'%','mid')} VDD</td>
+      <td>${C('Medium','mid')}</td>
+      <td>${C('Medium','mid')}</td>
+      <td>${C('Low','best')}</td>
+      <td>Mod.</td>
+      <td>Wide swing, low-V supply</td>
+    </tr>
+    <tr>
+      <td style="color:${COLORS['Boosted']}">Gain-Boosted</td>
+      <td>${C(gain_boost,'best')} dB</td>
+      <td>${C(swing_boost+'%','worst')} VDD</td>
+      <td>${C('High','best')}</td>
+      <td>${C('Medium','mid')}</td>
+      <td>${C('Low','best')}</td>
+      <td>${C('High','worst')}</td>
+      <td>24-bit audio, precision DAC</td>
+    </tr>
+    <tr>
+      <td style="color:${COLORS['TwoStg']}">Two-Stage</td>
+      <td>${C(gain_2stg,'best')} dB</td>
+      <td>${C(swing_2stg+'%','best')} VDD</td>
+      <td>${C('High','best')}</td>
+      <td>${C('Medium','mid')}</td>
+      <td>Mod.</td>
+      <td>${C('Medium','mid')}</td>
+      <td>General-purpose, fast design</td>
+    </tr>
+  </table>
+  <div class="note">Note: Gain values computed with gm×ro = ${gmro}, boost A_b = ${ab}, VDD = ${vdd}V, Vov = ${vov}V.
+  <span class="best">Green</span> = best-in-class. <span class="worst">Red</span> = worst-in-class. <span class="mid">Yellow</span> = intermediate.</div>
+  <div class="note">FoM ranking: Telescopic &gt; Two-stage &gt; Folded cascode. Why: telescopic has no extra bias branches — every µA of tail current goes directly into gm1.</div>`;
+
+  document.getElementById('table_container').innerHTML = html;
+}
+
+function switchTab(n) {
+  document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === n));
+  document.querySelectorAll('.panel').forEach((p, i) => p.classList.toggle('active', i === n));
+  if (n === 0) drawComparisonChart();
+  if (n === 1) runDecision();
+  if (n === 2) updateFoM();
+  if (n === 3) updateTable();
+}
+
+// Init
+updateAll();
+updateFoM();
+updateTable();
+</script>
+</body>
+</html>

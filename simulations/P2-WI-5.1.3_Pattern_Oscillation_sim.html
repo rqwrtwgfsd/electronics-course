@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-WI-5.1.3 Damped Oscillation Pattern</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:12px;padding:12px}
+canvas{background:#0a0a1a;border:1px solid #333;display:block}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:220px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.btn{display:block;width:100%;margin-top:5px;padding:5px;background:#1a1a3a;border:1px solid #0066cc;color:#0066cc;cursor:pointer;font-family:inherit;font-size:11px;border-radius:3px}
+.btn.active{background:#0066cc;color:#fff}
+.formula{color:#ffaa00;font-size:11px;margin-top:8px;line-height:1.6}
+.warn{color:#ff4444;font-size:11px;margin-top:6px}
+</style>
+</head>
+<body>
+<h1>P2-WI-5.1.3 — Damped Oscillation | RLC Circuit Step Response</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="680" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>Controls</h2>
+<label>Damping Ratio ζ
+<input type="range" id="zeta" min="0.05" max="1.5" step="0.01" value="0.2">
+<div class="readout" id="zeta_v">ζ = 0.20</div>
+</label>
+<label>Natural Frequency ω₀ (krad/s)
+<input type="range" id="w0" min="1" max="20" step="0.5" value="5">
+<div class="readout" id="w0_v">ω₀ = 5 krad/s</div>
+</label>
+<label>Step Amplitude (V)
+<input type="range" id="amp" min="1" max="10" step="0.5" value="5">
+<div class="readout" id="amp_v">Amp = 5.0 V</div>
+</label>
+<h2 style="margin-top:10px">Overlays</h2>
+<button class="btn active" id="btn_env" onclick="toggleOvl('env')">Envelope e<sup>−αt</sup></button>
+<button class="btn active" id="btn_osc" onclick="toggleOvl('osc')">Damped Oscillation</button>
+<button class="btn" id="btn_log" onclick="toggleOvl('log')">Log-Decrement Peaks</button>
+<h2 style="margin-top:10px">Live Readouts</h2>
+<div class="readout" id="r_wd">ω_d = —</div>
+<div class="readout" id="r_alpha">α = —</div>
+<div class="readout" id="r_T">Period T = —</div>
+<div class="readout" id="r_os">Overshoot: —</div>
+<div class="readout" id="r_ld">Log-dec δ = —</div>
+<div id="warn_crit" class="warn" style="display:none">Overdamped (ζ≥1): no oscillation</div>
+<div class="formula">α = ζω₀<br>ω_d = ω₀√(1−ζ²)<br>V(t)=A(1−e<sup>−αt</sup>(cosω_d t + α/ω_d sinω_d t))</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let zeta=0.2,w0=5,amp=5,ovl={env:true,osc:true,log:false};
+const W=680,H=380,PAD={l:60,r:20,t:20,b:40};
+const CW=W-PAD.l-PAD.r,CH=H-PAD.t-PAD.b;
+
+function toggleOvl(k){ovl[k]=!ovl[k];document.getElementById('btn_'+k).classList.toggle('active',ovl[k]);draw();}
+['zeta','w0','amp'].forEach(id=>{
+  document.getElementById(id).oninput=function(){
+    if(id==='zeta'){zeta=parseFloat(this.value);document.getElementById('zeta_v').textContent='ζ = '+zeta.toFixed(2);}
+    if(id==='w0'){w0=parseFloat(this.value);document.getElementById('w0_v').textContent='ω₀ = '+w0+' krad/s';}
+    if(id==='amp'){amp=parseFloat(this.value);document.getElementById('amp_v').textContent='Amp = '+amp.toFixed(1)+' V';}
+    draw();
+  };
+});
+
+function vt(t){
+  const alpha=zeta*w0;
+  if(zeta>=1){
+    const r1=w0*(-zeta+Math.sqrt(zeta*zeta-1));
+    const r2=w0*(-zeta-Math.sqrt(zeta*zeta-1));
+    const A2=amp*r1/(r1-r2),A1=amp-A2;
+    return amp-A1*Math.exp(r1*t)-A2*Math.exp(r2*t);
+  }
+  const wd=w0*Math.sqrt(1-zeta*zeta);
+  return amp*(1-Math.exp(-alpha*t)*(Math.cos(wd*t)+alpha/wd*Math.sin(wd*t)));
+}
+
+function envelope_pos(t){return amp*(1+Math.exp(-zeta*w0*t)*Math.sqrt(1+zeta*zeta/(1-zeta*zeta)));}
+function envelope_simple(t){return amp*(1+Math.exp(-zeta*w0*t));}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const alpha=zeta*w0;
+  const wd=zeta<1?w0*Math.sqrt(1-zeta*zeta):0;
+  const Td=wd>0?2*Math.PI/wd:Infinity;
+  const tmax=Math.min(12/(alpha+0.01),8*Td||Infinity,30);
+  const vmax=amp*1.4,vmin=-amp*0.6;
+  const vrange=vmax-vmin;
+  function toPx(t,v){
+    return[PAD.l+CW*(t/tmax),PAD.t+CH*(1-(v-vmin)/vrange)];
+  }
+  // Grid
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=8;i++){const x=PAD.l+CW*(i/8);ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+CH);ctx.stroke();}
+  for(let i=0;i<=6;i++){const y=PAD.t+CH*(i/6);ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+CW,y);ctx.stroke();}
+  // Axes
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+CH);ctx.moveTo(PAD.l,PAD.t+CH);ctx.lineTo(PAD.l+CW,PAD.t+CH);ctx.stroke();
+  // Zero line
+  const[,yz0]=toPx(0,0);
+  ctx.strokeStyle='#333';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(PAD.l,yz0);ctx.lineTo(PAD.l+CW,yz0);ctx.stroke();
+  ctx.setLineDash([]);
+  // Labels
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=8;i++){const t=tmax*i/8;const x=PAD.l+CW*(i/8);ctx.fillText(t.toFixed(2)+'ms',x,PAD.t+CH+14);}
+  ctx.textAlign='right';
+  for(let i=0;i<=6;i++){const v=vmin+vrange*(1-i/6);const y=PAD.t+CH*(i/6);ctx.fillText(v.toFixed(1)+'V',PAD.l-4,y+4);}
+
+  const overdamped=zeta>=1;
+  document.getElementById('warn_crit').style.display=overdamped?'block':'none';
+  // Final value line
+  const[,yamp]=toPx(0,amp);
+  ctx.strokeStyle='#333';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(PAD.l,yamp);ctx.lineTo(PAD.l+CW,yamp);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Envelope
+  if(ovl.env&&!overdamped){
+    ctx.strokeStyle='#ff660055';ctx.lineWidth=1.5;ctx.setLineDash([4,2]);
+    ctx.beginPath();
+    for(let i=0;i<=500;i++){
+      const t=tmax*i/500;
+      const env_u=amp+amp*Math.exp(-alpha*t);
+      const env_l=amp-amp*Math.exp(-alpha*t);
+      const[x,yu]=toPx(t,env_u);const[,yl]=toPx(t,env_l);
+      if(i===0){ctx.moveTo(x,yu);}else{ctx.lineTo(x,yu);}
+    }
+    ctx.stroke();
+    ctx.beginPath();
+    for(let i=0;i<=500;i++){
+      const t=tmax*i/500;
+      const env_l=amp-amp*Math.exp(-alpha*t);
+      const[x,yl]=toPx(t,env_l);
+      i===0?ctx.moveTo(x,yl):ctx.lineTo(x,yl);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#ff6600';ctx.font='10px Courier New';ctx.textAlign='left';
+    ctx.fillText('Envelope: e^(−αt), α='+alpha.toFixed(2)+'krad/s',PAD.l+4,PAD.t+14);
+  }
+  // Waveform
+  if(ovl.osc){
+    ctx.strokeStyle=overdamped?'#888':'#00ff88';ctx.lineWidth=2.5;
+    ctx.beginPath();
+    for(let i=0;i<=1000;i++){
+      const t=tmax*i/1000;
+      const v=vt(t);
+      const[x,y]=toPx(t,v);
+      if(y>PAD.t-10&&y<PAD.t+CH+10){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+    }
+    ctx.stroke();
+  }
+  // Log decrement peaks
+  if(ovl.log&&!overdamped&&Td<Infinity){
+    const peaks=[];
+    for(let n=0;n<6;n++){
+      const tp=Td*(n+0.5);
+      if(tp>tmax)break;
+      peaks.push({t:tp,v:vt(tp)});
+    }
+    peaks.forEach((p,i)=>{
+      const[x,y]=toPx(p.t,p.v);
+      ctx.fillStyle='#ffaa00';ctx.beginPath();ctx.arc(x,y,4,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#ffaa00';ctx.font='10px Courier New';ctx.textAlign='left';
+      ctx.fillText('P'+(i+1)+': '+p.v.toFixed(2)+'V',x+5,y-5);
+    });
+    if(peaks.length>=2){
+      const delta=Math.log(Math.abs(peaks[0].v-amp)/Math.abs(peaks[1].v-amp));
+      document.getElementById('r_ld').textContent='Log-dec δ = '+delta.toFixed(3)+' (ζ='+(delta/Math.sqrt(4*Math.PI*Math.PI+delta*delta)).toFixed(3)+')';
+    }
+  }
+  // Update readouts
+  const os=overdamped?0:Math.exp(-Math.PI*zeta/Math.sqrt(1-zeta*zeta))*100;
+  document.getElementById('r_wd').textContent='ω_d = '+(overdamped?0:wd).toFixed(2)+' krad/s';
+  document.getElementById('r_alpha').textContent='α = '+alpha.toFixed(2)+' krad/s';
+  document.getElementById('r_T').textContent=overdamped?'T: N/A (overdamped)':'T_d = '+(Td).toFixed(3)+' ms';
+  document.getElementById('r_os').textContent=overdamped?'Overshoot: 0%':'Overshoot: '+os.toFixed(1)+'%';
+  if(!ovl.log)document.getElementById('r_ld').textContent='Log-dec δ: (enable overlay)';
+}
+draw();
+</script>
+</body>
+</html>

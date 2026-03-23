@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-OP-7.1.1 Speed Metric</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:10px;padding:10px;flex-wrap:wrap}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:10px;min-width:200px}
+.panel h2{color:#0066cc;font-size:11px;margin-bottom:6px;text-transform:uppercase}
+label{display:block;margin-top:6px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:2px}
+.readout{color:#00ff88;font-size:11px;margin-top:2px}
+.formula{color:#ffaa00;font-size:10px;margin-top:6px;line-height:1.6}
+</style>
+</head>
+<body>
+<h1>P2-OP-7.1.1 — Speed Metric: τ vs Rise Time, Noise Bandwidth, f_c</h1>
+<div class="container">
+<canvas id="c1" width="560" height="240"></canvas>
+<div class="panel">
+<h2>Control</h2>
+<label>Time Constant τ (μs)
+<input type="range" id="tau" min="0.1" max="200" step="0.5" value="10">
+<div class="readout" id="tau_v">τ = 10 μs</div>
+</label>
+<h2 style="margin-top:8px">Speed Metrics</h2>
+<div class="readout" id="tr">t_rise(10-90%) = —</div>
+<div class="readout" id="ts">t_settle(1%) = —</div>
+<div class="readout" id="fc">f_c = —</div>
+<div class="readout" id="bwnoise">BW_noise = —</div>
+<div class="readout" id="noise">kT/C noise = —</div>
+<div class="formula">t_r = 2.2τ<br>t_s(1%) = 4.6τ<br>f_c = 1/(2πτ)<br>BW_n = 1/(4τ)</div>
+</div>
+</div>
+<div class="container" style="padding-top:0">
+<canvas id="c2" width="370" height="200"></canvas>
+<canvas id="c3" width="350" height="200"></canvas>
+</div>
+<script>
+let tau=10; // μs
+const Vin=5;
+
+document.getElementById('tau').oninput=function(){tau=parseFloat(this.value);document.getElementById('tau_v').textContent='τ = '+tau.toFixed(1)+' μs';draw();};
+
+function drawWaveform(){
+  const cv=document.getElementById('c1');
+  const ctx=cv.getContext('2d');
+  const W=560,H=240,PAD={l:55,r:15,t:20,b:35};
+  const CW=W-PAD.l-PAD.r,CH=H-PAD.t-PAD.b;
+  ctx.clearRect(0,0,W,H);
+  const tmax=7*tau;
+  function toPx(t,v){return[PAD.l+CW*(t/tmax),PAD.t+CH*(1-v/(Vin*1.1))];}
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=7;i++){const x=PAD.l+CW*(i/7);ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=PAD.t+CH*(i/5);ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+CH);ctx.moveTo(PAD.l,PAD.t+CH);ctx.lineTo(PAD.l+CW,PAD.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=7;i++){const t=tmax*i/7;ctx.fillText(t.toFixed(1)+'μs',PAD.l+CW*(i/7),PAD.t+CH+14);}
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){const v=Vin*1.1*(1-i/5);ctx.fillText(v.toFixed(1)+'V',PAD.l-4,PAD.t+CH*(i/5)+4);}
+  ctx.strokeStyle='#00ff88';ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=600;i++){const t=tmax*i/600;const v=Vin*(1-Math.exp(-t/tau));const[x,y]=toPx(t,v);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  // Rise time markers
+  const t10=-tau*Math.log(1-0.1),t90=-tau*Math.log(1-0.9);
+  const[x10,y10]=toPx(t10,0.5),v10_px=toPx(t10,Vin*0.1);
+  const[x90,y90]=toPx(t90,0.5),v90_px=toPx(t90,Vin*0.9);
+  ctx.strokeStyle='#ffaa00';ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(toPx(t10,Vin*0.1)[0],toPx(t10,Vin*0.1)[1]);ctx.lineTo(toPx(t90,Vin*0.1)[0],toPx(t10,Vin*0.1)[1]);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(toPx(t10,Vin*0.1)[0],PAD.t);ctx.lineTo(toPx(t10,Vin*0.1)[0],PAD.t+CH);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(toPx(t90,Vin*0.9)[0],PAD.t);ctx.lineTo(toPx(t90,Vin*0.9)[0],PAD.t+CH);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#ffaa00';ctx.font='10px Courier New';ctx.textAlign='center';
+  ctx.fillText('t_r = '+(2.2*tau).toFixed(1)+'μs',(toPx(t10,0)[0]+toPx(t90,0)[0])/2,PAD.t+CH-8);
+  // t_settle line
+  const ts=4.6*tau;
+  ctx.strokeStyle='#aa44ff';ctx.setLineDash([4,2]);
+  ctx.beginPath();ctx.moveTo(toPx(ts,0)[0],PAD.t);ctx.lineTo(toPx(ts,0)[0],PAD.t+CH);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#aa44ff';ctx.font='10px Courier New';ctx.textAlign='left';
+  ctx.fillText('t_s(1%)='+(ts).toFixed(1)+'μs',toPx(ts,0)[0]+3,PAD.t+14);
+  // Update numeric readouts
+  const k=1.38e-23,T=300,C_f=1e-9;
+  const noise_rms=Math.sqrt(k*T/C_f)*1000; // mV
+  document.getElementById('tr').textContent='t_rise(10-90%) = '+(2.2*tau).toFixed(2)+' μs';
+  document.getElementById('ts').textContent='t_settle(1%) = '+(4.6*tau).toFixed(2)+' μs';
+  document.getElementById('fc').textContent='f_c = '+(1000/(2*Math.PI*tau)).toFixed(2)+' kHz';
+  document.getElementById('bwnoise').textContent='BW_noise = '+(250/tau).toFixed(2)+' kHz';
+  document.getElementById('noise').textContent='kT/C (1nF) = '+noise_rms.toFixed(2)+' mV RMS';
+}
+
+function drawSpeedVsTau(){
+  const cv=document.getElementById('c2');
+  const ctx=cv.getContext('2d');
+  const W=370,H=200,PAD={l:55,r:15,t:20,b:30};
+  const CW=W-PAD.l-PAD.r,CH=H-PAD.t-PAD.b;
+  ctx.clearRect(0,0,W,H);
+  const taus=[1,2,5,10,20,50,100,200];
+  const trs=taus.map(t=>2.2*t);
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=5;i++){const y=PAD.t+CH*(i/5);ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+CH);ctx.moveTo(PAD.l,PAD.t+CH);ctx.lineTo(PAD.l+CW,PAD.t+CH);ctx.stroke();
+  const taumax=200,trmax=440;
+  function toPx(t,tr){return[PAD.l+CW*(t/taumax),PAD.t+CH*(1-tr/trmax)];}
+  ctx.strokeStyle='#00ff88';ctx.lineWidth=2;
+  ctx.beginPath();taus.forEach((t,i)=>{const[x,y]=toPx(t,trs[i]);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});ctx.stroke();
+  // Current τ marker
+  const[xm,ym]=toPx(tau,2.2*tau);
+  ctx.fillStyle='#ffaa00';ctx.beginPath();ctx.arc(xm,ym,5,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  ctx.fillText('τ (μs)',PAD.l+CW/2,PAD.t+CH+14);
+  ctx.save();ctx.translate(14,PAD.t+CH/2);ctx.rotate(-Math.PI/2);ctx.fillText('t_rise (μs)',0,0);ctx.restore();
+  ctx.fillStyle='#00ff88';ctx.textAlign='left';ctx.fillText('Rise Time vs τ',PAD.l+4,PAD.t+12);
+}
+
+function drawBWvsTau(){
+  const cv=document.getElementById('c3');
+  const ctx=cv.getContext('2d');
+  const W=350,H=200,PAD={l:55,r:15,t:20,b:30};
+  const CW=W-PAD.l-PAD.r,CH=H-PAD.t-PAD.b;
+  ctx.clearRect(0,0,W,H);
+  // Log-scale BW vs tau
+  const taus=Array.from({length:50},(_,i)=>0.5+i*4);
+  const bws=taus.map(t=>250/t);
+  const bwmax=500,bwmin=1,taumax=200;
+  function toPx(t,bw){
+    return[PAD.l+CW*(t/taumax),PAD.t+CH*(1-(bw-bwmin)/(bwmax-bwmin))];
+  }
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=5;i++){const y=PAD.t+CH*(i/5);ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+CH);ctx.moveTo(PAD.l,PAD.t+CH);ctx.lineTo(PAD.l+CW,PAD.t+CH);ctx.stroke();
+  ctx.strokeStyle='#00aaff';ctx.lineWidth=2;
+  ctx.beginPath();taus.forEach((t,i)=>{const[x,y]=toPx(t,bws[i]);if(y>PAD.t&&y<PAD.t+CH){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}});ctx.stroke();
+  const[xm,ym]=toPx(tau,250/tau);
+  if(ym>PAD.t&&ym<PAD.t+CH){ctx.fillStyle='#ffaa00';ctx.beginPath();ctx.arc(xm,ym,5,0,Math.PI*2);ctx.fill();}
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  ctx.fillText('τ (μs)',PAD.l+CW/2,PAD.t+CH+14);
+  ctx.save();ctx.translate(14,PAD.t+CH/2);ctx.rotate(-Math.PI/2);ctx.fillText('BW_noise (kHz)',0,0);ctx.restore();
+  ctx.fillStyle='#00aaff';ctx.textAlign='left';ctx.fillText('Noise BW vs τ',PAD.l+4,PAD.t+12);
+}
+
+function draw(){drawWaveform();drawSpeedVsTau();drawBWvsTau();}
+draw();
+</script>
+</body>
+</html>

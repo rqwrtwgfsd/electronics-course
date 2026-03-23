@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-PM-11.5.1 — Power Efficiency Metrics</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0e1117; color: #cdd6f4; font-family: 'Segoe UI', sans-serif; font-size: 14px; }
+  h1 { text-align: center; padding: 18px; font-size: 17px; color: #cba6f7; border-bottom: 1px solid #313244; }
+  .tabs { display: flex; background: #181825; border-bottom: 1px solid #313244; }
+  .tab { padding: 10px 22px; cursor: pointer; color: #a6adc8; font-size: 13px; border-bottom: 3px solid transparent; }
+  .tab.active { color: #cba6f7; border-bottom-color: #cba6f7; }
+  .tab:hover:not(.active) { color: #cdd6f4; }
+  .panel { display: none; padding: 18px; }
+  .panel.active { display: block; }
+  canvas { display: block; background: #1e1e2e; border-radius: 8px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+  .ctrl { background: #181825; border-radius: 8px; padding: 14px; min-width: 220px; }
+  .ctrl label { display: block; color: #a6adc8; font-size: 12px; margin-bottom: 6px; }
+  .ctrl input[type=range] { width: 100%; accent-color: #cba6f7; margin-bottom: 2px; }
+  .ctrl .val { color: #a6e3a1; font-size: 12px; text-align: right; margin-bottom: 8px; }
+  .info-box { background: #181825; border-radius: 8px; padding: 12px; margin-top: 12px; font-size: 12px; line-height: 1.7; }
+  .hi { color: #a6e3a1; font-weight: bold; }
+  .warn { color: #f38ba8; font-weight: bold; }
+  .note { color: #fab387; }
+</style>
+</head>
+<body>
+<h1>M4B-PM-11.5.1 — Power Efficiency Metrics</h1>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">FoM_s Comparison</div>
+  <div class="tab" onclick="showTab(1)">gm/ID Efficiency Curves</div>
+  <div class="tab" onclick="showTab(2)">Power Breakdown</div>
+</div>
+
+<!-- TAB 0 -->
+<div class="panel active" id="tab0">
+  <div class="row">
+    <canvas id="c0" width="580" height="390"></canvas>
+    <div class="ctrl" style="max-width:230px;">
+      <label>GBW (MHz): <span class="val" id="v0_gbw">500</span></label>
+      <input type="range" id="r0_gbw" min="10" max="2000" step="10" value="500" oninput="draw0()">
+      <label>CL (pF): <span class="val" id="v0_cl">1.0</span></label>
+      <input type="range" id="r0_cl" min="0.1" max="20" step="0.1" value="1.0" oninput="draw0()">
+      <label>Iq (mA): <span class="val" id="v0_iq">1.0</span></label>
+      <input type="range" id="r0_iq" min="0.05" max="10" step="0.05" value="1.0" oninput="draw0()">
+      <label>VDD (V): <span class="val" id="v0_vdd">1.2</span></label>
+      <input type="range" id="r0_vdd" min="0.8" max="3.6" step="0.1" value="1.2" oninput="draw0()">
+    </div>
+  </div>
+  <div class="info-box" id="info0"></div>
+</div>
+
+<!-- TAB 1 -->
+<div class="panel" id="tab1">
+  <div class="row">
+    <canvas id="c1" width="600" height="390"></canvas>
+    <div class="ctrl" style="max-width:220px;">
+      <label>Target gm1 (mA/V): <span class="val" id="v1_gm1">1.6</span></label>
+      <input type="range" id="r1_gm1" min="0.1" max="10" step="0.1" value="1.6" oninput="draw1()">
+      <label>Process node:</label>
+      <select id="s1_proc" onchange="draw1()" style="background:#1e1e2e;color:#cdd6f4;border:1px solid #313244;padding:4px;width:100%;margin-bottom:8px;border-radius:4px;">
+        <option value="180">TSMC 180nm</option>
+        <option value="65" selected>TSMC 65nm</option>
+        <option value="28">TSMC 28nm</option>
+      </select>
+    </div>
+  </div>
+  <div class="info-box" id="info1"></div>
+</div>
+
+<!-- TAB 2 -->
+<div class="panel" id="tab2">
+  <div class="row">
+    <canvas id="c2" width="560" height="390"></canvas>
+    <div class="ctrl" style="max-width:230px;">
+      <label>ISS (μA): <span class="val" id="v2_iss">200</span></label>
+      <input type="range" id="r2_iss" min="10" max="1000" step="10" value="200" oninput="draw2()">
+      <label>I_stage2 (μA): <span class="val" id="v2_is2">500</span></label>
+      <input type="range" id="r2_is2" min="50" max="2000" step="10" value="500" oninput="draw2()">
+      <label>I_classAB_Q (μA): <span class="val" id="v2_iq">250</span></label>
+      <input type="range" id="r2_iq" min="10" max="1000" step="10" value="250" oninput="draw2()">
+      <label>I_bias_circuit (μA): <span class="val" id="v2_ibias">50</span></label>
+      <input type="range" id="r2_ibias" min="5" max="200" step="5" value="50" oninput="draw2()">
+      <label>VDD (V): <span class="val" id="v2_vdd">1.2</span></label>
+      <input type="range" id="r2_vdd" min="0.8" max="3.6" step="0.1" value="1.2" oninput="draw2()">
+      <label>GBW (MHz): <span class="val" id="v2_gbw">500</span></label>
+      <input type="range" id="r2_gbw" min="10" max="2000" step="10" value="500" oninput="draw2()">
+      <label>CL (pF): <span class="val" id="v2_cl">1.0</span></label>
+      <input type="range" id="r2_cl" min="0.1" max="20" step="0.1" value="1.0" oninput="draw2()">
+    </div>
+  </div>
+  <div class="info-box" id="info2"></div>
+</div>
+
+<script>
+const dpr=window.devicePixelRatio||1;
+function setupCanvas(id,w,h){
+  const c=document.getElementById(id);
+  c.width=w*dpr; c.height=h*dpr; c.style.width=w+'px'; c.style.height=h+'px';
+  const ctx=c.getContext('2d'); ctx.scale(dpr,dpr); return ctx;
+}
+function g(id){return parseFloat(document.getElementById(id).value);}
+function sv(id,v){document.getElementById(id).textContent=v;}
+function showTab(n){
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
+  if(n===1)draw1(); if(n===2)draw2();
+}
+
+// TAB 0 ──────────────────────────────────────────────────────────────────────
+function draw0(){
+  const GBW=g('r0_gbw'), CL=g('r0_cl'), Iq=g('r0_iq'), VDD=g('r0_vdd');
+  sv('v0_gbw',GBW); sv('v0_cl',CL.toFixed(1)); sv('v0_iq',Iq.toFixed(2)); sv('v0_vdd',VDD.toFixed(2));
+
+  const FoMs=GBW*CL/Iq;
+  const FoMp=GBW*CL/(Iq*VDD);
+  const P_q=Iq*VDD;
+
+  const ctx=setupCanvas('c0',580,390);
+  const W=580,H=390;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('FoM_s Benchmark vs Published Designs',W/2,22);
+
+  const mL=70,mR=20,mT=40,mB=50;
+  const bW=W-mL-mR, bH=H-mT-mB;
+
+  // Reference points from literature
+  const refs=[
+    {name:'5T OTA (simple)', FoMs:60, color:'#585b70'},
+    {name:'Folded cascode', FoMs:120, color:'#a6adc8'},
+    {name:'RFC OTA', FoMs:180, color:'#89b4fa'},
+    {name:'Two-stage', FoMs:250, color:'#a6e3a1'},
+    {name:'Class AB', FoMs:500, color:'#fab387'},
+    {name:'CFOA OPA657', FoMs:4444, color:'#f38ba8'},
+    {name:'Your design', FoMs:FoMs, color:'#cba6f7'},
+  ];
+
+  const maxFoMs=Math.max(5000, FoMs*1.3);
+  const barH=36, gap=10;
+  const mL2=140;
+
+  refs.forEach((r,i)=>{
+    const y=mT+i*(barH+gap);
+    const blen=(W-mL2-mR)*Math.min(r.FoMs/maxFoMs,1);
+    ctx.fillStyle=r.name==='Your design'?r.color:'#252535';
+    ctx.fillRect(mL2,y,W-mL2-mR,barH);
+    ctx.fillStyle=r.color;
+    ctx.fillRect(mL2,y,blen,barH);
+    if(r.name==='Your design'){
+      ctx.strokeStyle='#cba6f7'; ctx.lineWidth=2;
+      ctx.strokeRect(mL2,y,W-mL2-mR,barH);
+    }
+    ctx.fillStyle='#a6adc8'; ctx.font='11px Segoe UI'; ctx.textAlign='right';
+    ctx.fillText(r.name, mL2-5, y+barH/2+4);
+    ctx.fillStyle=r.color; ctx.font='bold 11px Segoe UI'; ctx.textAlign='left';
+    ctx.fillText(r.FoMs.toFixed(r.FoMs>1?0:1)+' MHz·pF/mA', mL2+blen+5, y+barH/2+4);
+  });
+
+  // FoMs scale ticks
+  [0,1000,2000,3000,4000,5000].filter(v=>v<=maxFoMs).forEach(v=>{
+    const x=mL2+(W-mL2-mR)*v/maxFoMs;
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText(v,x,mT+refs.length*(barH+gap)+16);
+  });
+  ctx.fillStyle='#585b70'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('FoM_s (MHz·pF/mA)',W/2,H-8);
+
+  document.getElementById('info0').innerHTML=
+    `FoM_s = GBW×CL/Iq = ${GBW}×${CL.toFixed(1)}/${Iq.toFixed(2)} = ${FoMs.toFixed(0)} MHz·pF/mA.
+     FoM_P (with VDD) = ${FoMp.toFixed(0)} MHz·pF/mW.  P_q = ${(P_q).toFixed(2)} mW.
+     <br>${FoMs>250?'<span class="hi">Above typical two-stage — efficient design.</span>':FoMs>100?'<span class="note">Mid-range — typical folded cascode range.</span>':'<span class="warn">Below folded cascode — check if ISS is too high or GBW/CL too low.</span>'}`;
+}
+
+// TAB 1 ──────────────────────────────────────────────────────────────────────
+function draw1(){
+  const gm1_target=g('r1_gm1')*1e-3;
+  const proc=parseInt(document.getElementById('s1_proc').value);
+  sv('v1_gm1',g('r1_gm1').toFixed(1));
+
+  const params={180:{munCox:190e-6,Vth:0.5},65:{munCox:270e-6,Vth:0.40},28:{munCox:300e-6,Vth:0.35}};
+  const p=params[proc];
+
+  const ctx=setupCanvas('c1',600,390);
+  const W=600,H=390;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('gm/ID vs ID — Inversion Level Optimization',W/2,22);
+
+  const mL=65,mR=20,mT=40,mB=50;
+  const bW=W-mL-mR, bH=H-mT-mB;
+
+  // ID range: 1 μA to 1 mA
+  const IDmin=1e-6, IDmax=1e-3;
+  function idx(ID){return mL+bW*Math.log10(ID/IDmin)/Math.log10(IDmax/IDmin);}
+  const gmIDmin=2, gmIDmax=38;
+  function gy(gmID){return mT+bH*(1-(gmID-gmIDmin)/(gmIDmax-gmIDmin));}
+
+  // Grid
+  [5,10,15,20,25,30,35].forEach(v=>{
+    const y=gy(v);
+    ctx.beginPath(); ctx.moveTo(mL,y); ctx.lineTo(mL+bW,y);
+    ctx.strokeStyle='#313244'; ctx.lineWidth=0.7; ctx.stroke();
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='right';
+    ctx.fillText(v,mL-3,y+3);
+  });
+  [1e-6,10e-6,100e-6,1e-3].forEach(ID=>{
+    const x=idx(ID);
+    const ls={1e-6:'1μ',10e-6:'10μ',100e-6:'100μ',1e-3:'1m'};
+    ctx.beginPath(); ctx.moveTo(x,mT); ctx.lineTo(x,mT+bH);
+    ctx.strokeStyle='#313244'; ctx.lineWidth=0.7; ctx.stroke();
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText(ls[ID],x,mT+bH+14);
+  });
+
+  // gm/ID curves for NMOS (W/L = 50, 100, 200)
+  const WL_vals=[50,100,200];
+  const colors=['#89b4fa','#a6e3a1','#fab387'];
+  WL_vals.forEach((WL,ci)=>{
+    ctx.beginPath();
+    const nPts=200;
+    for(let i=0;i<=nPts;i++){
+      const ID=IDmin*Math.pow(IDmax/IDmin,i/nPts);
+      // Strong inversion: gm = sqrt(2*munCox*WL*ID)
+      const gm_strong=Math.sqrt(2*p.munCox*WL*ID);
+      // Weak inversion: gm = ID/n/Vt (n≈1.3)
+      const gm_weak=ID/(1.3*26e-3);
+      const gm=Math.min(gm_strong,gm_weak);
+      const gmID=gm/ID;
+      const x=idx(ID), y=gy(Math.max(gmIDmin+0.5,Math.min(gmIDmax-0.5,gmID)));
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle=colors[ci]; ctx.lineWidth=1.8; ctx.stroke();
+    ctx.fillStyle=colors[ci]; ctx.font='10px Segoe UI'; ctx.textAlign='left';
+    ctx.fillText('W/L='+WL, idx(IDmax*0.7), gy(Math.sqrt(2*p.munCox*WL*IDmax*0.7)/(IDmax*0.7))-8);
+  });
+
+  // Subthreshold limit
+  ctx.beginPath(); ctx.moveTo(mL, gy(38/1.3)); ctx.lineTo(mL+bW, gy(38/1.3));
+  ctx.strokeStyle='rgba(203,166,247,0.4)'; ctx.lineWidth=1; ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#cba6f7'; ctx.font='9px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText('Subthreshold limit',mL+3,gy(38/1.3)-4);
+
+  // Required ID marker
+  const ID_required_WL100=gm1_target**2/(2*p.munCox*100); // approximate
+  const x_req=idx(ID_required_WL100);
+  if(x_req>=mL&&x_req<=mL+bW){
+    ctx.beginPath(); ctx.moveTo(x_req,mT); ctx.lineTo(x_req,mT+bH);
+    ctx.strokeStyle='#f38ba8'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#f38ba8'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText('gm='+g('r1_gm1').toFixed(1)+'mA/V\n(W/L=100)', x_req, mT-5);
+  }
+
+  ctx.fillStyle='#585b70'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Drain current ID (A)', W/2, H-8);
+  ctx.save(); ctx.translate(12,H/2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle='#585b70'; ctx.fillText('gm / ID (V⁻¹)', 0,0); ctx.restore();
+
+  document.getElementById('info1').innerHTML=
+    `${proc}nm process: μnCox = ${(p.munCox*1e6).toFixed(0)} μA/V², Vth = ${p.Vth}V.
+     <br>For gm1 = ${g('r1_gm1').toFixed(1)} mA/V at W/L=100: ID = ${(ID_required_WL100*1e6).toFixed(0)} μA, gm/ID = ${(gm1_target/ID_required_WL100).toFixed(1)} V⁻¹.
+     <br><span class="note">Subthreshold (gm/ID ≈ 26–30 V⁻¹): most current-efficient, but Cgg large → lower fT for given gm.
+     Strong inversion (gm/ID < 10 V⁻¹): fastest fT but most power-hungry per gm unit.</span>`;
+}
+
+// TAB 2 ──────────────────────────────────────────────────────────────────────
+function draw2(){
+  const ISS=g('r2_iss'), Is2=g('r2_is2'), IQ=g('r2_iq'), Ibias=g('r2_ibias');
+  const VDD=g('r2_vdd'), GBW=g('r2_gbw'), CL=g('r2_cl');
+  sv('v2_iss',ISS); sv('v2_is2',Is2); sv('v2_iq',IQ); sv('v2_ibias',Ibias);
+  sv('v2_vdd',VDD.toFixed(2)); sv('v2_gbw',GBW); sv('v2_cl',CL.toFixed(1));
+
+  const Iq_total=ISS+Is2+IQ+Ibias;
+  const P_q=Iq_total*1e-3*VDD;
+  const FoMs=GBW*CL/(Iq_total/1000);
+
+  const ctx=setupCanvas('c2',560,390);
+  const W=560,H=390;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Power Budget Breakdown',W/2,22);
+
+  // Pie chart
+  const segments=[
+    {label:'Input stage ISS', val:ISS, color:'#89b4fa'},
+    {label:'Second stage', val:Is2, color:'#a6e3a1'},
+    {label:'Class AB quiescent', val:IQ, color:'#fab387'},
+    {label:'Bias circuit', val:Ibias, color:'#cba6f7'},
+  ];
+  const cx=150, cy=190, R=110;
+  let startAngle=-Math.PI/2;
+  segments.forEach(s=>{
+    const sweep=2*Math.PI*s.val/Iq_total;
+    ctx.beginPath();
+    ctx.moveTo(cx,cy);
+    ctx.arc(cx,cy,R,startAngle,startAngle+sweep);
+    ctx.closePath();
+    ctx.fillStyle=s.color; ctx.fill();
+    ctx.strokeStyle='#1e1e2e'; ctx.lineWidth=2; ctx.stroke();
+    const midAngle=startAngle+sweep/2;
+    const lx=cx+R*0.65*Math.cos(midAngle), ly=cy+R*0.65*Math.sin(midAngle);
+    ctx.fillStyle='#0e1117'; ctx.font='bold 10px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText((s.val/Iq_total*100).toFixed(0)+'%', lx, ly);
+    startAngle+=sweep;
+  });
+  // Center label
+  ctx.fillStyle='#cdd6f4'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(Iq_total.toFixed(0)+' μA', cx, cy-8);
+  ctx.fillText((P_q*1000).toFixed(1)+' mW', cx, cy+10);
+  ctx.textBaseline='alphabetic';
+
+  // Legend
+  segments.forEach((s,i)=>{
+    const y=310+i*20;
+    ctx.fillStyle=s.color; ctx.fillRect(20,y,12,10);
+    ctx.fillStyle='#a6adc8'; ctx.font='10px Segoe UI'; ctx.textAlign='left';
+    ctx.fillText(s.label+': '+s.val+' μA', 36, y+9);
+  });
+
+  // Right side: FoM summary
+  const rx=310, ry=60;
+  const foms_target=200;
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 12px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText('Performance Summary', rx, ry);
+
+  const rows=[
+    ['Iq_total', Iq_total.toFixed(0)+' μA'],
+    ['Power', (P_q*1000).toFixed(2)+' mW'],
+    ['FoM_s', FoMs.toFixed(0)+' MHz·pF/mA'],
+    ['P_core', ((ISS+Is2+IQ)/Iq_total*100).toFixed(0)+'% of total'],
+    ['P_bias', (Ibias/Iq_total*100).toFixed(1)+'% overhead'],
+  ];
+  rows.forEach(([k,v],i)=>{
+    ctx.fillStyle='#a6adc8'; ctx.font='11px Segoe UI';
+    ctx.fillText(k+':', rx, ry+22+i*22);
+    ctx.fillStyle=k==='FoM_s'&&FoMs>foms_target?'#a6e3a1':k==='FoM_s'?'#f38ba8':'#cdd6f4';
+    ctx.font='bold 11px Segoe UI';
+    ctx.fillText(v, rx+110, ry+22+i*22);
+  });
+
+  document.getElementById('info2').innerHTML=
+    `Total Iq = ${Iq_total.toFixed(0)} μA.  P_q = ${(P_q*1000).toFixed(2)} mW.  FoM_s = ${FoMs.toFixed(0)} MHz·pF/mA.
+     <br>Bias circuit overhead: ${(Ibias/Iq_total*100).toFixed(1)}% of total power.
+     ${Ibias/Iq_total>0.2?'<span class="warn">Bias circuit uses >20% — consider simplifying bias tree.</span>':'<span class="hi">Bias overhead acceptable.</span>'}
+     <br><span class="note">Class AB Q-current is a trade-off: higher IQ → lower THD but higher static power.  Current IQ/Iq_total = ${(IQ/Iq_total*100).toFixed(0)}%.</span>`;
+}
+
+draw0(); draw1(); draw2();
+</script>
+</body>
+</html>

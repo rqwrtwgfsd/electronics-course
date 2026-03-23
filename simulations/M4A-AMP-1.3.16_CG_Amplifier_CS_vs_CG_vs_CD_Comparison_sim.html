@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.3.16 — CS vs CG vs CD</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;gap:16px;align-items:baseline;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .tbl{width:100%;border-collapse:collapse;font-size:10px;}
+  .tbl th{background:var(--panel);border:1px solid var(--border);padding:5px;text-align:center;color:var(--accent);}
+  .tbl td{border:1px solid var(--border);padding:5px;text-align:center;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.3.16</div>
+  <div class="topic">CS vs CG vs CD — Gain, Impedance, Bandwidth, Phase Comparison</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>Transistor</h3>
+      <label>gm (mA/V): <b id="gm_lbl">8</b></label>
+      <input type="range" id="gm" min="1" max="30" value="8" step="0.5">
+      <label>ro (kΩ): <b id="ro_lbl">20</b></label>
+      <input type="range" id="ro" min="2" max="100" value="20" step="1">
+      <label>Cgd (fF): <b id="cgd_lbl">30</b></label>
+      <input type="range" id="cgd" min="5" max="100" value="30" step="5">
+      <label>Cgs (fF): <b id="cgs_lbl">100</b></label>
+      <input type="range" id="cgs" min="20" max="300" value="100" step="10">
+    </div>
+    <div class="cg">
+      <h3>Circuit</h3>
+      <label>RD (kΩ): <b id="rd_lbl">2.0</b></label>
+      <input type="range" id="rd" min="0.1" max="20" value="2" step="0.1">
+      <label>RS (kΩ): <b id="rs_lbl">2.0</b></label>
+      <input type="range" id="rs" min="0.1" max="20" value="2" step="0.1">
+      <label>Rsource (Ω): <b id="rsrc_lbl">500</b></label>
+      <input type="range" id="rsrc" min="10" max="5000" value="500" step="10">
+    </div>
+    <div class="cg">
+      <h3>Summary</h3>
+      <div class="rd">|Av| CS/CG: <span id="r_av">—</span></div>
+      <div class="rd">Av CD: <span id="r_avcd">—</span></div>
+      <div class="rd">BW ratio: <span id="r_bwr">—</span></div>
+    </div>
+  </div>
+  <div class="plots">
+    <div>
+      <div class="pl">Parameter comparison table</div>
+      <table class="tbl" id="comptbl">
+        <tr><th>Property</th><th>CS</th><th>CG</th><th>CD</th></tr>
+        <tr><td>Av</td><td id="t_avcs">—</td><td id="t_avcg">—</td><td id="t_avcd">—</td></tr>
+        <tr><td>Phase</td><td>180° (inv)</td><td>0° (non-inv)</td><td>0° (non-inv)</td></tr>
+        <tr><td>Zin</td><td id="t_zincs">—</td><td id="t_zincg">—</td><td id="t_zincd">—</td></tr>
+        <tr><td>Zout</td><td id="t_zoutcs">—</td><td id="t_zoutcg">—</td><td id="t_zoutcd">—</td></tr>
+        <tr><td>Miller Cin</td><td id="t_cincs">—</td><td id="t_cincg">—</td><td id="t_cincd">—</td></tr>
+        <tr><td>–3dB BW</td><td id="t_bwcs">—</td><td id="t_bwcg">—</td><td id="t_bwcd">—</td></tr>
+      </table>
+    </div>
+    <div>
+      <div class="pl">Gain comparison: CS / CG / CD — vs gm</div>
+      <canvas id="avCanvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">Input/output impedance: CS / CG / CD — vs gm</div>
+      <canvas id="zCanvas" height="200"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+function fmtHz(f){if(f>=1e9)return (f/1e9).toFixed(2)+'GHz';if(f>=1e6)return (f/1e6).toFixed(1)+'MHz';return (f/1e3).toFixed(0)+'kHz';}
+function fmtZ(z){if(z>=1e6)return (z/1e6).toFixed(1)+'MΩ';if(z>=1e3)return (z/1e3).toFixed(0)+'kΩ';return z.toFixed(0)+'Ω';}
+
+function update(){
+  const gm=parseFloat(document.getElementById('gm').value)*1e-3;
+  const ro=parseFloat(document.getElementById('ro').value)*1e3;
+  const cgd=parseFloat(document.getElementById('cgd').value)*1e-15;
+  const cgs=parseFloat(document.getElementById('cgs').value)*1e-15;
+  const rd=parseFloat(document.getElementById('rd').value)*1e3;
+  const rs_ext=parseFloat(document.getElementById('rs').value)*1e3;
+  const rsrc=parseFloat(document.getElementById('rsrc').value);
+
+  document.getElementById('gm_lbl').textContent=(gm*1e3).toFixed(1);
+  document.getElementById('ro_lbl').textContent=(ro/1e3).toFixed(0);
+  document.getElementById('cgd_lbl').textContent=(cgd*1e15).toFixed(0);
+  document.getElementById('cgs_lbl').textContent=(cgs*1e15).toFixed(0);
+  document.getElementById('rd_lbl').textContent=(rd/1e3).toFixed(1);
+  document.getElementById('rs_lbl').textContent=(rs_ext/1e3).toFixed(1);
+  document.getElementById('rsrc_lbl').textContent=rsrc.toFixed(0);
+
+  const av_cs_mag=gm*(rd*ro/(rd+ro));
+  const av_cs=av_cs_mag;
+  const av_cg=av_cs_mag;
+  const av_cd=gm*(rs_ext*ro/(rs_ext+ro))/(1+gm*(rs_ext*ro/(rs_ext+ro)));
+
+  const zin_cs=1e6; // very high (bias resistors, simplified as 1 MΩ)
+  const zin_cg=1/gm;
+  const zin_cd=1e6;
+
+  const zout_cs=rd*ro/(rd+ro);
+  const zout_cg=ro*(1+gm*rsrc)+rsrc; // with external source resistance
+  const zout_cd=1/gm;
+
+  const cin_cs=cgs+cgd*(1+av_cs);
+  const cin_cg=cgs; // no Miller
+  const cin_cd=cgs+cgd; // drain at AC gnd, no Miller; Cgd still at output but not multiplied
+
+  const bw_cs=1/(2*Math.PI*rsrc*cin_cs);
+  const bw_cg_zin=zin_cg*rsrc/(zin_cg+rsrc); // parallel
+  const bw_cg=1/(2*Math.PI*bw_cg_zin*cin_cg);
+  const bw_cd=1/(2*Math.PI*rsrc*cin_cd);
+
+  // Update table
+  document.getElementById('t_avcs').textContent='-'+av_cs.toFixed(1)+' V/V';
+  document.getElementById('t_avcg').textContent='+'+av_cg.toFixed(1)+' V/V';
+  document.getElementById('t_avcd').textContent='+'+av_cd.toFixed(3)+' V/V';
+  document.getElementById('t_zincs').textContent=fmtZ(zin_cs);
+  document.getElementById('t_zincg').textContent=fmtZ(zin_cg);
+  document.getElementById('t_zincd').textContent=fmtZ(zin_cd);
+  document.getElementById('t_zoutcs').textContent=fmtZ(zout_cs);
+  document.getElementById('t_zoutcg').textContent=fmtZ(zout_cg);
+  document.getElementById('t_zoutcd').textContent=fmtZ(zout_cd);
+  document.getElementById('t_cincs').textContent=(cin_cs*1e15).toFixed(0)+'fF';
+  document.getElementById('t_cincg').textContent=(cin_cg*1e15).toFixed(0)+'fF';
+  document.getElementById('t_cincd').textContent=(cin_cd*1e15).toFixed(0)+'fF';
+  document.getElementById('t_bwcs').textContent=fmtHz(bw_cs);
+  document.getElementById('t_bwcg').textContent=fmtHz(bw_cg);
+  document.getElementById('t_bwcd').textContent=fmtHz(bw_cd);
+
+  document.getElementById('r_av').textContent=av_cs.toFixed(1)+' V/V';
+  document.getElementById('r_avcd').textContent=av_cd.toFixed(3)+' V/V';
+  document.getElementById('r_bwr').textContent=(bw_cg/bw_cs).toFixed(1)+'× CG/CS';
+
+  drawAv(gm,ro,rd,rs_ext);
+  drawZ(gm,ro,rd,rs_ext,rsrc);
+}
+
+function drawAv(gm0,ro0,rd0,rs0){
+  const canvas=document.getElementById('avCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:55,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const gmmin=1e-3,gmmax=30e-3;
+  const toX=gv=>pad.l+(gv-gmmin)/(gmmax-gmmin)*pw;
+  const avmax=gm0*rd0>30?gm0*rd0:30;
+  const toY=v=>pad.t+(1-v/avmax)*ph;
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [0,0.25,0.5,0.75,1.0].forEach(frac=>{
+    const y=pad.t+frac*ph;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText((avmax*(1-frac)).toFixed(0),pad.l-28,y+3);
+  });
+  [5,10,15,20,25,30].forEach(v=>{
+    const x=toX(v*1e-3);ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(v,x-5,pad.t+ph+12);
+  });
+
+  // CS |Av| = gm*(rd||ro)
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=200;i++){
+    const gv=gmmin+i/200*(gmmax-gmmin);
+    const av=gv*(rd0*ro0/(rd0+ro0));
+    const y=toY(Math.min(av,avmax));
+    if(i===0)ctx.moveTo(toX(gv),y);else ctx.lineTo(toX(gv),y);
+  }
+  ctx.stroke();
+
+  // CD Av (near 1)
+  ctx.strokeStyle='#cc6600';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=200;i++){
+    const gv=gmmin+i/200*(gmmax-gmmin);
+    const av=gv*(rs0*ro0/(rs0+ro0))/(1+gv*(rs0*ro0/(rs0+ro0)));
+    const y=toY(Math.min(av,avmax));
+    if(i===0)ctx.moveTo(toX(gv),y);else ctx.lineTo(toX(gv),y);
+  }
+  ctx.stroke();
+
+  // Unity gain reference
+  ctx.strokeStyle='#888';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,toY(1));ctx.lineTo(pad.l+pw,toY(1));ctx.stroke();ctx.setLineDash([]);
+
+  // current point
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.beginPath();ctx.arc(toX(gm0),toY(Math.min(gm0*(rd0*ro0/(rd0+ro0)),avmax)),4,0,2*Math.PI);ctx.fill();
+
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='9px Courier New';ctx.fillText('CS & CG: |Av|=gm·(RD||ro)',pad.l+5,pad.t+14);
+  ctx.fillStyle='#cc6600';ctx.fillText('CD: Av≈1 (<1)',pad.l+5,toY(1)+12);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('gm (mA/V) →',W/2-30,H-3);
+  ctx.save();ctx.translate(10,H/2+15);ctx.rotate(-Math.PI/2);ctx.fillText('|Av| V/V',0,0);ctx.restore();
+}
+
+function drawZ(gm0,ro0,rd0,rs0,rsrc0){
+  const canvas=document.getElementById('zCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:65,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const gmmin=1e-3,gmmax=30e-3;
+  const toX=gv=>pad.l+(gv-gmmin)/(gmmax-gmmin)*pw;
+  const ymin=Math.log10(50),ymax=Math.log10(10e6);
+  const toY=v=>pad.t+(1-(Math.log10(v)-ymin)/(ymax-ymin))*ph;
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [100,1e3,10e3,100e3,1e6,10e6].forEach(v=>{
+    const y=toY(v);if(y<pad.t||y>pad.t+ph)return;
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    const lbl=v>=1e6?(v/1e6)+'MΩ':v>=1e3?(v/1e3)+'kΩ':v+'Ω';
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(lbl,pad.l-40,y+3);
+  });
+  [5,10,15,20,25,30].forEach(v=>{
+    const x=toX(v*1e-3);ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(v,x-5,pad.t+ph+12);
+  });
+
+  // CS Zin ≈ MΩ (flat, large)
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;ctx.setLineDash([5,4]);
+  ctx.beginPath();ctx.moveTo(pad.l,toY(1e6));ctx.lineTo(pad.l+pw,toY(1e6));ctx.stroke();ctx.setLineDash([]);
+
+  // CG Zin = 1/gm
+  ctx.strokeStyle='#006633';ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=200;i++){
+    const gv=gmmin+i/200*(gmmax-gmmin);
+    const zin=1/gv;
+    if(i===0)ctx.moveTo(toX(gv),toY(zin));else ctx.lineTo(toX(gv),toY(zin));
+  }
+  ctx.stroke();
+
+  // CD Zout = 1/gm (same as CG Zin)
+  ctx.strokeStyle='#cc6600';ctx.lineWidth=2;ctx.setLineDash([3,3]);
+  ctx.beginPath();
+  for(let i=0;i<=200;i++){
+    const gv=gmmin+i/200*(gmmax-gmmin);
+    const zout=1/gv;
+    if(i===0)ctx.moveTo(toX(gv),toY(zout));else ctx.lineTo(toX(gv),toY(zout));
+  }
+  ctx.stroke();ctx.setLineDash([]);
+
+  // CS Zout = RD||ro (flat for typical ro)
+  ctx.strokeStyle='#888888';ctx.lineWidth=1.5;
+  const zout_cs=rd0*ro0/(rd0+ro0);
+  ctx.beginPath();ctx.moveTo(pad.l,toY(zout_cs));ctx.lineTo(pad.l+pw,toY(zout_cs));ctx.stroke();
+
+  // current gm markers
+  ctx.fillStyle='#006633';ctx.beginPath();ctx.arc(toX(gm0),toY(1/gm0),4,0,2*Math.PI);ctx.fill();
+  ctx.fillStyle='#cc6600';ctx.beginPath();ctx.arc(toX(gm0),toY(1/gm0),4,0,2*Math.PI);ctx.fill();
+
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='9px Courier New';ctx.fillText('CS Zin ≈ MΩ (gate)',pad.l+5,pad.t+14);
+  ctx.fillStyle='#006633';ctx.fillText('CG Zin = 1/gm',pad.l+pw-120,toY(1/gm0)-5);
+  ctx.fillStyle='#cc6600';ctx.fillText('CD Zout = 1/gm',pad.l+5,toY(1/gm0)+12);
+  ctx.fillStyle='#888888';ctx.fillText('CS Zout = RD||ro',pad.l+5,toY(zout_cs)-4);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('gm (mA/V) →',W/2-30,H-3);
+  ctx.save();ctx.translate(10,H/2+15);ctx.rotate(-Math.PI/2);ctx.fillText('Impedance',0,0);ctx.restore();
+}
+
+['gm','ro','cgd','cgs','rd','rs','rsrc'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-DA-2.9.2 — Optimize: Improve CMRR</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  .ro.warn span{color:#cc4400;}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-DA-2.9.2</div>
+  <h1>Differential Amplifier — Optimize: Improve CMRR</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>CMRR Optimization Controls</h2>
+      <label>g_m,pair (mA/V): <b id="gm_l">1.65</b> <input type="range" id="gm" min="0.1" max="10" value="1.65" step="0.05"></label>
+      <label>Tail: r_o,tail (kΩ): <b id="rot_l">50</b> <input type="range" id="rot" min="1" max="5000" value="50" step="1"></label>
+      <label>Cascode tail ON: <b id="cas_l">OFF</b> <input type="range" id="cas" min="0" max="1" value="0" step="1"></label>
+      <label>W×L pair (μm²): <b id="wl_l">25</b> μm² <input type="range" id="wl" min="1" max="2000" value="25" step="1"></label>
+      <label>A_VT,n (mV·μm): <b id="avt_l">5.0</b> <input type="range" id="avt" min="1" max="15" value="5" step="0.5"></label>
+      <label>V_ov (mV): <b id="vov_l">200</b> mV <input type="range" id="vov" min="50" max="500" value="200" step="10"></label>
+      <label>CMRR spec (dB): <b id="spec_l">60</b> <input type="range" id="spec" min="20" max="140" value="60" step="1"></label>
+
+      <div class="ro">CMRR_tail (dB): <span id="ct_d">--</span></div>
+      <div class="ro" style="margin-top:4px">CMRR_mismatch 3σ (dB): <span id="cm_d">--</span></div>
+      <div class="ro g" style="margin-top:4px">Total CMRR (dB): <span id="tot_d">--</span></div>
+      <div class="ro" id="spec_ro" style="margin-top:4px">Bottleneck: <span id="bot_d">--</span></div>
+      <div class="insight">
+        CMRR = min(CMRR_tail, CMRR_mismatch). Cascode tail multiplies r_SS by g_m × r_o. Larger W×L reduces σ(ΔV_th). Higher V_ov raises V_ov/ΔV_th. Both axes must be balanced for maximum CMRR.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Optimization Steps vs CMRR</h2>
+      <canvas id="cv" height="300"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  function cmrrTail(gm, rot_kOhm, cas){
+    const ro=rot_kOhm*1e3;
+    const rss=cas?gm*ro*ro:ro;
+    return 2*gm*rss;
+  }
+
+  function cmrrMis(wl, avt, vov){
+    const sigma=avt/Math.sqrt(wl)*1e-3; // in V
+    const dvth_3s=3*sigma;
+    return vov/dvth_3s;
+  }
+
+  function compute(){
+    const gm=+document.getElementById('gm').value*1e-3;
+    const rot=+document.getElementById('rot').value;
+    const cas=+document.getElementById('cas').value;
+    const wl=+document.getElementById('wl').value;
+    const avt=+document.getElementById('avt').value;
+    const vov=+document.getElementById('vov').value/1000;
+    const spec=+document.getElementById('spec').value;
+
+    document.getElementById('gm_l').textContent=(gm*1e3).toFixed(2);
+    document.getElementById('rot_l').textContent=rot.toFixed(0);
+    document.getElementById('cas_l').textContent=cas?'ON':'OFF';
+    document.getElementById('wl_l').textContent=wl.toFixed(0);
+    document.getElementById('avt_l').textContent=avt.toFixed(1);
+    document.getElementById('vov_l').textContent=(vov*1000).toFixed(0);
+    document.getElementById('spec_l').textContent=spec.toFixed(0);
+
+    const ct=cmrrTail(gm, rot, cas);
+    const cm=cmrrMis(wl, avt, vov);
+    const tot=Math.min(ct,cm);
+
+    const ct_dB=20*Math.log10(ct);
+    const cm_dB=20*Math.log10(cm);
+    const tot_dB=20*Math.log10(tot);
+
+    document.getElementById('ct_d').textContent=ct_dB.toFixed(1);
+    document.getElementById('cm_d').textContent=cm_dB.toFixed(1);
+    document.getElementById('tot_d').textContent=tot_dB.toFixed(1);
+
+    const specRo=document.getElementById('spec_ro');
+    if(tot_dB>=spec){
+      specRo.className='ro g';
+      document.getElementById('bot_d').textContent='MEETS SPEC';
+    } else {
+      specRo.className='ro warn';
+      const bot=ct<cm?'Tail':'Mismatch';
+      document.getElementById('bot_d').textContent=bot+' limited ('+tot_dB.toFixed(0)+' dB < '+spec+')';
+    }
+
+    draw(gm, rot, wl, avt, vov, spec, ct_dB, cm_dB, cas);
+  }
+
+  function draw(gm, rot, wl, avt, vov, spec, ct_active, cm_active, cas){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=300;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,300);
+    const pL=55,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=300-pT-pB;
+
+    // Show 5 optimization steps
+    const steps=[
+      {lbl:'Baseline', ct: cmrrTail(gm,50,0), cm: cmrrMis(10,avt,0.1)},
+      {lbl:'Better tail\n(r_o='+rot+'kΩ)', ct: cmrrTail(gm,rot,0), cm: cmrrMis(10,avt,0.1)},
+      {lbl:(cas?'Cascode\ntail ON':'Cascode\ntail OFF'), ct: cmrrTail(gm,rot,cas), cm: cmrrMis(10,avt,0.1)},
+      {lbl:'Larger W×L\n('+wl+'μm²)', ct: cmrrTail(gm,rot,cas), cm: cmrrMis(wl,avt,0.2)},
+      {lbl:'Higher V_ov\n('+(vov*1000).toFixed(0)+'mV)', ct: cmrrTail(gm,rot,cas), cm: cmrrMis(wl,avt,vov)}
+    ];
+
+    const allVals=steps.map(s=>20*Math.log10(Math.min(s.ct,s.cm)));
+    const yMax=Math.max(...allVals, spec)+15;
+    const yMin=0;
+    const N=steps.length;
+    const barW=Math.floor(pw/N)-8;
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText('CMRR (dB)', 2, pT+ph/2);
+
+    for(let db=0;db<=Math.ceil(yMax/20)*20;db+=20){
+      const y=pT+ph-((db-yMin)/(yMax-yMin))*ph;
+      if(y<pT||y>pT+ph) continue;
+      ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText(db, 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+
+    // Spec line
+    const yspec=pT+ph-((spec-yMin)/(yMax-yMin))*ph;
+    ctx.strokeStyle='#ff880088'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(pL,yspec); ctx.lineTo(pL+pw,yspec); ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle='#ff8800'; ctx.font='9px system-ui';
+    ctx.fillText('Spec '+spec+' dB', pL+4, yspec-4);
+
+    steps.forEach((s,i)=>{
+      const tot=Math.min(s.ct, s.cm);
+      const dB=20*Math.log10(Math.max(tot,1));
+      const barH=((dB-yMin)/(yMax-yMin))*ph;
+      const x=pL+i*(pw/N)+4;
+      const y=pT+ph-barH;
+      const isLast=i===steps.length-1;
+      ctx.fillStyle=dB>=spec?'#00994d':isLast?'#cc4400':'#0066cc88';
+      ctx.fillRect(x, y, barW, barH);
+
+      ctx.fillStyle='#fff'; ctx.font='9px system-ui'; ctx.textAlign='center';
+      if(barH>14) ctx.fillText(dB.toFixed(0), x+barW/2, y+12);
+      ctx.textAlign='left';
+
+      const lines=s.lbl.split('\n');
+      lines.forEach((line,li)=>{
+        ctx.fillStyle='#8888aa'; ctx.font='8px system-ui'; ctx.textAlign='center';
+        ctx.fillText(line, x+barW/2, pT+ph+14+li*10);
+        ctx.textAlign='left';
+      });
+    });
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

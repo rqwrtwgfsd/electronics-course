@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-PM-11.7.1 — Input/Output Range Simulator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; font-size: 14px; }
+  h1 { text-align: center; padding: 18px; font-size: 18px; color: #58a6ff; border-bottom: 1px solid #21262d; }
+  .tabs { display: flex; background: #161b22; border-bottom: 1px solid #21262d; }
+  .tab { padding: 10px 22px; cursor: pointer; color: #8b949e; border-bottom: 2px solid transparent; font-size: 13px; }
+  .tab.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+  .panel { display: none; padding: 18px; }
+  .panel.active { display: block; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .card { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 14px; flex: 1; min-width: 260px; }
+  .card h3 { font-size: 13px; color: #58a6ff; margin-bottom: 10px; }
+  label { display: block; font-size: 12px; color: #8b949e; margin: 6px 0 2px; }
+  input[type=range] { width: 100%; accent-color: #58a6ff; }
+  .val { display: inline-block; min-width: 54px; color: #f0883e; font-weight: bold; font-size: 12px; }
+  canvas { display: block; width: 100%; border-radius: 6px; background: #0d1117; }
+  .info-box { background: #1c2128; border: 1px solid #30363d; border-radius: 6px; padding: 10px 14px; margin-top: 10px; font-size: 12px; line-height: 1.8; }
+  .info-box span.g { color: #3fb950; font-weight: bold; }
+  .info-box span.r { color: #f85149; font-weight: bold; }
+  .info-box span.y { color: #d29922; font-weight: bold; }
+  .info-box span.b { color: #58a6ff; font-weight: bold; }
+  .legend-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 6px; font-size: 11px; }
+  .ld { display: flex; align-items: center; gap: 5px; }
+  .lbox { width: 14px; height: 4px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<h1>M4B-PM-11.7.1 — Input/Output Range Simulator</h1>
+<div class="tabs">
+  <div class="tab active" onclick="switchTab(0)">Output Swing Explorer</div>
+  <div class="tab" onclick="switchTab(1)">ICMR Visualizer</div>
+  <div class="tab" onclick="switchTab(2)">Dynamic Range Budget</div>
+</div>
+
+<!-- TAB 0: Output Swing -->
+<div class="panel active" id="p0">
+  <div class="row">
+    <div class="card" style="max-width:320px;">
+      <h3>Output Stage Parameters</h3>
+      <label>Supply VDD (V): <span class="val" id="t0_vdd_v">1.8</span></label>
+      <input type="range" id="t0_vdd" min="0.9" max="5.0" step="0.1" value="1.8" oninput="updateT0()">
+      <label>PMOS Vov_M8 (mV): <span class="val" id="t0_vovp_v">200</span></label>
+      <input type="range" id="t0_vovp" min="50" max="600" step="10" value="200" oninput="updateT0()">
+      <label>NMOS Vov_M9 (mV): <span class="val" id="t0_vovn_v">200</span></label>
+      <input type="range" id="t0_vovn" min="50" max="600" step="10" value="200" oninput="updateT0()">
+      <label>Load resistance RL (Ω): <span class="val" id="t0_rl_v">10k</span></label>
+      <input type="range" id="t0_rl" min="50" max="100000" step="50" value="10000" oninput="updateT0()">
+      <label>Output current Iout (mA): <span class="val" id="t0_io_v">1.0</span></label>
+      <input type="range" id="t0_io" min="0.1" max="20" step="0.1" value="1.0" oninput="updateT0()">
+      <label>Design margin (%): <span class="val" id="t0_mg_v">80</span></label>
+      <input type="range" id="t0_mg" min="50" max="100" step="5" value="80" oninput="updateT0()">
+      <div class="info-box" id="t0_info"></div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Output Swing vs Load Current</h3>
+      <canvas id="c0" height="320"></canvas>
+      <div class="legend-row">
+        <div class="ld"><div class="lbox" style="background:#3fb950"></div>V_OH</div>
+        <div class="ld"><div class="lbox" style="background:#f85149"></div>V_OL</div>
+        <div class="ld"><div class="lbox" style="background:#58a6ff"></div>Swing = V_OH − V_OL</div>
+        <div class="ld"><div class="lbox" style="background:#f0883e;border-top:2px dashed #f0883e"></div>80% design margin</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: ICMR -->
+<div class="panel" id="p1">
+  <div class="row">
+    <div class="card" style="max-width:320px;">
+      <h3>Input Stage Parameters</h3>
+      <label>Supply VDD (V): <span class="val" id="t1_vdd_v">1.8</span></label>
+      <input type="range" id="t1_vdd" min="0.9" max="5.0" step="0.1" value="1.8" oninput="updateT1()">
+      <label>|Vthp| (mV): <span class="val" id="t1_vthp_v">500</span></label>
+      <input type="range" id="t1_vthp" min="200" max="800" step="10" value="500" oninput="updateT1()">
+      <label>Vthn (mV): <span class="val" id="t1_vthn_v">500</span></label>
+      <input type="range" id="t1_vthn" min="200" max="800" step="10" value="500" oninput="updateT1()">
+      <label>Vov (input pair, mV): <span class="val" id="t1_vov_v">100</span></label>
+      <input type="range" id="t1_vov" min="50" max="300" step="10" value="100" oninput="updateT1()">
+      <label>VDS_sat (tail/load, mV): <span class="val" id="t1_vds_v">200</span></label>
+      <input type="range" id="t1_vds" min="50" max="400" step="10" value="200" oninput="updateT1()">
+      <div class="info-box" id="t1_info"></div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>ICMR Diagram — Single-Supply Op-Amp</h3>
+      <canvas id="c1" height="320"></canvas>
+      <div class="legend-row">
+        <div class="ld"><div class="lbox" style="background:#58a6ff"></div>PMOS input ICMR</div>
+        <div class="ld"><div class="lbox" style="background:#f0883e"></div>NMOS input ICMR</div>
+        <div class="ld"><div class="lbox" style="background:#3fb950"></div>RRI overlap</div>
+        <div class="ld"><div class="lbox" style="background:#f85149;border-top:2px dashed #f85149"></div>Supply rails</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: Dynamic Range Budget -->
+<div class="panel" id="p2">
+  <div class="row">
+    <div class="card" style="max-width:320px;">
+      <h3>System Parameters</h3>
+      <label>Supply VDD (V): <span class="val" id="t2_vdd_v">1.8</span></label>
+      <input type="range" id="t2_vdd" min="0.9" max="5.0" step="0.1" value="1.8" oninput="updateT2()">
+      <label>PMOS headroom (mV): <span class="val" id="t2_hdp_v">200</span></label>
+      <input type="range" id="t2_hdp" min="50" max="600" step="10" value="200" oninput="updateT2()">
+      <label>NMOS headroom (mV): <span class="val" id="t2_hdn_v">200</span></label>
+      <input type="range" id="t2_hdn" min="50" max="600" step="10" value="200" oninput="updateT2()">
+      <label>Noise density Svn (nV/√Hz): <span class="val" id="t2_svn_v">5</span></label>
+      <input type="range" id="t2_svn" min="1" max="50" step="0.5" value="5" oninput="updateT2()">
+      <label>Signal bandwidth BW (MHz): <span class="val" id="t2_bw_v">10</span></label>
+      <input type="range" id="t2_bw" min="0.001" max="100" step="0.5" value="10" oninput="updateT2()">
+      <label>THD (dBc): <span class="val" id="t2_thd_v">-90</span></label>
+      <input type="range" id="t2_thd" min="-130" max="-40" step="1" value="-90" oninput="updateT2()">
+      <label>Design margin (%): <span class="val" id="t2_mg_v">80</span></label>
+      <input type="range" id="t2_mg" min="50" max="100" step="5" value="80" oninput="updateT2()">
+      <div class="info-box" id="t2_info"></div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Dynamic Range Waterfall — Contributions</h3>
+      <canvas id="c2" height="320"></canvas>
+      <div class="legend-row">
+        <div class="ld"><div class="lbox" style="background:#58a6ff"></div>Noise floor</div>
+        <div class="ld"><div class="lbox" style="background:#f85149"></div>THD floor</div>
+        <div class="ld"><div class="lbox" style="background:#3fb950"></div>Dynamic range window</div>
+        <div class="ld"><div class="lbox" style="background:#f0883e"></div>Combined floor</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DPR = window.devicePixelRatio || 1;
+function setupCanvas(id) {
+  const c = document.getElementById(id);
+  const w = c.parentElement.clientWidth - 28;
+  const h = parseInt(c.getAttribute('height'));
+  c.width = w * DPR; c.height = h * DPR;
+  c.style.width = w + 'px'; c.style.height = h + 'px';
+  const ctx = c.getContext('2d'); ctx.scale(DPR, DPR);
+  return { ctx, W: w, H: h };
+}
+function switchTab(i) {
+  document.querySelectorAll('.tab').forEach((t,j) => t.classList.toggle('active', i===j));
+  document.querySelectorAll('.panel').forEach((p,j) => p.classList.toggle('active', i===j));
+  if(i===0) updateT0();
+  if(i===1) updateT1();
+  if(i===2) updateT2();
+}
+
+// ── TAB 0: Output Swing ───────────────────────────────────────────────────
+function updateT0() {
+  const VDD = +document.getElementById('t0_vdd').value;
+  const Vovp_mV = +document.getElementById('t0_vovp').value;
+  const Vovn_mV = +document.getElementById('t0_vovn').value;
+  const RL = +document.getElementById('t0_rl').value;
+  const Iout_mA = +document.getElementById('t0_io').value;
+  const mg = +document.getElementById('t0_mg').value / 100;
+
+  document.getElementById('t0_vdd_v').textContent = VDD.toFixed(1);
+  document.getElementById('t0_vovp_v').textContent = Vovp_mV;
+  document.getElementById('t0_vovn_v').textContent = Vovn_mV;
+  document.getElementById('t0_rl_v').textContent = RL >= 1000 ? (RL/1000).toFixed(0)+'k' : RL;
+  document.getElementById('t0_io_v').textContent = Iout_mA.toFixed(1);
+  document.getElementById('t0_mg_v').textContent = (mg*100).toFixed(0);
+
+  const { ctx, W, H } = setupCanvas('c0');
+  const PAD = { l: 60, r: 20, t: 20, b: 44 };
+  const PW = W - PAD.l - PAD.r;
+  const PH = H - PAD.t - PAD.b;
+
+  // x-axis: Iout from 0 to 20 mA
+  const I_max = 20;
+  function xP(i) { return PAD.l + (i/I_max)*PW; }
+  // y-axis: Voltage 0 to VDD
+  function yP(v) { return PAD.t + (1 - v/VDD)*PH; }
+
+  ctx.fillStyle = '#0d1117'; ctx.fillRect(0,0,W,H);
+
+  // Grid
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 0.5;
+  const vSteps = 6;
+  for(let i=0; i<=vSteps; i++) {
+    const v = VDD * i/vSteps;
+    ctx.beginPath(); ctx.moveTo(PAD.l, yP(v)); ctx.lineTo(PAD.l+PW, yP(v)); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace';
+    ctx.fillText(v.toFixed(2)+'V', 2, yP(v)+3);
+  }
+  for(let I=0; I<=I_max; I+=4) {
+    ctx.beginPath(); ctx.moveTo(xP(I), PAD.t); ctx.lineTo(xP(I), PAD.t+PH); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace';
+    ctx.fillText(I+'mA', xP(I)-8, PAD.t+PH+14);
+  }
+
+  // V_OH and V_OL curves vs Iout
+  // V_OH = VDD - Vovp_mV/1000 - Iout * Rout_approx
+  // Model: Rout = 1/gm ≈ 2*Vov/Iout (varies with bias)
+  // Simplification: V_OH decreases due to voltage divider with RL
+  // V_OH_actual = VDD - Vov_p (when Iout < Isat)
+  // For simplicity, model as V_OH = VDD - VDS_sat_M8(Iout)
+  // where VDS_sat_M8 ∝ sqrt(Iout) (from VDS_sat = sqrt(2*Iout/(μCox*W/L)))
+  // At nominal Iout_mA: VDS_sat = Vovp_mV/1000
+  // At other Iout: VDS_sat = Vovp_mV/1000 * sqrt(Iout/Iout_mA)
+
+  ctx.strokeStyle = '#3fb950'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for(let I=0; I<=I_max; I+=0.1) {
+    const VDS_p = (Vovp_mV/1000) * Math.sqrt(I/Math.max(0.01, Iout_mA));
+    const V_OH = VDD - VDS_p;
+    const x = xP(I); const y = yP(Math.min(VDD, Math.max(0, V_OH)));
+    if(I===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle = '#f85149'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for(let I=0; I<=I_max; I+=0.1) {
+    const VDS_n = (Vovn_mV/1000) * Math.sqrt(I/Math.max(0.01, Iout_mA));
+    const V_OL = VDS_n;
+    const x = xP(I); const y = yP(Math.min(VDD, Math.max(0, V_OL)));
+    if(I===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Swing = V_OH - V_OL
+  ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 1.5; ctx.setLineDash([]);
+  const VDS_p0 = (Vovp_mV/1000) * Math.sqrt(Iout_mA/Math.max(0.01, Iout_mA));
+  const VDS_n0 = (Vovn_mV/1000) * Math.sqrt(Iout_mA/Math.max(0.01, Iout_mA));
+  const V_OH_op = VDD - VDS_p0;
+  const V_OL_op = VDS_n0;
+  const swing = V_OH_op - V_OL_op;
+  const swingMg = swing * mg;
+
+  // Shade usable swing region at operating Iout
+  const xOp = xP(Iout_mA);
+  ctx.fillStyle = 'rgba(88,166,255,0.08)';
+  ctx.fillRect(xOp-1, yP(V_OH_op), 2, yP(V_OL_op)-yP(V_OH_op));
+  ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 1.5;
+  ctx.strokeRect(xOp-1, yP(V_OH_op), 2, yP(V_OL_op)-yP(V_OH_op));
+
+  // 80% margin lines
+  const V_mid = (V_OH_op + V_OL_op) / 2;
+  const V_top_mg = V_mid + swingMg/2;
+  const V_bot_mg = V_mid - swingMg/2;
+  ctx.strokeStyle = '#f0883e'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(PAD.l, yP(V_top_mg)); ctx.lineTo(PAD.l+PW, yP(V_top_mg)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(PAD.l, yP(V_bot_mg)); ctx.lineTo(PAD.l+PW, yP(V_bot_mg)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Rail lines
+  ctx.strokeStyle = '#f85149'; ctx.lineWidth = 0.5; ctx.setLineDash([2,4]);
+  ctx.beginPath(); ctx.moveTo(PAD.l, yP(VDD)); ctx.lineTo(PAD.l+PW, yP(VDD)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(PAD.l, yP(0)); ctx.lineTo(PAD.l+PW, yP(0)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Labels
+  ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif';
+  ctx.fillText('Output Voltage (V)', 4, PAD.t+PH/2);
+  ctx.fillText('Load Current Iout (mA)', PAD.l+PW/2-50, H-4);
+
+  document.getElementById('t0_info').innerHTML =
+    `<span class="b">At Iout = ${Iout_mA.toFixed(1)} mA</span><br>` +
+    `V_OH = <span class="g">${V_OH_op.toFixed(3)} V</span>  (${(VDD-V_OH_op)*1000|0} mV headroom)<br>` +
+    `V_OL = <span class="r">${V_OL_op.toFixed(3)} V</span>  (${(V_OL_op*1000)|0} mV headroom)<br>` +
+    `Swing = <span class="b">${(swing*1000).toFixed(0)} mVpp</span><br>` +
+    `With ${(mg*100).toFixed(0)}% margin: <span class="${swingMg>0.5?'g':'r'}">${(swingMg*1000).toFixed(0)} mVpp</span><br>` +
+    `% of VDD: <span class="${swing/VDD > 0.6?'g':'y'}">${(swing/VDD*100).toFixed(1)}%</span>`;
+}
+
+// ── TAB 1: ICMR ───────────────────────────────────────────────────────────
+function updateT1() {
+  const VDD = +document.getElementById('t1_vdd').value;
+  const Vthp_mV = +document.getElementById('t1_vthp').value;
+  const Vthn_mV = +document.getElementById('t1_vthn').value;
+  const Vov_mV = +document.getElementById('t1_vov').value;
+  const VDS_sat_mV = +document.getElementById('t1_vds').value;
+
+  document.getElementById('t1_vdd_v').textContent = VDD.toFixed(1);
+  document.getElementById('t1_vthp_v').textContent = Vthp_mV;
+  document.getElementById('t1_vthn_v').textContent = Vthn_mV;
+  document.getElementById('t1_vov_v').textContent = Vov_mV;
+  document.getElementById('t1_vds_v').textContent = VDS_sat_mV;
+
+  const Vthp = Vthp_mV/1000, Vthn = Vthn_mV/1000;
+  const Vov = Vov_mV/1000, VDS_sat = VDS_sat_mV/1000;
+
+  // PMOS pair: sources connected to M5 at top
+  // Vs = Vcm + Vsg_M1 = Vcm + Vov + Vthp
+  // For M5 to be in sat: Vs <= VDD - VDS_sat
+  // Vcm <= VDD - VDS_sat - Vov - Vthp  → PMOS Vcm_max
+  const PMOS_max = VDD - VDS_sat - Vov - Vthp;
+  // PMOS Vcm_min: drain of M1 must be in saturation
+  // Drain at ~ Vcm - |Vth| (load sets it); approximately VSS = 0
+  const PMOS_min = 0; // PMOS input works down to VSS
+
+  // NMOS pair: sources connected to M5 at bottom
+  // Vs = Vcm - Vgs_M1 = Vcm - (Vthn + Vov)
+  // For M5 to be in sat: Vs >= VSS + VDS_sat
+  // Vcm >= VDS_sat + Vthn + Vov  → NMOS Vcm_min
+  const NMOS_min = VDS_sat + Vthn + Vov;
+  // NMOS Vcm_max: drain of M1 must be in sat
+  // Drain at ~ VDD - VDS_sat_M3 (load)
+  const NMOS_max = VDD - VDS_sat;
+
+  const { ctx, W, H } = setupCanvas('c1');
+  const PAD = { l: 60, r: 20, t: 30, b: 44 };
+  const PW = W - PAD.l - PAD.r;
+  const PH = H - PAD.t - PAD.b;
+
+  ctx.fillStyle = '#0d1117'; ctx.fillRect(0,0,W,H);
+
+  // Draw supply rail spans
+  const barH = 50;
+  const barY_PMOS = PAD.t + PH*0.1;
+  const barY_NMOS = PAD.t + PH*0.4;
+  const barY_RRI  = PAD.t + PH*0.7;
+
+  function xV(v) { return PAD.l + (v/VDD)*PW; }
+
+  // Rail markers
+  ctx.strokeStyle = '#f85149'; ctx.lineWidth = 0.5; ctx.setLineDash([2,3]);
+  ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t); ctx.lineTo(PAD.l, PAD.t+PH); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(PAD.l+PW, PAD.t); ctx.lineTo(PAD.l+PW, PAD.t+PH); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#f85149'; ctx.font = '10px sans-serif';
+  ctx.fillText('VSS=0', PAD.l-2, PAD.t+PH+14);
+  ctx.fillText(`VDD=${VDD.toFixed(1)}`, PAD.l+PW-26, PAD.t+PH+14);
+
+  // Voltage axis ticks
+  for(let v=0; v<=VDD; v+=0.3) {
+    ctx.strokeStyle = '#21262d'; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(xV(v), PAD.t+PH-2); ctx.lineTo(xV(v), PAD.t+PH+2); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '9px monospace';
+    ctx.fillText(v.toFixed(1), xV(v)-6, PAD.t+PH+12);
+  }
+
+  function drawICMR(y, vMin, vMax, color, label, alpha=0.3) {
+    const x1 = Math.max(PAD.l, xV(Math.max(0, vMin)));
+    const x2 = Math.min(PAD.l+PW, xV(Math.min(VDD, vMax)));
+    if(x2 <= x1) {
+      // No valid range
+      ctx.fillStyle = '#f85149'; ctx.font = '11px sans-serif';
+      ctx.fillText(label + ': NO VALID RANGE', PAD.l+4, y+14);
+      return;
+    }
+    ctx.fillStyle = color.replace(')', `,${alpha})`).replace('rgb','rgba');
+    ctx.fillRect(x1, y, x2-x1, barH);
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.strokeRect(x1, y, x2-x1, barH);
+    ctx.fillStyle = color; ctx.font = '11px sans-serif';
+    const labelX = x1 + (x2-x1)/2 - 30;
+    ctx.fillText(`${label}: ${(Math.max(0,vMin)*1000|0)}mV – ${(Math.min(VDD,vMax)*1000|0)}mV`, labelX, y+30);
+    // bracket arrows
+    ctx.strokeStyle = color; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x1, y+barH+8); ctx.lineTo(x2, y+barH+8); ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.moveTo(x1,y+barH+8); ctx.lineTo(x1+5,y+barH+4); ctx.lineTo(x1+5,y+barH+12); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(x2,y+barH+8); ctx.lineTo(x2-5,y+barH+4); ctx.lineTo(x2-5,y+barH+12); ctx.fill();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace';
+    const sw = Math.max(0,vMax-vMin)*1000|0;
+    ctx.fillText(`${sw}mV`, x1+(x2-x1)/2-14, y+barH+22);
+  }
+
+  drawICMR(barY_PMOS, PMOS_min, PMOS_max, 'rgb(88,166,255)', 'PMOS ICMR');
+  drawICMR(barY_NMOS, NMOS_min, NMOS_max, 'rgb(240,136,62)', 'NMOS ICMR');
+
+  // RRI: union
+  const RRI_min = Math.min(PMOS_min, NMOS_min);
+  const RRI_max = Math.max(PMOS_max, NMOS_max);
+  drawICMR(barY_RRI, RRI_min, Math.min(VDD, RRI_max), 'rgb(63,185,80)', 'RRI (complementary)');
+
+  // Labels
+  ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif';
+  ctx.fillText('Common-Mode Input Voltage (V)', PAD.l+PW/2-70, H-4);
+
+  const PMOS_sw = Math.max(0, PMOS_max - PMOS_min);
+  const NMOS_sw = Math.max(0, NMOS_max - NMOS_min);
+  const RRI_sw = Math.max(0, Math.min(VDD, RRI_max) - RRI_min);
+  const overlap = Math.max(0, Math.min(PMOS_max, NMOS_max) - Math.max(PMOS_min, NMOS_min));
+
+  document.getElementById('t1_info').innerHTML =
+    `<span class="b">VDD = ${VDD.toFixed(1)} V</span><br>` +
+    `PMOS ICMR: <span class="b">0 – ${(PMOS_max*1000|0)} mV</span> (${(PMOS_sw/VDD*100|0)}% VDD)<br>` +
+    `NMOS ICMR: <span class="b">${(NMOS_min*1000|0)} – ${(Math.min(VDD,NMOS_max)*1000|0)} mV</span> (${(NMOS_sw/VDD*100|0)}% VDD)<br>` +
+    `RRI total: <span class="${RRI_sw/VDD > 0.9 ? 'g':'y'}">${(RRI_sw/VDD*100|0)}% VDD</span><br>` +
+    `Overlap zone: <span class="${overlap > 0.1 ? 'g':'r'}">${(overlap*1000|0)} mV</span>`;
+}
+
+// ── TAB 2: Dynamic Range Budget ───────────────────────────────────────────
+function updateT2() {
+  const VDD = +document.getElementById('t2_vdd').value;
+  const hdp_mV = +document.getElementById('t2_hdp').value;
+  const hdn_mV = +document.getElementById('t2_hdn').value;
+  const svn = +document.getElementById('t2_svn').value; // nV/√Hz
+  const bw_MHz = +document.getElementById('t2_bw').value;
+  const thd_dBc = +document.getElementById('t2_thd').value;
+  const mg = +document.getElementById('t2_mg').value / 100;
+
+  document.getElementById('t2_vdd_v').textContent = VDD.toFixed(1);
+  document.getElementById('t2_hdp_v').textContent = hdp_mV;
+  document.getElementById('t2_hdn_v').textContent = hdn_mV;
+  document.getElementById('t2_svn_v').textContent = svn.toFixed(1);
+  document.getElementById('t2_bw_v').textContent = bw_MHz.toFixed(1);
+  document.getElementById('t2_thd_v').textContent = thd_dBc;
+  document.getElementById('t2_mg_v').textContent = (mg*100).toFixed(0);
+
+  const swing = VDD - hdp_mV/1000 - hdn_mV/1000;
+  const swing_rms = swing * mg / (2*Math.sqrt(2)); // sinusoidal Vrms at mg headroom
+  const bw_Hz = bw_MHz * 1e6;
+  const Vn_rms = svn * 1e-9 * Math.sqrt(bw_Hz); // integrated noise
+  const thd_lin = Math.pow(10, thd_dBc/20);
+  const V_dist = thd_lin * swing_rms;
+  const V_floor_noise = Vn_rms;
+  const V_floor_thd = V_dist;
+  const V_floor_combined = Math.sqrt(Vn_rms*Vn_rms + V_dist*V_dist);
+
+  const DR_noise = 20*Math.log10(swing_rms / Math.max(1e-15, Vn_rms));
+  const DR_thd = 20*Math.log10(swing_rms / Math.max(1e-15, V_dist));
+  const DR_combined = 20*Math.log10(swing_rms / Math.max(1e-15, V_floor_combined));
+  const ENOB = (DR_combined - 1.76) / 6.02;
+
+  const { ctx, W, H } = setupCanvas('c2');
+  const PAD = { l: 70, r: 20, t: 20, b: 50 };
+  const PW = W - PAD.l - PAD.r;
+  const PH = H - PAD.t - PAD.b;
+
+  ctx.fillStyle = '#0d1117'; ctx.fillRect(0,0,W,H);
+
+  // y-axis: dBV from -180 to +10 (signal level relative to 1V)
+  // Show signal ceiling and noise floor
+  const sig_dBV = 20*Math.log10(Math.max(1e-15, swing_rms));
+  const noise_dBV = 20*Math.log10(Math.max(1e-15, Vn_rms));
+  const thd_dBV = 20*Math.log10(Math.max(1e-15, V_dist));
+  const combined_dBV = 20*Math.log10(Math.max(1e-15, V_floor_combined));
+
+  const yTopVal = Math.max(sig_dBV + 10, 0);
+  const yBotVal = Math.min(combined_dBV - 20, -160);
+  function yP(db) { return PAD.t + (1-(db-yBotVal)/(yTopVal-yBotVal))*PH; }
+
+  // Grid lines
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 0.5;
+  const step = 20;
+  for(let db = Math.ceil(yBotVal/step)*step; db <= yTopVal; db+=step) {
+    ctx.beginPath(); ctx.moveTo(PAD.l, yP(db)); ctx.lineTo(PAD.l+PW, yP(db)); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace';
+    ctx.fillText(db.toFixed(0)+'dBV', 2, yP(db)+3);
+  }
+
+  // Bars - horizontal at specific levels
+  function drawLevelBar(db, color, label, alpha=0.15) {
+    const y = yP(db);
+    ctx.fillStyle = color.replace('rgb','rgba').replace(')',`,${alpha})`);
+    ctx.fillRect(PAD.l, y-1, PW, 3);
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l+PW, y); ctx.stroke();
+    ctx.fillStyle = color; ctx.font = '10px sans-serif';
+    ctx.fillText(`${label}: ${db.toFixed(1)} dBV`, PAD.l+4, y-4);
+  }
+
+  // Signal ceiling
+  drawLevelBar(sig_dBV, 'rgb(63,185,80)', 'Signal ceiling');
+
+  // Noise floor
+  drawLevelBar(noise_dBV, 'rgb(88,166,255)', 'Noise floor');
+
+  // THD floor
+  drawLevelBar(thd_dBV, 'rgb(248,81,73)', 'THD floor');
+
+  // Combined floor
+  drawLevelBar(combined_dBV, 'rgb(240,136,62)', 'Combined floor');
+
+  // DR arrow
+  ctx.strokeStyle = '#3fb950'; ctx.lineWidth = 1.5;
+  const xArrow = PAD.l + PW * 0.8;
+  ctx.beginPath(); ctx.moveTo(xArrow, yP(sig_dBV)); ctx.lineTo(xArrow, yP(combined_dBV)); ctx.stroke();
+  // arrowheads
+  ctx.fillStyle = '#3fb950';
+  ctx.beginPath(); ctx.moveTo(xArrow, yP(sig_dBV)); ctx.lineTo(xArrow-5, yP(sig_dBV)+8); ctx.lineTo(xArrow+5, yP(sig_dBV)+8); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(xArrow, yP(combined_dBV)); ctx.lineTo(xArrow-5, yP(combined_dBV)-8); ctx.lineTo(xArrow+5, yP(combined_dBV)-8); ctx.fill();
+  ctx.fillStyle = '#3fb950'; ctx.font = '11px sans-serif';
+  const drMidY = (yP(sig_dBV)+yP(combined_dBV))/2;
+  ctx.fillText(`DR=${DR_combined.toFixed(1)}dB`, xArrow+6, drMidY+4);
+
+  ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif';
+  ctx.fillText('Signal Level (dBV)', 4, PAD.t+PH/2);
+  ctx.fillText('← Noise/Distortion floor vs Signal ceiling →', PAD.l+PW/2-120, H-8);
+
+  document.getElementById('t2_info').innerHTML =
+    `<span class="b">Swing = ${(swing*1000|0)} mVpp → ${(swing_rms*1000|0)} mV RMS</span><br>` +
+    `Noise floor: <span class="b">${(Vn_rms*1e6).toFixed(1)} μV RMS</span><br>` +
+    `THD floor: <span class="b">${(V_dist*1e6).toFixed(1)} μV RMS</span><br>` +
+    `Combined floor: <span class="b">${(V_floor_combined*1e6).toFixed(1)} μV RMS</span><br>` +
+    `DR (noise): <span class="g">${DR_noise.toFixed(1)} dB</span><br>` +
+    `DR (THD): <span class="${DR_thd>DR_noise?'g':'r'}">${DR_thd.toFixed(1)} dB</span><br>` +
+    `DR (combined): <span class="${DR_combined > 72 ? 'g':'r'}">${DR_combined.toFixed(1)} dB</span><br>` +
+    `ENOB: <span class="${ENOB>11?'g':ENOB>8?'y':'r'}">${ENOB.toFixed(1)} bits</span>`;
+}
+
+updateT0();
+window.addEventListener('resize', () => { updateT0(); updateT1(); updateT2(); });
+</script>
+</body>
+</html>

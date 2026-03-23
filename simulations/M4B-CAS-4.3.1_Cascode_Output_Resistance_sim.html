@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CAS-4.3.1 — Cascode Output Resistance</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#4d9fff;--green:#00cc66;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CAS-4.3.1</div>
+  <h1>Cascode — Output Resistance Calculator</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Device Parameters</h2>
+      <label>g_m,M2 (mA/V): <b id="gm2_l">1.5</b> <input type="range" id="gm2" min="0.1" max="10" value="1.5" step="0.1"></label>
+      <label>r_o,M1 (kΩ): <b id="ro1_l">300</b> <input type="range" id="ro1" min="10" max="5000" value="300" step="10"></label>
+      <label>r_o,M2 (kΩ): <b id="ro2_l">250</b> <input type="range" id="ro2" min="10" max="5000" value="250" step="10"></label>
+      <label>g_mb/g_m (body effect): <b id="gmb_l">0.15</b> <input type="range" id="gmb" min="0" max="0.3" value="0.15" step="0.01"></label>
+      <label>C_L (fF): <b id="cl_l">500</b> <input type="range" id="cl" min="10" max="10000" value="500" step="10"></label>
+
+      <div class="ro">r_o,M1 single: <span id="ro_cs">--</span> kΩ</div>
+      <div class="ro">r_out cascode (exact): <span id="rout_exact">--</span> MΩ</div>
+      <div class="ro g">r_out cascode (approx): <span id="rout_approx">--</span> MΩ</div>
+      <div class="ro">With body effect: <span id="rout_body">--</span> MΩ</div>
+      <div class="ro">Improvement factor: <span id="improvement">--</span> ×</div>
+      <div class="ro">f_3dB (with C_L): <span id="f3db">--</span> kHz</div>
+
+      <div class="insight" id="insight_box">Adjust parameters to explore cascode r_out.</div>
+    </div>
+
+    <div class="card">
+      <h2>r_out vs Drain Current (log scale)</h2>
+      <canvas id="cv" height="320"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const gm2 = +document.getElementById('gm2').value * 1e-3;
+    const ro1  = +document.getElementById('ro1').value  * 1e3;
+    const ro2  = +document.getElementById('ro2').value  * 1e3;
+    const gmb_ratio = +document.getElementById('gmb').value;
+    const CL   = +document.getElementById('cl').value  * 1e-15;
+
+    document.getElementById('gm2_l').textContent = (gm2*1e3).toFixed(1);
+    document.getElementById('ro1_l').textContent = (ro1/1e3).toFixed(0);
+    document.getElementById('ro2_l').textContent = (ro2/1e3).toFixed(0);
+    document.getElementById('gmb_l').textContent = gmb_ratio.toFixed(2);
+    document.getElementById('cl_l').textContent  = (CL/1e-15).toFixed(0);
+
+    const rout_exact  = ro2 + ro1 + gm2 * ro2 * ro1;
+    const rout_approx = gm2 * ro2 * ro1;
+    const gm2_eff     = gm2 * (1 + gmb_ratio);
+    const rout_body   = ro2 + ro1 + gm2_eff * ro2 * ro1;
+    const improvement = rout_exact / ro1;
+    const f3db        = 1 / (2 * Math.PI * rout_exact * CL);
+
+    document.getElementById('ro_cs').textContent      = (ro1/1e3).toFixed(0);
+    document.getElementById('rout_exact').textContent  = (rout_exact/1e6).toFixed(2);
+    document.getElementById('rout_approx').textContent = (rout_approx/1e6).toFixed(2);
+    document.getElementById('rout_body').textContent   = (rout_body/1e6).toFixed(2);
+    document.getElementById('improvement').textContent = improvement.toFixed(0);
+    document.getElementById('f3db').textContent        = (f3db/1e3).toFixed(3);
+
+    document.getElementById('insight_box').textContent =
+      'g_m×r_o = ' + (gm2*ro2).toFixed(0) + ' (intrinsic gain). ' +
+      'r_out = ' + (rout_exact/1e6).toFixed(1) + ' MΩ (exact) vs approx ' + (rout_approx/1e6).toFixed(1) + ' MΩ. ' +
+      'Body effect adds ' + ((rout_body-rout_exact)/1e6).toFixed(1) + ' MΩ (+' + ((rout_body/rout_exact-1)*100).toFixed(1) + '%). ' +
+      'f_3dB = ' + (f3db/1e3).toFixed(2) + ' kHz — cascode r_out rolled off by C_L.';
+
+    draw(gm2, ro1, ro2, rout_exact, rout_approx);
+  }
+
+  function draw(gm2, ro1, ro2, rout_op, rout_approx_op){
+    const cv  = document.getElementById('cv');
+    const W   = cv.parentElement.clientWidth - 36;
+    cv.width = W; cv.height = 320;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, W, 320);
+
+    const isDark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+    const axCol  = isDark ? '#8899bb' : '#8888aa';
+
+    const pL=55, pT=20, pB=40, pH=320-pT-pB, pW=W-pL-14;
+
+    // Sweep I_D from 1 μA to 1 mA (log scale)
+    // For given g_m2 and ro2 ratios, derive r_o and g_m as functions of I_D
+    // Assume: r_o = V_A/I_D where V_A = g_m2 * ro2 * I_D_op (inferred from op point)
+    // g_m = 2*I_D/V_ov where V_ov = g_m_op / (2*I_D_op)? Actually use g_m ∝ sqrt(I_D)
+    // To keep it self-consistent: at operating point, gm2_op and ro1_op, ro2_op are given.
+    // Derive V_A = ro1*I_D_op (from ro1 = VA/ID)
+    // For other ID: r_o(ID) = VA/ID = ro1*I_D_op/ID
+    // g_m(ID) = sqrt(ID/I_D_op) * gm2
+
+    // Infer operating I_D from parameters (assume common reasonable val)
+    // We use ro = VA/ID and gm = sqrt(2*k*ID) with k = gm2²/(2*I_D_op)
+    // Estimate I_D_op from gm and ro: g_m = 2*I_D/V_ov, r_o = 1/(λ*I_D)
+    // Simpler: let I_D_op = 100 μA, so VA = ro1 * I_D_op
+    const ID_op = 100e-6;
+    const VA1 = ro1 * ID_op;
+    const VA2 = ro2 * ID_op;
+    const gm2_const = gm2; // g_m at op point
+
+    const logMin = -6; // 1 μA
+    const logMax = -3; // 1 mA
+
+    // y-axis: log r_out
+    // At each I_D: r_o1 = VA1/ID, r_o2 = VA2/ID, gm = gm2 * sqrt(ID/ID_op)
+    function getVals(ID){
+      const r1 = VA1 / ID;
+      const r2 = VA2 / ID;
+      const gm = gm2_const * Math.sqrt(ID / ID_op);
+      const rout_cs  = r1;
+      const rout_cas = r2 + r1 + gm * r2 * r1;
+      return { rout_cs, rout_cas };
+    }
+
+    const rout_min_log = 3;  // 1 kΩ
+    const rout_max_log = 15; // 1 PΩ — wide range for log
+
+    // Find actual range
+    let maxLog = rout_min_log, minLog = rout_max_log;
+    for(let e=logMin; e<=logMax; e+=0.1){
+      const ID = Math.pow(10,e);
+      const {rout_cs, rout_cas} = getVals(ID);
+      if(rout_cs > 0) minLog = Math.min(minLog, Math.log10(rout_cs));
+      if(rout_cas > 0) maxLog = Math.max(maxLog, Math.log10(rout_cas));
+    }
+    minLog = Math.floor(minLog) - 0.5;
+    maxLog = Math.ceil(maxLog) + 0.5;
+
+    function xPos(ID){ return pL + ((Math.log10(ID) - logMin)/(logMax-logMin)) * pW; }
+    function yPos(r){
+      const l = Math.log10(Math.max(1, r));
+      return pT + pH - ((l - minLog)/(maxLog - minLog)) * pH;
+    }
+
+    // Axes
+    ctx.strokeStyle = axCol; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pL, pT); ctx.lineTo(pL, pT+pH); ctx.lineTo(pL+pW, pT+pH); ctx.stroke();
+
+    // Y axis labels
+    for(let e = Math.ceil(minLog); e <= Math.floor(maxLog); e++){
+      const y = yPos(Math.pow(10,e));
+      if(y < pT || y > pT+pH) continue;
+      const lbl = e >= 9 ? (Math.pow(10,e)/1e9).toFixed(0)+'GΩ' : e >= 6 ? (Math.pow(10,e)/1e6).toFixed(0)+'MΩ' : e >= 3 ? (Math.pow(10,e)/1e3).toFixed(0)+'kΩ' : e+'Ω';
+      ctx.fillStyle = axCol; ctx.font = '8px system-ui'; ctx.textAlign = 'right';
+      ctx.fillText(lbl, pL-3, y+3);
+      ctx.strokeStyle = axCol+'22'; ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(pL, y); ctx.lineTo(pL+pW, y); ctx.stroke();
+    }
+
+    // X axis labels
+    [1e-6, 10e-6, 100e-6, 1e-3].forEach(v=>{
+      const x = xPos(v);
+      const lbl = v >= 1e-3 ? '1mA' : v >= 1e-6 ? (v*1e6).toFixed(0)+'μA' : v+'A';
+      ctx.fillStyle = axCol; ctx.font = '8px system-ui'; ctx.textAlign = 'center';
+      ctx.fillText(lbl, x, pT+pH+14);
+      ctx.strokeStyle = axCol+'22'; ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(x, pT); ctx.lineTo(x, pT+pH); ctx.stroke();
+    });
+
+    // CS r_out curve
+    ctx.strokeStyle = '#cc4400'; ctx.lineWidth = 1.5; ctx.setLineDash([5,4]);
+    ctx.beginPath(); let first = true;
+    for(let px=0; px<=pW; px++){
+      const ID = Math.pow(10, logMin + (px/pW)*(logMax-logMin));
+      const {rout_cs} = getVals(ID);
+      const y = yPos(rout_cs);
+      if(y < pT-5 || y > pT+pH+5){ first=true; continue; }
+      first ? ctx.moveTo(pL+px,y) : ctx.lineTo(pL+px,y);
+      first = false;
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+
+    // Cascode r_out curve
+    ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2;
+    ctx.beginPath(); first = true;
+    for(let px=0; px<=pW; px++){
+      const ID = Math.pow(10, logMin + (px/pW)*(logMax-logMin));
+      const {rout_cas} = getVals(ID);
+      const y = yPos(rout_cas);
+      if(y < pT-5 || y > pT+pH+5){ first=true; continue; }
+      first ? ctx.moveTo(pL+px,y) : ctx.lineTo(pL+px,y);
+      first = false;
+    }
+    ctx.stroke();
+
+    // Operating point marker
+    const xop = xPos(ID_op);
+    const {rout_cs: rcs_op, rout_cas: rcas_op} = getVals(ID_op);
+    ctx.fillStyle = '#cc4400';
+    ctx.beginPath(); ctx.arc(xop, yPos(rcs_op), 5, 0, 2*Math.PI); ctx.fill();
+    ctx.fillStyle = '#00994d';
+    ctx.beginPath(); ctx.arc(xop, yPos(rcas_op), 5, 0, 2*Math.PI); ctx.fill();
+
+    // Legend
+    ctx.setLineDash([5,4]); ctx.strokeStyle='#cc4400'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(pL+pW-130, pT+12); ctx.lineTo(pL+pW-110, pT+12); ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle=axCol; ctx.font='9px system-ui'; ctx.textAlign='left';
+    ctx.fillText('CS r_o (no cascode)', pL+pW-106, pT+16);
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(pL+pW-130, pT+28); ctx.lineTo(pL+pW-110, pT+28); ctx.stroke();
+    ctx.fillText('Cascode r_out', pL+pW-106, pT+32);
+
+    ctx.textAlign='center'; ctx.fillStyle=axCol; ctx.font='9px system-ui';
+    ctx.fillText('I_D →', pL+pW/2, pT+pH+28);
+    ctx.save(); ctx.translate(12, pT+pH/2); ctx.rotate(-Math.PI/2);
+    ctx.fillText('r_out (log scale) →', 0, 0); ctx.restore();
+    ctx.font='bold 10px system-ui';
+    ctx.fillText('r_out vs Drain Current', pL+pW/2, pT-6);
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e => e.addEventListener('input', compute));
+  compute();
+  window.addEventListener('resize', compute);
+</script>
+</body>
+</html>

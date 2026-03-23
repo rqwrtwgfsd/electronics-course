@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-GB-2.6.2 Gain vs Frequency Plot Reader</title>
+<style>
+  :root {
+    --bg: #f5f5f5; --panel: #ffffff; --text: #1a1a1a; --muted: #666;
+    --border: #ddd; --accent: #2563eb; --accent2: #16a34a; --accent3: #dc2626;
+    --accent4: #9333ea; --canvas-bg: #fafafa; --grid: #e5e7eb;
+    --highlight: #fef9c3; --tag-bg: #eff6ff; --tag-border: #bfdbfe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1117; --panel: #1e2130; --text: #e8eaf0; --muted: #8892a4;
+      --border: #2d3348; --accent: #60a5fa; --accent2: #4ade80; --accent3: #f87171;
+      --accent4: #c084fc; --canvas-bg: #161926; --grid: #2d3348;
+      --highlight: #2d2a0f; --tag-bg: #1e3a5f; --tag-border: #3b82f6;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; }
+  h1 { font-size: 16px; font-weight: 700; padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  h1 span { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 8px; }
+  .layout { display: flex; gap: 0; height: calc(100vh - 49px); }
+  .left { width: 310px; min-width: 260px; background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .right { flex: 1; display: flex; flex-direction: column; gap: 0; overflow: hidden; }
+  .section { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+  .section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 10px; }
+  label { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  label span { font-weight: 600; color: var(--accent); font-size: 13px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+  select { width: 100%; padding: 5px 8px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: var(--text); font-size: 12px; cursor: pointer; }
+  .readout-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .readout { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 7px 9px; }
+  .readout .label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .readout .value { font-size: 14px; font-weight: 700; color: var(--accent); margin-top: 2px; font-family: monospace; }
+  .readout.green .value { color: var(--accent2); }
+  .readout.red .value { color: var(--accent3); }
+  .readout.purple .value { color: var(--accent4); }
+  .canvas-area { flex: 1; padding: 10px; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+  canvas { display: block; border-radius: 6px; background: var(--canvas-bg); border: 1px solid var(--border); }
+  .tip { background: var(--highlight); border: 1px solid var(--tag-border); border-radius: 6px; padding: 8px 10px; font-size: 11px; color: var(--text); line-height: 1.5; }
+  .mode-tabs { display: flex; gap: 4px; }
+  .tab { flex: 1; padding: 5px; text-align: center; font-size: 11px; border: 1px solid var(--border); border-radius: 5px; cursor: pointer; background: var(--bg); color: var(--muted); transition: all .15s; }
+  .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .slope-box { display: flex; align-items: center; gap: 6px; font-size: 11px; padding: 4px 6px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+</style>
+</head>
+<body>
+<h1>M4A-GB-2.6.2 — Gain vs Frequency Plot Reader <span>Identify midband, -3 dB points, poles, GBW</span></h1>
+<div class="layout">
+  <div class="left">
+
+    <div class="section">
+      <h3>Circuit Preset</h3>
+      <select id="preset" onchange="applyPreset()">
+        <option value="single">Single-Pole Amplifier</option>
+        <option value="bandpass">Bandpass (Two-Pole)</option>
+        <option value="three_pole">Three-Pole + Peaking</option>
+        <option value="gbw_demo">GBW Extraction Demo</option>
+      </select>
+    </div>
+
+    <div class="section">
+      <h3>Amplifier Parameters</h3>
+      <label>DC / Midband Gain (dB) <span id="lbl_dc">40</span></label>
+      <input type="range" id="dc_gain" min="0" max="80" value="40" step="1" oninput="update()">
+      <label>Upper -3 dB Pole (kHz) <span id="lbl_fh">100</span></label>
+      <input type="range" id="fh" min="1" max="1000" value="100" step="1" oninput="update()">
+      <label>Lower -3 dB Pole (Hz) <span id="lbl_fl">100</span></label>
+      <input type="range" id="fl" min="1" max="5000" value="100" step="5" oninput="update()">
+      <label>Second Pole (kHz) <span id="lbl_fp2">500</span></label>
+      <input type="range" id="fp2" min="10" max="5000" value="500" step="10" oninput="update()">
+      <label>Peaking Q <span id="lbl_q">0.5</span></label>
+      <input type="range" id="q_val" min="0.2" max="3.0" value="0.5" step="0.05" oninput="update()">
+    </div>
+
+    <div class="section">
+      <h3>Reading Mode</h3>
+      <div class="mode-tabs">
+        <div class="tab active" id="tab_read" onclick="setMode('read')">Read Plot</div>
+        <div class="tab" id="tab_measure" onclick="setMode('measure')">Measure</div>
+        <div class="tab" id="tab_gbw" onclick="setMode('gbw')">GBW</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Marker Frequency</h3>
+      <label>f_marker (Hz) <span id="lbl_fm">10000</span></label>
+      <input type="range" id="f_marker" min="0" max="1000" value="333" step="1" oninput="update()">
+      <div class="tip" id="marker_tip">Move marker across the plot to read gain and phase at any frequency.</div>
+    </div>
+
+    <div class="section">
+      <h3>Extracted Measurements</h3>
+      <div class="readout-grid">
+        <div class="readout">
+          <div class="label">Midband Gain</div>
+          <div class="value" id="r_mid">40.0 dB</div>
+        </div>
+        <div class="readout green">
+          <div class="label">f_H (-3 dB)</div>
+          <div class="value" id="r_fh">100 kHz</div>
+        </div>
+        <div class="readout red">
+          <div class="label">f_L (-3 dB)</div>
+          <div class="value" id="r_fl">100 Hz</div>
+        </div>
+        <div class="readout purple">
+          <div class="label">Bandwidth</div>
+          <div class="value" id="r_bw">—</div>
+        </div>
+        <div class="readout">
+          <div class="label">GBW Product</div>
+          <div class="value" id="r_gbw">—</div>
+        </div>
+        <div class="readout">
+          <div class="label">Marker Gain</div>
+          <div class="value" id="r_mark">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Slope Legend</h3>
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        <div class="slope-box"><div class="dot" style="background:#60a5fa"></div> 0 dB/decade — midband (no poles)</div>
+        <div class="slope-box"><div class="dot" style="background:#4ade80"></div> -20 dB/decade — 1 active pole</div>
+        <div class="slope-box"><div class="dot" style="background:#f87171"></div> -40 dB/decade — 2 active poles</div>
+        <div class="slope-box"><div class="dot" style="background:#fb923c"></div> Peaking — Q &gt; 0.707</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="right">
+    <div class="canvas-area">
+      <canvas id="bode_mag" style="flex:3;width:100%;"></canvas>
+      <canvas id="bode_phase" style="flex:2;width:100%;"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+let mode = 'read';
+function setMode(m) {
+  mode = m;
+  ['read','measure','gbw'].forEach(t => {
+    document.getElementById('tab_'+t).classList.toggle('active', t===m);
+  });
+  update();
+}
+
+function applyPreset() {
+  const p = document.getElementById('preset').value;
+  const presets = {
+    single:     {dc:40, fh:100, fl:100, fp2:500, q:0.5},
+    bandpass:   {dc:34, fh:200, fl:500, fp2:1000, q:0.5},
+    three_pole: {dc:46, fh:80, fl:50, fp2:300, q:1.8},
+    gbw_demo:   {dc:60, fh:10, fl:10, fp2:5000, q:0.4},
+  };
+  const s = presets[p];
+  document.getElementById('dc_gain').value = s.dc;
+  document.getElementById('fh').value = s.fh;
+  document.getElementById('fl').value = s.fl;
+  document.getElementById('fp2').value = s.fp2;
+  document.getElementById('q_val').value = s.q;
+  update();
+}
+
+// Logarithmic mapping for marker slider (1 Hz to 10 MHz)
+function markerSliderToHz(v) {
+  return Math.pow(10, 0 + v/1000 * 7); // 1 Hz to 10 MHz
+}
+
+function formatHz(f) {
+  if (f >= 1e6) return (f/1e6).toFixed(f>=10e6?0:2) + ' MHz';
+  if (f >= 1e3) return (f/1e3).toFixed(f>=100e3?0:1) + ' kHz';
+  return f.toFixed(f>=100?0:1) + ' Hz';
+}
+
+function formatGain(db) { return db.toFixed(1) + ' dB'; }
+
+function gainDB(f, dcDB, fL_hz, fH_hz, fp2_hz, q) {
+  // Bandpass: high-pass at fL, low-pass at fH with possible peaking (2nd-order), additional pole at fp2
+  const dcLin = Math.pow(10, dcDB/20);
+  // High-pass 1st order
+  const wL = 2*Math.PI*fL_hz;
+  const w = 2*Math.PI*f;
+  const hp = (w/wL) / Math.sqrt(1 + (w/wL)**2);
+  // 2nd order low-pass at fH (with Q)
+  const wH = 2*Math.PI*fH_hz;
+  const norm = wH/w;
+  const denom2 = Math.sqrt((1 - norm**2)**2 + (norm/q)**2);
+  const lp2 = 1/denom2;
+  // 1st order at fp2
+  const wp2 = 2*Math.PI*fp2_hz;
+  const lp3 = 1/Math.sqrt(1 + (f/fp2_hz)**2);
+  const total = dcLin * hp * lp2 * lp3;
+  return 20*Math.log10(Math.max(total, 1e-10));
+}
+
+function phaseRad(f, fL_hz, fH_hz, fp2_hz, q) {
+  const w = 2*Math.PI*f;
+  const wL = 2*Math.PI*fL_hz;
+  const wH = 2*Math.PI*fH_hz;
+  const wp2 = 2*Math.PI*fp2_hz;
+  // HP: +90 - arctan(w/wL)
+  const ph_hp = Math.PI/2 - Math.atan2(w, wL);
+  // 2nd order LP: -arctan(2*zeta*(w/wH) / (1-(w/wH)^2))  where zeta=1/(2Q)
+  const zeta = 1/(2*q);
+  const u = w/wH;
+  const ph_lp2 = -Math.atan2(2*zeta*u, 1 - u*u);
+  // 1st order LP at fp2
+  const ph_lp3 = -Math.atan2(f, fp2_hz);
+  return ph_hp + ph_lp2 + ph_lp3;
+}
+
+function update() {
+  const dcDB = parseFloat(document.getElementById('dc_gain').value);
+  const fH_khz = parseFloat(document.getElementById('fh').value);
+  const fL_hz = parseFloat(document.getElementById('fl').value);
+  const fp2_khz = parseFloat(document.getElementById('fp2').value);
+  const q = parseFloat(document.getElementById('q_val').value);
+  const fH_hz = fH_khz * 1e3;
+  const fp2_hz = fp2_khz * 1e3;
+  const f_marker = markerSliderToHz(parseFloat(document.getElementById('f_marker').value));
+
+  document.getElementById('lbl_dc').textContent = dcDB.toFixed(0);
+  document.getElementById('lbl_fh').textContent = fH_khz;
+  document.getElementById('lbl_fl').textContent = fL_hz;
+  document.getElementById('lbl_fp2').textContent = fp2_khz;
+  document.getElementById('lbl_q').textContent = q.toFixed(2);
+  document.getElementById('lbl_fm').textContent = formatHz(f_marker);
+
+  // Compute extracted values
+  const midBand_f = Math.sqrt(fL_hz * fH_hz);
+  const midband_db = gainDB(midBand_f, dcDB, fL_hz, fH_hz, fp2_hz, q);
+  const threshold = midband_db - 3;
+
+  // Find fL_3dB and fH_3dB by bisection
+  function find_lower_3db() {
+    let lo = 0.01, hi = midBand_f;
+    for (let i=0;i<50;i++) {
+      const mid = Math.sqrt(lo*hi);
+      if (gainDB(mid,dcDB,fL_hz,fH_hz,fp2_hz,q) < threshold) lo=mid; else hi=mid;
+    }
+    return Math.sqrt(lo*hi);
+  }
+  function find_upper_3db() {
+    let lo = midBand_f, hi = 1e8;
+    for (let i=0;i<50;i++) {
+      const mid = Math.sqrt(lo*hi);
+      if (gainDB(mid,dcDB,fL_hz,fH_hz,fp2_hz,q) > threshold) lo=mid; else hi=mid;
+    }
+    return Math.sqrt(lo*hi);
+  }
+  const fL_3 = find_lower_3db();
+  const fH_3 = find_upper_3db();
+  const bw = fH_3 - fL_3;
+  const midBandLin = Math.pow(10, midband_db/20);
+  const gbw = midBandLin * bw;
+  const marker_db = gainDB(f_marker, dcDB, fL_hz, fH_hz, fp2_hz, q);
+
+  document.getElementById('r_mid').textContent = formatGain(midband_db);
+  document.getElementById('r_fh').textContent = formatHz(fH_3);
+  document.getElementById('r_fl').textContent = formatHz(fL_3);
+  document.getElementById('r_bw').textContent = formatHz(bw);
+  document.getElementById('r_gbw').textContent = gbw>=1e6 ? (gbw/1e6).toFixed(2)+' MHz' : (gbw/1e3).toFixed(1)+' kHz';
+  document.getElementById('r_mark').textContent = formatGain(marker_db) + ' @ ' + formatHz(f_marker);
+
+  // Marker tip
+  const below = marker_db < threshold;
+  document.getElementById('marker_tip').textContent =
+    below
+      ? `Marker at ${formatHz(f_marker)}: ${formatGain(marker_db)} — BELOW -3 dB threshold (${formatGain(threshold)}). Outside amplifier bandwidth.`
+      : `Marker at ${formatHz(f_marker)}: ${formatGain(marker_db)} — ${(marker_db - midband_db).toFixed(1)} dB from midband. Within passband.`;
+
+  drawMag(dcDB, fL_hz, fH_hz, fp2_hz, q, fL_3, fH_3, midband_db, f_marker, marker_db);
+  drawPhase(fL_hz, fH_hz, fp2_hz, q, f_marker);
+}
+
+function getCanvas(id) {
+  const c = document.getElementById(id);
+  c.width = c.offsetWidth * devicePixelRatio;
+  c.height = c.offsetHeight * devicePixelRatio;
+  const ctx = c.getContext('2d');
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  ctx.W = c.offsetWidth; ctx.H = c.offsetHeight;
+  return ctx;
+}
+
+function getColor(varName) {
+  return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+}
+
+function drawMag(dcDB, fL_hz, fH_hz, fp2_hz, q, fL_3, fH_3, midband_db, f_marker, marker_db) {
+  const ctx = getCanvas('bode_mag');
+  const W = ctx.W, H = ctx.H;
+  const pl = 60, pr = 20, pt = 30, pb = 36;
+  const pw = W-pl-pr, ph = H-pt-pb;
+
+  ctx.clearRect(0,0,W,H);
+
+  // Frequency range: 0.1 Hz to 10 MHz (log10: -1 to 7)
+  const fMin = 0.1, fMax = 1e7;
+  const logFmin = Math.log10(fMin), logFmax = Math.log10(fMax);
+
+  // Gain range
+  const gainMin = -20, gainMax = dcDB + 20;
+
+  function fx(f) { return pl + (Math.log10(f) - logFmin) / (logFmax-logFmin) * pw; }
+  function fy(db) { return pt + (1 - (db-gainMin)/(gainMax-gainMin)) * ph; }
+
+  // Grid
+  ctx.strokeStyle = getColor('--grid');
+  ctx.lineWidth = 0.7;
+  // Decade lines
+  for (let d=-1; d<=7; d++) {
+    const x = fx(Math.pow(10,d));
+    ctx.beginPath(); ctx.moveTo(x,pt); ctx.lineTo(x,pt+ph); ctx.stroke();
+    for (let sub=2;sub<=9;sub++) {
+      const xs = fx(Math.pow(10,d)*sub);
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath(); ctx.moveTo(xs,pt); ctx.lineTo(xs,pt+ph); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+  // dB grid lines
+  for (let db=Math.ceil(gainMin/20)*20; db<=gainMax; db+=20) {
+    const y = fy(db);
+    ctx.beginPath(); ctx.moveTo(pl,y); ctx.lineTo(pl+pw,y); ctx.stroke();
+  }
+
+  // -3 dB reference line
+  const threshold = midband_db - 3;
+  ctx.strokeStyle = getColor('--accent3');
+  ctx.lineWidth = 1;
+  ctx.setLineDash([6,4]);
+  const y3 = fy(threshold);
+  ctx.beginPath(); ctx.moveTo(pl, y3); ctx.lineTo(pl+pw, y3); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = getColor('--accent3');
+  ctx.font = '10px system-ui';
+  ctx.fillText('-3 dB', pl+4, y3-3);
+
+  // Midband reference line
+  ctx.strokeStyle = getColor('--accent');
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4,3]);
+  const ym = fy(midband_db);
+  ctx.beginPath(); ctx.moveTo(pl,ym); ctx.lineTo(pl+pw,ym); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = getColor('--accent');
+  ctx.fillText('Midband', pl+4, ym-3);
+
+  // Gain curve
+  ctx.strokeStyle = getColor('--accent');
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  let first = true;
+  const N = 800;
+  for (let i=0;i<=N;i++) {
+    const lf = logFmin + i/N*(logFmax-logFmin);
+    const f = Math.pow(10,lf);
+    const db = gainDB(f, dcDB, fL_hz, fH_hz, fp2_hz, q);
+    const x = pl + i/N*pw;
+    const y = fy(db);
+    if (first) { ctx.moveTo(x,y); first=false; } else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // fL and fH markers
+  const xfL = fx(fL_3), xfH = fx(fH_3);
+  // fL dot
+  ctx.fillStyle = getColor('--accent3');
+  ctx.beginPath(); ctx.arc(xfL, fy(gainDB(fL_3,dcDB,fL_hz,fH_hz,fp2_hz,q)), 5, 0, 2*Math.PI); ctx.fill();
+  ctx.strokeStyle = getColor('--accent3');
+  ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(xfL,pt); ctx.lineTo(xfL,pt+ph); ctx.stroke();
+  ctx.setLineDash([]);
+  // fH dot
+  ctx.fillStyle = getColor('--accent2');
+  ctx.beginPath(); ctx.arc(xfH, fy(gainDB(fH_3,dcDB,fL_hz,fH_hz,fp2_hz,q)), 5, 0, 2*Math.PI); ctx.fill();
+  ctx.strokeStyle = getColor('--accent2');
+  ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(xfH,pt); ctx.lineTo(xfH,pt+ph); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Moving marker
+  const xm = fx(f_marker);
+  ctx.strokeStyle = getColor('--accent4');
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5,3]);
+  ctx.beginPath(); ctx.moveTo(xm,pt); ctx.lineTo(xm,pt+ph); ctx.stroke();
+  ctx.setLineDash([]);
+  const ym2 = fy(marker_db);
+  ctx.fillStyle = getColor('--accent4');
+  ctx.beginPath(); ctx.arc(xm, ym2, 5, 0, 2*Math.PI); ctx.fill();
+  // Label
+  ctx.fillStyle = getColor('--accent4');
+  ctx.font = 'bold 11px system-ui';
+  const lblX = Math.min(xm+8, pl+pw-70);
+  ctx.fillText(`${formatGain(marker_db)}`, lblX, ym2-6);
+
+  // Axes labels
+  ctx.fillStyle = getColor('--muted');
+  ctx.font = '11px system-ui';
+  // dB axis
+  for (let db=Math.ceil(gainMin/20)*20; db<=gainMax; db+=20) {
+    ctx.fillText(db, 2, fy(db)+4);
+  }
+  // Frequency axis
+  const decades = [0.1,1,10,100,1e3,1e4,1e5,1e6,1e7];
+  const labels =  ['0.1','1','10','100','1k','10k','100k','1M','10M'];
+  decades.forEach((f,i) => {
+    if (f>=fMin && f<=fMax) {
+      const x = fx(f);
+      ctx.fillText(labels[i], x-8, pt+ph+16);
+    }
+  });
+  ctx.fillStyle = getColor('--text');
+  ctx.font = 'bold 12px system-ui';
+  ctx.fillText('Gain (dB)', 2, pt-10);
+  ctx.fillText('Frequency (Hz)', pl+pw/2-40, H-2);
+
+  // Legend
+  ctx.font = '10px system-ui';
+  ctx.fillStyle = getColor('--accent2');
+  ctx.fillText('▶ f_H', xfH+4, fy(gainDB(fH_3,dcDB,fL_hz,fH_hz,fp2_hz,q))-8);
+  ctx.fillStyle = getColor('--accent3');
+  ctx.fillText('◀ f_L', xfL-34, fy(gainDB(fL_3,dcDB,fL_hz,fH_hz,fp2_hz,q))-8);
+}
+
+function drawPhase(fL_hz, fH_hz, fp2_hz, q, f_marker) {
+  const ctx = getCanvas('bode_phase');
+  const W = ctx.W, H = ctx.H;
+  const pl = 60, pr = 20, pt = 20, pb = 36;
+  const pw = W-pl-pr, ph = H-pt-pb;
+
+  ctx.clearRect(0,0,W,H);
+
+  const fMin = 0.1, fMax = 1e7;
+  const logFmin = Math.log10(fMin), logFmax = Math.log10(fMax);
+  const phMin = -270, phMax = 180;
+
+  function fx(f) { return pl + (Math.log10(f) - logFmin) / (logFmax-logFmin) * pw; }
+  function fy(deg) { return pt + (1 - (deg-phMin)/(phMax-phMin)) * ph; }
+
+  // Grid
+  ctx.strokeStyle = getColor('--grid');
+  ctx.lineWidth = 0.7;
+  for (let d=-1; d<=7; d++) {
+    const x = fx(Math.pow(10,d));
+    ctx.beginPath(); ctx.moveTo(x,pt); ctx.lineTo(x,pt+ph); ctx.stroke();
+  }
+  const phLines = [-270,-225,-180,-135,-90,-45,0,45,90,135,180];
+  phLines.forEach(p => {
+    const y = fy(p);
+    ctx.beginPath(); ctx.moveTo(pl,y); ctx.lineTo(pl+pw,y); ctx.stroke();
+    ctx.fillStyle = getColor('--muted');
+    ctx.font = '11px system-ui';
+    ctx.fillText(p+'°', 2, y+4);
+  });
+
+  // 0° reference
+  ctx.strokeStyle = getColor('--grid');
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pl,fy(0)); ctx.lineTo(pl+pw,fy(0)); ctx.stroke();
+
+  // Phase curve
+  ctx.strokeStyle = getColor('--accent4');
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  let first = true;
+  const N = 800;
+  for (let i=0;i<=N;i++) {
+    const lf = logFmin + i/N*(logFmax-logFmin);
+    const f = Math.pow(10,lf);
+    const ph_rad = phaseRad(f, fL_hz, fH_hz, fp2_hz, q);
+    const ph_deg = ph_rad * 180 / Math.PI;
+    const x = pl + i/N*pw;
+    const y = fy(Math.max(phMin, Math.min(phMax, ph_deg)));
+    if (first) { ctx.moveTo(x,y); first=false; } else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Marker
+  const xm = fx(f_marker);
+  const ph_deg = phaseRad(f_marker, fL_hz, fH_hz, fp2_hz, q) * 180 / Math.PI;
+  ctx.strokeStyle = getColor('--accent4');
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5,3]);
+  ctx.beginPath(); ctx.moveTo(xm,pt); ctx.lineTo(xm,pt+ph); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = getColor('--accent4');
+  ctx.beginPath(); ctx.arc(xm, fy(Math.max(phMin,Math.min(phMax,ph_deg))), 5, 0, 2*Math.PI); ctx.fill();
+  ctx.font = 'bold 11px system-ui';
+  const lblX2 = Math.min(xm+8, pl+pw-70);
+  ctx.fillText(`${ph_deg.toFixed(1)}°`, lblX2, fy(Math.max(phMin,Math.min(phMax,ph_deg)))-6);
+
+  // Labels
+  const decades = [0.1,1,10,100,1e3,1e4,1e5,1e6,1e7];
+  const labels =  ['0.1','1','10','100','1k','10k','100k','1M','10M'];
+  ctx.fillStyle = getColor('--muted');
+  ctx.font = '11px system-ui';
+  decades.forEach((f,i) => {
+    if (f>=fMin && f<=fMax) ctx.fillText(labels[i], fx(f)-8, pt+ph+16);
+  });
+  ctx.fillStyle = getColor('--text');
+  ctx.font = 'bold 12px system-ui';
+  ctx.fillText('Phase (°)', 2, pt-4);
+  ctx.fillText('Frequency (Hz)', pl+pw/2-40, H-2);
+}
+
+window.addEventListener('resize', update);
+update();
+</script>
+</body>
+</html>

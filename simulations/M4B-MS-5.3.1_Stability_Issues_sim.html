@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-MS-5.3.1 — Multi-Stage Stability Issues</title>
+<style>
+  :root { --bg:#ffffff; --bg2:#f5f5f5; --text:#1a1a1a; --text2:#555; --border:#ddd; --accent:#0066cc; --green:#00994d; --canvas-bg:#fafafa; --warn:#cc4400; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1a1a1a; --bg2:#242424; --text:#e8e8e8; --text2:#aaa; --border:#444; --canvas-bg:#1f1f1f; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); font-size:14px; }
+  header { background:var(--bg2); border-bottom:2px solid var(--accent); padding:12px 20px; }
+  header .id { font-family:monospace; font-size:12px; color:var(--accent); font-weight:700; }
+  header h1 { font-size:16px; margin-top:2px; }
+  .container { display:flex; gap:16px; padding:16px; flex-wrap:wrap; }
+  .panel { background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:14px; }
+  .sim-panel { flex:1; min-width:380px; }
+  .ctrl-panel { width:250px; min-width:230px; }
+  canvas { background:var(--canvas-bg); border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .readouts { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+  .readout { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 10px; }
+  .readout label { font-size:11px; color:var(--text2); display:block; }
+  .readout .val { font-family:monospace; font-size:16px; font-weight:700; color:var(--accent); }
+  .ctrl { margin-bottom:14px; }
+  .ctrl label { display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px; }
+  .ctrl label span { font-family:monospace; color:var(--accent); font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .section-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text2); margin-bottom:10px; }
+  .insight { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 12px; margin-top:10px; font-size:12px; color:var(--text2); line-height:1.5; }
+  .insight .label { font-weight:700; }
+  .tabs { display:flex; gap:4px; margin-bottom:10px; }
+  .tab { padding:5px 12px; border:1px solid var(--border); border-radius:4px; font-size:12px; cursor:pointer; background:var(--bg); color:var(--text); }
+  .tab.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4B-MS-5.3.1</div>
+  <h1>Multi-Stage — Stability Issues</h1>
+</header>
+<div class="container">
+  <div class="panel sim-panel">
+    <div class="tabs">
+      <button class="tab active" onclick="setTab('bode')">Bode Plot (Phase Margin)</button>
+      <button class="tab" onclick="setTab('pole')">Pole Positions</button>
+    </div>
+    <canvas id="cv" height="320"></canvas>
+    <div class="readouts">
+      <div class="readout"><label>Crossover Freq fc</label><span class="val" id="r-fc">—</span></div>
+      <div class="readout"><label>Phase at fc</label><span class="val" id="r-ph">—</span></div>
+      <div class="readout"><label>Phase Margin</label><span class="val" id="r-pm">—</span></div>
+      <div class="readout"><label>Stability</label><span class="val" id="r-stab">—</span></div>
+    </div>
+    <div class="insight"><span class="label" id="ins-label">Status:</span> <span id="ins-text">—</span></div>
+  </div>
+  <div class="panel ctrl-panel">
+    <div class="section-title">Amplifier Poles</div>
+    <div class="ctrl">
+      <label>fp1 (kHz) <span id="lbl-fp1">200</span></label>
+      <input type="range" id="sl-fp1" min="10" max="2000" value="200" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>fp2 (MHz) <span id="lbl-fp2">8</span></label>
+      <input type="range" id="sl-fp2" min="1" max="100" value="8" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>fp3 (MHz) [0=off] <span id="lbl-fp3">0</span></label>
+      <input type="range" id="sl-fp3" min="0" max="200" value="0" oninput="update()">
+    </div>
+    <div class="section-title" style="margin-top:10px">Gain & Feedback</div>
+    <div class="ctrl">
+      <label>DC Gain A₀ (dB) <span id="lbl-a0">80</span></label>
+      <input type="range" id="sl-a0" min="40" max="120" value="80" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>Feedback β (×10) <span id="lbl-beta">10</span></label>
+      <input type="range" id="sl-beta" min="1" max="10" value="10" oninput="update()">
+      <small style="font-size:11px;color:var(--text2)">10=unity gain, 1=gain-of-10</small>
+    </div>
+  </div>
+</div>
+<script>
+let tab = 'bode';
+function setTab(t) {
+  tab = t;
+  document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', (i===0&&t==='bode')||(i===1&&t==='pole')));
+  update();
+}
+
+function loopGain(f, a0_lin, fp1, fp2, fp3, beta) {
+  const w = 2*Math.PI*f;
+  const w1 = 2*Math.PI*fp1, w2 = 2*Math.PI*fp2;
+  let mag = a0_lin * beta / Math.sqrt(1+(w/w1)**2) / Math.sqrt(1+(w/w2)**2);
+  let phase = -Math.atan(w/w1) - Math.atan(w/w2);
+  if (fp3 > 0) {
+    const w3 = 2*Math.PI*fp3;
+    mag /= Math.sqrt(1+(w/w3)**2);
+    phase -= Math.atan(w/w3);
+  }
+  return { mag, phase: phase * 180/Math.PI };
+}
+
+function findCrossover(a0_lin, fp1, fp2, fp3, beta) {
+  let fLow = 1, fHigh = 1e12;
+  for (let i = 0; i < 60; i++) {
+    const fMid = Math.sqrt(fLow*fHigh);
+    const { mag } = loopGain(fMid, a0_lin, fp1, fp2, fp3, beta);
+    if (mag > 1) fLow = fMid; else fHigh = fMid;
+  }
+  return Math.sqrt(fLow*fHigh);
+}
+
+function update() {
+  const a0_dB = parseFloat(document.getElementById('sl-a0').value);
+  const fp1   = parseFloat(document.getElementById('sl-fp1').value)*1e3;
+  const fp2   = parseFloat(document.getElementById('sl-fp2').value)*1e6;
+  const fp3_mhz = parseFloat(document.getElementById('sl-fp3').value);
+  const fp3   = fp3_mhz > 0 ? fp3_mhz*1e6 : 0;
+  const beta  = parseFloat(document.getElementById('sl-beta').value)/10;
+
+  document.getElementById('lbl-fp1').textContent = parseFloat(document.getElementById('sl-fp1').value);
+  document.getElementById('lbl-fp2').textContent = parseFloat(document.getElementById('sl-fp2').value);
+  document.getElementById('lbl-fp3').textContent = fp3_mhz;
+  document.getElementById('lbl-a0').textContent  = a0_dB;
+  document.getElementById('lbl-beta').textContent = parseFloat(document.getElementById('sl-beta').value);
+
+  const a0_lin = Math.pow(10, a0_dB/20);
+  const fc = findCrossover(a0_lin, fp1, fp2, fp3, beta);
+  const { phase: phaseAtFc } = loopGain(fc, a0_lin, fp1, fp2, fp3, beta);
+  const pm = 180 + phaseAtFc;
+
+  document.getElementById('r-fc').textContent = fc < 1e6 ? (fc/1e3).toFixed(1)+' kHz' : (fc/1e6).toFixed(2)+' MHz';
+  document.getElementById('r-ph').textContent = phaseAtFc.toFixed(1)+'°';
+  const pmEl = document.getElementById('r-pm');
+  pmEl.textContent = pm.toFixed(1)+'°';
+  pmEl.style.color = pm >= 60 ? 'var(--green)' : pm >= 45 ? '#cc8800' : 'var(--warn)';
+
+  const stabEl = document.getElementById('r-stab');
+  let stabText, insText;
+  if (pm >= 60) { stabText = 'STABLE'; stabEl.style.color='var(--green)'; insText = `PM=${pm.toFixed(1)}° — excellent. Overshoot ≈ ${(100*Math.exp(-Math.PI*pm/180/Math.sqrt(1-(pm/180)**2+0.001))).toFixed(0)}% estimated.`; }
+  else if (pm >= 45) { stabText = 'MARGINAL'; stabEl.style.color='#cc8800'; insText = `PM=${pm.toFixed(1)}° — marginal. May oscillate at FF corner. Increase Cc or reduce GBW.`; }
+  else if (pm > 0) { stabText = 'POOR'; stabEl.style.color='var(--warn)'; insText = `PM=${pm.toFixed(1)}° — poor stability. Significant ringing expected. Compensation required.`; }
+  else { stabText = 'UNSTABLE'; stabEl.style.color='var(--warn)'; insText = `PM=${pm.toFixed(1)}° — OSCILLATES. Unity-gain crossover is past the phase-inversion frequency.`; }
+  stabEl.textContent = stabText;
+  document.getElementById('ins-text').textContent = insText;
+
+  if (tab === 'bode') drawBode(a0_lin, fp1, fp2, fp3, beta, fc, pm);
+  else drawPoles(fp1, fp2, fp3, fc, pm);
+}
+
+function drawBode(a0_lin, fp1, fp2, fp3, beta, fc, pm) {
+  const canvas = document.getElementById('cv');
+  const W = canvas.offsetWidth||500; canvas.width=W; canvas.height=320;
+  const ctx = canvas.getContext('2d');
+  const pad={l:55,r:15,t:15,b:40};
+  const pw=W-pad.l-pad.r, ph=320-pad.t-pad.b;
+  ctx.fillStyle='var(--canvas-bg)'; ctx.fillRect(0,0,W,320);
+
+  // Split into magnitude (top half) and phase (bottom half)
+  const magH = ph*0.55, phaseH = ph*0.45;
+  const magTop = pad.t, phaseTop = pad.t + magH + 5;
+
+  const fMin=1e3, fMax=1e10;
+  const logMin=Math.log10(fMin), logMax=Math.log10(fMax);
+  const fToX = f => pad.l + (Math.log10(f)-logMin)/(logMax-logMin)*pw;
+
+  // Magnitude axes
+  ctx.strokeStyle='var(--border)'; ctx.lineWidth=0.8;
+  const magMax=100, magMin=-40;
+  const magToY = m => magTop + magH - (m-magMin)/(magMax-magMin)*magH;
+  for (let m=-40;m<=100;m+=20) {
+    const y=magToY(m);
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+pw,y); ctx.stroke();
+    ctx.fillStyle='var(--text)'; ctx.font='9px monospace'; ctx.textAlign='right';
+    ctx.fillText(m+'dB', pad.l-3, y+3);
+  }
+  // 0 dB line
+  ctx.strokeStyle='rgba(0,0,0,0.3)'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+  const y0=magToY(0); ctx.beginPath(); ctx.moveTo(pad.l,y0); ctx.lineTo(pad.l+pw,y0); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Phase axes
+  ctx.strokeStyle='var(--border)'; ctx.lineWidth=0.8;
+  const phMin=-270, phMax=0;
+  const phToY = p => phaseTop + phaseH - (p-phMin)/(phMax-phMin)*phaseH;
+  for (let p=-270;p<=0;p+=90) {
+    const y=phToY(p);
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+pw,y); ctx.stroke();
+    ctx.fillStyle='var(--text)'; ctx.font='9px monospace'; ctx.textAlign='right';
+    ctx.fillText(p+'°', pad.l-3, y+3);
+  }
+  // -180 line
+  ctx.strokeStyle='rgba(204,68,0,0.5)'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+  const y180=phToY(-180); ctx.beginPath(); ctx.moveTo(pad.l,y180); ctx.lineTo(pad.l+pw,y180); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Draw curves
+  ctx.beginPath(); let first=true;
+  ctx.strokeStyle='#0066cc'; ctx.lineWidth=2;
+  for (let i=0;i<=400;i++) {
+    const f=Math.pow(10, logMin + i/400*(logMax-logMin));
+    const {mag}=loopGain(f,a0_lin,fp1,fp2,fp3,beta);
+    const m=20*Math.log10(Math.max(mag,1e-10));
+    const x=fToX(f); const y=magToY(m);
+    if(y<magTop-5||y>magTop+magH+5){first=true;continue;}
+    first?ctx.moveTo(x,y):ctx.lineTo(x,y); first=false;
+  }
+  ctx.stroke();
+
+  ctx.beginPath(); first=true;
+  ctx.strokeStyle='#00994d'; ctx.lineWidth=2;
+  for (let i=0;i<=400;i++) {
+    const f=Math.pow(10, logMin + i/400*(logMax-logMin));
+    const {phase}=loopGain(f,a0_lin,fp1,fp2,fp3,beta);
+    const x=fToX(f); const y=phToY(Math.max(phMin,Math.min(phMax,phase)));
+    first?ctx.moveTo(x,y):ctx.lineTo(x,y); first=false;
+  }
+  ctx.stroke();
+
+  // Crossover marker
+  const xcf=fToX(fc);
+  ctx.strokeStyle='#cc4400'; ctx.lineWidth=1.5; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(xcf,magTop); ctx.lineTo(xcf,phaseTop+phaseH); ctx.stroke();
+  ctx.setLineDash([]);
+  // PM arc indicator
+  const yphc=phToY(-(180-pm));
+  ctx.fillStyle='#cc4400'; ctx.beginPath(); ctx.arc(xcf,yphc,4,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#cc4400'; ctx.font='bold 10px monospace'; ctx.textAlign='left';
+  ctx.fillText('PM='+pm.toFixed(0)+'°', xcf+6, yphc+3);
+
+  // X axis labels
+  ctx.textAlign='center'; ctx.fillStyle='var(--text)'; ctx.font='9px monospace';
+  for (let lf=3;lf<=10;lf++) {
+    const x=fToX(Math.pow(10,lf));
+    const lbl=lf<6?'10'+String(lf)+'Hz':lf<9?(Math.pow(10,lf-3)/1000).toFixed(0)+'M':(Math.pow(10,lf-6)/1000).toFixed(0)+'G';
+    ctx.fillText(lbl,x,magTop+magH+phaseH+20);
+  }
+  ctx.fillStyle='var(--text)'; ctx.font='bold 11px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('|T|', pad.l+4, magTop+12);
+  ctx.fillStyle='#00994d'; ctx.fillText('∠T', pad.l+4, phaseTop+12);
+}
+
+function drawPoles(fp1,fp2,fp3,fc,pm) {
+  const canvas=document.getElementById('cv');
+  const W=canvas.offsetWidth||500; canvas.width=W; canvas.height=320;
+  const ctx=canvas.getContext('2d');
+  ctx.fillStyle='var(--canvas-bg)'; ctx.fillRect(0,0,W,320);
+  const pad={l:40,r:20,t:30,b:40};
+  const pw=W-pad.l-pad.r, ph=320-pad.t-pad.b;
+  const fMin=1e3,fMax=1e10;
+  const logMin=Math.log10(fMin),logMax=Math.log10(fMax);
+  const fToX=f=>pad.l+(Math.log10(f)-logMin)/(logMax-logMin)*pw;
+  const cy=pad.t+ph/2;
+
+  ctx.strokeStyle='var(--border)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(pad.l,cy); ctx.lineTo(pad.l+pw,cy); ctx.stroke();
+
+  // log frequency axis labels
+  ctx.textAlign='center'; ctx.fillStyle='var(--text)'; ctx.font='9px monospace';
+  for (let lf=3;lf<=10;lf++) {
+    const x=fToX(Math.pow(10,lf));
+    ctx.fillStyle='var(--border)';
+    ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,pad.t+ph); ctx.stroke();
+    ctx.fillStyle='var(--text)';
+    const labels=['1kHz','10k','100k','1M','10M','100M','1G','10G'];
+    ctx.fillText(labels[lf-3],x,pad.t+ph+14);
+  }
+
+  const poles=[{f:fp1,label:'fp1',color:'#0066cc'},{f:fp2,label:'fp2',color:'#00994d'}];
+  if(fp3>0) poles.push({f:fp3,label:'fp3',color:'#cc4400'});
+  poles.forEach(p=>{
+    const x=fToX(p.f);
+    ctx.strokeStyle=p.color; ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.moveTo(x,cy-30); ctx.lineTo(x,cy+30); ctx.stroke();
+    ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(x,cy,7,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle=p.color; ctx.font='bold 11px monospace'; ctx.textAlign='center';
+    const freq=p.f<1e6?(p.f/1e3).toFixed(0)+'kHz':(p.f/1e6).toFixed(1)+'MHz';
+    ctx.fillText(p.label+': '+freq, x, cy-38);
+  });
+
+  // Crossover
+  const xcf=fToX(fc);
+  ctx.strokeStyle='#cc8800'; ctx.lineWidth=2; ctx.setLineDash([5,3]);
+  ctx.beginPath(); ctx.moveTo(xcf,pad.t+20); ctx.lineTo(xcf,pad.t+ph-20); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#cc8800'; ctx.font='bold 11px monospace'; ctx.textAlign='center';
+  const fcStr=fc<1e6?(fc/1e3).toFixed(0)+'kHz':(fc/1e6).toFixed(2)+'MHz';
+  ctx.fillText('fc='+fcStr, xcf, pad.t+ph-8);
+  ctx.fillText('PM='+pm.toFixed(0)+'°', xcf, pad.t+14);
+
+  ctx.fillStyle='var(--text)'; ctx.font='bold 12px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('Pole Positions on Frequency Axis', pad.l+pw/2, pad.t+ph+28);
+}
+
+update();
+</script>
+</body>
+</html>

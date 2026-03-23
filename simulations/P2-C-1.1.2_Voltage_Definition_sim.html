@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-C-1.1.2 — Capacitor: Voltage Definition (Q = CV)</title>
+<style>
+  :root {
+    --bg:#ffffff;--bg2:#f5f5f5;--text:#1a1a1a;--text2:#555;
+    --border:#ddd;--accent:#0066cc;--green:#00994d;--red:#cc2200;
+  }
+  @media(prefers-color-scheme:dark){:root{
+    --bg:#1a1a1a;--bg2:#242424;--text:#e8e8e8;--text2:#aaa;--border:#444;
+  }}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+       background:var(--bg);color:var(--text);font-size:14px;}
+  header{background:var(--bg2);border-bottom:2px solid var(--accent);padding:12px 20px;}
+  header .id{font-family:monospace;font-size:12px;color:var(--accent);font-weight:700;}
+  header h1{font-size:16px;margin-top:2px;}
+  .container{display:flex;gap:14px;padding:14px;flex-wrap:wrap;}
+  .panel{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:14px;}
+  .sim-panel{flex:1;min-width:320px;}
+  .ctrl-panel{width:230px;min-width:210px;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .readouts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;}
+  .readout{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:8px 10px;}
+  .readout label{font-size:11px;color:var(--text2);display:block;}
+  .readout .val{font-family:monospace;font-size:17px;font-weight:700;color:var(--accent);}
+  .ctrl{margin-bottom:14px;}
+  .ctrl label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;}
+  .ctrl label span{font-family:monospace;color:var(--accent);font-weight:700;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .formula-box{background:var(--bg);border-left:3px solid var(--accent);
+               padding:7px 10px;margin:8px 0;font-family:monospace;font-size:12px;
+               border-radius:0 4px 4px 0;}
+  .tabs{display:flex;gap:4px;margin-bottom:10px;}
+  .tab{padding:5px 10px;border:1px solid var(--border);border-radius:4px;
+       font-size:12px;cursor:pointer;background:var(--bg);color:var(--text);}
+  .tab.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .info{font-size:12px;color:var(--text2);margin-top:8px;line-height:1.6;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">P2-C-1.1.2</div>
+  <h1>Capacitor — Voltage Definition (Q = CV)</h1>
+</header>
+<div class="container">
+  <div class="panel sim-panel">
+    <div class="tabs">
+      <button class="tab active" onclick="setMode('qcv')">Q = CV Linear</button>
+      <button class="tab" onclick="setMode('ramp')">dV/dt = I/C Ramp</button>
+      <button class="tab" onclick="setMode('series')">Series Caps</button>
+    </div>
+    <canvas id="cv" height="280"></canvas>
+    <div class="readouts">
+      <div class="readout"><label>Voltage V</label><span class="val" id="r-v">—</span></div>
+      <div class="readout"><label>Charge Q</label><span class="val" id="r-q">—</span></div>
+      <div class="readout"><label id="lbl3">dV/dt</label><span class="val" id="r-3">—</span></div>
+      <div class="readout"><label id="lbl4">Capacitance</label><span class="val" id="r-4">—</span></div>
+    </div>
+  </div>
+  <div class="panel ctrl-panel">
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin-bottom:10px;" id="ctrl-title">Controls</div>
+
+    <div id="ctrls-qcv">
+      <div class="ctrl">
+        <label>Voltage V <span id="lv">5.0 V</span></label>
+        <input type="range" id="sl-v" min="0" max="50" step="0.5" value="5" oninput="update()">
+      </div>
+      <div class="ctrl">
+        <label>Capacitance (nF) <span id="lc">100</span></label>
+        <input type="range" id="sl-c" min="10" max="1000" step="10" value="100" oninput="update()">
+      </div>
+      <div class="formula-box">Q = C × V</div>
+      <div class="info">Linear relationship.<br>Slope = C on Q-V graph.</div>
+    </div>
+
+    <div id="ctrls-ramp" style="display:none">
+      <div class="ctrl">
+        <label>Current I (µA) <span id="li">100</span></label>
+        <input type="range" id="sl-i" min="10" max="1000" step="10" value="100" oninput="update()">
+      </div>
+      <div class="ctrl">
+        <label>Capacitance (nF) <span id="lci">22</span></label>
+        <input type="range" id="sl-ci" min="1" max="200" step="1" value="22" oninput="update()">
+      </div>
+      <div class="formula-box">dV/dt = I / C</div>
+      <div class="info">Constant current → linear voltage ramp.<br>Larger C = slower ramp.</div>
+    </div>
+
+    <div id="ctrls-series" style="display:none">
+      <div class="ctrl">
+        <label>C₁ (µF) <span id="ls1">4.7</span></label>
+        <input type="range" id="sl-s1" min="1" max="100" step="0.1" value="4.7" oninput="update()">
+      </div>
+      <div class="ctrl">
+        <label>C₂ (µF) <span id="ls2">22</span></label>
+        <input type="range" id="sl-s2" min="1" max="100" step="1" value="22" oninput="update()">
+      </div>
+      <div class="ctrl">
+        <label>V total (V) <span id="lsvt">24</span></label>
+        <input type="range" id="sl-svt" min="1" max="100" step="1" value="24" oninput="update()">
+      </div>
+      <div class="formula-box">V₁ = Q/C₁  V₂ = Q/C₂</div>
+      <div class="info">Series: same Q, voltage splits inversely with C.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas=document.getElementById('cv');
+const ctx=canvas.getContext('2d');
+let mode='qcv';
+
+function setMode(m){
+  mode=m;
+  document.querySelectorAll('.tab').forEach((t,i)=>{
+    t.classList.toggle('active',(i===0&&m==='qcv')||(i===1&&m==='ramp')||(i===2&&m==='series'));
+  });
+  ['qcv','ramp','series'].forEach(n=>{
+    document.getElementById('ctrls-'+n).style.display=(n===m?'':'none');
+  });
+  update();
+}
+
+function getCS(){return getComputedStyle(document.documentElement);}
+function tv(v){return getCS().getPropertyValue(v).trim();}
+
+function update(){
+  const W=canvas.offsetWidth||480; canvas.width=W; canvas.height=280;
+  const dark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const tc=dark?'#e8e8e8':'#1a1a1a';
+  const bg=dark?'#1a1a1a':'#ffffff';
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,280);
+
+  if(mode==='qcv') drawQCV(W,tc);
+  else if(mode==='ramp') drawRamp(W,tc);
+  else drawSeries(W,tc);
+}
+
+function drawQCV(W,tc){
+  const V=parseFloat(document.getElementById('sl-v').value);
+  const Cnf=parseFloat(document.getElementById('sl-c').value);
+  const C=Cnf*1e-9;
+  const Q=C*V;
+  document.getElementById('lv').textContent=V.toFixed(1)+' V';
+  document.getElementById('lc').textContent=Cnf.toFixed(0);
+  document.getElementById('r-v').textContent=V.toFixed(1)+' V';
+  document.getElementById('r-q').textContent=(Q*1e9).toFixed(1)+' nC';
+  document.getElementById('lbl3').textContent='Slope = C';
+  document.getElementById('r-3').textContent=Cnf.toFixed(0)+' nF';
+  document.getElementById('lbl4').textContent='Capacitance';
+  document.getElementById('r-4').textContent=Cnf.toFixed(0)+' nF';
+
+  // Draw Q vs V graph
+  const mx=40,my=20,mw=W-60,mh=240;
+  const maxV=50, maxQ=1000*50e-9*1e9; // nC scale
+
+  // Axes
+  ctx.strokeStyle=tc;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx,my+mh);ctx.lineTo(mx+mw,my+mh);ctx.stroke();
+  ctx.fillStyle=tc;ctx.font='11px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Voltage V (V)',mx+mw/2,my+mh+16);
+  ctx.save();ctx.translate(12,my+mh/2);ctx.rotate(-Math.PI/2);
+  ctx.fillText('Charge Q (nC)',0,0);ctx.restore();
+
+  // Grid
+  ctx.strokeStyle='rgba(150,150,150,0.2)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  for(let i=0;i<=5;i++){
+    const x=mx+i*mw/5;
+    ctx.beginPath();ctx.moveTo(x,my);ctx.lineTo(x,my+mh);ctx.stroke();
+    ctx.fillStyle=tc;ctx.font='10px monospace';ctx.textAlign='center';
+    ctx.fillText((i*10).toString(),x,my+mh+12);
+  }
+  ctx.setLineDash([]);
+
+  // Line for this C value (Q = C×V)
+  const slope=(Cnf/1000)*mh/mh; // pixels per nC per V
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2;
+  ctx.beginPath();
+  const x0=mx,y0=my+mh;
+  const xEnd=mx+mw;
+  const qEnd=Cnf*maxV;
+  const yEnd=my+mh - Math.min(mh, (qEnd/maxQ)*mh);
+  ctx.moveTo(x0,y0);ctx.lineTo(xEnd,yEnd);ctx.stroke();
+  ctx.fillStyle='#0066cc';ctx.font='11px sans-serif';ctx.textAlign='left';
+  ctx.fillText('Q = '+Cnf+' nF × V',mx+mw*0.3,yEnd-8);
+
+  // Current point
+  const px2=mx+(V/maxV)*mw;
+  const py2=my+mh-(Q*1e9/maxQ)*mh;
+  ctx.beginPath();ctx.arc(px2,py2,6,0,Math.PI*2);ctx.fillStyle='#e63a2a';ctx.fill();
+  ctx.strokeStyle='#e63a2a';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(px2,my+mh);ctx.lineTo(px2,py2);ctx.lineTo(mx,py2);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#e63a2a';ctx.font='bold 11px monospace';ctx.textAlign='left';
+  ctx.fillText('('+V.toFixed(0)+'V, '+(Q*1e9).toFixed(0)+'nC)',px2+8,py2-6);
+}
+
+function drawRamp(W,tc){
+  const IuA=parseFloat(document.getElementById('sl-i').value);
+  const Cnf=parseFloat(document.getElementById('sl-ci').value);
+  const I=IuA*1e-6, C=Cnf*1e-9;
+  const slope=I/C; // V/s
+  const totalTime=5e-3; // 5ms window
+  document.getElementById('li').textContent=IuA.toFixed(0);
+  document.getElementById('lci').textContent=Cnf.toFixed(0);
+  document.getElementById('r-v').textContent=((slope*totalTime)).toFixed(2)+' V';
+  document.getElementById('r-q').textContent=(I*totalTime*1e6).toFixed(1)+' µC';
+  document.getElementById('lbl3').textContent='dV/dt';
+  document.getElementById('r-3').textContent=(slope/1000).toFixed(1)+' kV/s';
+  document.getElementById('lbl4').textContent='Capacitance';
+  document.getElementById('r-4').textContent=Cnf.toFixed(0)+' nF';
+
+  const mx=50,my=20,mw=W-70,mh=230;
+  ctx.strokeStyle=tc;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx,my+mh);ctx.lineTo(mx+mw,my+mh);ctx.stroke();
+  ctx.fillStyle=tc;ctx.font='11px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Time (ms)',mx+mw/2,my+mh+16);
+  ctx.save();ctx.translate(14,my+mh/2);ctx.rotate(-Math.PI/2);
+  ctx.fillText('Voltage V(t)',0,0);ctx.restore();
+
+  const Vmax=slope*totalTime;
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2.5;
+  ctx.beginPath();ctx.moveTo(mx,my+mh);
+  ctx.lineTo(mx+mw, my+mh-mh); // perfect ramp
+  ctx.stroke();
+  ctx.fillStyle='#0066cc';ctx.font='11px monospace';ctx.textAlign='left';
+  ctx.fillText('V(t) = (I/C)×t',mx+10,my+20);
+  ctx.fillText('slope = '+(slope/1000).toFixed(1)+' kV/s',mx+10,my+35);
+
+  // time axis labels
+  for(let i=0;i<=5;i++){
+    const x=mx+i*mw/5;
+    ctx.fillStyle=tc;ctx.font='10px monospace';ctx.textAlign='center';
+    ctx.fillText((i*1).toString(),x,my+mh+12);
+    ctx.strokeStyle='rgba(150,150,150,0.2)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(x,my);ctx.lineTo(x,my+mh);ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // Voltage axis labels
+  for(let i=0;i<=4;i++){
+    const y=my+mh-i*(mh/4);
+    ctx.fillStyle=tc;ctx.font='10px monospace';ctx.textAlign='right';
+    ctx.fillText((Vmax*i/4).toFixed(1),mx-4,y+4);
+  }
+
+  // Current arrow
+  ctx.fillStyle='#00994d';ctx.font='bold 12px sans-serif';ctx.textAlign='center';
+  ctx.fillText('I = '+IuA+' µA constant →',mx+mw/2,my+mh-10);
+}
+
+function drawSeries(W,tc){
+  const C1=parseFloat(document.getElementById('sl-s1').value)*1e-6;
+  const C2=parseFloat(document.getElementById('sl-s2').value)*1e-6;
+  const Vt=parseFloat(document.getElementById('sl-svt').value);
+  document.getElementById('ls1').textContent=(C1*1e6).toFixed(1);
+  document.getElementById('ls2').textContent=(C2*1e6).toFixed(1);
+  document.getElementById('lsvt').textContent=Vt.toFixed(0);
+
+  const Cs=(C1*C2)/(C1+C2);
+  const Q=Cs*Vt;
+  const V1=Q/C1, V2=Q/C2;
+  document.getElementById('r-v').textContent=Vt.toFixed(1)+' V';
+  document.getElementById('r-q').textContent=(Q*1e6).toFixed(2)+' µC';
+  document.getElementById('lbl3').textContent='V across C₁';
+  document.getElementById('r-3').textContent=V1.toFixed(2)+' V';
+  document.getElementById('lbl4').textContent='V across C₂';
+  document.getElementById('r-4').textContent=V2.toFixed(2)+' V';
+
+  // Draw two capacitor boxes with proportional height
+  const cx=W/2;
+  const bw=80, maxH=160;
+  const h1=Math.min(maxH,(V1/Vt)*maxH*2);
+  const h2=Math.min(maxH,(V2/Vt)*maxH*2);
+  const y0=240;
+
+  // C1
+  ctx.fillStyle='rgba(0,102,204,0.15)';
+  ctx.fillRect(cx-bw-20,y0-h1,bw,h1);
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2;
+  ctx.strokeRect(cx-bw-20,y0-h1,bw,h1);
+  ctx.fillStyle='#0066cc';ctx.font='bold 13px monospace';ctx.textAlign='center';
+  ctx.fillText('C₁='+(C1*1e6).toFixed(1)+'µF',cx-bw/2-20,y0-h1-8);
+  ctx.fillText('V₁='+V1.toFixed(2)+'V',cx-bw/2-20,y0-h1/2+5);
+
+  // C2
+  ctx.fillStyle='rgba(0,153,77,0.15)';
+  ctx.fillRect(cx+20,y0-h2,bw,h2);
+  ctx.strokeStyle='#00994d';ctx.lineWidth=2;
+  ctx.strokeRect(cx+20,y0-h2,bw,h2);
+  ctx.fillStyle='#00994d';ctx.font='bold 13px monospace';ctx.textAlign='center';
+  ctx.fillText('C₂='+(C2*1e6).toFixed(1)+'µF',cx+bw/2+20,y0-h2-8);
+  ctx.fillText('V₂='+V2.toFixed(2)+'V',cx+bw/2+20,y0-h2/2+5);
+
+  // Total voltage annotation
+  ctx.fillStyle=tc;ctx.font='12px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Total voltage: '+Vt+' V   |   Same Q = '+((Q*1e6).toFixed(2))+' µC on each',cx,y0+20);
+  ctx.fillText('V₁/V₂ = '+(V1/V2).toFixed(2)+' = C₂/C₁ = '+((C2/C1).toFixed(2)),cx,y0+36);
+
+  // Overvoltage warning
+  const C1uF=C1*1e6;
+  if(V1>16){
+    ctx.fillStyle='#cc2200';ctx.font='bold 12px sans-serif';
+    ctx.fillText('⚠ C₁ overstressed! '+V1.toFixed(1)+'V > 16V rating',cx,y0+52);
+  }
+}
+
+window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',update);
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CM-1.2.1 — BJT VBE Matching</title>
+<style>
+  :root{--bg:#ffffff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}
+  h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:12px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:8px;padding:9px 14px;margin-top:5px;font-size:13px;}
+  .ro span{font-size:19px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  .ro.r span{color:#cc2200;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:14px;}
+  canvas{width:100%;display:block;border-radius:8px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CM-1.2.1</div>
+  <h1>Current Mirror BJT — VBE Matching Condition</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>BJT Mirror Parameters</h2>
+      <label>Reference Current I_ref (μA): <b id="ir_l">100</b> μA
+        <input type="range" id="iref" min="10" max="1000" value="100" step="10">
+      </label>
+      <label>Emitter Area Ratio A_E2/A_E1: <b id="ar_l">1.00</b>×
+        <input type="range" id="aratio" min="0.5" max="4" value="1" step="0.1">
+      </label>
+      <label>Early Voltage V_A (V): <b id="va_l">60</b> V
+        <input type="range" id="va" min="10" max="200" value="60" step="5">
+      </label>
+      <label>V_CE output (V): <b id="vce_l">2.0</b> V
+        <input type="range" id="vce" min="0.1" max="5" value="2.0" step="0.1">
+      </label>
+      <label>Temperature Gradient ΔT Q2 (°C): <b id="dt_l">0</b> °C
+        <input type="range" id="dt" min="-20" max="30" value="0" step="1">
+      </label>
+
+      <div class="ro">V_BE Q1: <span id="vbe1">--</span> mV</div>
+      <div class="ro g" style="margin-top:6px">I_out (ideal, area ratio only): <span id="io_ideal">--</span> μA</div>
+      <div class="ro" style="margin-top:6px">I_out (with Early effect): <span id="io_early">--</span> μA</div>
+      <div class="ro r" style="margin-top:6px">I_out (with ΔT): <span id="io_dt">--</span> μA</div>
+      <div class="ro" style="margin-top:6px">Total Error vs. Ideal: <span id="err_tot">--</span> %</div>
+    </div>
+
+    <div class="card">
+      <h2>VBE Characteristic & Current Error</h2>
+      <canvas id="cv" height="280"></canvas>
+      <div class="insight">
+        The blue curve shows I_C vs V_BE at T1=300K. Red shows the same curve at T1+ΔT. Both curves share the same V_BE (set by Q1) — the current at that V_BE on each curve is the respective output current. The gap between them is the thermal gradient error.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  const q_k=1.38e-23, q_e=1.6e-19;
+  const T1=300;
+  const IS1=5e-16; // A, reference IS
+
+  function VT(T){return q_k*T/q_e;}
+
+  function IS_at_T(IS0, T0, T1_actual){
+    // IS(T) ≈ IS0 * (T/T0)^3 * exp(-Eg/k*(1/T-1/T0)/q)  -- using Eg=1.12eV
+    const Eg=1.12;
+    const ratio=Math.pow(T1_actual/T0,3)*Math.exp(-Eg/8.617e-5*(1/T1_actual-1/T0));
+    return IS0*ratio;
+  }
+
+  function compute(){
+    const Iref=+document.getElementById('iref').value*1e-6;
+    const aratio=+document.getElementById('aratio').value;
+    const VA=+document.getElementById('va').value;
+    const VCE_out=+document.getElementById('vce').value;
+    const dT=+document.getElementById('dt').value;
+
+    document.getElementById('ir_l').textContent=(Iref*1e6).toFixed(0);
+    document.getElementById('ar_l').textContent=aratio.toFixed(2);
+    document.getElementById('va_l').textContent=VA;
+    document.getElementById('vce_l').textContent=VCE_out.toFixed(1);
+    document.getElementById('dt_l').textContent=dT;
+
+    const vt1=VT(T1);
+    // VBE of Q1 (diode-connected, V_CE1 = V_BE ≈ 0.65V, use actual)
+    // V_CE1 = V_BE (diode-connected), typically ~0.65V
+    const VBE1=vt1*Math.log(Iref/IS1);
+    document.getElementById('vbe1').textContent=(VBE1*1000).toFixed(2);
+
+    // Ideal output (same T, with area ratio, no Early)
+    const IS2=IS1*aratio;
+    const Io_ideal=IS2*Math.exp(VBE1/vt1);
+
+    // With Early effect on Q2
+    const VCE1=VBE1; // diode-connected
+    const Io_early=Io_ideal*(1+VCE_out/VA)/(1+VCE1/VA);
+
+    // With temperature gradient
+    const T2=T1+dT;
+    const IS2_hot=IS_at_T(IS2,T1,T2);
+    const vt2=VT(T2);
+    const Io_dt=IS2_hot*Math.exp(VBE1/vt2);
+
+    document.getElementById('io_ideal').textContent=(Io_ideal*1e6).toFixed(2);
+    document.getElementById('io_early').textContent=(Io_early*1e6).toFixed(2);
+    document.getElementById('io_dt').textContent=(Io_dt*1e6).toFixed(2);
+
+    const err_tot=((Io_early+Io_dt-Io_ideal-Iref)/Iref*100).toFixed(2);
+    document.getElementById('err_tot').textContent=(((Io_dt*(1+VCE_out/VA)/(1+VBE1/VA))-Iref)/Iref*100).toFixed(2);
+
+    drawCurves(Iref,IS1,IS2,VBE1,vt1,vt2,IS2_hot,VA,VCE_out,dT);
+  }
+
+  function drawCurves(Iref,IS1,IS2,VBE1,vt1,vt2,IS2_hot,VA,VCE,dT){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=280;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,280);
+    const pL=52,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=280-pT-pB;
+
+    // x-axis: VBE from 0.3 to 0.8V
+    const Vmin=0.3,Vmax=0.8;
+    // y-axis: current 0 to Iref*3
+    const Imax=Iref*3;
+
+    // Axes
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='11px system-ui';
+    ctx.fillText('I_C (μA)',2,pT+ph/2);
+    ctx.fillText('V_BE (V)',pL+pw/2-20,280-4);
+
+    // Y ticks
+    for(let i=0;i<=4;i++){
+      const v=(i/4)*Imax*1e6;
+      const y=pT+ph-(i/4)*ph;
+      ctx.fillText(v.toFixed(0),2,y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+    // X ticks
+    [0.3,0.4,0.5,0.6,0.7,0.8].forEach(v=>{
+      const x=pL+(v-Vmin)/(Vmax-Vmin)*pw;
+      ctx.fillStyle='#8888aa'; ctx.fillText(v.toFixed(1),x-8,pT+ph+16);
+    });
+
+    function xp(v){return pL+(v-Vmin)/(Vmax-Vmin)*pw;}
+    function yp(I){return pT+ph-(Math.min(I,Imax)/Imax)*ph;}
+
+    // Q1 curve (reference, blue)
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2; ctx.setLineDash([]);
+    ctx.beginPath(); let first=true;
+    for(let px=0;px<=pw;px++){
+      const v=Vmin+px/pw*(Vmax-Vmin);
+      const I=IS1*Math.exp(v/vt1);
+      const y=yp(I);
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // Q2 curve at T1 (same T, area ratio, green)
+    ctx.strokeStyle='#00994d'; ctx.lineWidth=2;
+    ctx.beginPath(); first=true;
+    for(let px=0;px<=pw;px++){
+      const v=Vmin+px/pw*(Vmax-Vmin);
+      const I=IS2*Math.exp(v/vt1);
+      const y=yp(I);
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // Q2 curve at T2 (with thermal gradient, red dashed)
+    if(Math.abs(dT)>0){
+      ctx.strokeStyle='#cc2200'; ctx.lineWidth=2; ctx.setLineDash([5,4]);
+      ctx.beginPath(); first=true;
+      for(let px=0;px<=pw;px++){
+        const v=Vmin+px/pw*(Vmax-Vmin);
+        const I=IS2_hot*Math.exp(v/vt2);
+        const y=yp(I);
+        if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // VBE1 marker (vertical line)
+    ctx.strokeStyle='#ff8800'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+    const xVBE=xp(VBE1);
+    ctx.beginPath(); ctx.moveTo(xVBE,pT); ctx.lineTo(xVBE,pT+ph); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#ff8800'; ctx.font='11px system-ui';
+    ctx.fillText('V_BE1',xVBE+2,pT+18);
+
+    // Dots at operating points
+    const I_ref_dot=IS1*Math.exp(VBE1/vt1);
+    ctx.fillStyle='#0066cc';
+    ctx.beginPath(); ctx.arc(xVBE,yp(I_ref_dot),5,0,Math.PI*2); ctx.fill();
+
+    const I_q2_dot=IS2*Math.exp(VBE1/vt1);
+    ctx.fillStyle='#00994d';
+    ctx.beginPath(); ctx.arc(xVBE,yp(I_q2_dot),5,0,Math.PI*2); ctx.fill();
+
+    if(Math.abs(dT)>0){
+      const I_q2_hot=IS2_hot*Math.exp(VBE1/vt2);
+      ctx.fillStyle='#cc2200';
+      ctx.beginPath(); ctx.arc(xVBE,yp(I_q2_hot),5,0,Math.PI*2); ctx.fill();
+    }
+
+    // Legend
+    ctx.setLineDash([]); ctx.lineWidth=2;
+    ctx.strokeStyle='#0066cc'; ctx.beginPath(); ctx.moveTo(pL+pw-130,pT+12); ctx.lineTo(pL+pw-112,pT+12); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='11px system-ui'; ctx.fillText('Q1 (ref)',pL+pw-108,pT+16);
+    ctx.strokeStyle='#00994d'; ctx.beginPath(); ctx.moveTo(pL+pw-130,pT+26); ctx.lineTo(pL+pw-112,pT+26); ctx.stroke();
+    ctx.fillText('Q2 (T1)',pL+pw-108,pT+30);
+    if(Math.abs(dT)>0){
+      ctx.strokeStyle='#cc2200'; ctx.setLineDash([5,4]);
+      ctx.beginPath(); ctx.moveTo(pL+pw-130,pT+40); ctx.lineTo(pL+pw-112,pT+40); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle='#cc2200'; ctx.fillText('Q2 (T+ΔT)',pL+pw-108,pT+44);
+    }
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

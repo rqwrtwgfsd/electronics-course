@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-FLT-3.6.2 Filter Design Walkthrough</title>
+<style>
+  :root{--bg:#f5f5f5;--panel:#fff;--text:#1a1a1a;--muted:#666;--border:#ddd;
+    --a:#2563eb;--a2:#16a34a;--a3:#dc2626;--a4:#9333ea;--a5:#ea580c;
+    --cb:#fafafa;--gr:#e5e7eb;--hi:#fef9c3;--tb:#bfdbfe;}
+  @media(prefers-color-scheme:dark){:root{
+    --bg:#0f1117;--panel:#1e2130;--text:#e8eaf0;--muted:#8892a4;--border:#2d3348;
+    --a:#60a5fa;--a2:#4ade80;--a3:#f87171;--a4:#c084fc;--a5:#fb923c;
+    --cb:#161926;--gr:#2d3348;--hi:#2d2a0f;--tb:#3b82f6;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px;}
+  h1{font-size:16px;font-weight:700;padding:12px 18px;border-bottom:1px solid var(--border);background:var(--panel);}
+  h1 span{color:var(--muted);font-size:13px;font-weight:400;margin-left:8px;}
+  .layout{display:flex;height:calc(100vh - 47px);}
+  .left{width:300px;background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
+  .right{flex:1;display:flex;flex-direction:column;padding:10px;gap:8px;overflow:hidden;}
+  .sec{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:10px;}
+  .sec h3{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;}
+  label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:3px;}
+  label span{font-weight:600;color:var(--a);}
+  input[type=range]{width:100%;accent-color:var(--a);cursor:pointer;margin-bottom:5px;}
+  select{width:100%;padding:5px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);font-size:12px;margin-bottom:5px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+  .card{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;}
+  .card .lb{font-size:10px;color:var(--muted);text-transform:uppercase;}
+  .card .vl{font-size:12px;font-weight:700;font-family:monospace;color:var(--a);margin-top:2px;}
+  .card.g .vl{color:var(--a2);}
+  .card.r .vl{color:var(--a3);}
+  .card.p .vl{color:var(--a4);}
+  canvas{display:block;border-radius:6px;background:var(--cb);border:1px solid var(--border);width:100%;}
+  .tip{background:var(--hi);border:1px solid var(--tb);border-radius:6px;padding:8px;font-size:11px;line-height:1.5;}
+  .step-row{display:flex;gap:6px;align-items:flex-start;padding:4px 0;border-bottom:1px solid var(--border);font-size:11px;}
+  .step-row:last-child{border:none;}
+  .step-num{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;flex-shrink:0;}
+  .pass-num{background:var(--a2);}
+  .fail-num{background:var(--a3);}
+  .pend-num{background:var(--muted);}
+  .step-text{flex:1;line-height:1.4;}
+</style>
+</head>
+<body>
+<h1>M4A-FLT-3.6.2 — Filter Design Walkthrough <span>Complete spec→order→components→verify for ADC anti-alias</span></h1>
+<div class="layout">
+<div class="left">
+
+  <div class="sec">
+    <h3>1. Specification</h3>
+    <label>Passband fp (Hz) <span id="lbl_fp">50</span></label>
+    <input type="range" id="fp" min="1" max="5000" value="50" step="1" oninput="update()">
+    <label>Stopband fs (Hz) <span id="lbl_fs">430</span></label>
+    <input type="range" id="fs" min="10" max="50000" value="430" step="10" oninput="update()">
+    <label>Required Attenuation (dB) <span id="lbl_att">72</span></label>
+    <input type="range" id="att" min="20" max="120" value="72" step="1" oninput="update()">
+    <label>Approximation</label>
+    <select id="approx" onchange="update()">
+      <option value="butter">Butterworth</option>
+      <option value="cheby">Chebyshev 1dB</option>
+    </select>
+  </div>
+
+  <div class="sec">
+    <h3>Design Walkthrough Steps</h3>
+    <div id="steps_container"></div>
+  </div>
+
+  <div class="sec">
+    <h3>Computed Results</h3>
+    <div class="grid2">
+      <div class="card g"><div class="lb">Min Order</div><div class="vl" id="r_ord">—</div></div>
+      <div class="card"><div class="lb">fn (chosen)</div><div class="vl" id="r_fn">—</div></div>
+      <div class="card"><div class="lb">Attenuation @fs</div><div class="vl" id="r_att_at">—</div></div>
+      <div class="card p"><div class="lb">Margin</div><div class="vl" id="r_margin">—</div></div>
+      <div class="card r"><div class="lb">GBW needed</div><div class="vl" id="r_gbw_need">—</div></div>
+      <div class="card"><div class="lb">Phase @fs</div><div class="vl" id="r_phase">—</div></div>
+    </div>
+  </div>
+
+  <div class="tip" id="tip">Adjust specification to see how each design step responds.</div>
+
+</div>
+<div class="right">
+  <canvas id="c_bode" style="flex:3;"></canvas>
+  <canvas id="c_order" style="flex:2;"></canvas>
+</div>
+</div>
+<script>
+function cv(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function getCtx(id){
+  const c=document.getElementById(id);
+  c.width=c.offsetWidth*devicePixelRatio;
+  c.height=c.offsetHeight*devicePixelRatio;
+  const ctx=c.getContext('2d');
+  ctx.scale(devicePixelRatio,devicePixelRatio);
+  ctx.W=c.offsetWidth;ctx.H=c.offsetHeight;
+  return ctx;
+}
+function fmtHz(f){
+  if(f>=1e6) return (f/1e6).toFixed(2)+' MHz';
+  if(f>=1e3) return (f/1e3).toFixed(1)+' kHz';
+  return f.toFixed(f>100?0:f>10?1:2)+' Hz';
+}
+
+function bwMag(f,fc,n){return -10*Math.log10(1+Math.pow(f/fc,2*n));}
+function chMag(f,fc,n,rip){
+  const eps=Math.sqrt(Math.pow(10,rip/10)-1);
+  const u=f/fc;
+  let Cn=u<=1?Math.cos(n*Math.acos(Math.max(-1,Math.min(1,u)))):Math.cosh(n*Math.acosh(u));
+  return -10*Math.log10(1+eps*eps*Cn*Cn);
+}
+
+function minOrderBW(fp, fs, att){
+  return Math.ceil(att/(20*Math.log10(fs/fp)));
+}
+function minOrderCH(fp, fs, att, rip){
+  const eps=Math.sqrt(Math.pow(10,rip/10)-1);
+  const target=Math.pow(10,att/10)-1;
+  const u=fs/fp;
+  return Math.ceil(Math.acosh(Math.sqrt(target)/eps)/Math.acosh(u));
+}
+
+function magFn(f, fp, n, approx){
+  if(approx==='butter') return bwMag(f,fp,n);
+  return chMag(f,fp,n,1);
+}
+
+function update(){
+  const fp=parseFloat(document.getElementById('fp').value);
+  const fs=parseFloat(document.getElementById('fs').value);
+  const att=parseFloat(document.getElementById('att').value);
+  const approx=document.getElementById('approx').value;
+
+  document.getElementById('lbl_fp').textContent=fp;
+  document.getElementById('lbl_fs').textContent=fs;
+  document.getElementById('lbl_att').textContent=att;
+
+  const ratio=fs/fp;
+  const n_min = approx==='butter' ? minOrderBW(fp,fs,att) : minOrderCH(fp,fs,att,1);
+  const n_design = n_min; // use minimum
+  const fn=fp; // Butterworth fp = fn
+  const att_at_fs=Math.abs(magFn(fs,fn,n_design,approx));
+  const margin=att_at_fs-att;
+  const gbw_need=fn*50*n_design; // approximate
+  const phase_at_fs=-n_design*Math.atan(fs/fn)*180/Math.PI;
+
+  document.getElementById('r_ord').textContent=n_design+'th';
+  document.getElementById('r_fn').textContent=fmtHz(fn);
+  document.getElementById('r_att_at').textContent=att_at_fs.toFixed(1)+' dB';
+  document.getElementById('r_margin').textContent=(margin>0?'+':'')+margin.toFixed(1)+' dB';
+  document.getElementById('r_gbw_need').textContent=fmtHz(gbw_need);
+  document.getElementById('r_phase').textContent=phase_at_fs.toFixed(0)+'°';
+
+  // Steps
+  const R=10000; // 10 kΩ
+  const C2=1/(2*Math.PI*fn*R);
+  const Qs_bw=[0,0.5,0.707,0.5,0.707,0.5412,1.307,0.5,0.707,1.307]; // simplified
+  const stageQ=n_design>=4?[0.5412,1.3066]:[0.707];
+  const Z0_khz=R/1000;
+
+  const steps=[
+    {n:1, label:`Spec: fp=${fmtHz(fp)}, fs=${fmtHz(fs)}, Atten=${att}dB, ${approx==='butter'?'Butterworth':'Chebyshev 1dB'}`, pass:true},
+    {n:2, label:`Min Order: n ≥ ${att}/(20×log(${ratio.toFixed(1)})) = ${(att/(20*Math.log10(ratio))).toFixed(1)} → use n=${n_design}`, pass:true},
+    {n:3, label:`Scale: fn=${fmtHz(fn)}, Z0=${Z0_khz}kΩ → R=${Z0_khz}kΩ, C2≈${(C2*1e9).toFixed(1)}nF`, pass:true},
+    {n:4, label:`Standard values: round C to nearest E24. Verify fn error ≤ 5%`, pass:margin>3},
+    {n:5, label:`Simulate: attenuation at ${fmtHz(fs)} = ${att_at_fs.toFixed(1)} dB (need ${att} dB)`, pass:att_at_fs>=att},
+    {n:6, label:`Worst-case: margin ${margin.toFixed(1)} dB ${margin>6?'✓ adequate':'⚠ tight, add 1 more stage'}`, pass:margin>6},
+    {n:7, label:`GBW check: need ${fmtHz(gbw_need)} ${gbw_need<8e6?'→ OPA2134 (8MHz) OK':'→ use faster op-amp'}`, pass:gbw_need<8e6},
+    {n:8, label:`Sign off: ${att_at_fs>=att&&margin>6&&gbw_need<8e6?'All checks PASS':'FAIL — revisit steps above'}`, pass:att_at_fs>=att&&margin>6&&gbw_need<8e6},
+  ];
+
+  const cont=document.getElementById('steps_container');
+  cont.innerHTML='';
+  steps.forEach(s=>{
+    const row=document.createElement('div');
+    row.className='step-row';
+    const numDiv=document.createElement('div');
+    numDiv.className='step-num '+(s.pass?'pass-num':'fail-num');
+    numDiv.textContent=s.n;
+    const txt=document.createElement('div');
+    txt.className='step-text';
+    txt.textContent=s.label;
+    row.appendChild(numDiv);
+    row.appendChild(txt);
+    cont.appendChild(row);
+  });
+
+  const allPass=steps.every(s=>s.pass);
+  document.getElementById('tip').textContent=
+    allPass
+    ?`Design complete. Order ${n_design} ${approx==='butter'?'Butterworth':'Chebyshev'} LP at ${fmtHz(fn)} meets all requirements with ${margin.toFixed(1)} dB margin.`
+    :`Design incomplete. ${steps.filter(s=>!s.pass).length} step(s) failing. Adjust specification or increase order.`;
+
+  drawBode(fn, n_design, fs, att, approx);
+  drawOrderChart(fp, fs, att, approx);
+}
+
+function drawBode(fn, n, fs, att, approx){
+  const ctx=getCtx('c_bode');
+  const W=ctx.W,H=ctx.H,pl=55,pr=18,pt=28,pb=34;
+  const pw=W-pl-pr,ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  const fMin=fn*0.05,fMax=fn*30;
+  const lMin=Math.log10(fMin),lMax=Math.log10(fMax);
+  const dbMin=-att-20,dbMax=8;
+  const fxf=f=>pl+(Math.log10(f)-lMin)/(lMax-lMin)*pw;
+  const fy=db=>pt+(1-(db-dbMin)/(dbMax-dbMin))*ph;
+
+  ctx.strokeStyle=cv('--gr');ctx.lineWidth=0.7;
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fxf(Math.pow(10,d));
+    if(x>=pl&&x<=pl+pw){ctx.beginPath();ctx.moveTo(x,pt);ctx.lineTo(x,pt+ph);ctx.stroke();}
+  }
+  [-att-20,-att,-att+20,-40,-20,0].forEach(db=>{
+    const y=fy(db);
+    if(y>=pt&&y<=pt+ph){
+      ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+pw,y);ctx.stroke();
+      ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';ctx.fillText(db,2,y+4);
+    }
+  });
+
+  // Required attenuation line
+  ctx.strokeStyle=cv('--a3');ctx.lineWidth=1;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(pl,fy(-att));ctx.lineTo(pl+pw,fy(-att));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=cv('--a3');ctx.font='10px system-ui';ctx.fillText('-'+att+' dB req.',pl+4,fy(-att)-3);
+
+  // fs marker
+  const xfs=fxf(fs);
+  if(xfs>=pl&&xfs<=pl+pw){
+    ctx.strokeStyle=cv('--a5');ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(xfs,pt);ctx.lineTo(xfs,pt+ph);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=cv('--a5');ctx.font='10px system-ui';ctx.fillText('fs='+fmtHz(fs),xfs+2,pt+12);
+  }
+
+  // fp marker
+  const xfn=fxf(fn);
+  ctx.strokeStyle=cv('--a2');ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(xfn,pt);ctx.lineTo(xfn,pt+ph);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=cv('--a2');ctx.font='10px system-ui';ctx.fillText('fp',xfn+2,pt+22);
+
+  // Filter curve
+  ctx.strokeStyle=cv('--a');ctx.lineWidth=2.5;
+  ctx.beginPath();let first=true;
+  for(let i=0;i<=700;i++){
+    const lf=lMin+i/700*(lMax-lMin);
+    const f=Math.pow(10,lf);
+    const db=magFn(f,fn,n,approx);
+    const x=pl+i/700*pw,y=fy(Math.max(dbMin,Math.min(dbMax,db)));
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Mark attenuation at fs
+  if(xfs>=pl&&xfs<=pl+pw){
+    const att_at=Math.abs(magFn(fs,fn,n,approx));
+    const meets=att_at>=att;
+    ctx.fillStyle=meets?cv('--a2'):cv('--a3');
+    ctx.beginPath();ctx.arc(xfs,fy(-att_at),6,0,2*Math.PI);ctx.fill();
+    ctx.font='bold 10px system-ui';
+    ctx.fillText((-att_at).toFixed(0)+' dB'+(meets?' ✓':' ✗'),xfs+8,fy(-att_at));
+  }
+
+  ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fxf(Math.pow(10,d));
+    const f=Math.pow(10,d);
+    const l=f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f;
+    if(x>=pl&&x<=pl+pw)ctx.fillText(l,x-6,pt+ph+14);
+  }
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Gain (dB)',4,pt-8);
+  ctx.fillText('Frequency',pl+pw/2-30,H-2);
+  ctx.fillText('Order '+n+' '+( approx==='butter'?'Butterworth':'Chebyshev 1dB')+' — Attenuation vs Spec',pl+4,pt-10);
+}
+
+function drawOrderChart(fp, fs, att, approx){
+  const ctx=getCtx('c_order');
+  const W=ctx.W,H=ctx.H,pl=18,pr=18,pt=28,pb=28;
+  const pw=W-pl-pr,ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Attenuation at Stopband per Order',pl+2,pt-10);
+
+  const maxN=8;
+  const barW=pw/(maxN+1);
+
+  for(let n=1;n<=maxN;n++){
+    const att_at=Math.abs(magFn(fs,fp,n,approx));
+    const meets=att_at>=att;
+    const barH=Math.min(att_at/(att*1.5),1)*ph*0.75;
+    const x=pl+(n-0.5)*barW;
+    ctx.fillStyle=meets?cv('--a2')+'bb':cv('--a3')+'bb';
+    ctx.fillRect(x,pt+ph*0.1+ph*0.75-barH,barW*0.75,barH);
+    ctx.fillStyle=meets?cv('--a2'):cv('--a3');
+    ctx.font='9px system-ui';
+    ctx.fillText(att_at.toFixed(0),x+2,pt+ph*0.1+ph*0.75-barH-3);
+    ctx.fillStyle=cv('--muted');ctx.font='9px system-ui';
+    ctx.fillText('n='+n,x+3,pt+ph+12);
+  }
+
+  // Required line
+  const y_req=pt+ph*0.1+ph*0.75-Math.min(att/(att*1.5),1)*ph*0.75;
+  ctx.strokeStyle=cv('--a3');ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pl,y_req);ctx.lineTo(pl+pw,y_req);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=cv('--a3');ctx.font='10px system-ui';ctx.fillText(att+' dB',pl+2,y_req-3);
+
+  ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';
+  ctx.fillText('Filter Order',pl+pw/2-30,H-2);
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('dB',0,pt-6);
+}
+
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

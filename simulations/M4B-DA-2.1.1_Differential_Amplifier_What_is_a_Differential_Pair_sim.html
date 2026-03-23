@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-DA-2.1.1 — What is a Differential Pair</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-DA-2.1.1</div>
+  <h1>Differential Amplifier — What is a Differential Pair</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Differential Pair Parameters</h2>
+      <label>Tail current I_SS (μA): <b id="iss_l">200</b> μA <input type="range" id="iss" min="10" max="2000" value="200" step="10"></label>
+      <label>W/L (per transistor): <b id="wl_l">50</b> <input type="range" id="wl" min="5" max="200" value="50" step="5"></label>
+      <label>μC_ox (μA/V²): <b id="mu_l">270</b> <input type="range" id="mu" min="50" max="600" value="270" step="10"></label>
+      <label>V_id input (mV): <b id="vid_l">0</b> mV <input type="range" id="vid" min="-600" max="600" value="0" step="5"></label>
+      <label>R_D load (kΩ): <b id="rd_l">10</b> kΩ <input type="range" id="rd" min="1" max="100" value="10" step="1"></label>
+
+      <div class="ro">V_ov (mV): <span id="vov_d">--</span></div>
+      <div class="ro" style="margin-top:4px">g_m each (mA/V): <span id="gm_d">--</span></div>
+      <div class="ro g" style="margin-top:4px">|A_v| (V/V): <span id="av_d">--</span></div>
+      <div class="ro" style="margin-top:4px">Linear range ±V_id,max (mV): <span id="vid_max">--</span></div>
+      <div class="ro" style="margin-top:4px">I_D1 / I_D2 (μA): <span id="id_split">--</span></div>
+      <div class="insight">
+        The V_id slider shows current steering: at V_id=0, I_SS splits equally. Move right: M1 takes more current. At ±V_id,max, all current flows to one side. The large-signal curve below shows this steering.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Current Steering: I_D1, I_D2 vs V_id</h2>
+      <canvas id="cv" height="280"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  function computeCurrentSplit(vid, ISS, uCox, WL){
+    // MOSFET differential pair current steering
+    // I_D1 = ISS/2 * (1 + vid/Vov * sqrt(1 - (vid/(sqrt2*Vov))^2)) -- valid only for |vid| < sqrt2*Vov
+    const Vov=Math.sqrt(ISS/(uCox*1e-6*WL));
+    const vid_max=Math.sqrt(2)*Vov;
+    if(Math.abs(vid)>=vid_max){
+      return vid>0?[ISS,0]:[0,ISS];
+    }
+    const x=vid/vid_max;
+    const factor=Math.sqrt(1-x*x);
+    const ID1=ISS/2*(1+vid/Vov*factor);
+    const ID2=ISS/2*(1-vid/Vov*factor);
+    return [Math.max(0,ID1),Math.max(0,ID2)];
+  }
+
+  function compute(){
+    const ISS=+document.getElementById('iss').value*1e-6;
+    const WL=+document.getElementById('wl').value;
+    const uCox=+document.getElementById('mu').value;
+    const vid=+document.getElementById('vid').value*1e-3;
+    const RD=+document.getElementById('rd').value*1e3;
+
+    document.getElementById('iss_l').textContent=(ISS*1e6).toFixed(0);
+    document.getElementById('wl_l').textContent=WL;
+    document.getElementById('mu_l').textContent=uCox;
+    document.getElementById('vid_l').textContent=(vid*1e3).toFixed(0);
+    document.getElementById('rd_l').textContent=(RD/1e3).toFixed(0);
+
+    const Vov=Math.sqrt(ISS/(uCox*1e-6*WL));
+    const gm=ISS/Vov;
+    const Av=gm*RD/2;
+    const vid_max=Math.sqrt(2)*Vov;
+
+    const [ID1,ID2]=computeCurrentSplit(vid,ISS*1e6,uCox,WL);
+
+    document.getElementById('vov_d').textContent=(Vov*1000).toFixed(1);
+    document.getElementById('gm_d').textContent=(gm*1e3).toFixed(3);
+    document.getElementById('av_d').textContent=Av.toFixed(1);
+    document.getElementById('vid_max').textContent=(vid_max*1000).toFixed(1);
+    document.getElementById('id_split').textContent=ID1.toFixed(1)+' / '+ID2.toFixed(1);
+
+    draw(ISS*1e6,uCox,WL,Vov,vid_max,vid*1e3,ID1,ID2);
+  }
+
+  function draw(ISS_uA, uCox, WL, Vov, vid_max, vid_op_mv, ID1_op, ID2_op){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=280;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,280);
+    const pL=52,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=280-pT-pB;
+
+    const vidRange=vid_max*1000*1.5;
+    const Imax=ISS_uA*1.1;
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='10px system-ui';
+    ctx.fillText('I_D (μA)', 2, pT+ph/2);
+    ctx.fillText('V_id (mV)', pL+pw/2-18, 280-4);
+
+    for(let i=0;i<=4;i++){
+      const v=i/4*Imax; const y=pT+ph-(i/4)*ph;
+      ctx.fillStyle='#8888aa'; ctx.fillText(v.toFixed(0), 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+    const xCenter=pL+pw/2;
+    [-3,-2,-1,0,1,2,3].forEach(k=>{
+      const vmv=k*vidRange/3;
+      const x=pL+(vmv/vidRange+0.5)*pw;
+      ctx.fillStyle='#8888aa'; ctx.fillText(vmv.toFixed(0), x-10, pT+ph+14);
+    });
+
+    const drawCurve=(fnId,color,lbl)=>{
+      ctx.strokeStyle=color; ctx.lineWidth=2.5; ctx.setLineDash([]);
+      ctx.beginPath(); let first=true;
+      for(let px=0;px<=pw;px++){
+        const vmv=(px/pw-0.5)*vidRange;
+        const v=vmv/1000;
+        const IDs=computeCurrentSplit(v,ISS_uA,uCox,WL);
+        const I=fnId(IDs);
+        const y=pT+ph-(I/Imax)*ph;
+        if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+      }
+      ctx.stroke();
+    };
+
+    drawCurve(([a,b])=>a,'#0066cc');
+    drawCurve(([a,b])=>b,'#cc2200');
+
+    // ISS/2 line
+    const yHalf=pT+ph-((ISS_uA/2)/Imax)*ph;
+    ctx.strokeStyle='#88888844'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(pL,yHalf); ctx.lineTo(pL+pw,yHalf); ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle='#888888'; ctx.font='9px system-ui';
+    ctx.fillText('I_SS/2', pL+4, yHalf-3);
+
+    // Operating point markers
+    const xop=pL+((vid_op_mv/vidRange)+0.5)*pw;
+    const yop1=pT+ph-(ID1_op/Imax)*ph;
+    const yop2=pT+ph-(ID2_op/Imax)*ph;
+    ctx.fillStyle='#0066cc'; ctx.beginPath(); ctx.arc(xop,yop1,5,0,2*Math.PI); ctx.fill();
+    ctx.fillStyle='#cc2200'; ctx.beginPath(); ctx.arc(xop,yop2,5,0,2*Math.PI); ctx.fill();
+
+    // Legend
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(pL+pw-80,pT+14); ctx.lineTo(pL+pw-60,pT+14); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='10px system-ui'; ctx.fillText('I_D1 (M1)', pL+pw-56, pT+18);
+    ctx.strokeStyle='#cc2200'; ctx.beginPath(); ctx.moveTo(pL+pw-80,pT+28); ctx.lineTo(pL+pw-60,pT+28); ctx.stroke();
+    ctx.fillText('I_D2 (M2)', pL+pw-56, pT+32);
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

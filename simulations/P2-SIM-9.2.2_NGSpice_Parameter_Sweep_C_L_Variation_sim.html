@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-SIM-9.2.2 Parameter Sweep C/L</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:10px;padding:10px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:230px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.btn{display:block;width:100%;margin-top:5px;padding:5px;background:#1a1a3a;border:1px solid #334;color:#ccc;cursor:pointer;font-family:inherit;font-size:11px;border-radius:3px}
+.btn.active{background:#003366;border-color:#0066cc;color:#00aaff}
+.cb-row{display:flex;align-items:center;gap:5px;margin-top:3px}
+</style>
+</head>
+<body>
+<h1>P2-SIM-9.2.2 — Parameter Sweep: C and L Variation in RLC</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="560" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>Sweep Mode</h2>
+<button class="btn active" id="b_C" onclick="setSweep('C')">C Sweep (fixed R, L)</button>
+<button class="btn" id="b_L" onclick="setSweep('L')">L Sweep (fixed R, C)</button>
+<h2 style="margin-top:8px">Fixed Parameters</h2>
+<label>R (Ω)
+<input type="range" id="R" min="1" max="200" step="1" value="20">
+<div class="readout" id="R_v">R = 20 Ω</div>
+</label>
+<div id="fixed_L_row">
+<label>L (μH, fixed for C sweep)
+<input type="range" id="L_fixed" min="1" max="1000" step="1" value="100">
+<div class="readout" id="Lf_v">L = 100 μH</div>
+</label>
+</div>
+<div id="fixed_C_row" style="display:none">
+<label>C (nF, fixed for L sweep)
+<input type="range" id="C_fixed" min="1" max="10000" step="1" value="100">
+<div class="readout" id="Cf_v">C = 100 nF</div>
+</label>
+</div>
+<h2 style="margin-top:8px">Curves</h2>
+<div id="toggles"></div>
+<h2 style="margin-top:8px">ζ and f₀ Table</h2>
+<div id="tbl" style="font-size:10px;line-height:1.7;margin-top:4px"></div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let R=20,L_fixed=100,C_fixed=100,sweep='C';
+const W=560,H=380,pd={l:60,r:15,t:25,b:35};
+const CW=W-pd.l-pd.r,CH=H-pd.t-pd.b;
+const Vin=5;
+const cols=['#ff4444','#ffaa00','#00ff88','#00aaff','#aa44ff'];
+// C sweep values (nF): 10, 100, 1000, 10000, 100000
+const C_vals=[10,100,1000,10000,100000];
+const C_labels=['10nF','100nF','1μF','10μF','100μF'];
+// L sweep values (μH): 1, 10, 100, 1000, 10000
+const L_vals=[1,10,100,1000,10000];
+const L_labels=['1μH','10μH','100μH','1mH','10mH'];
+let show=[true,true,true,true,true];
+
+function setSweep(s){
+  sweep=s;
+  ['C','L'].forEach(k=>document.getElementById('b_'+k).classList.toggle('active',k===s));
+  document.getElementById('fixed_L_row').style.display=s==='C'?'block':'none';
+  document.getElementById('fixed_C_row').style.display=s==='L'?'block':'none';
+  buildToggles();draw();
+}
+
+function buildToggles(){
+  const tog=document.getElementById('toggles');tog.innerHTML='';
+  const vals=sweep==='C'?C_labels:L_labels;
+  vals.forEach((lbl,i)=>{
+    const d=document.createElement('div');d.className='cb-row';
+    const inp=document.createElement('input');inp.type='checkbox';inp.checked=true;inp.id='cb'+i;
+    inp.onchange=function(){show[i]=this.checked;draw();};
+    const ll=document.createElement('label');ll.htmlFor='cb'+i;ll.textContent=lbl;ll.style.color=cols[i];ll.style.fontSize='11px';
+    d.appendChild(inp);d.appendChild(ll);tog.appendChild(d);
+  });
+}
+
+['R','L_fixed','C_fixed'].forEach(id=>{
+  document.getElementById(id).oninput=function(){
+    const v=parseFloat(this.value);
+    if(id==='R'){R=v;document.getElementById('R_v').textContent='R = '+v+' Ω';}
+    if(id==='L_fixed'){L_fixed=v;document.getElementById('Lf_v').textContent='L = '+v+' μH';}
+    if(id==='C_fixed'){C_fixed=v;document.getElementById('Cf_v').textContent='C = '+v+' nF';}
+    draw();
+  };
+});
+
+function vt_rlc(t,Lh,Ch){
+  const w0=1/Math.sqrt(Lh*Ch);
+  const alpha=R/(2*Lh);
+  const zeta=R/(2*Math.sqrt(Lh/Ch));
+  if(zeta>=1){
+    const q=Math.sqrt(alpha*alpha-w0*w0);
+    if(q<1e-10)return Vin*(1-(1+alpha*t)*Math.exp(-alpha*t));
+    return Vin*(1-(alpha+q)/(2*q)*Math.exp((-alpha+q)*t)+(alpha-q)/(2*q)*Math.exp((-alpha-q)*t));
+  }
+  const wd=w0*Math.sqrt(1-zeta*zeta);
+  return Vin*(1-Math.exp(-alpha*t)*(Math.cos(wd*t)+alpha/wd*Math.sin(wd*t)));
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const Lh=L_fixed*1e-6,Ch_fix=C_fixed*1e-9;
+  const configs=sweep==='C'?
+    C_vals.map(c=>({Lh,Ch:c*1e-9,lbl:C_labels[C_vals.indexOf(c)]})):
+    L_vals.map(l=>({Lh:l*1e-6,Ch:Ch_fix,lbl:L_labels[L_vals.indexOf(l)]}));
+  const taus=configs.map(c=>1/(c.Lh*c.Ch>0?Math.sqrt(1/(c.Lh*c.Ch)):1)*1e-6);
+  const periods=configs.map(c=>{const w=1/Math.sqrt(c.Lh*c.Ch);return 2*Math.PI/w;});
+  const tmax=Math.min(Math.max(...periods)*10,5e-3)*1e6; // μs
+  function toPx(t,v){return[pd.l+CW*(t/tmax),pd.t+CH*(1-v/(Vin*1.6))];}
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=8;i++){const x=pd.l+CW*(i/8);ctx.beginPath();ctx.moveTo(x,pd.t);ctx.lineTo(x,pd.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=pd.t+CH*(i/5);ctx.beginPath();ctx.moveTo(pd.l,y);ctx.lineTo(pd.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pd.l,pd.t);ctx.lineTo(pd.l,pd.t+CH);ctx.moveTo(pd.l,pd.t+CH);ctx.lineTo(pd.l+CW,pd.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=8;i++){const t=tmax*i/8;ctx.fillText(t.toFixed(1)+'μs',pd.l+CW*(i/8),pd.t+CH+14);}
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){const v=Vin*1.6*(1-i/5);ctx.fillText(v.toFixed(1)+'V',pd.l-4,pd.t+CH*(i/5)+4);}
+  const[,yvf]=toPx(0,Vin);ctx.strokeStyle='#222';ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(pd.l,yvf);ctx.lineTo(pd.l+CW,yvf);ctx.stroke();ctx.setLineDash([]);
+  let tbl='';
+  configs.forEach(({Lh,Ch,lbl},i)=>{
+    if(!show[i])return;
+    ctx.strokeStyle=cols[i];ctx.lineWidth=2;
+    ctx.beginPath();
+    for(let j=0;j<=600;j++){const t=tmax*j/600*1e-6;const v=vt_rlc(t,Lh,Ch);const[x,y]=toPx(tmax*j/600,v);if(y>pd.t-10&&y<pd.t+CH+10){j===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}}
+    ctx.stroke();
+    ctx.fillStyle=cols[i];ctx.font='10px Courier New';ctx.textAlign='right';
+    const[xe,ye]=toPx(tmax,vt_rlc(tmax*1e-6,Lh,Ch));
+    ctx.fillText(lbl,pd.l+CW-2,ye+3);
+  });
+  configs.forEach(({Lh,Ch,lbl},i)=>{
+    const w0=1/Math.sqrt(Lh*Ch);const Z0=Math.sqrt(Lh/Ch);const zeta=R/(2*Z0);const f0=w0/(2*Math.PI);
+    tbl+=`<span style="color:${cols[i]}">${lbl}</span>: ζ=${zeta.toFixed(2)} f₀=${(f0/1e3).toFixed(1)}kHz<br>`;
+  });
+  document.getElementById('tbl').innerHTML=tbl;
+}
+buildToggles();setSweep('C');
+</script>
+</body>
+</html>

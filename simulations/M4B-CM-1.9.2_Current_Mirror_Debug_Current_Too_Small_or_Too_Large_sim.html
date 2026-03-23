@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CM-1.9.2 — Debug: Current Too Small or Too Large</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.r span{color:#cc2200;} .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CM-1.9.2</div>
+  <h1>Current Mirror — Debug: Current Too Small or Too Large</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Error Source Analysis</h2>
+      <label>I_ref (μA): <b id="iref_l">100</b> μA <input type="range" id="iref" min="10" max="500" value="100" step="5"></label>
+      <label>Intended W ratio (I/R): <b id="wr_l">2.0</b> <input type="range" id="wr" min="0.1" max="10" value="2" step="0.1"></label>
+      <label>Actual W ratio (layout): <b id="wra_l">2.0</b> <input type="range" id="wra" min="0.1" max="10" value="2" step="0.1"></label>
+      <label>ΔV_th mismatch (mV): <b id="dvth_l">0</b> mV <input type="range" id="dvth" min="-50" max="50" value="0" step="1"></label>
+      <label>V_ov (mV): <b id="vov_l">200</b> mV <input type="range" id="vov" min="50" max="500" value="200" step="10"></label>
+      <label>I_leak (nA): <b id="leak_l">0</b> <input type="range" id="leak" min="-2000" max="2000" value="0" step="50"></label>
+
+      <div class="ro">Expected I_out (μA): <span id="iout_exp">--</span></div>
+      <div class="ro r" style="margin-top:4px">Actual I_out (μA): <span id="iout_act">--</span></div>
+      <div class="ro" style="margin-top:4px">Total error ΔI/I (%): <span id="err_d">--</span></div>
+      <div class="ro g" style="margin-top:4px">Error breakdown:</div>
+      <div class="ro" style="margin-top:2px;font-size:12px" id="breakdown">--</div>
+    </div>
+
+    <div class="card">
+      <h2>Error Budget Waterfall</h2>
+      <canvas id="cv" height="280"></canvas>
+      <div class="insight">
+        Waterfall chart: each bar shows the cumulative effect of adding each error source. Start from the ideal current and trace how each error source pushes I_out away from target.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const Iref=+document.getElementById('iref').value*1e-6;
+    const wr=+document.getElementById('wr').value;
+    const wra=+document.getElementById('wra').value;
+    const dvth=+document.getElementById('dvth').value/1000;
+    const vov=+document.getElementById('vov').value/1000;
+    const Ileak=+document.getElementById('leak').value*1e-9;
+
+    document.getElementById('iref_l').textContent=(Iref*1e6).toFixed(0);
+    document.getElementById('wr_l').textContent=wr.toFixed(1);
+    document.getElementById('wra_l').textContent=wra.toFixed(1);
+    document.getElementById('dvth_l').textContent=(dvth*1000).toFixed(0);
+    document.getElementById('vov_l').textContent=(vov*1000).toFixed(0);
+    document.getElementById('leak_l').textContent=(Ileak*1e9).toFixed(0);
+
+    const I_exp=Iref*wr;
+    const I_ratio_err=Iref*wra; // layout ratio
+    const I_vth_err=I_ratio_err*((vov-dvth)/vov)**2;
+    const I_actual=I_vth_err+Ileak;
+
+    const err=(I_actual-I_exp)/I_exp*100;
+
+    const e_ratio=(I_ratio_err-I_exp)/I_exp*100;
+    const e_vth=(I_vth_err-I_ratio_err)/I_exp*100;
+    const e_leak=Ileak/I_exp*100;
+
+    document.getElementById('iout_exp').textContent=(I_exp*1e6).toFixed(2);
+    document.getElementById('iout_act').textContent=(I_actual*1e6).toFixed(2);
+    document.getElementById('err_d').textContent=err.toFixed(2);
+    document.getElementById('breakdown').innerHTML=
+      `W/L ratio: ${e_ratio.toFixed(2)}% | V_th mismatch: ${e_vth.toFixed(2)}% | Leakage: ${e_leak.toFixed(2)}%`;
+
+    draw(I_exp,I_ratio_err,I_vth_err,I_actual,e_ratio,e_vth,e_leak);
+  }
+
+  function draw(I_exp,I_ratio_err,I_vth_err,I_actual,e_ratio,e_vth,e_leak){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=280;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,280);
+    const pL=60,pR=16,pT=18,pB=50,pw=W-pL-pR,ph=280-pT-pB;
+
+    const vals=[I_exp,I_ratio_err,I_vth_err,I_actual];
+    const Imin=Math.min(...vals)*0.85*1e6;
+    const Imax_v=Math.max(...vals)*1.15*1e6;
+    const labels=['Ideal\n(intended)','After W/L\nerror','After V_th\nmismatch','After\nleakage'];
+    const colors=['#0066cc','#ff8800','#cc2200','#00994d'];
+
+    // Y axis
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='10px system-ui';
+    ctx.fillText('I_out (μA)', 2, pT+ph/2);
+
+    for(let i=0;i<=4;i++){
+      const v=Imin+(i/4)*(Imax_v-Imin);
+      const y=pT+ph-(i/4)*ph;
+      ctx.fillStyle='#8888aa'; ctx.fillText(v.toFixed(0), 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+
+    const bw=pw/vals.length*0.55;
+    vals.forEach((v,i)=>{
+      const x=pL+(i+0.5)/vals.length*pw;
+      const ybot=pT+ph;
+      const ytop=pT+ph-((v*1e6-Imin)/(Imax_v-Imin))*ph;
+      ctx.fillStyle=colors[i]+'cc';
+      ctx.fillRect(x-bw/2, ytop, bw, ybot-ytop);
+      ctx.strokeStyle=colors[i]; ctx.lineWidth=1.5;
+      ctx.strokeRect(x-bw/2, ytop, bw, ybot-ytop);
+      // value label
+      ctx.fillStyle=colors[i]; ctx.font='10px system-ui';
+      ctx.fillText((v*1e6).toFixed(1), x-10, ytop-4);
+      // x label
+      ctx.fillStyle='#8888aa'; ctx.font='9px system-ui';
+      const lns=labels[i].split('\n');
+      lns.forEach((ln,j)=>ctx.fillText(ln, x-20, pT+ph+15+j*12));
+    });
+
+    // Ideal reference line
+    const yIdeal=pT+ph-((I_exp*1e6-Imin)/(Imax_v-Imin))*ph;
+    ctx.strokeStyle='#0066cc55'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(pL,yIdeal); ctx.lineTo(pL+pw,yIdeal); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

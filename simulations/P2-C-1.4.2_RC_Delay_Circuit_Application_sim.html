@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-C-1.4.2 — RC Delay Circuit Application</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+  h1 { color: #0066cc; font-size: 1.3em; margin-bottom: 4px; }
+  .subtitle { color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }
+  .layout { display: flex; gap: 20px; flex-wrap: wrap; }
+  .panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+  .controls { width: 280px; flex-shrink: 0; }
+  .plots { flex: 1; min-width: 340px; display: flex; flex-direction: column; gap: 10px; }
+  label { display: block; color: #8b949e; font-size: 0.8em; margin-bottom: 4px; margin-top: 12px; }
+  input[type=range] { width: 100%; accent-color: #0066cc; }
+  .val { color: #0066cc; font-weight: bold; }
+  canvas { background: #0d1117; border-radius: 6px; display: block; }
+  .readouts { margin-top: 14px; }
+  .readout-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #21262d; font-size: 0.85em; }
+  .readout-label { color: #8b949e; }
+  .readout-val { color: #39d353; font-weight: bold; font-family: monospace; }
+  .eq { background: #21262d; border-left: 3px solid #0066cc; padding: 10px 12px; border-radius: 4px; margin-top: 14px; font-family: monospace; font-size: 0.82em; color: #a5d6ff; }
+</style>
+</head>
+<body>
+<h1>P2-C-1.4.2 — RC Delay Circuit Application</h1>
+<div class="subtitle">Input step → delayed output threshold crossing · sliders for R, C, threshold fraction</div>
+<div class="layout">
+  <div class="panel controls">
+    <label>Resistance R: <span class="val" id="rLabel">47 kΩ</span></label>
+    <input type="range" id="rSlider" min="1" max="500" value="47" step="1">
+    <label>Capacitance C: <span class="val" id="cLabel">100 nF</span></label>
+    <input type="range" id="cSlider" min="1" max="1000" value="100" step="1">
+    <label>Threshold k = V_thresh/V_S: <span class="val" id="kLabel">50%</span></label>
+    <input type="range" id="kSlider" min="10" max="95" value="50" step="1">
+    <label>Supply V_S: <span class="val" id="vsLabel">3.3 V</span></label>
+    <input type="range" id="vsSlider" min="10" max="150" value="33" step="1">
+    <div class="readouts">
+      <div class="readout-row"><span class="readout-label">τ = R × C</span><span class="readout-val" id="tau">—</span></div>
+      <div class="readout-row"><span class="readout-label">Delay t_d</span><span class="readout-val" id="td">—</span></div>
+      <div class="readout-row"><span class="readout-label">Delay / τ ratio</span><span class="readout-val" id="tdtau">—</span></div>
+      <div class="readout-row"><span class="readout-label">V_thresh</span><span class="readout-val" id="vt">—</span></div>
+    </div>
+    <div class="eq">t_delay = −RC × ln(1−k)<br>k=0.5 → 0.693τ<br>k=2/3 → 1.099τ<br>k=0.9 → 2.303τ</div>
+  </div>
+  <div class="panel plots">
+    <canvas id="cv1" width="580" height="160"></canvas>
+    <canvas id="cv2" width="580" height="160"></canvas>
+  </div>
+</div>
+<script>
+const cv1 = document.getElementById('cv1');
+const cv2 = document.getElementById('cv2');
+const c1 = cv1.getContext('2d');
+const c2 = cv2.getContext('2d');
+const W = cv1.width, H1 = cv1.height, H2 = cv2.height;
+const PAD = { top: 24, right: 20, bottom: 30, left: 55 };
+const PW = W - PAD.left - PAD.right;
+
+function getParams() {
+  const R = parseFloat(document.getElementById('rSlider').value) * 1000;
+  const C = parseFloat(document.getElementById('cSlider').value) * 1e-9;
+  const k = parseFloat(document.getElementById('kSlider').value) / 100;
+  const VS = parseFloat(document.getElementById('vsSlider').value) / 10;
+  const tau = R * C;
+  const tDelay = -tau * Math.log(1 - k);
+  const Vt = VS * k;
+  return { R, C, k, VS, tau, tDelay, Vt };
+}
+
+function updateLabels(p) {
+  const R = parseFloat(document.getElementById('rSlider').value);
+  const C = parseFloat(document.getElementById('cSlider').value);
+  document.getElementById('rLabel').textContent = R >= 1000 ? (R/1000).toFixed(1)+' MΩ' : R+' kΩ';
+  document.getElementById('cLabel').textContent = C >= 1000 ? (C/1000).toFixed(2)+' µF' : C+' nF';
+  document.getElementById('kLabel').textContent = (p.k*100).toFixed(0)+'%';
+  document.getElementById('vsLabel').textContent = p.VS.toFixed(1)+' V';
+  const fmt = t => t < 0.001 ? (t*1e6).toFixed(1)+'µs' : t < 1 ? (t*1000).toFixed(2)+'ms' : t.toFixed(3)+'s';
+  document.getElementById('tau').textContent = fmt(p.tau);
+  document.getElementById('td').textContent = fmt(p.tDelay);
+  document.getElementById('tdtau').textContent = (p.tDelay/p.tau).toFixed(3);
+  document.getElementById('vt').textContent = p.Vt.toFixed(3)+' V';
+}
+
+function drawAxes(ctx, H, PH, yLabel, tMax, VS) {
+  ctx.strokeStyle = '#484f58'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(PAD.left, PAD.top); ctx.lineTo(PAD.left, PAD.top+PH); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(PAD.left, PAD.top+PH); ctx.lineTo(PAD.left+PW, PAD.top+PH); ctx.stroke();
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let i=0;i<=4;i++) { const x=PAD.left+(i/4)*PW; ctx.beginPath();ctx.moveTo(x,PAD.top);ctx.lineTo(x,PAD.top+PH);ctx.stroke(); }
+  for (let i=0;i<=4;i++) { const y=PAD.top+(i/4)*PH; ctx.beginPath();ctx.moveTo(PAD.left,y);ctx.lineTo(PAD.left+PW,y);ctx.stroke(); }
+  ctx.fillStyle='#8b949e'; ctx.font='10px sans-serif';
+  ctx.textAlign='center';
+  for (let i=0;i<=4;i++) {
+    const t=(i/4)*tMax; const x=PAD.left+(i/4)*PW;
+    const label = t<0.001?(t*1e6).toFixed(0)+'µs':t<1?(t*1000).toFixed(1)+'ms':t.toFixed(2)+'s';
+    ctx.fillText(label, x, PAD.top+PH+15);
+  }
+  ctx.textAlign='right';
+  for (let i=0;i<=4;i++) {
+    const v=(i/4)*VS; const y=PAD.top+PH-(i/4)*PH;
+    ctx.fillText(v.toFixed(1)+'V', PAD.left-5, y+4);
+  }
+  ctx.textAlign='left'; ctx.fillStyle='#8b949e';
+  ctx.fillText(yLabel, PAD.left, PAD.top-8);
+}
+
+function draw() {
+  const p = getParams();
+  updateLabels(p);
+  const tMax = Math.max(p.tDelay * 2.5, p.tau * 4);
+  const VS = p.VS;
+  const PH1 = H1 - PAD.top - PAD.bottom;
+  const PH2 = H2 - PAD.top - PAD.bottom;
+
+  c1.clearRect(0,0,W,H1);
+  c2.clearRect(0,0,W,H2);
+
+  drawAxes(c1, H1, PH1, 'INPUT STEP (V_in)', tMax, VS*1.1);
+  drawAxes(c2, H2, PH2, 'V_C(t) with threshold', tMax, VS*1.1);
+
+  // Input step waveform
+  c1.strokeStyle = '#3fb950'; c1.lineWidth = 2.5;
+  c1.beginPath();
+  c1.moveTo(PAD.left, PAD.top+PH1);
+  c1.lineTo(PAD.left + (0.05/4)*PW*4 * (tMax/tMax), PAD.top+PH1);
+  // step at t=0.05*tMax ... actually step at t=0
+  const yHigh1 = PAD.top + PH1 - (VS/(VS*1.1))*PH1;
+  c1.beginPath();
+  c1.moveTo(PAD.left, PAD.top+PH1); // pre-step (low)
+  c1.lineTo(PAD.left, PAD.top+PH1);
+  c1.lineTo(PAD.left, yHigh1);      // step at t=0
+  for (let px=0; px<=PW; px++) { c1.lineTo(PAD.left+px, yHigh1); }
+  c1.stroke();
+
+  // V_C curve
+  c2.strokeStyle = '#0066cc'; c2.lineWidth = 2.5; c2.beginPath();
+  for (let px=0; px<=PW; px++) {
+    const t=(px/PW)*tMax; const vc=VS*(1-Math.exp(-t/p.tau));
+    const y=PAD.top+PH2-(vc/(VS*1.1))*PH2;
+    px===0?c2.moveTo(PAD.left+px,y):c2.lineTo(PAD.left+px,y);
+  }
+  c2.stroke();
+
+  // Threshold line on V_C plot
+  const yThresh = PAD.top+PH2-(p.Vt/(VS*1.1))*PH2;
+  c2.strokeStyle='#f78166'; c2.lineWidth=1.5; c2.setLineDash([6,4]);
+  c2.beginPath(); c2.moveTo(PAD.left,yThresh); c2.lineTo(PAD.left+PW,yThresh); c2.stroke();
+  c2.setLineDash([]);
+
+  // Threshold crossing vertical line
+  if (p.tDelay <= tMax) {
+    const xCross = PAD.left+(p.tDelay/tMax)*PW;
+    c2.strokeStyle='#f78166'; c2.lineWidth=1.5; c2.setLineDash([3,3]);
+    c2.beginPath(); c2.moveTo(xCross,yThresh); c2.lineTo(xCross,PAD.top+PH2); c2.stroke();
+    c2.setLineDash([]);
+    c2.fillStyle='#f78166'; c2.beginPath(); c2.arc(xCross,yThresh,5,0,2*Math.PI); c2.fill();
+    c2.fillStyle='#f78166'; c2.font='bold 10px sans-serif'; c2.textAlign='center';
+    const tLabel = p.tDelay<0.001?(p.tDelay*1e6).toFixed(1)+'µs':p.tDelay<1?(p.tDelay*1000).toFixed(2)+'ms':p.tDelay.toFixed(3)+'s';
+    c2.fillText('OUTPUT fires at t='+tLabel, xCross, PAD.top+PH2+15);
+
+    // Output delayed pulse on INPUT plot (show where output fires)
+    c1.strokeStyle='#f78166'; c1.lineWidth=1.5; c1.setLineDash([3,3]);
+    c1.beginPath(); c1.moveTo(xCross,PAD.top); c1.lineTo(xCross,PAD.top+PH1); c1.stroke();
+    c1.setLineDash([]);
+    c1.fillStyle='#f78166'; c1.font='10px sans-serif'; c1.textAlign='center';
+    c1.fillText('⬆ output triggers here', xCross, PAD.top+12);
+  }
+
+  // Labels
+  c2.fillStyle='#f78166'; c2.font='10px sans-serif'; c2.textAlign='left';
+  c2.fillText('V_thresh = '+p.Vt.toFixed(2)+'V (k='+( p.k*100).toFixed(0)+'%)', PAD.left+4, yThresh-5);
+  c2.fillStyle='#3fb950'; c2.textAlign='right';
+  c2.fillText('V_S = '+VS.toFixed(1)+'V', PAD.left+PW-4, PAD.top+14);
+}
+
+['rSlider','cSlider','kSlider','vsSlider'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+draw();
+</script>
+</body>
+</html>

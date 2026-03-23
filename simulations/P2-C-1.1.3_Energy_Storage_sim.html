@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-C-1.1.3 — Capacitor: Energy Storage (½CV²)</title>
+<style>
+  :root{--bg:#fff;--bg2:#f5f5f5;--text:#1a1a1a;--text2:#555;--border:#ddd;--accent:#0066cc;--green:#00994d;--red:#cc2200;--orange:#cc7700;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#242424;--text:#e8e8e8;--text2:#aaa;--border:#444;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px;}
+  header{background:var(--bg2);border-bottom:2px solid var(--accent);padding:12px 20px;}
+  header .id{font-family:monospace;font-size:12px;color:var(--accent);font-weight:700;}
+  header h1{font-size:16px;margin-top:2px;}
+  .container{display:flex;gap:14px;padding:14px;flex-wrap:wrap;}
+  .panel{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:14px;}
+  .sim-panel{flex:1;min-width:320px;}
+  .ctrl-panel{width:230px;min-width:200px;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .readouts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;}
+  .readout{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:8px 10px;}
+  .readout label{font-size:11px;color:var(--text2);display:block;}
+  .readout .val{font-family:monospace;font-size:16px;font-weight:700;color:var(--accent);}
+  .ctrl{margin-bottom:13px;}
+  .ctrl label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;}
+  .ctrl label span{font-family:monospace;color:var(--accent);font-weight:700;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .formula-box{background:var(--bg);border-left:3px solid var(--accent);padding:7px 10px;margin:8px 0;font-family:monospace;font-size:12px;border-radius:0 4px 4px 0;}
+  .tabs{display:flex;gap:4px;margin-bottom:10px;}
+  .tab{padding:5px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px;cursor:pointer;background:var(--bg);color:var(--text);}
+  .tab.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .info{font-size:12px;color:var(--text2);margin-top:8px;line-height:1.6;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">P2-C-1.1.3</div>
+  <h1>Capacitor — Energy Storage (½CV²)</h1>
+</header>
+<div class="container">
+  <div class="panel sim-panel">
+    <div class="tabs">
+      <button class="tab active" onclick="setMode('energy')">½CV² Triangle</button>
+      <button class="tab" onclick="setMode('holdup')">Hold-Up Energy</button>
+      <button class="tab" onclick="setMode('loss')">50% Charging Loss</button>
+    </div>
+    <canvas id="cv" height="280"></canvas>
+    <div class="readouts">
+      <div class="readout"><label id="lb1">Stored Energy</label><span class="val" id="r1">—</span></div>
+      <div class="readout"><label id="lb2">Capacitance</label><span class="val" id="r2">—</span></div>
+      <div class="readout"><label id="lb3">Voltage</label><span class="val" id="r3">—</span></div>
+      <div class="readout"><label id="lb4">Result</label><span class="val" id="r4">—</span></div>
+    </div>
+  </div>
+  <div class="panel ctrl-panel">
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin-bottom:10px;">Controls</div>
+
+    <div id="ctrls-energy">
+      <div class="ctrl">
+        <label>Voltage V <span id="ev">50 V</span></label>
+        <input type="range" id="sl-ev" min="1" max="400" step="1" value="50" oninput="update()">
+      </div>
+      <div class="ctrl">
+        <label>Capacitance (µF) <span id="ec">100</span></label>
+        <input type="range" id="sl-ec" min="1" max="10000" step="1" value="100" oninput="update()">
+      </div>
+      <div class="formula-box">E = ½ × C × V²</div>
+      <div class="info">Triangle area = stored energy.<br>Q-V relationship shown.<br>Area scales as V².</div>
+    </div>
+
+    <div id="ctrls-holdup" style="display:none">
+      <div class="ctrl">
+        <label>V max (V) <span id="hvm">400</span></label>
+        <input type="range" id="sl-hvm" min="10" max="500" step="1" value="400" oninput="update()">
+      </div>
+      <div class="ctrl">
+        <label>V min (V) <span id="hvmin">200</span></label>
+        <input type="range" id="sl-hvmin" min="1" max="400" step="1" value="200" oninput="update()">
+      </div>
+      <div class="ctrl">
+        <label>C (µF) <span id="hc">470</span></label>
+        <input type="range" id="sl-hc" min="10" max="5000" step="10" value="470" oninput="update()">
+      </div>
+      <div class="ctrl">
+        <label>Load (W) <span id="hl">1000</span></label>
+        <input type="range" id="sl-hl" min="10" max="5000" step="10" value="1000" oninput="update()">
+      </div>
+      <div class="formula-box">E_use = ½C(V²max−V²min)</div>
+      <div class="info">Shaded = usable energy.<br>White = unusable (below V_min).</div>
+    </div>
+
+    <div id="ctrls-loss" style="display:none">
+      <div class="ctrl">
+        <label>Supply V <span id="lv">48 V</span></label>
+        <input type="range" id="sl-lv" min="1" max="400" step="1" value="48" oninput="update()">
+      </div>
+      <div class="ctrl">
+        <label>Capacitance (µF) <span id="lc">1000</span></label>
+        <input type="range" id="sl-lc" min="1" max="10000" step="10" value="1000" oninput="update()">
+      </div>
+      <div class="formula-box">E_loss = ½CV² (always!)</div>
+      <div class="info">Charging loss = 50% of supply energy regardless of resistance.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas=document.getElementById('cv');
+const ctx=canvas.getContext('2d');
+let mode='energy';
+
+function setMode(m){
+  mode=m;
+  document.querySelectorAll('.tab').forEach((t,i)=>{
+    t.classList.toggle('active',(i===0&&m==='energy')||(i===1&&m==='holdup')||(i===2&&m==='loss'));
+  });
+  ['energy','holdup','loss'].forEach(n=>{
+    document.getElementById('ctrls-'+n).style.display=(n===m?'':'none');
+  });
+  update();
+}
+
+function update(){
+  const W=canvas.offsetWidth||480;canvas.width=W;canvas.height=280;
+  const dark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const tc=dark?'#e8e8e8':'#1a1a1a';
+  const bg=dark?'#1a1a1a':'#ffffff';
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,280);
+  if(mode==='energy') drawEnergy(W,tc);
+  else if(mode==='holdup') drawHoldup(W,tc);
+  else drawLoss(W,tc);
+}
+
+function drawEnergy(W,tc){
+  const V=parseFloat(document.getElementById('sl-ev').value);
+  const CuF=parseFloat(document.getElementById('sl-ec').value);
+  const C=CuF*1e-6;
+  const E=0.5*C*V*V;
+  const Q=C*V;
+  document.getElementById('ev').textContent=V.toFixed(0)+' V';
+  document.getElementById('ec').textContent=CuF.toFixed(0);
+  document.getElementById('lb1').textContent='Stored Energy';
+  document.getElementById('r1').textContent=E<1?(E*1000).toFixed(2)+' mJ':E.toFixed(3)+' J';
+  document.getElementById('lb2').textContent='Capacitance';
+  document.getElementById('r2').textContent=CuF.toFixed(0)+' µF';
+  document.getElementById('lb3').textContent='Voltage';
+  document.getElementById('r3').textContent=V.toFixed(0)+' V';
+  document.getElementById('lb4').textContent='Charge Q';
+  document.getElementById('r4').textContent=(Q*1000).toFixed(2)+' mC';
+
+  const mx=55,my=20,mw=W-75,mh=230;
+  const maxV=400,maxQ=400e-6*400*1000; // mC
+
+  // Axes
+  ctx.strokeStyle=tc;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx,my+mh);ctx.lineTo(mx+mw,my+mh);ctx.stroke();
+  ctx.fillStyle=tc;ctx.font='11px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Voltage V (V)',mx+mw/2,my+mh+16);
+  ctx.save();ctx.translate(14,my+mh/2);ctx.rotate(-Math.PI/2);
+  ctx.fillText('Charge Q (mC)',0,0);ctx.restore();
+
+  // Q-V line (slope = C)
+  const px_V=mx+(V/maxV)*mw;
+  const maxQdisp=CuF/1000*maxV*1000; // max Q in mC at maxV
+  const qAtV=CuF/1000*V*1000; // Q in mC at current V
+  const py_Q=my+mh-(qAtV/maxQdisp)*mh;
+
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(mx,my+mh);ctx.lineTo(mx+mw,my+mh-(CuF/1000*maxV*1000/maxQdisp)*mh);ctx.stroke();
+
+  // Filled triangle = energy stored
+  ctx.fillStyle='rgba(0,102,204,0.25)';
+  ctx.beginPath();ctx.moveTo(mx,my+mh);ctx.lineTo(px_V,my+mh);ctx.lineTo(px_V,py_Q);ctx.closePath();ctx.fill();
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(px_V,my+mh);ctx.lineTo(px_V,py_Q);ctx.moveTo(mx,py_Q);ctx.lineTo(px_V,py_Q);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Energy label in triangle
+  const ex=mx+(px_V-mx)/3,ey=my+mh-(py_Q-(my+mh))/3;
+  const eStr=E<1?(E*1000).toFixed(1)+' mJ':E.toFixed(2)+' J';
+  ctx.fillStyle='rgba(0,102,204,0.9)';ctx.font='bold 12px monospace';ctx.textAlign='center';
+  ctx.fillText('E = '+eStr,px_V/2+mx/2,my+mh-(mh-py_Q+my)/4);
+
+  // Point marker
+  ctx.beginPath();ctx.arc(px_V,py_Q,5,0,Math.PI*2);ctx.fillStyle='#e63a2a';ctx.fill();
+  ctx.fillStyle=tc;ctx.font='11px monospace';ctx.textAlign='left';
+  ctx.fillText('V='+V+'V, Q='+qAtV.toFixed(1)+'mC',px_V+8,py_Q-6);
+  ctx.fillText('E = ½×'+CuF+'µF×'+V+'²',px_V+8,py_Q+10);
+  ctx.fillText('= '+eStr,px_V+8,py_Q+25);
+
+  // Axis tick labels
+  for(let i=0;i<=4;i++){
+    const x=mx+i*mw/4;
+    ctx.fillStyle=tc;ctx.font='10px monospace';ctx.textAlign='center';
+    ctx.fillText((maxV*i/4).toString(),x,my+mh+12);
+  }
+}
+
+function drawHoldup(W,tc){
+  const Vmax=parseFloat(document.getElementById('sl-hvm').value);
+  const Vmin=parseFloat(document.getElementById('sl-hvmin').value);
+  const CuF=parseFloat(document.getElementById('sl-hc').value);
+  const P=parseFloat(document.getElementById('sl-hl').value);
+  document.getElementById('hvm').textContent=Vmax.toFixed(0);
+  document.getElementById('hvmin').textContent=Vmin.toFixed(0);
+  document.getElementById('hc').textContent=CuF.toFixed(0);
+  document.getElementById('hl').textContent=P.toFixed(0);
+
+  const C=CuF*1e-6;
+  const Etotal=0.5*C*Vmax*Vmax;
+  const Emin=0.5*C*Math.min(Vmin,Vmax)*Math.min(Vmin,Vmax);
+  const Eusable=Math.max(0,Etotal-Emin);
+  const tHold=Eusable/P;
+
+  document.getElementById('lb1').textContent='E at V_max';
+  document.getElementById('r1').textContent=Etotal.toFixed(2)+' J';
+  document.getElementById('lb2').textContent='Usable Energy';
+  document.getElementById('r2').textContent=Eusable.toFixed(2)+' J';
+  document.getElementById('lb3').textContent='Hold-up Time';
+  document.getElementById('r3').textContent=(tHold*1000).toFixed(1)+' ms';
+  document.getElementById('lb4').textContent='Load Power';
+  document.getElementById('r4').textContent=P.toFixed(0)+' W';
+
+  const mx=55,my=20,mw=W-75,mh=230;
+  const maxV2=Vmax; // x=V axis
+  const maxE=Etotal;
+
+  ctx.strokeStyle=tc;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx,my+mh);ctx.lineTo(mx+mw,my+mh);ctx.stroke();
+
+  // Draw parabola E = ½CV² (Q-V triangle shown as function of V)
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(mx,my+mh);
+  for(let v=0;v<=Vmax;v+=Vmax/200){
+    const e=0.5*C*v*v;
+    const px=mx+(v/Vmax)*mw;
+    const py=my+mh-(e/maxE)*mh;
+    ctx.lineTo(px,py);
+  }
+  ctx.stroke();
+
+  // Fill usable zone (between Vmin and Vmax)
+  const xMin=mx+(Math.min(Vmin,Vmax)/Vmax)*mw;
+  const yMin=my+mh-(Emin/maxE)*mh;
+  const xMax=mx+mw;
+  ctx.fillStyle='rgba(0,153,77,0.3)';
+  ctx.beginPath();ctx.moveTo(xMin,my+mh);
+  for(let v=Math.min(Vmin,Vmax);v<=Vmax;v+=Vmax/100){
+    const e=0.5*C*v*v;
+    const px=mx+(v/Vmax)*mw;
+    const py=my+mh-(e/maxE)*mh;
+    ctx.lineTo(px,py);
+  }
+  ctx.lineTo(xMax,my+mh);ctx.closePath();ctx.fill();
+
+  // Labels
+  ctx.fillStyle='#00994d';ctx.font='bold 11px monospace';ctx.textAlign='center';
+  ctx.fillText('Usable '+Eusable.toFixed(1)+'J',(xMin+xMax)/2,my+mh-mh*0.15);
+  ctx.fillStyle='rgba(204,119,0,0.3)';
+  ctx.fillRect(mx,my+mh-yMin+my,xMin-mx,yMin-my);
+  ctx.fillStyle='#cc7700';ctx.font='11px sans-serif';
+  ctx.fillText('Unusable',mx+(xMin-mx)/2,my+mh-10);
+
+  ctx.strokeStyle='#e63a2a';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(xMin,my);ctx.lineTo(xMin,my+mh);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#e63a2a';ctx.font='11px monospace';ctx.textAlign='center';
+  ctx.fillText('V_min='+Vmin+'V',xMin,my+12);
+  ctx.fillStyle=tc;ctx.font='11px sans-serif';ctx.textAlign='left';
+  ctx.fillText('t_hold = '+( tHold*1000).toFixed(1)+' ms @ '+P+'W',mx+4,my+28);
+  ctx.fillText('E = ½CV² (parabola)',mx+4,my+44);
+}
+
+function drawLoss(W,tc){
+  const V=parseFloat(document.getElementById('sl-lv').value);
+  const CuF=parseFloat(document.getElementById('sl-lc').value);
+  const C=CuF*1e-6;
+  const Ecap=0.5*C*V*V;
+  const Esupply=C*V*V;
+  const Eloss=Ecap;
+  document.getElementById('lv').textContent=V.toFixed(0)+' V';
+  document.getElementById('lc').textContent=CuF.toFixed(0);
+  document.getElementById('lb1').textContent='E from supply';
+  document.getElementById('r1').textContent=Esupply<1?(Esupply*1000).toFixed(1)+'mJ':Esupply.toFixed(3)+'J';
+  document.getElementById('lb2').textContent='E in cap';
+  document.getElementById('r2').textContent=Ecap<1?(Ecap*1000).toFixed(1)+'mJ':Ecap.toFixed(3)+'J';
+  document.getElementById('lb3').textContent='Heat loss';
+  document.getElementById('r3').textContent=Eloss<1?(Eloss*1000).toFixed(1)+'mJ':Eloss.toFixed(3)+'J';
+  document.getElementById('lb4').textContent='Efficiency';
+  document.getElementById('r4').textContent='50%';
+
+  const mx=20,my=20,bw=(W-60)/2-10;
+  // Two bars: supply energy (left), cap+loss (right stacked)
+  const barH=200;
+  const y0=my+barH;
+
+  // Supply energy bar (full)
+  ctx.fillStyle='rgba(0,102,204,0.8)';
+  ctx.fillRect(mx,my,bw,barH);
+  ctx.fillStyle='#fff';ctx.font='bold 12px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Supply',mx+bw/2,my+barH/2);
+  ctx.fillText('E = CV² = '+(Esupply<1?(Esupply*1000).toFixed(0)+'mJ':Esupply.toFixed(2)+'J'),mx+bw/2,my+barH/2+18);
+  ctx.fillStyle=tc;ctx.font='11px sans-serif';ctx.textAlign='center';
+  ctx.fillText('(100%)',mx+bw/2,my+barH+14);
+
+  // Stacked bars: cap (bottom half) + loss (top half)
+  const x2=mx+bw+20;
+  ctx.fillStyle='rgba(0,153,77,0.8)';
+  ctx.fillRect(x2,my+barH/2,bw,barH/2);
+  ctx.fillStyle='rgba(204,34,0,0.8)';
+  ctx.fillRect(x2,my,bw,barH/2);
+
+  ctx.fillStyle='#fff';ctx.font='bold 11px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Heat (50%)',x2+bw/2,my+barH/4);
+  ctx.fillText(Eloss<1?(Eloss*1000).toFixed(0)+'mJ':Eloss.toFixed(2)+'J',x2+bw/2,my+barH/4+16);
+  ctx.fillText('Capacitor (50%)',x2+bw/2,my+3*barH/4-4);
+  ctx.fillText(Ecap<1?(Ecap*1000).toFixed(0)+'mJ':Ecap.toFixed(2)+'J',x2+bw/2,my+3*barH/4+12);
+
+  ctx.fillStyle=tc;ctx.font='11px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Regardless of R!',x2+bw/2,y0+14);
+
+  // Arrow
+  ctx.strokeStyle=tc;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx+bw+5,my+barH/2);ctx.lineTo(x2-5,my+barH/2);ctx.stroke();
+  ctx.fillStyle=tc;ctx.font='10px sans-serif';ctx.textAlign='center';
+  ctx.fillText('=',mx+bw+10,my+barH/2-2);
+}
+
+window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',update);
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

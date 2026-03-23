@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>M4B-2OTA-8.2.2 — Slew Rate and Settling Simulator</title>
+<style>
+  body { font-family: 'Courier New', monospace; background: #0a0a0a; color: #e0e0e0; margin: 0; padding: 20px; }
+  h1 { color: #00bcd4; font-size: 1.1em; margin-bottom: 4px; }
+  .subtitle { color: #888; font-size: 0.85em; margin-bottom: 20px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .tab { padding: 8px 16px; background: #1a1a1a; border: 1px solid #333; cursor: pointer; font-family: inherit; font-size: 0.85em; color: #aaa; }
+  .tab.active { background: #00bcd4; color: #000; border-color: #00bcd4; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  canvas { background: #111; border: 1px solid #333; display: block; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+  .ctrl { background: #1a1a1a; border: 1px solid #333; padding: 8px 12px; min-width: 180px; }
+  .ctrl label { display: block; color: #aaa; font-size: 0.78em; margin-bottom: 4px; }
+  .ctrl input[type=range] { width: 100%; accent-color: #00bcd4; }
+  .ctrl .val { color: #00bcd4; font-size: 0.85em; }
+  .readouts { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .ro { background: #1a1a1a; border: 1px solid #444; padding: 6px 12px; font-size: 0.82em; }
+  .ro span { color: #00bcd4; }
+  .ro .pass { color: #4caf50; }
+  .ro .fail { color: #f44336; }
+</style>
+</head>
+<body>
+<h1>M4B-2OTA-8.2.2 — Slew Rate and Settling Time</h1>
+<div class="subtitle">Transient response: slew phase + exponential settling; SR vs GBW relationships</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab(0)">Step Response</div>
+  <div class="tab" onclick="switchTab(1)">SR-GBW Relationship</div>
+  <div class="tab" onclick="switchTab(2)">Settling Budget</div>
+</div>
+
+<!-- TAB 0: Step Response -->
+<div class="panel active" id="tab0">
+  <div class="controls">
+    <div class="ctrl">
+      <label>GBW (MHz): <span class="val" id="gbw0_v">100</span></label>
+      <input type="range" id="gbw0" min="1" max="2000" step="1" value="100" oninput="drawStep()">
+    </div>
+    <div class="ctrl">
+      <label>PM (°): <span class="val" id="pm0_v">60</span></label>
+      <input type="range" id="pm0" min="20" max="85" step="1" value="60" oninput="drawStep()">
+    </div>
+    <div class="ctrl">
+      <label>SR (V/µs): <span class="val" id="sr0_v">100</span></label>
+      <input type="range" id="sr0" min="1" max="5000" step="1" value="100" oninput="drawStep()">
+    </div>
+    <div class="ctrl">
+      <label>Step size (V): <span class="val" id="vstep_v">1.0</span></label>
+      <input type="range" id="vstep" min="0.1" max="3.0" step="0.05" value="1.0" oninput="drawStep()">
+    </div>
+    <div class="ctrl">
+      <label>Feedback β: <span class="val" id="beta_v">1.00</span></label>
+      <input type="range" id="beta" min="0.1" max="1.0" step="0.05" value="1.0" oninput="drawStep()">
+    </div>
+    <div class="ctrl">
+      <label>Accuracy (bits N): <span class="val" id="nbits_v">12</span></label>
+      <input type="range" id="nbits" min="6" max="18" step="1" value="12" oninput="drawStep()">
+    </div>
+  </div>
+  <canvas id="canvas0" width="860" height="360"></canvas>
+  <div class="readouts" id="ro0"></div>
+</div>
+
+<!-- TAB 1: SR-GBW Relationship -->
+<div class="panel" id="tab1">
+  <div class="controls">
+    <div class="ctrl">
+      <label>Vov sweep (mV): <span class="val" id="vov1_v">100</span></label>
+      <input type="range" id="vov1" min="30" max="400" step="5" value="100" oninput="drawSRGBW()">
+    </div>
+    <div class="ctrl">
+      <label>CL (pF): <span class="val" id="cl1_v">2.0</span></label>
+      <input type="range" id="cl1" min="0.1" max="20" step="0.1" value="2.0" oninput="drawSRGBW()">
+    </div>
+    <div class="ctrl">
+      <label>Cc/CL ratio: <span class="val" id="ccr_v">0.50</span></label>
+      <input type="range" id="ccr" min="0.1" max="1.0" step="0.05" value="0.5" oninput="drawSRGBW()">
+    </div>
+  </div>
+  <canvas id="canvas1" width="860" height="360"></canvas>
+</div>
+
+<!-- TAB 2: Settling Budget -->
+<div class="panel" id="tab2">
+  <div class="controls">
+    <div class="ctrl">
+      <label>Required bits N: <span class="val" id="nb2_v">12</span></label>
+      <input type="range" id="nb2" min="6" max="18" step="1" value="12" oninput="drawBudget()">
+    </div>
+    <div class="ctrl">
+      <label>Settling budget (ns): <span class="val" id="tset_v">10</span></label>
+      <input type="range" id="tset" min="1" max="500" step="1" value="10" oninput="drawBudget()">
+    </div>
+    <div class="ctrl">
+      <label>Step size (V): <span class="val" id="vs2_v">1.0</span></label>
+      <input type="range" id="vs2" min="0.1" max="3.0" step="0.05" value="1.0" oninput="drawBudget()">
+    </div>
+    <div class="ctrl">
+      <label>Feedback β: <span class="val" id="beta2_v">1.00</span></label>
+      <input type="range" id="beta2" min="0.1" max="1.0" step="0.05" value="1.0" oninput="drawBudget()">
+    </div>
+  </div>
+  <canvas id="canvas2" width="860" height="320"></canvas>
+  <div class="readouts" id="ro2"></div>
+</div>
+
+<script>
+function getSV(id, dec) {
+  const v = parseFloat(document.getElementById(id).value);
+  document.getElementById(id+'_v').textContent = v.toFixed(dec);
+  return v;
+}
+
+function drawStep() {
+  const gbw   = getSV('gbw0', 0) * 1e6;
+  const pm    = getSV('pm0',  0);
+  const sr    = getSV('sr0',  0) * 1e6;  // V/s
+  const vstep = getSV('vstep', 2);
+  const beta  = getSV('beta',  2);
+  const N     = getSV('nbits', 0);
+
+  const canvas = document.getElementById('canvas0');
+  const ctx    = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const Marg = {top:30, bottom:50, left:70, right:80};
+  const pw = W-Marg.left-Marg.right, ph = H-Marg.top-Marg.bottom;
+
+  // Simulation
+  const fc = gbw * beta;
+  const t_slew = vstep / sr;
+  const t_lin  = (N+1) * Math.LN2 / (2 * Math.PI * fc);
+  const t_total = t_slew + t_lin;
+
+  // Simulate step response
+  const tmax = t_total * 3;
+  const M = 500;
+  const ts = Array.from({length:M}, (_,i) => i / (M-1) * tmax);
+
+  // Two-pole model
+  const wnGBW = 2 * Math.PI * gbw;
+  const zeta  = Math.cos((90 - pm) * Math.PI / 180);
+  const wn    = wnGBW * beta; // closed-loop natural frequency approx
+  const wd    = wn * Math.sqrt(Math.max(0.01, 1 - zeta**2));
+
+  const vout = ts.map(t => {
+    if (t < t_slew) return sr * t;
+    const t2 = t - t_slew;
+    const vStart = sr * t_slew;
+    const vErr = vstep - vStart;
+    const decay = vStart + vErr * (1 - Math.exp(-zeta*wn*t2) * (Math.cos(wd*t2) + (zeta/Math.sqrt(Math.max(0.01,1-zeta**2)))*Math.sin(wd*t2)));
+    return decay;
+  });
+
+  // Accuracy band
+  const vFinal = vstep;
+  const vEps   = vFinal / (2 ** (N+1));
+  const vHi    = vFinal + vEps;
+  const vLo    = vFinal - vEps;
+
+  const vRange = [Math.min(...vout, 0) - 0.1, Math.max(...vout) + 0.2];
+
+  function xC(t) { return Marg.left + t/tmax * pw; }
+  function yC(v) { return Marg.top + (1 - (v-vRange[0])/(vRange[1]-vRange[0])) * ph; }
+
+  // Accuracy band
+  ctx.fillStyle = 'rgba(76,175,80,0.08)';
+  ctx.fillRect(Marg.left, yC(vHi), pw, yC(vLo)-yC(vHi));
+
+  // Grid
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+  [0, 0.25, 0.5, 0.75, 1.0].forEach(frac => {
+    const t = frac * tmax;
+    const x = xC(t);
+    ctx.beginPath(); ctx.moveTo(x, Marg.top); ctx.lineTo(x, H-Marg.bottom); ctx.stroke();
+    ctx.fillStyle = '#555'; ctx.font = '9px Courier New'; ctx.textAlign = 'center';
+    const lab = t < 1e-9 ? (t*1e12).toFixed(0)+'ps' : t < 1e-6 ? (t*1e9).toFixed(1)+'ns' : (t*1e6).toFixed(1)+'µs';
+    ctx.fillText(lab, x, H-Marg.bottom+14);
+  });
+
+  // Final value line
+  ctx.strokeStyle = '#4caf50'; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(Marg.left, yC(vFinal)); ctx.lineTo(Marg.left+pw, yC(vFinal)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Slew phase region
+  const xSlew = xC(t_slew);
+  ctx.fillStyle = 'rgba(33,150,243,0.07)';
+  ctx.fillRect(Marg.left, Marg.top, xSlew-Marg.left, ph);
+  ctx.strokeStyle = '#2196f3'; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(xSlew, Marg.top); ctx.lineTo(xSlew, H-Marg.bottom); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#2196f3'; ctx.font = '9px Courier New'; ctx.textAlign = 'center';
+  ctx.fillText('Slewing', Marg.left + (xSlew-Marg.left)/2, Marg.top+12);
+  ctx.fillText('Linear settling', xSlew + (Marg.left+pw-xSlew)/2, Marg.top+12);
+
+  // Step response
+  ctx.strokeStyle = '#f44336'; ctx.lineWidth = 2.5; ctx.beginPath();
+  vout.forEach((v,i) => { i===0?ctx.moveTo(xC(ts[i]),yC(v)):ctx.lineTo(xC(ts[i]),yC(v)); });
+  ctx.stroke();
+
+  // Find actual settling
+  let tSettle = tmax;
+  for (let i = M-1; i >= 0; i--) {
+    if (Math.abs(vout[i] - vFinal) > vEps) { tSettle = ts[i+1] || tmax; break; }
+  }
+  const xSet = xC(tSettle);
+  ctx.strokeStyle = '#ffeb3b'; ctx.lineWidth = 1.5; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(xSet, Marg.top); ctx.lineTo(xSet, H-Marg.bottom); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#ffeb3b'; ctx.font = '9px Courier New'; ctx.textAlign = 'center';
+  const labSet = tSettle < 1e-9 ? (tSettle*1e12).toFixed(0)+'ps' : tSettle < 1e-6 ? (tSettle*1e9).toFixed(1)+'ns' : (tSettle*1e6).toFixed(2)+'µs';
+  ctx.fillText('t_settle='+labSet, xSet+20, Marg.top+25);
+
+  // Axes
+  ctx.strokeStyle = '#333'; ctx.strokeRect(Marg.left, Marg.top, pw, ph);
+  ctx.fillStyle = '#555'; ctx.font = '10px Courier New'; ctx.textAlign = 'center';
+  ctx.fillText('Time', Marg.left+pw/2, H-8);
+
+  const fmt = t => t < 1e-9 ? (t*1e12).toFixed(0)+'ps' : t < 1e-6 ? (t*1e9).toFixed(1)+'ns' : (t*1e6).toFixed(2)+'µs';
+  const pmC = pm >= 60 ? 'pass' : 'fail';
+  document.getElementById('ro0').innerHTML = `
+    <div class="ro">t_slew: <span>${fmt(t_slew)}</span></div>
+    <div class="ro">t_linear: <span>${fmt(t_lin)}</span></div>
+    <div class="ro">t_settle: <span>${fmt(tSettle)}</span></div>
+    <div class="ro">PM: <span class="${pmC}">${pm}°</span> (ζ=${zeta.toFixed(2)})</div>
+    <div class="ro">SR=2π×GBW×Vov: <span>Vov_eff=${(sr/(2*Math.PI*gbw)*1000).toFixed(0)}mV</span></div>
+    <div class="ro">Accuracy band: <span>±${(vEps*1000).toFixed(2)} mV</span></div>`;
+}
+
+function drawSRGBW() {
+  const vov = getSV('vov1', 0) * 1e-3;
+  const cl  = getSV('cl1',  1) * 1e-12;
+  const ccr = getSV('ccr',  2);
+
+  const canvas = document.getElementById('canvas1');
+  const ctx    = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  const M = {top:40, bottom:50, left:70, right:80};
+  const pw = W-M.left-M.right, ph = H-M.top-M.bottom;
+
+  const gbws = Array.from({length:100}, (_,i) => 1e5 * Math.pow(2e4, i/99));
+  const Cc   = cl * ccr;
+  const srs  = gbws.map(gbw => 2 * Math.PI * gbw * vov);  // V/s
+
+  const maxSR = Math.max(...srs);
+  function xC(gbw) { return M.left + (Math.log10(gbw)-Math.log10(gbws[0]))/(Math.log10(gbws[gbws.length-1])-Math.log10(gbws[0]))*pw; }
+  function ySR(sr)  { return M.top + (1 - sr/maxSR)*ph; }
+
+  // Vov curves
+  const vovs = [50e-3, 100e-3, 150e-3, 200e-3, 300e-3];
+  const cols  = ['#1565c0','#2196f3','#00bcd4','#4caf50','#ff9800'];
+  vovs.forEach((v,vi) => {
+    const srs2 = gbws.map(gbw => 2*Math.PI*gbw*v);
+    ctx.strokeStyle = vi === vovs.indexOf(vov) ? cols[vi] : cols[vi]; ctx.lineWidth = v === vov ? 3 : 1.5;
+    ctx.globalAlpha = v === vov ? 1 : 0.5;
+    ctx.beginPath();
+    srs2.forEach((sr,i) => { i===0?ctx.moveTo(xC(gbws[i]),ySR(sr)):ctx.lineTo(xC(gbws[i]),ySR(sr)); });
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = cols[vi]; ctx.font = '9px Courier New'; ctx.textAlign = 'left';
+    ctx.fillText(`Vov=${(v*1000).toFixed(0)}mV`, M.left+pw+5, ySR(srs2[srs2.length-1]));
+  });
+
+  // Grid
+  [1e6,10e6,100e6,1000e6].forEach(gbw => {
+    if (gbw >= gbws[0] && gbw <= gbws[gbws.length-1]) {
+      const x = xC(gbw);
+      ctx.strokeStyle='#1a1a1a'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(x,M.top); ctx.lineTo(x,H-M.bottom); ctx.stroke();
+      ctx.fillStyle='#555'; ctx.font='9px Courier New'; ctx.textAlign='center';
+      ctx.fillText(gbw>=1e9?(gbw/1e9)+'GHz':(gbw/1e6)+'MHz', x, H-M.bottom+14);
+    }
+  });
+
+  ctx.strokeStyle='#333'; ctx.strokeRect(M.left,M.top,pw,ph);
+  ctx.fillStyle='#888'; ctx.font='10px Courier New'; ctx.textAlign='center';
+  ctx.fillText('SR (V/µs) = 2π × GBW × Vov  — SR vs GBW for different Vov', M.left+pw/2, M.top-10);
+  ctx.fillText('GBW (Hz) — log scale', M.left+pw/2, H-8);
+
+  // Y labels
+  [0,25,50,75,100].forEach(frac => {
+    const sr = maxSR*frac/100;
+    const y = ySR(sr);
+    ctx.fillStyle='#555'; ctx.font='9px Courier New'; ctx.textAlign='right';
+    ctx.fillText((sr/1e6).toFixed(0)+'V/µs', M.left-4, y+3);
+  });
+}
+
+function drawBudget() {
+  const N    = getSV('nb2',  0);
+  const tset = getSV('tset', 0) * 1e-9;
+  const vstep = getSV('vs2', 2);
+  const beta  = getSV('beta2', 2);
+
+  // Required GBW and SR
+  // Allocate: t_linear = tset/2, t_slew = tset/2
+  const t_lin  = tset * 0.6;
+  const t_slew = tset * 0.4;
+  const GBW_req = (N+1) * Math.LN2 / (2 * Math.PI * t_lin * beta);
+  const SR_req  = vstep / t_slew;
+
+  const vov_implied = SR_req / (2 * Math.PI * GBW_req);
+
+  const canvas = document.getElementById('canvas2');
+  const ctx    = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  const M2 = {top:30, bottom:50, left:60, right:60};
+  const pw = W-M2.left-M2.right, ph = H-M2.top-M2.bottom;
+
+  // Time budget bar
+  const barY = M2.top + ph*0.2;
+  const barH = ph * 0.15;
+  ctx.fillStyle = '#2196f3'; ctx.globalAlpha=0.8;
+  ctx.fillRect(M2.left, barY, pw*0.4, barH);
+  ctx.globalAlpha=1;
+  ctx.fillStyle = '#4caf50'; ctx.globalAlpha=0.8;
+  ctx.fillRect(M2.left+pw*0.4, barY, pw*0.6, barH);
+  ctx.globalAlpha=1;
+  ctx.fillStyle = '#ccc'; ctx.font = '10px Courier New'; ctx.textAlign = 'center';
+  ctx.fillText('Slew phase (40%)', M2.left + pw*0.2, barY + barH/2 + 4);
+  ctx.fillText('Linear settling (60%)', M2.left + pw*0.7, barY + barH/2 + 4);
+
+  // Total bar bracket
+  ctx.strokeStyle = '#888'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(M2.left, barY-5); ctx.lineTo(M2.left+pw, barY-5); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(M2.left, barY-5); ctx.lineTo(M2.left, barY-10); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(M2.left+pw, barY-5); ctx.lineTo(M2.left+pw, barY-10); ctx.stroke();
+  ctx.fillStyle = '#888'; ctx.font = '10px Courier New'; ctx.textAlign = 'center';
+  const labT = tset < 1e-9 ? (tset*1e12).toFixed(0)+'ps' : tset < 1e-6 ? (tset*1e9).toFixed(1)+'ns' : (tset*1e6).toFixed(1)+'µs';
+  ctx.fillText(`t_settle = ${labT}`, M2.left+pw/2, barY-14);
+
+  // Result boxes
+  const fmtF = f => f > 1e9 ? (f/1e9).toFixed(2)+'GHz' : f > 1e6 ? (f/1e6).toFixed(1)+'MHz' : f > 1e3 ? (f/1e3).toFixed(0)+'kHz' : f.toFixed(0)+'Hz';
+  const items = [
+    { label: `GBW required`, val: fmtF(GBW_req), color: '#2196f3' },
+    { label: `SR required`, val: (SR_req/1e6).toFixed(0)+' V/µs', color: '#4caf50' },
+    { label: `Vov implied`, val: (vov_implied*1000).toFixed(0)+' mV', color: '#ff9800' },
+    { label: `${N}-bit accuracy`, val: (vstep/2**(N+1)*1000).toFixed(2)+' mV', color: '#9c27b0' }
+  ];
+
+  const boxY = barY + barH + 20;
+  const boxW = pw / items.length;
+  items.forEach((it, i) => {
+    ctx.fillStyle = it.color; ctx.globalAlpha=0.15;
+    ctx.fillRect(M2.left + i*boxW + 5, boxY, boxW-10, ph*0.35);
+    ctx.globalAlpha=1;
+    ctx.strokeStyle = it.color; ctx.lineWidth = 1;
+    ctx.strokeRect(M2.left + i*boxW + 5, boxY, boxW-10, ph*0.35);
+    ctx.fillStyle = it.color; ctx.font = 'bold 11px Courier New'; ctx.textAlign = 'center';
+    ctx.fillText(it.val, M2.left + (i+0.5)*boxW, boxY + ph*0.18);
+    ctx.fillStyle = '#888'; ctx.font = '9px Courier New';
+    ctx.fillText(it.label, M2.left + (i+0.5)*boxW, boxY + ph*0.28);
+  });
+
+  ctx.fillStyle = '#888'; ctx.font = '10px Courier New'; ctx.textAlign = 'center';
+  ctx.fillText(`${N}-bit settling in ${labT}: β=${beta.toFixed(2)}, ΔV=${vstep.toFixed(2)}V`, W/2, M2.top-4);
+
+  const fmtf = f => f > 1e9 ? (f/1e9).toFixed(2)+'GHz' : f > 1e6 ? (f/1e6).toFixed(1)+'MHz' : (f/1e3).toFixed(0)+'kHz';
+  document.getElementById('ro2').innerHTML = `
+    <div class="ro">Required GBW: <span>${fmtf(GBW_req)}</span></div>
+    <div class="ro">Required SR: <span>${(SR_req/1e6).toFixed(0)} V/µs</span></div>
+    <div class="ro">Implied Vov: <span>${(vov_implied*1000).toFixed(0)} mV</span></div>
+    <div class="ro">SR = 2π×GBW×Vov: <span>${vov_implied < 0.4 ? '✓ Feasible' : '✗ Vov too high'}</span></div>`;
+}
+
+function switchTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===n));
+  document.querySelectorAll('.panel').forEach((p,i) => p.classList.toggle('active', i===n));
+  if (n===0) drawStep();
+  if (n===1) drawSRGBW();
+  if (n===2) drawBudget();
+}
+drawStep();
+</script>
+</body>
+</html>

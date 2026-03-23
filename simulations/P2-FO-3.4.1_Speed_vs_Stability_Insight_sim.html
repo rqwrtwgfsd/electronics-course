@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-FO-3.4.1 — Speed vs Stability</title>
+<style>
+  :root { --accent: #0066cc; --bg: #1a1a1a; --panel: #242424; --border: #333; --text: #e0e0e0; --muted: #888; }
+  @media (prefers-color-scheme: light) { :root { --bg: #f4f4f4; --panel: #fff; --border: #ccc; --text: #1a1a1a; --muted: #555; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+  h1 { font-size: 1.1rem; color: var(--accent); padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .subtitle { font-size: 0.8rem; color: var(--muted); padding: 0 16px 8px; }
+  .layout { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; }
+  .controls { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px; min-width: 230px; flex: 0 0 230px; }
+  .ctrl-group { margin-bottom: 14px; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .val { font-weight: bold; color: var(--accent); }
+  .readout { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 10px; }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 5px 7px; }
+  .card-label { font-size: 0.68rem; color: var(--muted); }
+  .card-val { font-size: 0.84rem; font-weight: bold; color: var(--accent); }
+  .canvases { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 300px; }
+  canvas { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: block; }
+</style>
+</head>
+<body>
+<h1>P2-FO-3.4.1 — Speed vs Stability Trade-off</h1>
+<p class="subtitle">I₀ = C·V/τ &nbsp;|&nbsp; BW_noise = 1/(4τ) &nbsp;|&nbsp; Speed–Noise–Power triangle</p>
+<div class="layout">
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>Time constant τ (µs): <span class="val" id="vTau">10.0</span></label>
+      <input type="range" id="sTau" min="0.5" max="100" step="0.5" value="10">
+    </div>
+    <div class="ctrl-group">
+      <label>Load capacitance C (pF): <span class="val" id="vC">100</span></label>
+      <input type="range" id="sC" min="10" max="1000" step="10" value="100">
+    </div>
+    <div class="ctrl-group">
+      <label>Voltage swing V (V): <span class="val" id="vV">1.0</span></label>
+      <input type="range" id="sV" min="0.1" max="3.3" step="0.1" value="1">
+    </div>
+    <div class="readout">
+      <div class="card"><div class="card-label">Drive current I₀</div><div class="card-val" id="rI0">10.0 µA</div></div>
+      <div class="card"><div class="card-label">Bandwidth BW</div><div class="card-val" id="rBW">15.9 kHz</div></div>
+      <div class="card"><div class="card-label">Noise BW</div><div class="card-val" id="rNBW">25.0 kHz</div></div>
+      <div class="card"><div class="card-label">Rise time t_r</div><div class="card-val" id="rTr">22.0 µs</div></div>
+      <div class="card"><div class="card-label">Power I₀·V</div><div class="card-val" id="rPwr">10.0 µW</div></div>
+      <div class="card"><div class="card-label">BW·I₀ product</div><div class="card-val" id="rProd">159 µA·kHz</div></div>
+    </div>
+  </div>
+  <div class="canvases">
+    <canvas id="cvStep" width="540" height="185"></canvas>
+    <canvas id="cvBode" width="540" height="185"></canvas>
+  </div>
+</div>
+<script>
+function getC2() {
+  const d = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  return { bg: d?'#242424':'#fff', grid: d?'#2e2e2e':'#e8e8e8', mut: d?'#888':'#555' };
+}
+
+function drawStep(tau) {
+  const cv = document.getElementById('cvStep'), ctx = cv.getContext('2d');
+  const W=cv.width,H=cv.height,padL=55,padR=15,padT=22,padB=34,plotW=W-padL-padR,plotH=H-padT-padB;
+  const tMax=5*tau,c=getC2();
+  ctx.fillStyle=c.bg;ctx.fillRect(0,0,W,H);
+  const tx=t=>padL+(t/tMax)*plotW, ty=y=>padT+(1-y)*plotH;
+  ctx.strokeStyle=c.grid;ctx.lineWidth=1;
+  for(let i=0;i<=5;i++){ctx.beginPath();ctx.moveTo(tx(i*tMax/5),padT);ctx.lineTo(tx(i*tMax/5),padT+plotH);ctx.stroke();}
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2.5;ctx.beginPath();
+  for(let i=0;i<=400;i++){const t=i/400*tMax;const y=1-Math.exp(-t/tau);if(i===0)ctx.moveTo(tx(t),ty(y));else ctx.lineTo(tx(t),ty(y));}
+  ctx.stroke();
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#0066cc';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,ty(1));ctx.lineTo(padL+plotW,ty(1));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=c.mut;ctx.font='10px sans-serif';ctx.fillText('Step response y(t)',padL+4,padT+12);
+  ctx.fillText('τ = '+tau.toFixed(1)+' µs',padL+4,padT+24);
+  for(let i=0;i<=5;i++)ctx.fillText((i*tMax/5).toFixed(1),tx(i*tMax/5)-10,padT+plotH+16);
+  ctx.fillText('t (µs)',padL+plotW/2-15,padT+plotH+30);
+}
+
+function drawBode(tau) {
+  const cv = document.getElementById('cvBode'), ctx = cv.getContext('2d');
+  const W=cv.width,H=cv.height,padL=55,padR=15,padT=22,padB=34,plotW=W-padL-padR,plotH=H-padT-padB;
+  const c=getC2();
+  ctx.fillStyle=c.bg;ctx.fillRect(0,0,W,H);
+  const bw=1/(2*Math.PI*tau*1e-6);
+  const fMin=bw*0.01,fMax=bw*100;
+  const tx=f=>padL+(Math.log10(f/fMin)/Math.log10(fMax/fMin))*plotW;
+  const ty=db=>padT+(1-(db+40)/40)*plotH;
+  ctx.strokeStyle=c.grid;ctx.lineWidth=1;
+  for(let d=10;d<=10000;d*=10){ctx.beginPath();ctx.moveTo(tx(bw*d/1000),padT);ctx.lineTo(tx(bw*d/1000),padT+plotH);ctx.stroke();}
+  // Asymptote at BW
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#ff8844';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(tx(bw),padT);ctx.lineTo(tx(bw),padT+plotH);ctx.stroke();ctx.setLineDash([]);
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2;ctx.beginPath();
+  for(let i=0;i<=300;i++){
+    const f=fMin*Math.pow(fMax/fMin,i/300);
+    const wt=2*Math.PI*f*tau*1e-6;
+    const db=-20*Math.log10(Math.sqrt(1+wt*wt));
+    if(i===0)ctx.moveTo(tx(f),ty(db));else ctx.lineTo(tx(f),ty(db));
+  }
+  ctx.stroke();
+  ctx.fillStyle='#ff8844';ctx.font='10px sans-serif';ctx.fillText(`BW=${bw>=1000?(bw/1000).toFixed(1)+'kHz':bw.toFixed(0)+'Hz'}`,tx(bw)+4,padT+14);
+  ctx.fillStyle=c.mut;ctx.font='10px sans-serif';ctx.fillText('Bode magnitude |H(f)| (dB)',padL+4,padT+12);
+  for(let i=0;i<=4;i++)ctx.fillText((i*(-10)).toFixed(0)+'dB',2,ty(i*(-10))+4);
+}
+
+function draw(){
+  const tau=parseFloat(document.getElementById('sTau').value);
+  const C=parseFloat(document.getElementById('sC').value);
+  const V=parseFloat(document.getElementById('sV').value);
+  document.getElementById('vTau').textContent=tau.toFixed(1);
+  document.getElementById('vC').textContent=C;
+  document.getElementById('vV').textContent=V.toFixed(1);
+  const I0=C*1e-12*V/(tau*1e-6)*1e6; // µA
+  const bw=1/(2*Math.PI*tau*1e-6);
+  const nbw=1/(4*tau*1e-6);
+  const tr=2.197*tau;
+  document.getElementById('rI0').textContent=I0.toFixed(1)+' µA';
+  document.getElementById('rBW').textContent=bw>=1000?(bw/1000).toFixed(1)+' kHz':bw.toFixed(0)+' Hz';
+  document.getElementById('rNBW').textContent=nbw>=1000?(nbw/1000).toFixed(1)+' kHz':nbw.toFixed(0)+' Hz';
+  document.getElementById('rTr').textContent=tr.toFixed(1)+' µs';
+  document.getElementById('rPwr').textContent=(I0*V/1000).toFixed(2)+' µW';
+  document.getElementById('rProd').textContent=(I0*bw/1000).toFixed(1)+' µA·Hz';
+  drawStep(tau);
+  drawBode(tau);
+}
+
+['sTau','sC','sV'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',draw);
+draw();
+</script>
+</body>
+</html>

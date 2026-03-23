@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-FLT-3.6.1 Notch and Band-Pass Filters</title>
+<style>
+  :root{--bg:#f5f5f5;--panel:#fff;--text:#1a1a1a;--muted:#666;--border:#ddd;
+    --a:#2563eb;--a2:#16a34a;--a3:#dc2626;--a4:#9333ea;--a5:#ea580c;
+    --cb:#fafafa;--gr:#e5e7eb;--hi:#fef9c3;--tb:#bfdbfe;}
+  @media(prefers-color-scheme:dark){:root{
+    --bg:#0f1117;--panel:#1e2130;--text:#e8eaf0;--muted:#8892a4;--border:#2d3348;
+    --a:#60a5fa;--a2:#4ade80;--a3:#f87171;--a4:#c084fc;--a5:#fb923c;
+    --cb:#161926;--gr:#2d3348;--hi:#2d2a0f;--tb:#3b82f6;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px;}
+  h1{font-size:16px;font-weight:700;padding:12px 18px;border-bottom:1px solid var(--border);background:var(--panel);}
+  h1 span{color:var(--muted);font-size:13px;font-weight:400;margin-left:8px;}
+  .layout{display:flex;height:calc(100vh - 47px);}
+  .left{width:285px;background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
+  .right{flex:1;display:flex;flex-direction:column;padding:10px;gap:8px;overflow:hidden;}
+  .sec{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:10px;}
+  .sec h3{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;}
+  label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:3px;}
+  label span{font-weight:600;color:var(--a);}
+  input[type=range]{width:100%;accent-color:var(--a);cursor:pointer;margin-bottom:5px;}
+  .btn-row{display:flex;gap:4px;margin-bottom:6px;}
+  .tbtn{flex:1;padding:5px;text-align:center;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg);color:var(--muted);}
+  .tbtn.active{background:var(--a);color:#fff;border-color:var(--a);}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+  .card{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;}
+  .card .lb{font-size:10px;color:var(--muted);text-transform:uppercase;}
+  .card .vl{font-size:13px;font-weight:700;font-family:monospace;color:var(--a);margin-top:2px;}
+  .card.g .vl{color:var(--a2);}
+  .card.r .vl{color:var(--a3);}
+  .card.p .vl{color:var(--a4);}
+  canvas{display:block;border-radius:6px;background:var(--cb);border:1px solid var(--border);width:100%;}
+  .tip{background:var(--hi);border:1px solid var(--tb);border-radius:6px;padding:8px;font-size:11px;line-height:1.5;}
+</style>
+</head>
+<body>
+<h1>M4A-FLT-3.6.1 — Notch and Band-Pass Filters <span>Q effect, twin-T notch depth, MFB bandpass</span></h1>
+<div class="layout">
+<div class="left">
+
+  <div class="sec">
+    <h3>Filter Mode</h3>
+    <div class="btn-row">
+      <div class="tbtn active" id="btn_notch" onclick="setMode('notch')">Notch</div>
+      <div class="tbtn" id="btn_bp" onclick="setMode('bp')">Bandpass</div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3>Center Frequency & Q</h3>
+    <label>f0 (Hz) <span id="lbl_f0">60</span></label>
+    <input type="range" id="f0" min="0.5" max="5000" value="60" step="0.5" oninput="update()">
+    <label>Q factor <span id="lbl_q">5</span></label>
+    <input type="range" id="q_val" min="0.1" max="50" value="5" step="0.1" oninput="update()">
+    <label>Null depth (notch) (dB) <span id="lbl_depth">40</span></label>
+    <input type="range" id="depth" min="10" max="80" value="40" step="5" oninput="update()">
+  </div>
+
+  <div class="sec">
+    <h3>Component Tolerance</h3>
+    <label>Mismatch (%) <span id="lbl_mm">0</span></label>
+    <input type="range" id="mismatch" min="0" max="5" value="0" step="0.1" oninput="update()">
+    <p style="font-size:10px;color:var(--muted);margin-top:4px;">Shows how component mismatch degrades notch depth and shifts f0.</p>
+  </div>
+
+  <div class="sec">
+    <h3>Results</h3>
+    <div class="grid2">
+      <div class="card"><div class="lb">f0</div><div class="vl" id="r_f0">—</div></div>
+      <div class="card g"><div class="lb">Q</div><div class="vl" id="r_q">—</div></div>
+      <div class="card r"><div class="lb">Bandwidth</div><div class="vl" id="r_bw">—</div></div>
+      <div class="card p"><div class="lb">Notch Depth</div><div class="vl" id="r_depth">—</div></div>
+      <div class="card"><div class="lb">f-3dB low</div><div class="vl" id="r_fl">—</div></div>
+      <div class="card"><div class="lb">f-3dB high</div><div class="vl" id="r_fh">—</div></div>
+    </div>
+  </div>
+
+  <div class="tip" id="tip">Higher Q = narrower notch or narrower bandpass. Component mismatch reduces notch depth.</div>
+
+</div>
+<div class="right">
+  <canvas id="c_mag" style="flex:3;"></canvas>
+  <canvas id="c_time" style="flex:2;"></canvas>
+</div>
+</div>
+<script>
+let mode='notch';
+function setMode(m){
+  mode=m;
+  document.getElementById('btn_notch').classList.toggle('active',m==='notch');
+  document.getElementById('btn_bp').classList.toggle('active',m==='bp');
+  update();
+}
+
+function cv(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function getCtx(id){
+  const c=document.getElementById(id);
+  c.width=c.offsetWidth*devicePixelRatio;
+  c.height=c.offsetHeight*devicePixelRatio;
+  const ctx=c.getContext('2d');
+  ctx.scale(devicePixelRatio,devicePixelRatio);
+  ctx.W=c.offsetWidth;ctx.H=c.offsetHeight;
+  return ctx;
+}
+function fmtHz(f){
+  if(f>=1e6) return (f/1e6).toFixed(2)+' MHz';
+  if(f>=1e3) return (f/1e3).toFixed(1)+' kHz';
+  return f.toFixed(f>100?0:f>10?1:2)+' Hz';
+}
+
+function notchGain(f, f0, Q, depth_db, mismatch_pct) {
+  // Ideal notch: H(jw) = (s^2 + wn^2)/(s^2 + wn/Q * s + wn^2)
+  const w=2*Math.PI*f, wn=2*Math.PI*f0;
+  const re=wn*wn-w*w;
+  const im=w*wn/Q;
+  const num=Math.sqrt(re*re); // |jw)^2 + wn^2|
+  const den=Math.sqrt(re*re+im*im);
+  // Mismatch reduces null depth
+  const mm=mismatch_pct/100;
+  const null_db_ideal=depth_db;
+  // Near notch: residual from mismatch ≈ mm × passband_level
+  const near_notch=Math.abs(f-f0)/f0<1/(2*Q);
+  const residual_db=near_notch?-null_db_ideal*(1-mm*Q*10):-200;
+  const ideal=num/den;
+  const ideal_db=20*Math.log10(Math.max(ideal,1e-10));
+  // Add mismatch floor
+  const floor_db=-null_db_ideal+20*Math.log10(Math.max(mm*Q,0.01));
+  return Math.max(ideal_db, floor_db);
+}
+
+function bpGain(f, f0, Q) {
+  // H(jw) = (wn/Q)*s / (s^2 + wn/Q*s + wn^2)
+  const w=2*Math.PI*f, wn=2*Math.PI*f0;
+  const num=w*wn/Q;
+  const re=wn*wn-w*w;
+  const im=w*wn/Q;
+  const den=Math.sqrt(re*re+im*im);
+  return 20*Math.log10(Math.max(num/den,1e-10));
+}
+
+function update(){
+  const f0=parseFloat(document.getElementById('f0').value);
+  const Q=parseFloat(document.getElementById('q_val').value);
+  const depth=parseFloat(document.getElementById('depth').value);
+  const mm=parseFloat(document.getElementById('mismatch').value);
+
+  document.getElementById('lbl_f0').textContent=f0.toFixed(1);
+  document.getElementById('lbl_q').textContent=Q.toFixed(1);
+  document.getElementById('lbl_depth').textContent=depth;
+  document.getElementById('lbl_mm').textContent=mm.toFixed(1);
+
+  const bw=f0/Q;
+  const fL_3=f0*(Math.sqrt(1+1/(4*Q*Q))-1/(2*Q));
+  const fH_3=f0*(Math.sqrt(1+1/(4*Q*Q))+1/(2*Q));
+
+  // Notch depth with mismatch
+  const actual_depth=depth-20*Math.log10(Math.max(mm/100*Q*10,0.001)+0.001);
+
+  document.getElementById('r_f0').textContent=fmtHz(f0);
+  document.getElementById('r_q').textContent=Q.toFixed(2);
+  document.getElementById('r_bw').textContent=fmtHz(bw);
+  document.getElementById('r_depth').textContent=mm>0?(Math.min(depth,depth-20*Math.log10(mm/100*Q*2+0.001))).toFixed(0)+' dB':'~'+depth+' dB';
+  document.getElementById('r_fl').textContent=fmtHz(fL_3);
+  document.getElementById('r_fh').textContent=fmtHz(fH_3);
+
+  document.getElementById('tip').textContent=
+    mode==='notch'
+    ?(mm>0?`Component mismatch ${mm.toFixed(1)}% reduces notch depth. Q=${Q.toFixed(1)} means ${bw.toFixed(1)} Hz null bandwidth at -40 dB.`:`Notch at ${fmtHz(f0)}, Q=${Q.toFixed(1)}, BW=${fmtHz(bw)}. Zero component mismatch = ideal null depth.`)
+    :`Bandpass: f0=${fmtHz(f0)}, Q=${Q.toFixed(1)}, -3 dB BW=${fmtHz(bw)} (${fmtHz(fL_3)} to ${fmtHz(fH_3)}).`;
+
+  drawMag(f0, Q, depth, mm);
+  drawTime(f0, Q, depth, mm);
+}
+
+function drawMag(f0, Q, depth, mm){
+  const ctx=getCtx('c_mag');
+  const W=ctx.W,H=ctx.H,pl=55,pr=18,pt=28,pb=34;
+  const pw=W-pl-pr,ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  const fMin=f0*0.05,fMax=f0*20;
+  const lMin=Math.log10(fMin),lMax=Math.log10(fMax);
+  const dbMin=-70,dbMax=10;
+  const fx=f=>pl+(Math.log10(f)-lMin)/(lMax-lMin)*pw;
+  const fy=db=>pt+(1-(db-dbMin)/(dbMax-dbMin))*ph;
+
+  ctx.strokeStyle=cv('--gr');ctx.lineWidth=0.7;
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    if(x>=pl&&x<=pl+pw){ctx.beginPath();ctx.moveTo(x,pt);ctx.lineTo(x,pt+ph);ctx.stroke();}
+  }
+  [-70,-60,-50,-40,-30,-20,-10,0].forEach(db=>{
+    const y=fy(db);
+    if(y>=pt&&y<=pt+ph){
+      ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+pw,y);ctx.stroke();
+      ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';ctx.fillText(db,2,y+4);
+    }
+  });
+
+  // f0 marker
+  const xf0=fx(f0);
+  ctx.strokeStyle=cv('--a2');ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(xf0,pt);ctx.lineTo(xf0,pt+ph);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=cv('--a2');ctx.font='10px system-ui';ctx.fillText('f0='+fmtHz(f0),xf0+3,pt+12);
+
+  const gainFn = mode==='notch' ? f=>notchGain(f,f0,Q,depth,mm) : f=>bpGain(f,f0,Q);
+
+  // Ideal (no mismatch)
+  if(mode==='notch'&&mm>0){
+    ctx.strokeStyle=cv('--a5');ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+    ctx.beginPath();let first=true;
+    for(let i=0;i<=800;i++){
+      const lf=lMin+i/800*(lMax-lMin);
+      const f=Math.pow(10,lf);
+      const db=notchGain(f,f0,Q,depth,0);
+      const x=pl+i/800*pw,y=fy(Math.max(dbMin,Math.min(dbMax,db)));
+      if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+    }
+    ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=cv('--a5');ctx.font='10px system-ui';ctx.fillText('Ideal (no mismatch)',pl+pw-120,pt+14);
+  }
+
+  // Real
+  const color=mode==='notch'?cv('--a'):cv('--a4');
+  ctx.strokeStyle=color;ctx.lineWidth=2.5;
+  ctx.beginPath();let first=true;
+  for(let i=0;i<=800;i++){
+    const lf=lMin+i/800*(lMax-lMin);
+    const f=Math.pow(10,lf);
+    const db=gainFn(f);
+    const x=pl+i/800*pw,y=fy(Math.max(dbMin,Math.min(dbMax,db)));
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // -3 dB line
+  ctx.strokeStyle=cv('--a3');ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pl,fy(-3));ctx.lineTo(pl+pw,fy(-3));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=cv('--a3');ctx.font='9px system-ui';ctx.fillText('-3',pl+2,fy(-3)-2);
+
+  ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    const f=Math.pow(10,d);
+    const l=f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f;
+    if(x>=pl&&x<=pl+pw)ctx.fillText(l,x-6,pt+ph+14);
+  }
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Gain (dB)',4,pt-8);
+  ctx.fillText('Frequency',pl+pw/2-30,H-2);
+  ctx.fillText((mode==='notch'?'Notch':'Bandpass')+' Filter — f0='+fmtHz(f0)+', Q='+Q.toFixed(1),pl+4,pt-10);
+}
+
+function drawTime(f0, Q, depth, mm){
+  const ctx=getCtx('c_time');
+  const W=ctx.W,H=ctx.H,pl=50,pr=18,pt=24,pb=28;
+  const pw=W-pl-pr,ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText(mode==='notch'?'60 Hz Hum Rejection (Notch)':'Bandpass Output (single-freq input)',pl+4,pt-8);
+
+  const T=5/f0; // 5 cycles
+  const tx=t=>pl+t/T*pw;
+  const vy=v=>pt+ph/2-v*ph*0.35;
+
+  // Grid
+  ctx.strokeStyle=cv('--gr');ctx.lineWidth=0.7;
+  ctx.beginPath();ctx.moveTo(pl,pt+ph/2);ctx.lineTo(pl+pw,pt+ph/2);ctx.stroke();
+
+  // Input signal at f0
+  ctx.strokeStyle=cv('--a3');ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+  ctx.beginPath();let first=true;
+  for(let i=0;i<=500;i++){
+    const t=i/500*T;
+    const v=Math.sin(2*Math.PI*f0*t);
+    const x=tx(t),y=vy(v);
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();ctx.setLineDash([]);
+
+  // Output signal (attenuated at f0 for notch, passed for bandpass)
+  const att_lin=mode==='notch'?Math.pow(10,notchGain(f0,f0,Q,depth,mm)/20):1.0;
+  ctx.strokeStyle=mode==='notch'?cv('--a'):cv('--a4');ctx.lineWidth=2.5;
+  ctx.beginPath();first=true;
+  for(let i=0;i<=500;i++){
+    const t=i/500*T;
+    const v=att_lin*Math.sin(2*Math.PI*f0*t);
+    const x=tx(t),y=vy(v);
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Labels
+  ctx.fillStyle=cv('--a3');ctx.font='10px system-ui';ctx.fillText('Input',pl+4,pt+14);
+  ctx.fillStyle=mode==='notch'?cv('--a'):cv('--a4');
+  const att_db=mode==='notch'?notchGain(f0,f0,Q,depth,mm):bpGain(f0,f0,Q);
+  ctx.fillText('Output ('+att_db.toFixed(0)+' dB @ f0)',pl+4,pt+26);
+
+  ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';
+  [0,1,2,3,4,5].forEach(k=>{
+    const t=k/f0,x=tx(t);
+    if(x>=pl&&x<=pl+pw) ctx.fillText(k+'T',x-6,pt+ph+14);
+  });
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Amplitude',4,pt-4);
+}
+
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

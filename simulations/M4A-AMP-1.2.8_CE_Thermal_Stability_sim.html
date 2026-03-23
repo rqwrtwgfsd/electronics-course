@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.2.8 — CE Thermal Stability</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;gap:16px;align-items:baseline;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:270px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .status{padding:4px 8px;border-radius:3px;text-align:center;font-size:11px;font-weight:bold;margin-top:4px;}
+  .ok{background:#005500;color:#fff;}.warn{background:#885500;color:#fff;}.bad{background:#880000;color:#fff;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:14px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.2.8</div>
+  <div class="topic">CE Thermal Stability — Runaway Risk & Stability Factor</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>Bias Circuit</h3>
+      <label>VCC: <b id="vcc_lbl">12</b> V</label>
+      <input type="range" id="vcc" min="3" max="30" value="12" step="1">
+      <label>R1 (kΩ): <b id="r1_lbl">47</b></label>
+      <input type="range" id="r1" min="1" max="500" value="47" step="1">
+      <label>R2 (kΩ): <b id="r2_lbl">10</b></label>
+      <input type="range" id="r2" min="1" max="100" value="10" step="1">
+      <label>RE (Ω): <b id="re_lbl">1000</b></label>
+      <input type="range" id="re" min="0" max="5000" value="1000" step="50">
+      <label>RC (kΩ): <b id="rc_lbl">4.7</b></label>
+      <input type="range" id="rc" min="0.5" max="20" value="4.7" step="0.1">
+    </div>
+    <div class="cg">
+      <h3>Transistor</h3>
+      <label>β (at 25°C): <b id="b_lbl">150</b></label>
+      <input type="range" id="beta" min="30" max="500" value="150" step="5">
+      <label>θJA (°C/W): <b id="th_lbl">50</b></label>
+      <input type="range" id="thjа" min="1" max="200" value="50" step="1">
+    </div>
+    <div class="cg">
+      <h3>Thermal Analysis</h3>
+      <div class="rd">IC (25°C): <span id="r_ic25">—</span> mA</div>
+      <div class="rd">VCE (25°C): <span id="r_vce25">—</span> V</div>
+      <div class="rd">PD (25°C): <span id="r_pd25">—</span> mW</div>
+      <div class="rd">TJ (25°C): <span id="r_tj25">—</span> °C</div>
+      <div class="rd">Stability factor S: <span id="r_s">—</span></div>
+      <div id="stab_st" class="status ok">STABLE</div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_ic">—</div><div class="l">IC (mA)</div></div>
+      <div class="met"><div class="v" id="m_tj">—</div><div class="l">TJ (°C)</div></div>
+      <div class="met"><div class="v" id="m_s">—</div><div class="l">Stab. Factor S</div></div>
+      <div class="met"><div class="v" id="m_var">—</div><div class="l">IC Var/50°C</div></div>
+    </div>
+    <div>
+      <div class="pl">IC vs Junction Temperature — stability feedback effect</div>
+      <canvas id="icCanvas" height="210"></canvas>
+    </div>
+    <div>
+      <div class="pl">Thermal Load Line — operating point stability</div>
+      <canvas id="thermalCanvas" height="170"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+const VBE25=0.7, VBE_TC=-0.002; // -2mV/°C
+const BETA_TC=0.005; // +0.5%/°C
+function par(a,b){return a*b/(a+b);}
+
+function getIC(vth,rth,beta,re,T){
+  const vbe=VBE25+VBE_TC*(T-25);
+  const bt=beta*(1+BETA_TC*(T-25));
+  return Math.max(0,(vth-vbe)/(re+rth/bt));
+}
+
+function update(){
+  const vcc=parseFloat(document.getElementById('vcc').value);
+  const r1=parseFloat(document.getElementById('r1').value)*1e3;
+  const r2=parseFloat(document.getElementById('r2').value)*1e3;
+  const re=parseFloat(document.getElementById('re').value);
+  const rc=parseFloat(document.getElementById('rc').value)*1e3;
+  const beta=parseFloat(document.getElementById('beta').value);
+  const thja=parseFloat(document.getElementById('thjа').value);
+  document.getElementById('vcc_lbl').textContent=vcc;
+  document.getElementById('r1_lbl').textContent=(r1/1e3).toFixed(0);
+  document.getElementById('r2_lbl').textContent=(r2/1e3).toFixed(0);
+  document.getElementById('re_lbl').textContent=re;
+  document.getElementById('rc_lbl').textContent=(rc/1e3).toFixed(1);
+  document.getElementById('b_lbl').textContent=beta;
+  document.getElementById('th_lbl').textContent=thja;
+  const vth=vcc*r2/(r1+r2);
+  const rth=par(r1,r2);
+  const ic25=getIC(vth,rth,beta,re,25);
+  const ve25=ic25*re;
+  const vc25=vcc-ic25*rc;
+  const vce25=vc25-ve25;
+  const pd25=vce25*ic25;
+  const tj25=25+thja*pd25;
+  const S=(beta+1)/(1+beta*re/rth);
+  const ic75=getIC(vth,rth,beta,re,75);
+  const icVar=ic25>0?Math.abs(ic75-ic25)/ic25*100:0;
+  document.getElementById('r_ic25').textContent=(ic25*1000).toFixed(2);
+  document.getElementById('r_vce25').textContent=vce25.toFixed(2);
+  document.getElementById('r_pd25').textContent=(pd25*1000).toFixed(1);
+  document.getElementById('r_tj25').textContent=tj25.toFixed(1);
+  document.getElementById('r_s').textContent=S.toFixed(1);
+  document.getElementById('m_ic').textContent=(ic25*1000).toFixed(2);
+  document.getElementById('m_tj').textContent=tj25.toFixed(0);
+  document.getElementById('m_s').textContent=S.toFixed(1);
+  document.getElementById('m_var').textContent=icVar.toFixed(1)+'%';
+  const st=document.getElementById('stab_st');
+  if(S<5){st.textContent='VERY STABLE (S<5)';st.className='status ok';}
+  else if(S<10){st.textContent='STABLE (S<10)';st.className='status ok';}
+  else if(S<20){st.textContent='MARGINAL (S<20)';st.className='status warn';}
+  else{st.textContent='UNSTABLE (S≥20)';st.className='status bad';}
+  drawIC(vth,rth,beta,re,rc,vcc);
+  drawThermal(ic25,vce25,pd25,thja);
+}
+
+function drawIC(vth,rth,beta,re,rc,vcc){
+  const canvas=document.getElementById('icCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:50,r:10,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const T_MIN=-40,T_MAX=150;
+  const ic25=getIC(vth,rth,beta,re,25);
+  const IC_MAX=ic25*2;
+  function xOf(T){return pad.l+(T-T_MIN)/(T_MAX-T_MIN)*pw;}
+  function yOf(ic){return pad.t+ph-Math.min(ic,IC_MAX)/IC_MAX*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const ic=i/4*IC_MAX;const y=yOf(ic);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText((ic*1000).toFixed(1)+'mA',2,y+3);
+  }
+  [-40,0,25,50,85,125,150].forEach(T=>{
+    const x=xOf(T);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(T+'°',x-8,H-4);
+  });
+
+  // With RE curve
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const T=T_MIN+px/pw*(T_MAX-T_MIN);
+    const ic=getIC(vth,rth,beta,re,T);
+    const y=yOf(ic);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  // Fixed bias (re=0) curve
+  ctx.strokeStyle='#cc0000';ctx.lineWidth=2;ctx.setLineDash([6,3]);
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const T=T_MIN+px/pw*(T_MAX-T_MIN);
+    const ic=getIC(vth,rth,beta,0,T);
+    const y=yOf(Math.min(ic,IC_MAX));
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();ctx.setLineDash([]);
+
+  // Tj_max line
+  const xTj=xOf(150);
+  ctx.strokeStyle='#cc4400';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(xTj,pad.t);ctx.lineTo(xTj,pad.t+ph);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#cc4400';ctx.font='9px Courier New';ctx.fillText('Tj_max',xTj+3,14);
+
+  ctx.font='10px Courier New';
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.fillText('── With RE (stable)',W-220,20);
+  ctx.fillStyle='#cc0000';ctx.fillText('-- RE=0 (fixed bias)',W-220,34);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.fillText('Temperature →',W/2-40,H-1);
+}
+
+function drawThermal(ic0,vce0,pd0,thja){
+  const canvas=document.getElementById('thermalCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:50,r:10,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const PD_MAX=Math.max(pd0*3,5);
+  const TJ_MAX=200;
+  function xOf(pd){return pad.l+pd/PD_MAX*pw;}
+  function yOf(T){return pad.t+ph-T/TJ_MAX*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [0,50,100,150,200].forEach(T=>{
+    const y=yOf(T);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(T+'°',2,y+3);
+  });
+  [0,1,2,5].forEach(pd=>{
+    const x=xOf(pd*pd0);
+    if(x>pad.l && x<pad.l+pw){
+      ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+      ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+      ctx.fillText((pd*pd0*1000).toFixed(0)+'mW',x-15,H-4);
+    }
+  });
+
+  // Thermal load line: TJ = 25 + θJA×PD
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const pd=px/pw*PD_MAX;
+    const TJ=25+thja*pd;
+    const y=yOf(TJ);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  // Tj_max = 150°C line
+  ctx.strokeStyle='#cc0000';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,yOf(150));ctx.lineTo(pad.l+pw,yOf(150));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#cc0000';ctx.font='9px Courier New';ctx.fillText('Tj_max',pad.l+3,yOf(150)-3);
+
+  // Q-point
+  const qx=xOf(pd0),qy=yOf(25+thja*pd0);
+  const qColor=25+thja*pd0>150?'#cc0000':'#ff8800';
+  ctx.fillStyle=qColor;ctx.beginPath();ctx.arc(qx,qy,6,0,2*Math.PI);ctx.fill();
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+  ctx.fillText('TJ='+(25+thja*pd0).toFixed(0)+'°C',qx+7,qy-2);
+
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='10px Courier New';
+  ctx.fillText('Power Dissipation →',W/2-50,H-1);
+  ctx.save();ctx.translate(12,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('TJ(°C)',0,0);ctx.restore();
+}
+
+['vcc','r1','r2','re','rc','beta','thjа'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

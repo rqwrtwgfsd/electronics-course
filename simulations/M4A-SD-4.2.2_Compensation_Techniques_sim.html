@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-SD-4.2.2 — Compensation Techniques</title>
+<style>
+:root {
+  --bg: #f5f5f5; --panel: #ffffff; --border: #d0d0d0;
+  --text: #1a1a1a; --text2: #555; --accent: #1a6fc4;
+  --green: #2a9d2a; --orange: #e07b00; --red: #c42a2a;
+  --grid: #e0e0e0;
+  --c0: #1a6fc4; --c1: #2a9d2a; --c2: #c47a00; --c3: #9a2ac4;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a1a; --panel: #252525; --border: #404040;
+    --text: #e8e8e8; --text2: #aaa; --accent: #4a9fe8;
+    --green: #4acd4a; --orange: #f0a030; --red: #e85050;
+    --grid: #333;
+    --c0: #4a9fe8; --c1: #4acd4a; --c2: #f0a030; --c3: #d06af0;
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; }
+h1 { font-size: 1.1rem; padding: 12px 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
+h1 span { color: var(--text2); font-weight: normal; font-size: 0.85rem; }
+.layout { display: grid; grid-template-columns: 290px 1fr; gap: 0; height: calc(100vh - 44px); }
+.controls { background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; padding: 12px; }
+.plots { display: grid; grid-template-rows: 1fr 1fr; overflow: hidden; }
+.plot-wrap { position: relative; background: var(--bg); border-bottom: 1px solid var(--border); }
+.plot-wrap:last-child { border-bottom: none; }
+canvas { display: block; width: 100%; height: 100%; }
+.section { margin-bottom: 14px; }
+.section-title { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text2); margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+.ctrl { margin-bottom: 8px; }
+.ctrl label { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 3px; }
+.ctrl label span { color: var(--accent); font-weight: 600; font-family: monospace; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.comp-tabs { display: flex; gap: 4px; margin-bottom: 8px; flex-wrap: wrap; }
+.tab-btn { flex: 1; min-width: 70px; background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 4px 6px; font-size: 0.75rem; cursor: pointer; text-align: center; transition: all 0.15s; }
+.tab-btn.active { color: #fff; border-color: transparent; }
+.tab-btn[data-tab="none"].active   { background: var(--c0); }
+.tab-btn[data-tab="dominant"].active { background: var(--c1); }
+.tab-btn[data-tab="lead"].active   { background: var(--c2); }
+.tab-btn[data-tab="miller"].active { background: var(--c3); }
+.comp-panel { display: none; }
+.comp-panel.visible { display: block; }
+.verdict { border-radius: 6px; padding: 7px 10px; margin-bottom: 10px; font-size: 0.82rem; font-weight: 600; text-align: center; }
+.verdict.stable   { background: #2a9d2a22; border: 1px solid var(--green); color: var(--green); }
+.verdict.marginal { background: #e07b0022; border: 1px solid var(--orange); color: var(--orange); }
+.verdict.unstable { background: #c42a2a22; border: 1px solid var(--red); color: var(--red); }
+.readout-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.readout { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 5px 7px; }
+.readout .label { font-size: 0.7rem; color: var(--text2); }
+.readout .value { font-size: 0.85rem; font-weight: 700; font-family: monospace; }
+.ok { color: var(--green); } .warn { color: var(--orange); } .bad { color: var(--red); }
+.plot-label { position: absolute; top: 6px; left: 10px; font-size: 0.75rem; color: var(--text2); pointer-events: none; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px; font-size: 0.75rem; margin-top: 6px; }
+.leg-item { display: flex; align-items: center; gap: 4px; }
+.leg-dot { width: 14px; height: 3px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<h1>M4A-SD-4.2.2 — Compensation Techniques <span>| Dominant-Pole / Lead / Miller</span></h1>
+<div class="layout">
+  <div class="controls">
+
+    <div class="section">
+      <div class="section-title">Plant (Uncompensated Loop)</div>
+      <div class="ctrl">
+        <label>DC Loop Gain <span id="val-dcg">60 dB</span></label>
+        <input type="range" id="sl-dcg" min="20" max="80" step="2" value="60">
+      </div>
+      <div class="ctrl">
+        <label>1st Plant Pole fp1 <span id="val-fp1">10 kHz</span></label>
+        <input type="range" id="sl-fp1" min="1" max="200" step="1" value="10">
+      </div>
+      <div class="ctrl">
+        <label>2nd Plant Pole fp2 <span id="val-fp2">200 kHz</span></label>
+        <input type="range" id="sl-fp2" min="10" max="2000" step="10" value="200">
+      </div>
+      <div class="ctrl">
+        <label>3rd Plant Pole fp3 <span id="val-fp3">OFF</span></label>
+        <input type="range" id="sl-fp3" min="0" max="2000" step="20" value="0">
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Compensation Type</div>
+      <div class="comp-tabs">
+        <button class="tab-btn active" data-tab="none">None</button>
+        <button class="tab-btn" data-tab="dominant">Dominant Pole</button>
+        <button class="tab-btn" data-tab="lead">Lead</button>
+        <button class="tab-btn" data-tab="miller">Miller</button>
+      </div>
+
+      <div class="comp-panel visible" id="panel-none">
+        <div style="font-size:0.78rem;color:var(--text2);padding:4px 0;">No compensation applied. Shows uncompensated system.</div>
+      </div>
+
+      <div class="comp-panel" id="panel-dominant">
+        <div class="ctrl">
+          <label>Comp. Pole fp_comp <span id="val-fpc">1 kHz</span></label>
+          <input type="range" id="sl-fpc" min="0.1" max="50" step="0.1" value="1">
+        </div>
+        <div style="font-size:0.75rem;color:var(--text2);">Adds a low-frequency pole. Rolls off gain before problematic poles. Reduces bandwidth.</div>
+      </div>
+
+      <div class="comp-panel" id="panel-lead">
+        <div class="ctrl">
+          <label>Lead Zero fz <span id="val-fz">20 kHz</span></label>
+          <input type="range" id="sl-fz" min="1" max="500" step="1" value="20">
+        </div>
+        <div class="ctrl">
+          <label>Lead Pole fz_p <span id="val-fzp">200 kHz</span></label>
+          <input type="range" id="sl-fzp" min="10" max="2000" step="10" value="200">
+        </div>
+        <div style="font-size:0.75rem;color:var(--text2);">Injects phase lead at crossover. Zero adds phase; pole restores slope.</div>
+      </div>
+
+      <div class="comp-panel" id="panel-miller">
+        <div class="ctrl">
+          <label>Miller Cap Cm <span id="val-cm">10 pF</span></label>
+          <input type="range" id="sl-cm" min="1" max="100" step="1" value="10">
+        </div>
+        <div class="ctrl">
+          <label>Stage Gain Av <span id="val-av">100 ×</span></label>
+          <input type="range" id="sl-av" min="10" max="1000" step="10" value="100">
+        </div>
+        <div class="ctrl">
+          <label>Node Resistance Rn <span id="val-rn">10 kΩ</span></label>
+          <input type="range" id="sl-rn" min="1" max="100" step="1" value="10">
+        </div>
+        <div style="font-size:0.75rem;color:var(--text2);">Effective C = Av×Cm. Dominant pole = 1/(2π×Rn×Ceff). Pushes 2nd pole higher.</div>
+      </div>
+    </div>
+
+    <div id="verdict-box" class="verdict stable">STABLE</div>
+
+    <div class="section">
+      <div class="section-title">Results — Uncompensated vs. Compensated</div>
+      <div class="readout-grid">
+        <div class="readout"><div class="label">PM (uncomp)</div><div class="value" id="ro-pm0">—</div></div>
+        <div class="readout"><div class="label">PM (comp)</div><div class="value" id="ro-pm1">—</div></div>
+        <div class="readout"><div class="label">fc (uncomp)</div><div class="value" id="ro-fc0">—</div></div>
+        <div class="readout"><div class="label">fc (comp)</div><div class="value" id="ro-fc1">—</div></div>
+        <div class="readout"><div class="label">BW ratio</div><div class="value" id="ro-bwr">—</div></div>
+        <div class="readout"><div class="label">PM gained</div><div class="value" id="ro-pmg">—</div></div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="leg-item"><div class="leg-dot" style="background:var(--c0)"></div><span>Uncomp.</span></div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--c1);"></div><span>Compensated</span></div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--c2);border-top:2px dashed var(--c2)"></div><span>Comp. network</span></div>
+    </div>
+
+  </div>
+
+  <div class="plots">
+    <div class="plot-wrap">
+      <div class="plot-label">Bode — Magnitude</div>
+      <canvas id="mag-canvas"></canvas>
+    </div>
+    <div class="plot-wrap">
+      <div class="plot-label">Bode — Phase</div>
+      <canvas id="pha-canvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+let activeComp = 'none';
+
+function getPlant() {
+  return {
+    K:    Math.pow(10, +document.getElementById('sl-dcg').value / 20),
+    fp1:  +document.getElementById('sl-fp1').value * 1e3,
+    fp2:  +document.getElementById('sl-fp2').value * 1e3,
+    fp3:  +document.getElementById('sl-fp3').value > 0 ? +document.getElementById('sl-fp3').value * 1e3 : null,
+  };
+}
+
+function evalPlant(f, pl) {
+  const w = 2*Math.PI*f;
+  let mag = pl.K, phase = 0;
+  [pl.fp1, pl.fp2, pl.fp3].forEach(fp => {
+    if (!fp) return;
+    const wp = 2*Math.PI*fp;
+    mag   /= Math.sqrt(1+(w/wp)**2);
+    phase -= Math.atan2(w, wp);
+  });
+  return { mag, phase };
+}
+
+function getCompPole() { return +document.getElementById('sl-fpc').value * 1e3; }
+function getLeadZero() { return +document.getElementById('sl-fz').value * 1e3; }
+function getLeadPole() { return +document.getElementById('sl-fzp').value * 1e3; }
+function getMillerDom(pl) {
+  const cm = +document.getElementById('sl-cm').value * 1e-12;
+  const av = +document.getElementById('sl-av').value;
+  const rn = +document.getElementById('sl-rn').value * 1e3;
+  const ceff = av * cm;
+  const fp_dom = 1/(2*Math.PI*rn*ceff);
+  // 2nd pole pushed by factor av (pole splitting)
+  return { fp_dom, fp2_new: pl.fp2 * av };
+}
+
+function evalComp(f, pl) {
+  const { mag: m0, phase: p0 } = evalPlant(f, pl);
+  let mag = m0, phase = p0;
+  const w = 2*Math.PI*f;
+
+  if (activeComp === 'dominant') {
+    const fpc = getCompPole();
+    const wc = 2*Math.PI*fpc;
+    mag   /= Math.sqrt(1+(w/wc)**2);
+    phase -= Math.atan2(w, wc);
+  } else if (activeComp === 'lead') {
+    const fz = getLeadZero(), fp = getLeadPole();
+    const wz = 2*Math.PI*fz, wpL = 2*Math.PI*fp;
+    mag   *= Math.sqrt(1+(w/wz)**2);
+    phase += Math.atan2(w, wz);
+    mag   /= Math.sqrt(1+(w/wpL)**2);
+    phase -= Math.atan2(w, wpL);
+  } else if (activeComp === 'miller') {
+    const { fp_dom, fp2_new } = getMillerDom(pl);
+    // Replace existing fp1 with new dominant pole, push fp2 up
+    const wp_dom = 2*Math.PI*fp_dom;
+    const wp2n = 2*Math.PI*fp2_new;
+    // recompute from K only (removing original poles, adding new ones)
+    let m2 = pl.K, p2 = 0;
+    m2 /= Math.sqrt(1+(w/wp_dom)**2); p2 -= Math.atan2(w, wp_dom);
+    m2 /= Math.sqrt(1+(w/wp2n)**2);   p2 -= Math.atan2(w, wp2n);
+    if (pl.fp3) {
+      const wp3 = 2*Math.PI*pl.fp3;
+      m2 /= Math.sqrt(1+(w/wp3)**2); p2 -= Math.atan2(w, wp3);
+    }
+    mag = m2; phase = p2;
+  }
+  return { mag, phase };
+}
+
+function findCrossover(evalFn) {
+  let lo = 1, hi = 1e10;
+  if (evalFn(lo).mag < 1) return { fc: lo, pm: 180 + evalFn(lo).phase*180/Math.PI };
+  for (let i = 0; i < 70; i++) {
+    const mid = Math.sqrt(lo*hi);
+    if (evalFn(mid).mag > 1) lo = mid; else hi = mid;
+  }
+  const fc = Math.sqrt(lo*hi);
+  const pm = 180 + evalFn(fc).phase*180/Math.PI;
+  return { fc, pm };
+}
+
+function getColors() {
+  const s = getComputedStyle(document.documentElement);
+  return ['--bg','--panel','--text','--text2','--grid','--c0','--c1','--c2','--c3','--green','--orange','--red']
+    .reduce((o,k)=>{o[k.slice(2)]=s.getPropertyValue(k).trim();return o;},{});
+}
+
+function drawMag(canvas, pl, C, fLo, fHi, fc0, fc1) {
+  const W = canvas.offsetWidth*devicePixelRatio, H = canvas.offsetHeight*devicePixelRatio;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const PAD = {l:55*devicePixelRatio,r:20*devicePixelRatio,t:15*devicePixelRatio,b:20*devicePixelRatio};
+  const pW = W-PAD.l-PAD.r, pH = H-PAD.t-PAD.b;
+  const magMax=80, magMin=-80;
+  function magY(db){return PAD.t+pH*(1-(db-magMin)/(magMax-magMin));}
+  function freqX(f){return PAD.l+pW*(Math.log10(f)-Math.log10(fLo))/(Math.log10(fHi)-Math.log10(fLo));}
+  ctx.fillStyle=C.bg; ctx.fillRect(0,0,W,H);
+
+  [-80,-60,-40,-20,0,20,40,60,80].forEach(db=>{
+    const y=magY(db);
+    if(y<PAD.t||y>H-PAD.b) return;
+    ctx.strokeStyle=C.grid; ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(W-PAD.r,y);ctx.stroke();
+    ctx.fillStyle=C.text2;ctx.font=`${9*devicePixelRatio}px monospace`;ctx.textAlign='right';
+    ctx.fillText(db+'dB',PAD.l-4,y+3);
+  });
+  for(let d=Math.ceil(Math.log10(fLo));d<=Math.floor(Math.log10(fHi));d++){
+    const x=freqX(Math.pow(10,d));
+    if(x<PAD.l||x>W-PAD.r) return;
+    ctx.strokeStyle=C.grid;ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,H-PAD.b);ctx.stroke();
+    const f=Math.pow(10,d);
+    const lbl=f>=1e6?(f/1e6).toFixed(0)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f+'';
+    ctx.fillStyle=C.text2;ctx.font=`${8*devicePixelRatio}px monospace`;ctx.textAlign='center';
+    ctx.fillText(lbl+'Hz',x,H-PAD.b+12*devicePixelRatio);
+  }
+  // 0dB
+  ctx.strokeStyle=C.text2;ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(PAD.l,magY(0));ctx.lineTo(W-PAD.r,magY(0));ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Draw uncompensated
+  function drawCurve(evalFn, color, dashed) {
+    ctx.strokeStyle=color;ctx.lineWidth=2*devicePixelRatio;
+    if(dashed) ctx.setLineDash([6,3]);
+    ctx.beginPath();let first=true;
+    for(let i=0;i<=600;i++){
+      const f=Math.pow(10,Math.log10(fLo)+(Math.log10(fHi)-Math.log10(fLo))*i/600);
+      const {mag}=evalFn(f);
+      const db=20*Math.log10(Math.max(mag,1e-10));
+      const x=freqX(f),y=magY(db);
+      if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+    }
+    ctx.stroke();ctx.setLineDash([]);
+  }
+
+  drawCurve(f=>evalPlant(f,pl), C.c0, false);
+  if(activeComp!=='none') drawCurve(f=>evalComp(f,pl), C.c1, false);
+
+  // Crossover markers
+  function markCrossover(fc, color) {
+    if(!fc||!isFinite(fc)||fc<fLo||fc>fHi) return;
+    const x=freqX(fc);
+    ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,H-PAD.b);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=color;ctx.beginPath();ctx.arc(x,magY(0),4*devicePixelRatio,0,2*Math.PI);ctx.fill();
+  }
+  markCrossover(fc0, C.c0);
+  markCrossover(fc1, C.c1);
+}
+
+function drawPha(canvas, pl, C, fLo, fHi, fc0, fc1, pm0, pm1) {
+  const W=canvas.offsetWidth*devicePixelRatio,H=canvas.offsetHeight*devicePixelRatio;
+  canvas.width=W;canvas.height=H;
+  const ctx=canvas.getContext('2d');
+  const PAD={l:55*devicePixelRatio,r:20*devicePixelRatio,t:10*devicePixelRatio,b:20*devicePixelRatio};
+  const pW=W-PAD.l-PAD.r,pH=H-PAD.t-PAD.b;
+  const phMax=20,phMin=-360;
+  function phaseY(deg){return PAD.t+pH*(1-(deg-phMin)/(phMax-phMin));}
+  function freqX(f){return PAD.l+pW*(Math.log10(f)-Math.log10(fLo))/(Math.log10(fHi)-Math.log10(fLo));}
+  ctx.fillStyle=C.bg;ctx.fillRect(0,0,W,H);
+
+  [-360,-315,-270,-225,-180,-135,-90,-45,0].forEach(deg=>{
+    const y=phaseY(deg);
+    if(y<PAD.t||y>H-PAD.b) return;
+    ctx.strokeStyle=C.grid;ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(W-PAD.r,y);ctx.stroke();
+    ctx.fillStyle=C.text2;ctx.font=`${9*devicePixelRatio}px monospace`;ctx.textAlign='right';
+    ctx.fillText(deg+'°',PAD.l-4,y+3);
+  });
+  for(let d=Math.ceil(Math.log10(fLo));d<=Math.floor(Math.log10(fHi));d++){
+    const x=freqX(Math.pow(10,d));
+    if(x<PAD.l||x>W-PAD.r) continue;
+    ctx.strokeStyle=C.grid;ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,H-PAD.b);ctx.stroke();
+  }
+
+  const y180=phaseY(-180);
+  ctx.strokeStyle=C.red;ctx.lineWidth=1.5;ctx.setLineDash([6,3]);
+  ctx.beginPath();ctx.moveTo(PAD.l,y180);ctx.lineTo(W-PAD.r,y180);ctx.stroke();ctx.setLineDash([]);
+
+  function drawPhCurve(evalFn,color){
+    ctx.strokeStyle=color;ctx.lineWidth=2*devicePixelRatio;ctx.beginPath();let first=true;
+    for(let i=0;i<=600;i++){
+      const f=Math.pow(10,Math.log10(fLo)+(Math.log10(fHi)-Math.log10(fLo))*i/600);
+      const {phase}=evalFn(f);
+      const deg=phase*180/Math.PI;
+      const x=freqX(f),y=phaseY(deg);
+      if(y<PAD.t-4||y>H-PAD.b+4){first=true;continue;}
+      if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+  drawPhCurve(f=>evalPlant(f,pl),C.c0);
+  if(activeComp!=='none') drawPhCurve(f=>evalComp(f,pl),C.c1);
+
+  // PM annotations
+  function annotatePM(fc,pm,color,side) {
+    if(!fc||!isFinite(fc)||fc<fLo||fc>fHi) return;
+    const x=freqX(fc);
+    const phDeg=-(180-pm);
+    const yPh=phaseY(phDeg);
+    ctx.strokeStyle=color;ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(x,Math.min(yPh,y180));ctx.lineTo(x,Math.max(yPh,y180));ctx.stroke();
+    ctx.fillStyle=color;ctx.font=`bold ${9*devicePixelRatio}px sans-serif`;
+    ctx.textAlign=side==='left'?'left':'right';
+    ctx.fillText(`PM=${pm.toFixed(1)}°`,x+(side==='left'?4:-4),(yPh+y180)/2+3);
+  }
+  annotatePM(fc0,pm0,C.c0,'right');
+  if(activeComp!=='none') annotatePM(fc1,pm1,C.c1,'left');
+}
+
+function updateLabels() {
+  const fp1=+document.getElementById('sl-fp1').value;
+  const fp2=+document.getElementById('sl-fp2').value;
+  const fp3=+document.getElementById('sl-fp3').value;
+  const dcg=+document.getElementById('sl-dcg').value;
+  document.getElementById('val-dcg').textContent=dcg+'dB';
+  document.getElementById('val-fp1').textContent=fp1+'kHz';
+  document.getElementById('val-fp2').textContent=fp2+'kHz';
+  document.getElementById('val-fp3').textContent=fp3>0?fp3+'kHz':'OFF';
+  if(activeComp==='dominant'){
+    const fpc=+document.getElementById('sl-fpc').value;
+    document.getElementById('val-fpc').textContent=fpc<1?(fpc*1000).toFixed(0)+'Hz':fpc+'kHz';
+  }
+  if(activeComp==='lead'){
+    document.getElementById('val-fz').textContent=document.getElementById('sl-fz').value+'kHz';
+    document.getElementById('val-fzp').textContent=document.getElementById('sl-fzp').value+'kHz';
+  }
+  if(activeComp==='miller'){
+    document.getElementById('val-cm').textContent=document.getElementById('sl-cm').value+'pF';
+    document.getElementById('val-av').textContent=document.getElementById('sl-av').value+'×';
+    document.getElementById('val-rn').textContent=document.getElementById('sl-rn').value+'kΩ';
+  }
+}
+
+function fmtF(f){
+  if(!isFinite(f)) return '—';
+  if(f>=1e6) return (f/1e6).toFixed(2)+'MHz';
+  if(f>=1e3) return (f/1e3).toFixed(1)+'kHz';
+  return f.toFixed(0)+'Hz';
+}
+
+function redraw() {
+  updateLabels();
+  const pl = getPlant();
+  const C = getColors();
+
+  const {fc:fc0,pm:pm0} = findCrossover(f=>evalPlant(f,pl));
+  const {fc:fc1,pm:pm1} = findCrossover(f=>evalComp(f,pl));
+
+  const fcShow = activeComp==='none' ? fc0 : fc1;
+  const pmShow = activeComp==='none' ? pm0 : pm1;
+
+  document.getElementById('ro-pm0').textContent=pm0.toFixed(1)+'°';
+  document.getElementById('ro-pm0').className='value '+(pm0>=45?'ok':pm0>=25?'warn':'bad');
+  document.getElementById('ro-pm1').textContent=activeComp==='none'?'—':pm1.toFixed(1)+'°';
+  document.getElementById('ro-pm1').className='value '+(activeComp==='none'?'':pm1>=45?'ok':pm1>=25?'warn':'bad');
+  document.getElementById('ro-fc0').textContent=fmtF(fc0);
+  document.getElementById('ro-fc1').textContent=activeComp==='none'?'—':fmtF(fc1);
+  const bwr = activeComp!=='none' && isFinite(fc0) && isFinite(fc1) ? (fc1/fc0) : null;
+  document.getElementById('ro-bwr').textContent=bwr?bwr.toFixed(2)+'×':'—';
+  const pmg = activeComp!=='none' ? pm1-pm0 : null;
+  document.getElementById('ro-pmg').textContent=pmg!=null?(pmg>=0?'+':'')+pmg.toFixed(1)+'°':'—';
+  document.getElementById('ro-pmg').className='value '+(pmg==null?'':pmg>0?'ok':pmg>-10?'warn':'bad');
+
+  const vbox=document.getElementById('verdict-box');
+  const pm=pmShow;
+  if(pm<0){vbox.className='verdict unstable';vbox.textContent='UNSTABLE';}
+  else if(pm<45){vbox.className='verdict marginal';vbox.textContent=`MARGINAL — PM=${pm.toFixed(1)}°`;}
+  else{vbox.className='verdict stable';vbox.textContent=`STABLE — PM=${pm.toFixed(1)}°`;}
+
+  const fLo=pl.fp1/100, fHi=Math.max(pl.fp2*100, fc0*20, 1e8);
+  drawMag(document.getElementById('mag-canvas'),pl,C,fLo,fHi,fc0,activeComp==='none'?null:fc1);
+  drawPha(document.getElementById('pha-canvas'),pl,C,fLo,fHi,fc0,activeComp==='none'?null:fc1,pm0,activeComp==='none'?pm0:pm1);
+}
+
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    activeComp=btn.dataset.tab;
+    document.querySelectorAll('.comp-panel').forEach(p=>p.classList.remove('visible'));
+    document.getElementById('panel-'+activeComp).classList.add('visible');
+    redraw();
+  });
+});
+
+['sl-dcg','sl-fp1','sl-fp2','sl-fp3','sl-fpc','sl-fz','sl-fzp','sl-cm','sl-av','sl-rn'].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el) el.addEventListener('input',redraw);
+});
+
+const ro=new ResizeObserver(redraw);
+ro.observe(document.getElementById('mag-canvas').parentElement);
+ro.observe(document.getElementById('pha-canvas').parentElement);
+redraw();
+</script>
+</body>
+</html>

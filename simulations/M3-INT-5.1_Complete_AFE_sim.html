@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M3-INT-5.1 Complete AFE</title>
+<style>
+:root{--bg:#ffffff;--surface:#f5f5f5;--border:#cccccc;--text:#111111;--accent:#0066cc;--accent2:#0066cc;}
+@media(prefers-color-scheme:dark){:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--accent:#0066cc;--accent2:#58a6ff;}}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;padding:16px;max-width:860px;margin:0 auto;}
+h1{font-size:1.2rem;color:var(--accent2);margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:8px;}
+.note{font-size:0.85rem;color:var(--text);opacity:0.7;margin-bottom:12px;}
+canvas{width:100%;height:260px;display:block;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:12px;}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;}
+.ctrl{display:flex;flex-direction:column;gap:3px;font-size:0.82rem;}
+.ctrl label{color:var(--text);opacity:0.8;}
+input[type=range]{width:160px;accent-color:var(--accent);}
+.readouts{display:flex;flex-wrap:wrap;gap:12px;font-size:0.85rem;font-family:monospace;}
+.ro{background:var(--surface);border:1px solid var(--border);padding:4px 10px;border-radius:4px;color:var(--accent2);}
+</style></head><body>
+<h1>M3-INT-5.1 — Analog Front-End: Signal Chain Noise Budget</h1>
+<p class="note">Design an AFE for a sensor. See total noise, SNR, and required gain. Adjust per-stage parameters.</p>
+<canvas id="cv"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>Sensor signal (mV pk): <span id="sv">50</span></label><input type="range" id="sig" min="0.1" max="1000" value="50" step="0.1" oninput="sv('sv',parseFloat(this.value).toFixed(1));draw();"></div>
+  <div class="ctrl"><label>Stage 1 noise (nV/√Hz): <span id="n1v">5</span></label><input type="range" id="n1" min="0.1" max="100" value="5" step="0.1" oninput="sv('n1v',parseFloat(this.value).toFixed(1));draw();"></div>
+  <div class="ctrl"><label>Stage 1 gain: <span id="g1v">10</span></label><input type="range" id="g1" min="1" max="100" value="10" step="1" oninput="sv('g1v',this.value);draw();"></div>
+  <div class="ctrl"><label>ADC bits: <span id="bv">12</span></label><input type="range" id="bits" min="8" max="24" value="12" step="1" oninput="sv('bv',this.value);draw();"></div>
+</div>
+<div class="readouts">
+  <div class="ro">Total gain needed: <span id="tg">0</span></div>
+  <div class="ro">Noise at ADC in: <span id="nadc">0</span> µV RMS</div>
+  <div class="ro">ADC noise budget: <span id="nbudget">0</span> µV RMS</div>
+  <div class="ro">SNR: <span id="snr">0</span> dB</div>
+  <div class="ro">LSB = <span id="lsb">0</span> µV</div>
+</div>
+<script>
+
+const isDark=()=>window.matchMedia('(prefers-color-scheme:dark)').matches;
+function gs(id){return parseFloat(document.getElementById(id).value);}
+function sv(id,val){document.getElementById(id).textContent=val;}
+function resize(cv,draw){
+  cv.width=cv.offsetWidth*devicePixelRatio;
+  cv.height=260*devicePixelRatio;
+  cv.style.height='260px';
+  draw();
+}
+function drawAxes(ctx,W,H,pad,xl,yl,color){
+  ctx.strokeStyle=color;ctx.lineWidth=1;ctx.fillStyle=color;ctx.font=`${11*devicePixelRatio}px system-ui`;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  ctx.fillText(xl,W-pad-30,H-pad+14*devicePixelRatio);
+  ctx.save();ctx.translate(pad-14*devicePixelRatio,pad+30);ctx.rotate(-Math.PI/2);ctx.fillText(yl,0,0);ctx.restore();
+}
+
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+const VFS=2, BW=10e3; // 2V full scale, 10 kHz bandwidth
+window.addEventListener('resize',()=>resize(cv,draw));
+
+function draw(){
+  const dpr=devicePixelRatio;
+  cv.width=cv.offsetWidth*dpr; cv.height=260*dpr;
+  const W=cv.width,H=cv.height,pad=55*dpr;
+  const dark=isDark();
+  const bg=dark?'#161b22':'#f5f5f5';
+  const fg=dark?'#e6edf3':'#111111';
+  const acc=dark?'#58a6ff':'#0066cc';
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  const SIG=gs('sig')/1000; // V
+  const N1=gs('n1')*1e-9; // V/rtHz
+  const G1=gs('g1');
+  const BITS=gs('bits');
+
+  const total_gain_needed=VFS*0.8/SIG;
+  const G2=Math.max(1,total_gain_needed/G1);
+  // Noise at ADC input (referred to input then multiplied by total gain)
+  const n1_rms=N1*Math.sqrt(BW); // V RMS noise from stage 1
+  const n2_rms=50e-9*Math.sqrt(BW); // V RMS noise stage 2 (fixed 50 nV/rtHz)
+  // Friis: total input-referred noise = sqrt(n1² + (n2/G1)²)
+  const n_in_referred=Math.sqrt(n1_rms*n1_rms + Math.pow(n2_rms/G1,2));
+  const n_at_adc=n_in_referred*G1*G2*1e6; // µV
+  const LSB=VFS/Math.pow(2,BITS)*1e6; // µV
+  const n_budget=LSB/2; // µV
+  const snr_linear=SIG*G1*G2/(n_in_referred*G1*G2);
+  const SNR=20*Math.log10(snr_linear);
+  const ok=n_at_adc<n_budget;
+
+  sv('tg',total_gain_needed.toFixed(0));
+  sv('nadc',n_at_adc.toFixed(2));
+  sv('nbudget',n_budget.toFixed(2));
+  sv('snr',SNR.toFixed(1));
+  sv('lsb',LSB.toFixed(2));
+
+  // Signal chain block diagram
+  const stages=[
+    ['Sensor',SIG*1000+'mV',''],
+    ['Proto.
+Diodes',SIG*1000+'mV',''],
+    ['Preamp
+G='+G1,SIG*1000*G1+'mV',''],
+    ['Filter
+G='+G2.toFixed(1),SIG*1000*G1*G2+'mV',''],
+    ['ADC
+'+BITS+'-bit',SIG*1000*G1*G2+'mV','']
+  ];
+
+  const bw=(W-2*pad)/stages.length, bh=80*dpr;
+  const by=(H-2*pad)/2;
+
+  stages.forEach((st,i)=>{
+    const x=pad+i*bw;
+    ctx.fillStyle=dark?'#21262d':'#e9ecef';
+    ctx.strokeStyle=i===stages.length-1?(ok?'#2ed573':'#ff6b6b'):acc;
+    ctx.lineWidth=2*dpr;
+    ctx.fillRect(x+5*dpr,by,bw-10*dpr,bh);
+    ctx.strokeRect(x+5*dpr,by,bw-10*dpr,bh);
+    ctx.fillStyle=fg; ctx.font=`${9*dpr}px system-ui`;
+    ctx.textAlign='center';
+    const lines=st[0].split('
+');
+    lines.forEach((l,li)=>ctx.fillText(l,x+bw/2,by+20*dpr+li*13*dpr));
+    ctx.fillStyle=acc; ctx.font=`${8*dpr}px system-ui`;
+    ctx.fillText(st[1],x+bw/2,by+bh+15*dpr);
+    ctx.textAlign='left';
+
+    if(i<stages.length-1){
+      ctx.strokeStyle=fg; ctx.lineWidth=1.5*dpr;
+      ctx.beginPath();
+      ctx.moveTo(x+bw-5*dpr,by+bh/2);
+      ctx.lineTo(x+bw+5*dpr,by+bh/2);
+      ctx.stroke();
+    }
+  });
+
+  ctx.fillStyle=fg; ctx.font=`${11*dpr}px system-ui`;
+  ctx.fillText(`Gain needed=${total_gain_needed.toFixed(0)}  Noise@ADC=${n_at_adc.toFixed(2)}µV  Budget=${n_budget.toFixed(2)}µV  SNR=${SNR.toFixed(0)}dB  ${ok?'OK':'NOISE TOO HIGH'}`,pad,pad-8*dpr);
+}
+draw();
+</script></body></html>

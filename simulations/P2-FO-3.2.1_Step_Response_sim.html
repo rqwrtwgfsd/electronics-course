@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-FO-3.2.1 — Step Response</title>
+<style>
+  :root { --accent: #0066cc; --bg: #1a1a1a; --panel: #242424; --border: #333; --text: #e0e0e0; --muted: #888; }
+  @media (prefers-color-scheme: light) { :root { --bg: #f4f4f4; --panel: #fff; --border: #ccc; --text: #1a1a1a; --muted: #555; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+  h1 { font-size: 1.1rem; color: var(--accent); padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .subtitle { font-size: 0.8rem; color: var(--muted); padding: 0 16px 8px; }
+  .layout { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; }
+  .controls { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px; min-width: 230px; flex: 0 0 230px; }
+  .ctrl-group { margin-bottom: 14px; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .val { font-weight: bold; color: var(--accent); }
+  .readout { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 12px; }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; }
+  .card-label { font-size: 0.7rem; color: var(--muted); }
+  .card-val { font-size: 0.88rem; font-weight: bold; color: var(--accent); }
+  canvas { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: block; }
+  .canvas-wrap { flex: 1; min-width: 320px; }
+  .toggle-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .tog { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 0.78rem; color: var(--muted); }
+  .tog.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+</style>
+</head>
+<body>
+<h1>P2-FO-3.2.1 — First-Order Step Response</h1>
+<p class="subtitle">Rise time t_r = 2.2τ &nbsp;|&nbsp; BW × t_r = 0.35</p>
+<div class="layout">
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>Time constant τ (ms): <span class="val" id="vTau">10.0</span></label>
+      <input type="range" id="sTau" min="1" max="50" step="0.5" value="10">
+    </div>
+    <div class="ctrl-group">
+      <label>DC gain K: <span class="val" id="vK">1.0</span></label>
+      <input type="range" id="sK" min="0.2" max="5" step="0.1" value="1">
+    </div>
+    <div class="ctrl-group">
+      <label>Step amplitude A: <span class="val" id="vA">1.0</span></label>
+      <input type="range" id="sA" min="0.2" max="3" step="0.1" value="1">
+    </div>
+    <div class="toggle-row">
+      <span class="tog on" id="tRise" onclick="toggleRise()">10%/90% markers</span>
+      <span class="tog on" id="tBW" onclick="toggleBW()">BW line</span>
+    </div>
+    <div class="readout">
+      <div class="card"><div class="card-label">Rise time t_r</div><div class="card-val" id="rTr">22.0 ms</div></div>
+      <div class="card"><div class="card-label">Bandwidth BW</div><div class="card-val" id="rBW">15.9 Hz</div></div>
+      <div class="card"><div class="card-label">BW × t_r</div><div class="card-val" id="rProd">0.350</div></div>
+      <div class="card"><div class="card-label">Final y(∞)</div><div class="card-val" id="rYinf">1.000</div></div>
+      <div class="card"><div class="card-label">t_10 (ms)</div><div class="card-val" id="rT10">1.05</div></div>
+      <div class="card"><div class="card-label">t_90 (ms)</div><div class="card-val" id="rT90">23.0</div></div>
+    </div>
+  </div>
+  <div class="canvas-wrap">
+    <canvas id="cv" width="560" height="420"></canvas>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let showRise = true, showBW = true;
+
+function toggleRise() { showRise = !showRise; document.getElementById('tRise').className = 'tog' + (showRise ? ' on' : ''); draw(); }
+function toggleBW() { showBW = !showBW; document.getElementById('tBW').className = 'tog' + (showBW ? ' on' : ''); draw(); }
+
+function draw() {
+  const tau = parseFloat(document.getElementById('sTau').value);
+  const K = parseFloat(document.getElementById('sK').value);
+  const A = parseFloat(document.getElementById('sA').value);
+  const yInf = K * A;
+  const tr = 2.197 * tau;
+  const bw = 0.35 / (tr / 1000);
+  const t10 = -Math.log(1 - 0.1) * tau;
+  const t90 = -Math.log(1 - 0.9) * tau;
+
+  document.getElementById('vTau').textContent = tau.toFixed(1);
+  document.getElementById('vK').textContent = K.toFixed(1);
+  document.getElementById('vA').textContent = A.toFixed(1);
+  document.getElementById('rTr').textContent = tr.toFixed(1) + ' ms';
+  document.getElementById('rBW').textContent = bw.toFixed(1) + ' Hz';
+  document.getElementById('rProd').textContent = (bw * tr / 1000).toFixed(3);
+  document.getElementById('rYinf').textContent = yInf.toFixed(3);
+  document.getElementById('rT10').textContent = t10.toFixed(2);
+  document.getElementById('rT90').textContent = t90.toFixed(2);
+
+  const W = cv.width, H = cv.height;
+  const padL = 60, padR = 20, padT = 30, padB = 50;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const tMax = 6 * tau;
+  const yMax = yInf * 1.12;
+
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  ctx.fillStyle = isDark ? '#242424' : '#fff'; ctx.fillRect(0, 0, W, H);
+  const gridC = isDark ? '#2e2e2e' : '#e8e8e8';
+  const textC = isDark ? '#e0e0e0' : '#1a1a1a';
+  const mutC = isDark ? '#888' : '#555';
+
+  const tx = t => padL + (t / tMax) * plotW;
+  const ty = y => padT + (1 - y / yMax) * plotH;
+
+  ctx.strokeStyle = gridC; ctx.lineWidth = 1;
+  for (let i = 0; i <= 6; i++) { ctx.beginPath(); ctx.moveTo(tx(i * tMax / 6), padT); ctx.lineTo(tx(i * tMax / 6), padT + plotH); ctx.stroke(); }
+  for (let i = 0; i <= 5; i++) { ctx.beginPath(); ctx.moveTo(padL, padT + i * plotH / 5); ctx.lineTo(padL + plotW, padT + i * plotH / 5); ctx.stroke(); }
+
+  ctx.strokeStyle = mutC; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, padT + plotH); ctx.lineTo(padL + plotW, padT + plotH); ctx.stroke();
+
+  // y(∞) line
+  ctx.setLineDash([5, 4]); ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(padL, ty(yInf)); ctx.lineTo(padL + plotW, ty(yInf)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  if (showRise) {
+    // 10% and 90% horizontal lines
+    ['#44aa44', '#ee4444'].forEach((c, i) => {
+      const yv = yInf * (i === 0 ? 0.1 : 0.9);
+      const tv = i === 0 ? t10 : t90;
+      ctx.setLineDash([3, 3]); ctx.strokeStyle = c; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(padL, ty(yv)); ctx.lineTo(tx(tv), ty(yv)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(tx(tv), ty(yv)); ctx.lineTo(tx(tv), padT + plotH); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = c;
+      ctx.beginPath(); ctx.arc(tx(tv), ty(yv), 4, 0, Math.PI * 2); ctx.fill();
+    });
+    // rise time bracket
+    ctx.strokeStyle = '#ffaa00'; ctx.lineWidth = 1.5;
+    const yMid = ty(yInf * 0.5);
+    ctx.beginPath(); ctx.moveTo(tx(t10), yMid); ctx.lineTo(tx(t90), yMid); ctx.stroke();
+    ctx.fillStyle = '#ffaa00'; ctx.font = '10px sans-serif';
+    ctx.fillText(`t_r = ${tr.toFixed(1)} ms`, tx(t10) + (tx(t90) - tx(t10)) / 2 - 30, yMid - 5);
+  }
+
+  // Main curve
+  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let i = 0; i <= 500; i++) {
+    const t = i / 500 * tMax;
+    const y = yInf * (1 - Math.exp(-t / tau));
+    if (i === 0) ctx.moveTo(tx(t), ty(y)); else ctx.lineTo(tx(t), ty(y));
+  }
+  ctx.stroke();
+
+  // Labels
+  ctx.fillStyle = '#0066cc'; ctx.font = '11px monospace';
+  ctx.fillText(`y(∞)=${yInf.toFixed(2)}`, padL + plotW - 90, ty(yInf) - 7);
+
+  if (showBW) {
+    ctx.fillStyle = '#cc44cc'; ctx.font = '11px sans-serif';
+    ctx.fillText(`BW = ${bw.toFixed(1)} Hz`, padL + 10, padT + 20);
+  }
+
+  ctx.fillStyle = mutC; ctx.font = '10px sans-serif';
+  for (let i = 0; i <= 6; i++) ctx.fillText((i * tMax / 6).toFixed(1), tx(i * tMax / 6) - 10, padT + plotH + 18);
+  ctx.fillText('t (ms)', padL + plotW / 2 - 15, padT + plotH + 36);
+  for (let i = 0; i <= 5; i++) ctx.fillText((i * yMax / 5).toFixed(2), 4, ty(i * yMax / 5) + 4);
+}
+
+['sTau','sK','sA'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+draw();
+</script>
+</body>
+</html>

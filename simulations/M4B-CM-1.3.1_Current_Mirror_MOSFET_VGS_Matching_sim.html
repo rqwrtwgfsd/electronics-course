@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CM-1.3.1 — MOSFET VGS Matching</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:11px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 14px;margin-top:5px;font-size:13px;}
+  .ro span{font-size:18px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);} .ro.r span{color:#cc3300;}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:12px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CM-1.3.1</div>
+  <h1>Current Mirror MOSFET — VGS Matching Principle</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>MOSFET Mirror Parameters</h2>
+      <label>Reference Current I_ref (μA): <b id="ir_l">100</b> μA
+        <input type="range" id="iref" min="5" max="500" value="100" step="5">
+      </label>
+      <label>μ_nC_ox (μA/V²): <b id="un_l">270</b>
+        <input type="range" id="un" min="50" max="500" value="270" step="10">
+      </label>
+      <label>V_th (V): <b id="vt_l">0.45</b> V
+        <input type="range" id="vth" min="0.2" max="0.8" value="0.45" step="0.01">
+      </label>
+      <label>W/L Ratio M1: <b id="wl1_l">20</b>
+        <input type="range" id="wl1" min="1" max="200" value="20" step="1">
+      </label>
+      <label>Mirror Ratio (W/L)₂/(W/L)₁: <b id="mr_l">1.0</b>×
+        <input type="range" id="mratio" min="0.25" max="8" value="1" step="0.25">
+      </label>
+      <label>V_th Mismatch ΔV_th (mV): <b id="dvt_l">0</b> mV
+        <input type="range" id="dvth" min="-15" max="15" value="0" step="0.5">
+      </label>
+
+      <div class="ro">V_GS (V): <span id="vgs_d">--</span></div>
+      <div class="ro" style="margin-top:5px">Overdrive V_ov (mV): <span id="vov_d">--</span></div>
+      <div class="ro g" style="margin-top:5px">I_out ideal (μA): <span id="io_d">--</span></div>
+      <div class="ro r" style="margin-top:5px">I_out with ΔV_th (μA): <span id="io_dvt">--</span></div>
+      <div class="ro" style="margin-top:5px">ΔI/I from ΔV_th: <span id="err_d">--</span> %</div>
+    </div>
+
+    <div class="card">
+      <h2>Current Error vs Overdrive</h2>
+      <canvas id="cv" height="260"></canvas>
+      <div class="insight">
+        Shows fractional current error |ΔI/I| vs. overdrive voltage V_ov for the set ΔV_th. Higher overdrive reduces threshold mismatch sensitivity (curves flatten). The operating point (current V_ov) is marked with a dot.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const Iref=+document.getElementById('iref').value*1e-6;
+    const un=+document.getElementById('un').value*1e-6;
+    const vth=+document.getElementById('vth').value;
+    const wl1=+document.getElementById('wl1').value;
+    const mr=+document.getElementById('mratio').value;
+    const dvth=+document.getElementById('dvth').value*1e-3;
+
+    document.getElementById('ir_l').textContent=(Iref*1e6).toFixed(0);
+    document.getElementById('un_l').textContent=(un*1e6).toFixed(0);
+    document.getElementById('vt_l').textContent=vth.toFixed(2);
+    document.getElementById('wl1_l').textContent=wl1;
+    document.getElementById('mr_l').textContent=mr.toFixed(2);
+    document.getElementById('dvt_l').textContent=(dvth*1000).toFixed(1);
+
+    // VGS from I_ref and M1
+    const vov=Math.sqrt(2*Iref/(un*wl1));
+    const vgs=vth+vov;
+
+    document.getElementById('vgs_d').textContent=vgs.toFixed(4);
+    document.getElementById('vov_d').textContent=(vov*1000).toFixed(1);
+
+    // Ideal I_out (no mismatch)
+    const wl2=wl1*mr;
+    const io_ideal=0.5*un*wl2*vov*vov;
+
+    // I_out with Vth mismatch
+    const vov2=vov-dvth;
+    const io_dvt=vov2>0?0.5*un*wl2*vov2*vov2:0;
+    const err=(io_dvt-io_ideal)/io_ideal*100;
+
+    document.getElementById('io_d').textContent=(io_ideal*1e6).toFixed(3);
+    document.getElementById('io_dvt').textContent=(io_dvt*1e6).toFixed(3);
+    document.getElementById('err_d').textContent=(err>=0?'+':'')+err.toFixed(3);
+
+    drawCurve(dvth,vov,un,wl1,mr);
+  }
+
+  function drawCurve(dvth,vov_op,un,wl1,mr){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=260;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,260);
+    const pL=52,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=260-pT-pB;
+
+    const Vov_max=0.5; // x-axis: 0 to 500mV overdrive
+    const Err_max=50; // y-axis: 0 to 50% error
+
+    ctx.strokeStyle='#8888aa';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(pL,pT);ctx.lineTo(pL,pT+ph);ctx.lineTo(pL+pw,pT+ph);ctx.stroke();
+    ctx.fillStyle='#8888aa';ctx.font='11px system-ui';
+    ctx.fillText('|ΔI/I| (%)',2,pT+ph/2);
+    ctx.fillText('V_ov (mV)',pL+pw/2-20,260-4);
+
+    for(let i=0;i<=5;i++){
+      const v=i/5*Err_max;
+      const y=pT+ph-(i/5)*ph;
+      ctx.fillText(v.toFixed(0),2,y+4);
+      ctx.strokeStyle='#8888aa22';ctx.beginPath();ctx.moveTo(pL,y);ctx.lineTo(pL+pw,y);ctx.stroke();
+    }
+    [0,100,200,300,400,500].forEach(v=>{
+      const x=pL+(v/1000)/Vov_max*pw;
+      ctx.fillStyle='#8888aa';ctx.fillText(v,x-8,pT+ph+16);
+    });
+
+    // Draw curves for different |ΔV_th| values
+    const dvths=[{v:0.002,c:'#00994d',lbl:'2mV'},{v:0.005,c:'#0066cc',lbl:'5mV'},{v:0.010,c:'#ff8800',lbl:'10mV'},{v:0.015,c:'#cc2200',lbl:'15mV'}];
+    dvths.forEach(({v,c,lbl},i)=>{
+      ctx.strokeStyle=c; ctx.lineWidth=1.8; ctx.setLineDash([]);
+      if(Math.abs(dvth*1000-v*1000)<0.1) ctx.lineWidth=2.8;
+      ctx.beginPath(); let first=true;
+      for(let px=0;px<=pw;px++){
+        const vov_v=px/pw*Vov_max;
+        if(vov_v<0.001){if(first){ctx.moveTo(pL+px,pT);first=false;}continue;}
+        const err=Math.abs(-2*v/vov_v*100);
+        const y=pT+ph-(Math.min(err,Err_max)/Err_max)*ph;
+        if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+      }
+      ctx.stroke();
+      // Label on right
+      const vov_end=0.48;
+      const err_end=Math.abs(-2*v/vov_end*100);
+      const y_end=pT+ph-(Math.min(err_end,Err_max)/Err_max)*ph;
+      ctx.fillStyle=c; ctx.font='11px system-ui'; ctx.fillText(lbl,pL+pw-28,Math.max(pT+8,y_end));
+    });
+
+    // Operating point marker
+    if(vov_op>0.005 && Math.abs(dvth)>0.0005){
+      const err_op=Math.abs(-2*dvth/vov_op*100);
+      const xop=pL+(vov_op/Vov_max)*pw;
+      const yop=pT+ph-(Math.min(err_op,Err_max)/Err_max)*ph;
+      ctx.fillStyle='#cc2200';
+      ctx.beginPath();ctx.arc(xop,Math.max(pT+4,yop),6,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle='#cc220088';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+      ctx.beginPath();ctx.moveTo(xop,pT);ctx.lineTo(xop,pT+ph);ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-C-1.2.1 — Why Voltage Cannot Change Instantly</title>
+<style>
+  :root{--bg:#fff;--bg2:#f5f5f5;--text:#1a1a1a;--text2:#555;--border:#ddd;--accent:#0066cc;--green:#00994d;--red:#cc2200;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#242424;--text:#e8e8e8;--text2:#aaa;--border:#444;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px;}
+  header{background:var(--bg2);border-bottom:2px solid var(--accent);padding:12px 20px;}
+  header .id{font-family:monospace;font-size:12px;color:var(--accent);font-weight:700;}
+  header h1{font-size:16px;margin-top:2px;}
+  .container{display:flex;gap:14px;padding:14px;flex-wrap:wrap;}
+  .panel{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:14px;}
+  .sim-panel{flex:1;min-width:320px;}
+  .ctrl-panel{width:230px;min-width:200px;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .readouts{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;}
+  .readout{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:8px 10px;}
+  .readout label{font-size:11px;color:var(--text2);display:block;}
+  .readout .val{font-family:monospace;font-size:15px;font-weight:700;color:var(--accent);}
+  .ctrl{margin-bottom:12px;}
+  .ctrl label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px;}
+  .ctrl label span{font-family:monospace;color:var(--accent);font-weight:700;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .formula-box{background:var(--bg);border-left:3px solid var(--accent);padding:7px 10px;margin:8px 0;font-family:monospace;font-size:12px;border-radius:0 4px 4px 0;}
+  .info{font-size:11px;color:var(--text2);margin-top:6px;line-height:1.5;}
+  .tabs{display:flex;gap:4px;margin-bottom:10px;}
+  .tab{padding:5px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px;cursor:pointer;background:var(--bg);color:var(--text);}
+  .tab.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">P2-C-1.2.1</div>
+  <h1>Capacitor — Why Voltage Cannot Change Instantly</h1>
+</header>
+<div class="container">
+  <div class="panel sim-panel">
+    <div class="tabs">
+      <button class="tab active" onclick="setMode('step')">Step Response (IC)</button>
+      <button class="tab" onclick="setMode('slew')">dV/dt Slew Rate</button>
+    </div>
+    <canvas id="cv" height="280"></canvas>
+    <div class="readouts">
+      <div class="readout"><label id="lb1">V at t=0⁺</label><span class="val" id="r1">—</span></div>
+      <div class="readout"><label id="lb2">Initial Current</label><span class="val" id="r2">—</span></div>
+      <div class="readout"><label id="lb3">τ = RC</label><span class="val" id="r3">—</span></div>
+      <div class="readout"><label id="lb4">V final</label><span class="val" id="r4">—</span></div>
+    </div>
+  </div>
+  <div class="panel ctrl-panel">
+    <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text2);margin-bottom:10px;">Controls</div>
+
+    <div id="ctrls-step">
+      <div class="ctrl">
+        <label>V supply <span id="svs">10 V</span></label>
+        <input type="range" id="sl-vs" min="1" max="30" step="0.5" value="10" oninput="update()">
+      </div>
+      <div class="ctrl">
+        <label>V initial (cap) <span id="sv0">3 V</span></label>
+        <input type="range" id="sl-v0" min="0" max="25" step="0.5" value="3" oninput="update()">
+      </div>
+      <div class="ctrl">
+        <label>R (kΩ) <span id="srk">1.0</span></label>
+        <input type="range" id="sl-rk" min="0.1" max="100" step="0.1" value="1.0" oninput="update()">
+      </div>
+      <div class="ctrl">
+        <label>C (µF) <span id="sc">10</span></label>
+        <input type="range" id="sl-c" min="0.1" max="1000" step="0.1" value="10" oninput="update()">
+      </div>
+      <div class="formula-box">V_C(0⁺) = V_initial</div>
+      <div class="formula-box">V_C(t) = V_s+(V₀-V_s)e^(-t/τ)</div>
+      <div class="info">Voltage starts at V_initial<br>regardless of V_supply.</div>
+    </div>
+
+    <div id="ctrls-slew" style="display:none">
+      <div class="ctrl">
+        <label>Current I (mA) <span id="si">100</span></label>
+        <input type="range" id="sl-i" min="1" max="2000" step="1" value="100" oninput="update()">
+      </div>
+      <div class="ctrl">
+        <label>Capacitance (pF) <span id="scp">500</span></label>
+        <input type="range" id="sl-cp" min="10" max="5000" step="10" value="500" oninput="update()">
+      </div>
+      <div class="formula-box">dV/dt = I / C</div>
+      <div class="info">Higher I or lower C = faster slew.<br>Never instantaneous.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas=document.getElementById('cv');
+const ctx=canvas.getContext('2d');
+let mode='step';
+
+function setMode(m){
+  mode=m;
+  document.querySelectorAll('.tab').forEach((t,i)=>{
+    t.classList.toggle('active',(i===0&&m==='step')||(i===1&&m==='slew'));
+  });
+  document.getElementById('ctrls-step').style.display=m==='step'?'':'none';
+  document.getElementById('ctrls-slew').style.display=m==='slew'?'':'none';
+  update();
+}
+
+function update(){
+  const W=canvas.offsetWidth||480;canvas.width=W;canvas.height=280;
+  const dark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const tc=dark?'#e8e8e8':'#1a1a1a';
+  const bg=dark?'#1a1a1a':'#ffffff';
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,280);
+  if(mode==='step') drawStep(W,tc);
+  else drawSlew(W,tc);
+}
+
+function drawStep(W,tc){
+  const Vs=parseFloat(document.getElementById('sl-vs').value);
+  const V0=parseFloat(document.getElementById('sl-v0').value);
+  const Rk=parseFloat(document.getElementById('sl-rk').value);
+  const CuF=parseFloat(document.getElementById('sl-c').value);
+  document.getElementById('svs').textContent=Vs.toFixed(1)+' V';
+  document.getElementById('sv0').textContent=V0.toFixed(1)+' V';
+  document.getElementById('srk').textContent=Rk.toFixed(1);
+  document.getElementById('sc').textContent=CuF.toFixed(1);
+
+  const R=Rk*1000, C=CuF*1e-6;
+  const tau=R*C;
+  const I0=(Vs-V0)/R;
+
+  document.getElementById('lb1').textContent='V_C(0⁺)';
+  document.getElementById('r1').textContent=V0.toFixed(2)+' V';
+  document.getElementById('lb2').textContent='I(0⁺)';
+  document.getElementById('r2').textContent=(I0*1000).toFixed(2)+' mA';
+  document.getElementById('lb3').textContent='τ = RC';
+  document.getElementById('r3').textContent=tau<0.001?(tau*1e6).toFixed(1)+'µs':(tau*1000).toFixed(2)+'ms';
+  document.getElementById('lb4').textContent='V_C(∞)';
+  document.getElementById('r4').textContent=Vs.toFixed(2)+' V';
+
+  const mx=50,my=20,mw=W-70,mh=235;
+  const tMax=5*tau;
+  const Vmax=Math.max(Vs,V0)*1.1;
+  const Vmin=Math.min(0,V0,Vs)*1.1;
+  const Vrange=Vmax-Vmin;
+
+  // Axes
+  ctx.strokeStyle=tc;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx,my+mh);ctx.lineTo(mx+mw,my+mh);ctx.stroke();
+  ctx.fillStyle=tc;ctx.font='11px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Time →  (1 div = τ)',mx+mw/2,my+mh+16);
+  ctx.save();ctx.translate(14,my+mh/2);ctx.rotate(-Math.PI/2);
+  ctx.fillText('Voltage (V)',0,0);ctx.restore();
+
+  // Grid τ marks
+  for(let i=0;i<=5;i++){
+    const x=mx+i*mw/5;
+    ctx.strokeStyle='rgba(150,150,150,0.2)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(x,my);ctx.lineTo(x,my+mh);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=tc;ctx.font='10px monospace';ctx.textAlign='center';
+    ctx.fillText(i+'τ',x,my+mh+12);
+  }
+
+  // Voltage axis labels
+  for(let i=0;i<=4;i++){
+    const v=Vmin+i*(Vrange/4);
+    const y=my+mh-(v-Vmin)/Vrange*mh;
+    ctx.fillStyle=tc;ctx.font='10px monospace';ctx.textAlign='right';
+    ctx.fillText(v.toFixed(1),mx-4,y+4);
+    ctx.strokeStyle='rgba(150,150,150,0.15)';ctx.lineWidth=1;ctx.setLineDash([2,4]);
+    ctx.beginPath();ctx.moveTo(mx,y);ctx.lineTo(mx+mw,y);ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Hypothetical "ideal" step (wrong) — dashed red line
+  ctx.strokeStyle='rgba(204,34,0,0.5)';ctx.lineWidth=1.5;ctx.setLineDash([5,4]);
+  const yVs=my+mh-(Vs-Vmin)/Vrange*mh;
+  ctx.beginPath();ctx.moveTo(mx,my+mh-(V0-Vmin)/Vrange*mh);ctx.lineTo(mx,yVs);ctx.lineTo(mx+mw,yVs);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='rgba(204,34,0,0.7)';ctx.font='10px sans-serif';ctx.textAlign='left';
+  ctx.fillText('Impossible: instant jump',mx+4,yVs-4);
+
+  // Actual exponential — solid blue
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=200;i++){
+    const t=i/200*tMax;
+    const v=Vs+(V0-Vs)*Math.exp(-t/tau);
+    const px=mx+i/200*mw;
+    const py=my+mh-(v-Vmin)/Vrange*mh;
+    if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+  }
+  ctx.stroke();
+
+  // V0 marker
+  const yV0=my+mh-(V0-Vmin)/Vrange*mh;
+  ctx.beginPath();ctx.arc(mx,yV0,5,0,Math.PI*2);ctx.fillStyle='#e63a2a';ctx.fill();
+  ctx.fillStyle='#e63a2a';ctx.font='bold 11px monospace';ctx.textAlign='left';
+  ctx.fillText('V_C(0⁺)='+V0.toFixed(1)+'V',mx+8,yV0-6);
+
+  // Annotations
+  ctx.fillStyle='#0066cc';ctx.font='11px sans-serif';ctx.textAlign='left';
+  ctx.fillText('V_C(t) = '+Vs.toFixed(0)+'+('+V0.toFixed(0)+'−'+Vs.toFixed(0)+')e^(−t/τ)',mx+8,my+14);
+}
+
+function drawSlew(W,tc){
+  const ImA=parseFloat(document.getElementById('sl-i').value);
+  const Cpf=parseFloat(document.getElementById('sl-cp').value);
+  document.getElementById('si').textContent=ImA.toFixed(0);
+  document.getElementById('scp').textContent=Cpf.toFixed(0);
+
+  const I=ImA*1e-3, C=Cpf*1e-12;
+  const dvdt=I/C; // V/s
+  const dvdt_ns=dvdt*1e-9; // V/ns
+  const tToV=400/dvdt; // seconds to reach 400V
+
+  document.getElementById('lb1').textContent='dV/dt';
+  document.getElementById('r1').textContent=dvdt_ns.toFixed(1)+' V/ns';
+  document.getElementById('lb2').textContent='Current I';
+  document.getElementById('r2').textContent=ImA.toFixed(0)+' mA';
+  document.getElementById('lb3').textContent='Capacitance';
+  document.getElementById('r3').textContent=Cpf.toFixed(0)+' pF';
+  document.getElementById('lb4').textContent='Time to 400V';
+  document.getElementById('r4').textContent=(tToV*1e9).toFixed(1)+' ns';
+
+  const mx=55,my=20,mw=W-75,mh=235;
+  const tNs=Math.min(50, tToV*1e9*1.2); // window in ns
+  const Vmax=400;
+
+  ctx.strokeStyle=tc;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx,my+mh);ctx.lineTo(mx+mw,my+mh);ctx.stroke();
+  ctx.fillStyle=tc;ctx.font='11px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Time (ns)',mx+mw/2,my+mh+16);
+  ctx.save();ctx.translate(14,my+mh/2);ctx.rotate(-Math.PI/2);ctx.fillText('Voltage (V)',0,0);ctx.restore();
+
+  // Linear ramp
+  const endTime=Math.min(tNs,tToV*1e9);
+  const endV=I/C*endTime*1e-9;
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2.5;
+  ctx.beginPath();ctx.moveTo(mx,my+mh);
+  ctx.lineTo(mx+mw*(endTime/tNs), my+mh-mh*(Math.min(endV,Vmax)/Vmax));
+  if(endV < Vmax) {
+    ctx.lineTo(mx+mw,my+mh-mh*(Math.min(I/C*tNs*1e-9,Vmax)/Vmax));
+  }
+  ctx.stroke();
+
+  // Labels
+  ctx.fillStyle='#0066cc';ctx.font='bold 11px monospace';ctx.textAlign='left';
+  ctx.fillText('dV/dt = I/C = '+dvdt_ns.toFixed(1)+' V/ns',mx+4,my+14);
+  ctx.fillStyle=tc;ctx.font='11px sans-serif';
+  ctx.fillText('I = '+ImA+' mA  C = '+Cpf+' pF',mx+4,my+30);
+
+  // Note: NOT instantaneous
+  ctx.fillStyle='#e63a2a';ctx.font='bold 11px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Finite rise time: '+( tToV*1e9).toFixed(1)+' ns to 400V',mx+mw/2,my+mh-10);
+
+  // Axis labels
+  for(let i=0;i<=4;i++){
+    ctx.fillStyle=tc;ctx.font='10px monospace';ctx.textAlign='center';
+    ctx.fillText((tNs*i/4).toFixed(0),mx+i*mw/4,my+mh+12);
+    ctx.textAlign='right';
+    ctx.fillText((Vmax*i/4).toFixed(0),mx-4,my+mh-i*mh/4+4);
+  }
+}
+
+window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',update);
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

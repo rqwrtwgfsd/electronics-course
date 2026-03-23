@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.4.1 — Op-Amp Infinite Gain</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;gap:16px;align-items:baseline;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:13px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.4.1</div>
+  <div class="topic">Op-Amp Infinite Gain — Loop Gain, Gain Error, Virtual Short, Distortion Reduction</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>Op-Amp</h3>
+      <label>Avol (dB): <b id="avol_lbl">120</b></label>
+      <input type="range" id="avol" min="20" max="160" value="120" step="5">
+    </div>
+    <div class="cg">
+      <h3>Feedback Network</h3>
+      <label>Rin (kΩ): <b id="rin_lbl">1.0</b></label>
+      <input type="range" id="rin" min="0.1" max="100" value="1" step="0.1">
+      <label>Rf (kΩ): <b id="rf_lbl">10.0</b></label>
+      <input type="range" id="rf" min="0.1" max="1000" value="10" step="0.5">
+    </div>
+    <div class="cg">
+      <h3>Results</h3>
+      <div class="rd">Ideal Acl: <span id="r_acl_ideal">—</span></div>
+      <div class="rd">Actual Acl: <span id="r_acl_actual">—</span></div>
+      <div class="rd">Loop gain T: <span id="r_T">—</span></div>
+      <div class="rd">Gain error: <span id="r_err">—</span></div>
+      <div class="rd">THD reduction: <span id="r_thd">—</span></div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_acl">—</div><div class="l">Actual Acl (V/V)</div></div>
+      <div class="met"><div class="v" id="m_T">—</div><div class="l">Loop Gain T</div></div>
+      <div class="met"><div class="v" id="m_err">—</div><div class="l">Gain Error</div></div>
+    </div>
+    <div>
+      <div class="pl">Gain error vs Avol (dB) — for current closed-loop gain setting</div>
+      <canvas id="errCanvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">Closed-loop gain vs Avol — actual vs ideal</div>
+      <canvas id="aclCanvas" height="190"></canvas>
+    </div>
+    <div>
+      <div class="pl">Distortion / output impedance improvement vs loop gain T</div>
+      <canvas id="tCanvas" height="160"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+function update(){
+  const avol_dB=parseFloat(document.getElementById('avol').value);
+  const rin=parseFloat(document.getElementById('rin').value)*1e3;
+  const rf=parseFloat(document.getElementById('rf').value)*1e3;
+
+  document.getElementById('avol_lbl').textContent=avol_dB.toFixed(0);
+  document.getElementById('rin_lbl').textContent=(rin/1e3).toFixed(1);
+  document.getElementById('rf_lbl').textContent=(rf/1e3).toFixed(1);
+
+  const Avol=Math.pow(10,avol_dB/20);
+  const acl_ideal=rf/rin;
+  const beta=rin/(rin+rf);
+  const T=Avol*beta;
+  // Exact Acl for inverting (sign ignored here): Acl = Avol*(Rf/Rin)/(1+Avol*beta+Rf/Rin+1)... simplified:
+  // Acl = Avol * Rf / (Rin * (1 + Avol*beta)) = acl_ideal * T/(T+1) ... approximately
+  const acl_actual=acl_ideal*T/(T+1);
+  const err_pct=(acl_ideal-acl_actual)/acl_ideal*100;
+  const thd_reduction=T+1;
+
+  document.getElementById('r_acl_ideal').textContent=acl_ideal.toFixed(2)+' V/V';
+  document.getElementById('r_acl_actual').textContent=acl_actual.toFixed(4)+' V/V';
+  document.getElementById('r_T').textContent=T.toFixed(0);
+  document.getElementById('r_err').textContent=err_pct.toFixed(4)+'%';
+  document.getElementById('r_thd').textContent=(T+1).toFixed(0)+'×';
+
+  document.getElementById('m_acl').textContent=acl_actual.toFixed(3);
+  document.getElementById('m_T').textContent=T>=1e6?(T/1e6).toFixed(1)+'M':T>=1e3?(T/1e3).toFixed(1)+'k':T.toFixed(0);
+  document.getElementById('m_err').textContent=err_pct.toFixed(3)+'%';
+
+  drawErr(acl_ideal,beta,avol_dB);
+  drawAcl(acl_ideal,beta,avol_dB);
+  drawT(T);
+}
+
+function drawErr(acl_ideal,beta,avol_cur){
+  const canvas=document.getElementById('errCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:60,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+  // x: Avol dB 20..160
+  const toX=db=>pad.l+(db-20)/140*pw;
+  // y: error log 0.0001% to 100%
+  const toY=err=>pad.t+(1-(Math.log10(Math.max(err,0.0001))+4)/6)*ph; // -4 to 2 log
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [100,10,1,0.1,0.01,0.001].forEach(v=>{
+    const y=toY(v);if(y<pad.t||y>pad.t+ph)return;
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(v+'%',pad.l-28,y+3);
+  });
+  [20,40,60,80,100,120,140,160].forEach(v=>{
+    const x=toX(v);ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(v,x-8,pad.t+ph+12);
+  });
+
+  // 1% and 0.1% spec lines
+  ['#cc6600','#cc0000'].forEach((c,i)=>{
+    const pct=[1,0.1][i];
+    const y=toY(pct);
+    ctx.strokeStyle=c;ctx.lineWidth=1;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=c;ctx.font='8px Courier New';ctx.fillText(pct+'%',pad.l+pw-20,y-3);
+  });
+
+  // Curve
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let dB=20;dB<=160;dB+=0.5){
+    const Av=Math.pow(10,dB/20);
+    const T=Av*beta;
+    const err=100/(T+1);
+    const x=toX(dB),y=toY(err);
+    if(dB===20)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Current point
+  const Avol_cur=Math.pow(10,avol_cur/20);
+  const T_cur=Avol_cur*beta;
+  const err_cur=100/(T_cur+1);
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.beginPath();ctx.arc(toX(avol_cur),toY(err_cur),5,0,2*Math.PI);ctx.fill();
+
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('Avol (dB) →',W/2-25,H-3);
+  ctx.save();ctx.translate(10,H/2+15);ctx.rotate(-Math.PI/2);ctx.fillText('Gain error',0,0);ctx.restore();
+}
+
+function drawAcl(acl_ideal,beta,avol_cur){
+  const canvas=document.getElementById('aclCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:55,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const toX=db=>pad.l+(db-20)/140*pw;
+  const toY=acl=>pad.t+(1-acl/acl_ideal)*ph;
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [0.25,0.5,0.75,1.0].forEach(frac=>{
+    const y=pad.t+frac*ph;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText((acl_ideal*(1-frac)).toFixed(1),pad.l-30,y+3);
+  });
+
+  // Ideal line
+  ctx.strokeStyle='#006633';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,toY(acl_ideal));ctx.lineTo(pad.l+pw,toY(acl_ideal));ctx.stroke();ctx.setLineDash([]);
+
+  // Actual curve
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let dB=20;dB<=160;dB+=0.5){
+    const Av=Math.pow(10,dB/20);
+    const T=Av*beta;
+    const acl=acl_ideal*T/(T+1);
+    const x=toX(dB),y=toY(acl);
+    if(dB===20)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  const Av_cur=Math.pow(10,avol_cur/20);
+  const acl_cur=acl_ideal*Av_cur*beta/(1+Av_cur*beta);
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.beginPath();ctx.arc(toX(avol_cur),toY(acl_cur),5,0,2*Math.PI);ctx.fill();
+
+  ctx.fillStyle='#006633';ctx.font='9px Courier New';ctx.fillText('Ideal Acl = '+acl_ideal.toFixed(1),pad.l+5,pad.t+14);
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.fillText('Actual Acl',pad.l+5,pad.t+26);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('Avol (dB) →',W/2-25,H-3);
+  ctx.save();ctx.translate(10,H/2+15);ctx.rotate(-Math.PI/2);ctx.fillText('Acl (V/V)',0,0);ctx.restore();
+  [20,40,60,80,100,120,140,160].forEach(v=>{ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(v,toX(v)-8,pad.t+ph+12);});
+}
+
+function drawT(T_cur){
+  const canvas=document.getElementById('tCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:65,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const tmin=1,tmax=1e7;
+  const toX=t=>pad.l+(Math.log10(t)-Math.log10(tmin))/(Math.log10(tmax)-Math.log10(tmin))*pw;
+  const toY=frac=>pad.t+(1-frac)*ph; // fraction of open-loop value remaining
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [0.25,0.5,0.75,1.0].forEach(v=>{ctx.beginPath();ctx.moveTo(pad.l,toY(v));ctx.lineTo(pad.l+pw,toY(v));ctx.stroke();ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText((v*100).toFixed(0)+'%',pad.l-25,toY(v)+3);});
+  [1,10,100,1000,1e4,1e5,1e6,1e7].forEach(v=>{
+    const x=toX(v);ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    const lbl=v>=1e6?(v/1e6).toFixed(0)+'M':v>=1e3?(v/1e3).toFixed(0)+'k':v+'';
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(lbl,x-8,pad.t+ph+12);
+  });
+
+  // Distortion fraction = 1/(T+1)
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=300;i++){
+    const t=Math.pow(10,i/300*7);
+    const frac=1/(t+1);
+    const x=pad.l+i/300*pw,y=toY(frac);
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Current T marker
+  if(T_cur>=tmin&&T_cur<=tmax){
+    const frac=1/(T_cur+1);
+    ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.beginPath();ctx.arc(toX(T_cur),toY(frac),5,0,2*Math.PI);ctx.fill();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText(`T=${T_cur>=1e3?(T_cur/1e3).toFixed(0)+'k':T_cur.toFixed(0)}, ${(frac*100).toFixed(3)}%`,toX(T_cur)+7,toY(frac)-4);
+  }
+
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='9px Courier New';ctx.fillText('Remaining distortion/error = 1/(T+1)',pad.l+5,pad.t+14);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('Loop gain T →',W/2-25,H-3);
+  ctx.save();ctx.translate(10,H/2+15);ctx.rotate(-Math.PI/2);ctx.fillText('Fraction of open-loop',0,0);ctx.restore();
+}
+
+['avol','rin','rf'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M3-B-2.1.1 NPN Structure Simulation</title>
+<style>
+:root{--bg:#ffffff;--surface:#f5f5f5;--border:#cccccc;--text:#111111;--accent:#0066cc;--accent2:#0066cc;}
+@media(prefers-color-scheme:dark){:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--accent:#0066cc;--accent2:#58a6ff;}}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;padding:16px;max-width:860px;margin:0 auto;}
+h1{font-size:1.2rem;color:var(--accent2);margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:8px;}
+.note{font-size:0.85rem;color:var(--text);opacity:0.7;margin-bottom:12px;}
+canvas{width:100%;height:260px;display:block;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:12px;}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;}
+.ctrl{display:flex;flex-direction:column;gap:3px;font-size:0.82rem;}
+.ctrl label{color:var(--text);opacity:0.8;}
+input[type=range]{width:160px;accent-color:var(--accent);}
+.readouts{display:flex;flex-wrap:wrap;gap:12px;font-size:0.85rem;font-family:monospace;}
+.ro{background:var(--surface);border:1px solid var(--border);padding:4px 10px;border-radius:4px;color:var(--accent2);}
+</style></head><body>
+<h1>M3-B-2.1.1 — NPN Transistor I-V Characteristics</h1>
+<p class="note">Adjust base current (I_B) and collector voltage (V_CE) to explore BJT operating regions.</p>
+<canvas id="cv"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>I_B (µA): <span id="ibv">20</span></label><input type="range" id="ib" min="0" max="100" value="20" step="5" oninput="sv('ibv',this.value);draw();"></div>
+  <div class="ctrl"><label>β (hFE): <span id="betav">100</span></label><input type="range" id="beta" min="50" max="400" value="100" step="10" oninput="sv('betav',this.value);draw();"></div>
+  <div class="ctrl"><label>V_CC (V): <span id="vccv">12</span></label><input type="range" id="vcc" min="3" max="20" value="12" step="1" oninput="sv('vccv',this.value);draw();"></div>
+</div>
+<div class="readouts">
+  <div class="ro">I_C: <span id="ic">0</span> mA</div>
+  <div class="ro">I_E: <span id="ie">0</span> mA</div>
+  <div class="ro">Region: <span id="region">Active</span></div>
+  <div class="ro">P_diss: <span id="pd">0</span> mW</div>
+</div>
+<script>
+
+const isDark=()=>window.matchMedia('(prefers-color-scheme:dark)').matches;
+function gs(id){return parseFloat(document.getElementById(id).value);}
+function sv(id,val){document.getElementById(id).textContent=val;}
+function resize(cv,draw){
+  cv.width=cv.offsetWidth*devicePixelRatio;
+  cv.height=260*devicePixelRatio;
+  cv.style.height='260px';
+  draw();
+}
+function drawAxes(ctx,W,H,pad,xl,yl,color){
+  ctx.strokeStyle=color;ctx.lineWidth=1;ctx.fillStyle=color;ctx.font=`${11*devicePixelRatio}px system-ui`;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  ctx.fillText(xl,W-pad-30,H-pad+14*devicePixelRatio);
+  ctx.save();ctx.translate(pad-14*devicePixelRatio,pad+30);ctx.rotate(-Math.PI/2);ctx.fillText(yl,0,0);ctx.restore();
+}
+
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+window.addEventListener('resize',()=>resize(cv,draw));
+
+function draw(){
+  const dpr=devicePixelRatio;
+  cv.width=cv.offsetWidth*dpr; cv.height=260*dpr;
+  const W=cv.width,H=cv.height,pad=50*dpr;
+  const dark=isDark();
+  const bg=dark?'#161b22':'#f5f5f5';
+  const fg=dark?'#e6edf3':'#111111';
+  const acc=dark?'#58a6ff':'#0066cc';
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  const IB=gs('ib')*1e-6;
+  const beta=gs('beta');
+  const Vcc=gs('vcc');
+  const RC=1000; // 1kΩ default
+  const IC_active = beta*IB*1000; // mA
+  const IC_sat = (Vcc-0.2)/RC*1000; // mA
+  const IC_actual = Math.min(IC_active, IC_sat);
+  const VCE_actual = Vcc - IC_actual*RC/1000;
+  const region = IB===0 ? 'Cutoff' : (IC_actual >= IC_sat*0.99 ? 'Saturation' : 'Active');
+
+  sv('ic', IC_actual.toFixed(2));
+  sv('ie', (IC_actual + IB*1e6/1000).toFixed(2));
+  sv('region', region);
+  sv('pd', (VCE_actual*IC_actual).toFixed(1));
+
+  // Plot I_C vs V_CE family of curves
+  drawAxes(ctx,W,H,pad,'V_CE (V)','I_C (mA)',fg);
+  const xsc=(W-2*pad)/Vcc, ysc=(H-2*pad)/5; // 5mA max
+  ctx.font=`${10*dpr}px system-ui`; ctx.fillStyle=fg;
+  for(let v=0;v<=Vcc;v+=2){
+    const x=pad+v*xsc;
+    ctx.fillText(v,x-5,H-pad+13*dpr);
+    ctx.beginPath();ctx.strokeStyle=dark?'#30363d':'#dddddd';ctx.lineWidth=0.5;
+    ctx.moveTo(x,pad);ctx.lineTo(x,H-pad);ctx.stroke();
+  }
+  for(let i=0;i<=5;i++){
+    const y=H-pad-i*ysc;
+    ctx.fillText(i,pad-22*dpr,y+4);
+    ctx.beginPath();ctx.strokeStyle=dark?'#30363d':'#dddddd';ctx.lineWidth=0.5;
+    ctx.moveTo(pad,y);ctx.lineTo(W-pad,y);ctx.stroke();
+  }
+
+  // Draw curves for several I_B values
+  const colors=['#ff6b6b','#ffa502','#2ed573','#1e90ff','#a29bfe','#fd79a8'];
+  [10,20,40,60,80,100].forEach((ib_ua,idx)=>{
+    const ib=ib_ua*1e-6;
+    const ic_a=beta*ib*1000;
+    ctx.beginPath(); ctx.strokeStyle=colors[idx]; ctx.lineWidth=1.5*dpr;
+    for(let v=0;v<=Vcc;v+=0.05){
+      let ic_pt;
+      if(v<0.2) ic_pt=ic_a*(v/0.2); // saturation knee
+      else ic_pt=ic_a*(1+v*0.005); // Early effect
+      ic_pt=Math.min(ic_pt, (v-0.2)/RC*1000+ic_a*0.01);
+      const x=pad+v*xsc, y=H-pad-Math.min(ic_pt,5)*ysc;
+      if(v===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    const lx=W-pad-30*dpr, ly=H-pad-(ic_a>5?4.8:ic_a)*ysc;
+    ctx.fillStyle=colors[idx]; ctx.font=`${9*dpr}px system-ui`;
+    ctx.fillText(ib_ua+'µA',lx,Math.max(pad+8*dpr,ly));
+  });
+
+  // Q-point marker
+  const qx=pad+VCE_actual*xsc, qy=H-pad-Math.min(IC_actual,5)*ysc;
+  ctx.beginPath(); ctx.arc(qx,qy,6*dpr,0,2*Math.PI);
+  ctx.fillStyle=acc; ctx.fill();
+  ctx.fillStyle=acc; ctx.font=`${10*dpr}px system-ui`;
+  ctx.fillText('Q',qx+8*dpr,qy-4*dpr);
+
+  // Load line
+  const x0=pad+Vcc*xsc, y0=H-pad;
+  const ic_max=Vcc/RC*1000;
+  const xL=pad, yL=H-pad-Math.min(ic_max,5)*ysc;
+  ctx.beginPath(); ctx.strokeStyle=acc; ctx.lineWidth=1*dpr; ctx.setLineDash([4*dpr,4*dpr]);
+  ctx.moveTo(x0,y0); ctx.lineTo(xL,yL); ctx.stroke(); ctx.setLineDash([]);
+}
+draw();
+</script></body></html>

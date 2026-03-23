@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-RW-8.3.1 Timing Delay Generation</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:10px;padding:10px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:230px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.btn{display:block;width:100%;margin-top:5px;padding:5px;background:#1a1a3a;border:1px solid #334;color:#ccc;cursor:pointer;font-family:inherit;font-size:11px;border-radius:3px}
+.btn.active{background:#003366;border-color:#0066cc;color:#00aaff}
+.formula{color:#ffaa00;font-size:11px;margin-top:8px;line-height:1.6}
+</style>
+</head>
+<body>
+<h1>P2-RW-8.3.1 — RC Delay Generation: 555 Monostable and CMOS Gate</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="580" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>RC Parameters</h2>
+<label>R (kΩ)
+<input type="range" id="R" min="1" max="1000" step="1" value="47">
+<div class="readout" id="R_v">R = 47 kΩ</div>
+</label>
+<label>C (μF)
+<input type="range" id="C" min="0.001" max="100" step="0.001" value="10">
+<div class="readout" id="C_v">C = 10 μF</div>
+</label>
+<h2 style="margin-top:10px">Comparator Type</h2>
+<button class="btn active" id="b_555" onclick="setMode('555')">555 Timer (k = 2/3)</button>
+<button class="btn" id="b_cmos" onclick="setMode('cmos')">CMOS Gate (k = 1/2)</button>
+<button class="btn" id="b_90" onclick="setMode('90')">NCP302 type (k = 0.9)</button>
+<h2 style="margin-top:10px">Derived Delays</h2>
+<div class="readout" id="tau_v2">τ = RC = —</div>
+<div class="readout" id="t_delay">t_delay = —</div>
+<div class="readout" id="t_555">555 t_W = 1.1×RC: —</div>
+<div class="readout" id="t_cmos">CMOS (k=0.5): —</div>
+<div class="formula">t_delay = −τ×ln(1−k)<br>k=0.667: t = 1.099τ<br>k=0.5: t = 0.693τ</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let R=47,C=10,mode='555';
+const modes={
+  '555':{k:2/3,col:'#00ff88',label:'555 Timer threshold (k=2/3)'},
+  'cmos':{k:0.5,col:'#00aaff',label:'CMOS gate (k=1/2)'},
+  '90':{k:0.9,col:'#ffaa00',label:'NCP302 type (k=0.9)'},
+};
+const W=580,H=380,pad={l:65,r=20,t=30,b=40};
+// fix syntax
+const pd={l:65,r:20,t:30,b:40};
+const CW=W-pd.l-pd.r,CH=H-pd.t-pd.b;
+const Vin=5;
+
+function setMode(m){mode=m;Object.keys(modes).forEach(k=>document.getElementById('b_'+k).classList.toggle('active',k===m));draw();}
+['R','C'].forEach(id=>{
+  document.getElementById(id).oninput=function(){
+    if(id==='R'){R=parseFloat(this.value);document.getElementById('R_v').textContent='R = '+R+' kΩ';}
+    if(id==='C'){C=parseFloat(this.value);document.getElementById('C_v').textContent='C = '+C+' μF';}
+    draw();
+  };
+});
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const tau=R*1e3*C*1e-6*1000; // ms
+  const k=modes[mode].k;
+  const t_delay=-tau*Math.log(1-k);
+  const t_555_v=1.1*tau;
+  const t_cmos=0.693*tau;
+  const tmax=tau*7;
+  function toPx(t,v){return[pd.l+CW*(t/tmax),pd.t+CH*(1-v/(Vin*1.1))];}
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=7;i++){const x=pd.l+CW*(i/7);ctx.beginPath();ctx.moveTo(x,pd.t);ctx.lineTo(x,pd.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=pd.t+CH*(i/5);ctx.beginPath();ctx.moveTo(pd.l,y);ctx.lineTo(pd.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pd.l,pd.t);ctx.lineTo(pd.l,pd.t+CH);ctx.moveTo(pd.l,pd.t+CH);ctx.lineTo(pd.l+CW,pd.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=7;i++){const t=tmax*i/7;ctx.fillText(t.toFixed(1)+'ms',pd.l+CW*(i/7),pd.t+CH+14);}
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){const v=Vin*1.1*(1-i/5);ctx.fillText(v.toFixed(1)+'V',pd.l-4,pd.t+CH*(i/5)+4);}
+  // V_in charge curve
+  ctx.strokeStyle='#00ff88';ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=600;i++){const t=tmax*i/600;const v=Vin*(1-Math.exp(-t/tau));const[x,y]=toPx(t,v);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  // All threshold lines
+  Object.entries(modes).forEach(([mkey,md])=>{
+    const thresh=md.k*Vin;
+    const td=-tau*Math.log(1-md.k);
+    const[,yt]=toPx(0,thresh);const[xtd,]=toPx(td,thresh);
+    ctx.strokeStyle=md.col+'88';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(pd.l,yt);ctx.lineTo(xtd,yt);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(xtd,yt);ctx.lineTo(xtd,pd.t+CH);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=md.col;ctx.beginPath();ctx.arc(xtd,yt,mkey===mode?5:3,0,Math.PI*2);ctx.fill();
+    if(mkey===mode){
+      ctx.font='bold 10px Courier New';ctx.textAlign='left';
+      ctx.fillText('k='+md.k.toFixed(3)+' → t='+td.toFixed(2)+'ms',xtd+6,yt-5);
+    }
+  });
+  // Output pulse indicator (block after threshold)
+  const[x_del,]=toPx(t_delay,0);const[x_end,]=toPx(Math.min(t_delay+0.5*tau,tmax),0);
+  const[,y_out_h]=toPx(0,0.8*Vin);const[,y_out_l]=toPx(0,0.15*Vin);
+  ctx.fillStyle=modes[mode].col+'33';
+  ctx.fillRect(x_del,y_out_l,x_end-x_del,y_out_h-y_out_l);
+  ctx.strokeStyle=modes[mode].col;ctx.lineWidth=1.5;
+  ctx.strokeRect(x_del,y_out_l,x_end-x_del,y_out_h-y_out_l);
+  ctx.fillStyle=modes[mode].col;ctx.font='10px Courier New';ctx.textAlign='center';
+  ctx.fillText('Output HIGH',( x_del+x_end)/2,(y_out_l+y_out_h)/2+4);
+  // Readouts
+  document.getElementById('tau_v2').textContent='τ = RC = '+tau.toFixed(3)+' ms';
+  document.getElementById('t_delay').textContent='t_delay (k='+k.toFixed(3)+') = '+t_delay.toFixed(3)+' ms';
+  document.getElementById('t_555').textContent='555 t_W = '+t_555_v.toFixed(3)+' ms';
+  document.getElementById('t_cmos').textContent='CMOS (k=0.5) = '+t_cmos.toFixed(3)+' ms';
+}
+setMode('555');
+</script>
+</body>
+</html>

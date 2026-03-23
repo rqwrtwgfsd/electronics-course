@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analog Electronics — Simulation Library</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --bg2: #f5f5f5;
+    --text: #1a1a1a;
+    --text2: #555555;
+    --border: #dddddd;
+    --p2: #0066cc;
+    --m3: #00994d;
+    --m4a: #cc7700;
+    --m4b: #7700cc;
+    --card-bg: #ffffff;
+    --sidebar-bg: #f5f5f5;
+    --search-bg: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a;
+      --bg2: #242424;
+      --text: #e8e8e8;
+      --text2: #aaaaaa;
+      --border: #444444;
+      --card-bg: #242424;
+      --sidebar-bg: #1f1f1f;
+      --search-bg: #2a2a2a;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  /* ── Top bar ── */
+  header {
+    background: var(--bg2);
+    border-bottom: 2px solid var(--border);
+    padding: 16px 24px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header h1 {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
+  header p {
+    color: var(--text2);
+    font-size: 13px;
+    margin-top: 2px;
+  }
+  .header-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .header-titles { flex: 1; }
+  /* ── Search ── */
+  .search-wrap {
+    flex: 0 0 280px;
+  }
+  #search {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--search-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 13px;
+    outline: none;
+  }
+  #search:focus { border-color: var(--p2); }
+  /* ── Layout ── */
+  .layout {
+    display: flex;
+    min-height: calc(100vh - 80px);
+  }
+  /* ── Sidebar ── */
+  aside {
+    width: 220px;
+    flex-shrink: 0;
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--border);
+    padding: 16px 0;
+    overflow-y: auto;
+  }
+  .sidebar-group { margin-bottom: 8px; }
+  .sidebar-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    padding: 6px 16px 4px;
+    color: var(--text2);
+  }
+  .sidebar-link {
+    display: block;
+    padding: 5px 16px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 13px;
+  }
+  .sidebar-link:hover { background: var(--border); }
+  .sidebar-link .dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  /* ── Main content ── */
+  main {
+    flex: 1;
+    padding: 24px;
+    overflow-x: hidden;
+  }
+  /* ── Phase headings ── */
+  .phase-heading {
+    font-size: 16px;
+    font-weight: 700;
+    margin: 24px 0 12px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--border);
+  }
+  .phase-heading:first-child { margin-top: 0; }
+  .phase-heading.p2  { border-color: var(--p2); }
+  .phase-heading.m3  { border-color: var(--m3); }
+  .phase-heading.m4a { border-color: var(--m4a); }
+  .phase-heading.m4b { border-color: var(--m4b); }
+  /* ── Card grid ── */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  @media (max-width: 1100px) { .card-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 680px)  { .card-grid { grid-template-columns: 1fr; } }
+  /* ── Card ── */
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .card-top { display: flex; align-items: center; gap: 8px; }
+  .id-badge {
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 3px;
+    color: #fff;
+    white-space: nowrap;
+  }
+  .id-badge.p2  { background: var(--p2); }
+  .id-badge.m3  { background: var(--m3); }
+  .id-badge.m4a { background: var(--m4a); }
+  .id-badge.m4b { background: var(--m4b); }
+  .card-section { font-size: 11px; color: var(--text2); }
+  .card-title {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+  .card-desc {
+    font-size: 12px;
+    color: var(--text2);
+    flex: 1;
+  }
+  .card-btn {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    text-decoration: none;
+    background: var(--bg2);
+    text-align: center;
+  }
+  .card-btn:hover { border-color: var(--p2); color: var(--p2); }
+  /* ── Empty state ── */
+  .empty-state {
+    text-align: center;
+    padding: 60px 24px;
+    color: var(--text2);
+  }
+  .empty-state h2 { font-size: 18px; margin-bottom: 8px; }
+  .empty-state p { font-size: 13px; }
+  /* ── Hidden ── */
+  .hidden { display: none !important; }
+  /* ── Stats bar ── */
+  .stats {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  .stat {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 14px;
+    font-size: 12px;
+  }
+  .stat strong { font-size: 20px; display: block; }
+  .stat.p2  strong { color: var(--p2); }
+  .stat.m3  strong { color: var(--m3); }
+  .stat.m4a strong { color: var(--m4a); }
+  .stat.m4b strong { color: var(--m4b); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-row">
+    <div class="header-titles">
+      <h1>Analog Electronics Simulation Library</h1>
+      <p id="sim-count">0 interactive simulations across 4 modules — building...</p>
+    </div>
+    <div class="search-wrap">
+      <input type="text" id="search" placeholder="Search by ID or topic..." autocomplete="off">
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <aside id="sidebar">
+    <div class="sidebar-group">
+      <div class="sidebar-label">Phase 2</div>
+      <a class="sidebar-link" href="#phase-p2"><span class="dot" style="background:var(--p2)"></span>Passive &amp; Dynamics</a>
+      <a class="sidebar-link" href="#p2-cap"><span class="dot" style="background:var(--p2)"></span>Capacitor</a>
+      <a class="sidebar-link" href="#p2-ind"><span class="dot" style="background:var(--p2)"></span>Inductor</a>
+      <a class="sidebar-link" href="#p2-fo"><span class="dot" style="background:var(--p2)"></span>First-Order Systems</a>
+      <a class="sidebar-link" href="#p2-so"><span class="dot" style="background:var(--p2)"></span>Second-Order Systems</a>
+      <a class="sidebar-link" href="#p2-wi"><span class="dot" style="background:var(--p2)"></span>Waveform Interpretation</a>
+      <a class="sidebar-link" href="#p2-db"><span class="dot" style="background:var(--p2)"></span>Debugging Framework</a>
+      <a class="sidebar-link" href="#p2-op"><span class="dot" style="background:var(--p2)"></span>Optimization</a>
+      <a class="sidebar-link" href="#p2-rw"><span class="dot" style="background:var(--p2)"></span>Real-World Apps</a>
+      <a class="sidebar-link" href="#p2-sim"><span class="dot" style="background:var(--p2)"></span>NGSpice Mastery</a>
+    </div>
+    <div class="sidebar-group">
+      <div class="sidebar-label">Module 3</div>
+      <a class="sidebar-link" href="#phase-m3"><span class="dot" style="background:var(--m3)"></span>Semiconductor Devices</a>
+      <a class="sidebar-link" href="#m3-d"><span class="dot" style="background:var(--m3)"></span>Diode</a>
+      <a class="sidebar-link" href="#m3-b"><span class="dot" style="background:var(--m3)"></span>BJT</a>
+      <a class="sidebar-link" href="#m3-m"><span class="dot" style="background:var(--m3)"></span>MOSFET</a>
+      <a class="sidebar-link" href="#m3-ds"><span class="dot" style="background:var(--m3)"></span>Device Selection</a>
+    </div>
+    <div class="sidebar-group">
+      <div class="sidebar-label">Module 4A</div>
+      <a class="sidebar-link" href="#phase-m4a"><span class="dot" style="background:var(--m4a)"></span>Analog Circuit Design</a>
+      <a class="sidebar-link" href="#m4a-amp"><span class="dot" style="background:var(--m4a)"></span>Amplifiers</a>
+      <a class="sidebar-link" href="#m4a-gb"><span class="dot" style="background:var(--m4a)"></span>Gain &amp; Bandwidth</a>
+      <a class="sidebar-link" href="#m4a-flt"><span class="dot" style="background:var(--m4a)"></span>Filters</a>
+      <a class="sidebar-link" href="#m4a-sd"><span class="dot" style="background:var(--m4a)"></span>Stability &amp; Distortion</a>
+    </div>
+    <div class="sidebar-group">
+      <div class="sidebar-label">Module 4B</div>
+      <a class="sidebar-link" href="#phase-m4b"><span class="dot" style="background:var(--m4b)"></span>Analog IC Design</a>
+      <a class="sidebar-link" href="#m4b-cm"><span class="dot" style="background:var(--m4b)"></span>Current Mirror</a>
+      <a class="sidebar-link" href="#m4b-da"><span class="dot" style="background:var(--m4b)"></span>Diff Amplifier</a>
+      <a class="sidebar-link" href="#m4b-cas"><span class="dot" style="background:var(--m4b)"></span>Cascode</a>
+      <a class="sidebar-link" href="#m4b-ota"><span class="dot" style="background:var(--m4b)"></span>OTA / Op-Amp</a>
+    </div>
+  </aside>
+
+  <main id="main">
+    <!-- Stats -->
+    <div class="stats">
+      <div class="stat p2"><strong id="cnt-p2">0</strong>Phase 2 simulations</div>
+      <div class="stat m3"><strong id="cnt-m3">0</strong>Module 3 simulations</div>
+      <div class="stat m4a"><strong id="cnt-m4a">0</strong>Module 4A simulations</div>
+      <div class="stat m4b"><strong id="cnt-m4b">0</strong>Module 4B simulations</div>
+    </div>
+
+    <!-- Empty state shown until cards are populated -->
+    <div class="empty-state" id="empty-state">
+      <h2>Simulations Loading...</h2>
+      <p>Modules are being generated. This gallery updates after each module completes.<br>
+      Open individual simulation files from the <code>full_analog/simulations/</code> folder.</p>
+    </div>
+
+    <!-- ═══ PHASE 2 ═══ -->
+    <div id="phase-p2" class="phase-heading p2 hidden">Phase 2 — Passive Components &amp; Dynamics</div>
+
+    <div id="p2-cap" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Capacitor</div></div>
+    <div class="card-grid" id="grid-p2-c"></div>
+
+    <div id="p2-ind" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Inductor</div></div>
+    <div class="card-grid" id="grid-p2-l"></div>
+
+    <div id="p2-fo" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">First-Order Systems</div></div>
+    <div class="card-grid" id="grid-p2-fo"></div>
+
+    <div id="p2-so" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Second-Order Systems</div></div>
+    <div class="card-grid" id="grid-p2-so"></div>
+
+    <div id="p2-wi" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Waveform Interpretation</div></div>
+    <div class="card-grid" id="grid-p2-wi"></div>
+
+    <div id="p2-db" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Debugging Framework</div></div>
+    <div class="card-grid" id="grid-p2-db"></div>
+
+    <div id="p2-op" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Optimization Framework</div></div>
+    <div class="card-grid" id="grid-p2-op"></div>
+
+    <div id="p2-rw" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Real-World Applications</div></div>
+    <div class="card-grid" id="grid-p2-rw"></div>
+
+    <div id="p2-sim" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">NGSpice Mastery</div></div>
+    <div class="card-grid" id="grid-p2-sim"></div>
+
+    <!-- ═══ MODULE 3 ═══ -->
+    <div id="phase-m3" class="phase-heading m3 hidden">Module 3 — Semiconductor Devices</div>
+
+    <div id="m3-d" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Diode</div></div>
+    <div class="card-grid" id="grid-m3-d"></div>
+
+    <div id="m3-b" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">BJT</div></div>
+    <div class="card-grid" id="grid-m3-b"></div>
+
+    <div id="m3-m" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">MOSFET</div></div>
+    <div class="card-grid" id="grid-m3-m"></div>
+
+    <div id="m3-ds" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Device Selection</div></div>
+    <div class="card-grid" id="grid-m3-ds"></div>
+
+    <div id="m3-int" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Integration</div></div>
+    <div class="card-grid" id="grid-m3-int"></div>
+
+    <!-- ═══ MODULE 4A ═══ -->
+    <div id="phase-m4a" class="phase-heading m4a hidden">Module 4A — Analog Circuit Design (Basic)</div>
+
+    <div id="m4a-amp" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Amplification</div></div>
+    <div class="card-grid" id="grid-m4a-amp"></div>
+
+    <div id="m4a-gb" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Gain and Bandwidth</div></div>
+    <div class="card-grid" id="grid-m4a-gb"></div>
+
+    <div id="m4a-flt" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Filters</div></div>
+    <div class="card-grid" id="grid-m4a-flt"></div>
+
+    <div id="m4a-sd" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Stability and Distortion</div></div>
+    <div class="card-grid" id="grid-m4a-sd"></div>
+
+    <div id="m4a-dt" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Design Thinking</div></div>
+    <div class="card-grid" id="grid-m4a-dt"></div>
+
+    <div id="m4a-dbg" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Debug</div></div>
+    <div class="card-grid" id="grid-m4a-dbg"></div>
+
+    <div id="m4a-opt" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Optimization</div></div>
+    <div class="card-grid" id="grid-m4a-opt"></div>
+
+    <!-- ═══ MODULE 4B ═══ -->
+    <div id="phase-m4b" class="phase-heading m4b hidden">Module 4B — Analog IC Design (Razavi-Level)</div>
+
+    <div id="m4b-cm" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Current Mirror</div></div>
+    <div class="card-grid" id="grid-m4b-cm"></div>
+
+    <div id="m4b-da" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Differential Amplifier</div></div>
+    <div class="card-grid" id="grid-m4b-da"></div>
+
+    <div id="m4b-al" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Active Load</div></div>
+    <div class="card-grid" id="grid-m4b-al"></div>
+
+    <div id="m4b-cas" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Cascode</div></div>
+    <div class="card-grid" id="grid-m4b-cas"></div>
+
+    <div id="m4b-ms" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Multi-Stage</div></div>
+    <div class="card-grid" id="grid-m4b-ms"></div>
+
+    <div id="m4b-fc" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Frequency Compensation</div></div>
+    <div class="card-grid" id="grid-m4b-fc"></div>
+
+    <div id="m4b-ota" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">OTA</div></div>
+    <div class="card-grid" id="grid-m4b-ota"></div>
+
+    <div id="m4b-2ota" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Two-Stage OTA</div></div>
+    <div class="card-grid" id="grid-m4b-2ota"></div>
+
+    <div id="m4b-5t" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Five-Transistor OTA</div></div>
+    <div class="card-grid" id="grid-m4b-5t"></div>
+
+    <div id="m4b-oad" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Full Op-Amp Design</div></div>
+    <div class="card-grid" id="grid-m4b-oad"></div>
+
+    <div id="m4b-pm" class="hidden"><div class="sidebar-label" style="padding:0 0 6px">Performance</div></div>
+    <div class="card-grid" id="grid-m4b-pm"></div>
+
+  </main>
+</div>
+
+<script>
+// ── Card data array (populated as modules are generated) ──
+// Each entry: { id, slug, phase, section, sectionId, title, desc }
+const CARDS = [
+  // Cards will be appended here as each module is completed.
+  // Example format (do not remove this comment — used as insertion marker):
+  { id:"P2-C-1.1.1", slug:"P2-C-1.1.1_Charge_Storage_Mechanism", phase:"p2", section:"Phase 2 — Capacitor", gridId:"grid-p2-c", title:"Charge Storage Mechanism", desc:"Parallel-plate capacitor with live Q=CV readout, E-field arrows, and geometry explorer (C=εA/d)." },
+  { id:"P2-C-1.1.2", slug:"P2-C-1.1.2_Voltage_Definition", phase:"p2", section:"Phase 2 — Capacitor", gridId:"grid-p2-c", title:"Voltage Definition (Q = CV)", desc:"Three-mode sim: Q-V linear graph, dV/dt=I/C ramp integrator, and series capacitor voltage-split explorer with overvoltage warning." },
+  { id:"P2-C-1.1.3", slug:"P2-C-1.1.3_Energy_Storage", phase:"p2", section:"Phase 2 — Capacitor", gridId:"grid-p2-c", title:"Energy Storage (½CV²)", desc:"Three-mode sim: ½CV² Q-V triangle with area shading, hold-up energy explorer showing usable vs unusable zones, and 50% charging loss visualization." },
+  { id:"P2-C-1.2.1", slug:"P2-C-1.2.1_Why_Voltage_Cannot_Change_Instantly", phase:"p2", section:"Phase 2 — Capacitor", gridId:"grid-p2-c", title:"Why Voltage Cannot Change Instantly", desc:"Step response with adjustable initial condition showing V_C continuity, plus dV/dt slew rate explorer with live V/ns readout." },
+  { id:"P2-C-1.2.2", slug:"P2-C-1.2.2_Charging_Process", phase:"p2", section:"Phase 2 — Capacitor", gridId:"grid-p2-c", title:"Charging Process (Step Input)", desc:"RC charging waveform with R/C/Vs sliders. Live V_C(t) and I(t) plotted together, τ marker at 63.2%, voltage and current readouts." },
+  { id:"P2-C-1.2.3", slug:"P2-C-1.2.3_Discharging_Process", phase:"p2", section:"Phase 2 — Capacitor", gridId:"grid-p2-c", title:"Discharging Process", desc:"Charge/discharge toggle showing mirror symmetry. R and C sliders, annotated 63.2%/36.8% dots, current direction indicator." },
+  { id:"P2-C-1.2.4", slug:"P2-C-1.2.4_Initial_vs_Final_Conditions", phase:"p2", section:"Phase 2 — Capacitor", gridId:"grid-p2-c", title:"Initial vs Final Conditions", desc:"Circuit schematic showing cap as voltage source at t=0⁺ and open circuit at t→∞. Thevenin equivalent explorer with V_C0 slider." },
+  { id:"P2-C-1.3.1", slug:"P2-C-1.3.1_Time_Constant_Definition", phase:"p2", section:"Phase 2 — Capacitor", gridId:"grid-p2-c", title:"Time Constant Definition τ = RC", desc:"Large τ readout with R/C sliders. Tangent line at t=0, milestone grid, 10–90% rise time display. τ changes live as you adjust components." },
+  { id:"P2-C-1.3.2", slug:"P2-C-1.3.2_Key_Time_Points", phase:"p2", section:"Phase 2 — Capacitor", gridId:"grid-p2-c", title:"Key Time Points (1τ=63%, 5τ=99%)", desc:"Clickable 1τ–5τ milestone cards with cross-hair on curve, exact voltage %, error, and bit-accuracy level for each milestone." },
+  { id:"P2-C-1.3.3", slug:"P2-C-1.3.3_Effect_of_R_and_C_Variation", phase:"p2", section:"Phase 2 — Capacitor", gridId:"grid-p2-c", title:"Effect of R and C Variation", desc:"Family of 4 simultaneous curves with ×0.5/×1/×2/×4 multipliers. Toggle Vary-R vs Vary-C mode. Table shows τ and V at each scale." },
+  { id:"P2-C-1.4.1", slug:"P2-C-1.4.1_RC_Charging_Circuit_Application", phase:"p2", section:"Phase 2 — Capacitor", gridId:"grid-p2-c", title:"RC Charging Circuit Application", desc:"555-timer-style threshold comparator. Sliders for R, C, threshold. Live time-to-threshold calculation with charging curve overlay." },
+  { id:"P2-C-1.4.2", slug:"P2-C-1.4.2_RC_Delay_Circuit_Application", phase:"p2", section:"Phase 2 — Capacitor", gridId:"grid-p2-c", title:"RC Delay Circuit Application", desc:"Input step + delayed output waveforms. Sliders for R, C, threshold %. Live delay time readout showing how each parameter affects delay." },
+  { id:"P2-C-1.4.3", slug:"P2-C-1.4.3_Low_Pass_Filter_Application", phase:"p2", section:"Phase 2 — Capacitor", gridId:"grid-p2-c", title:"Low-Pass Filter Application", desc:"Bode plot (magnitude + phase) with -3dB marker. R and C sliders with live f_c readout. Time-domain sine output at adjustable frequency." },
+  { id:"P2-C-1.5.1", slug:"P2-C-1.5.1_Debug_Slow_Response_Issues", phase:"p2", section:"Phase 2 — Capacitor", gridId:"grid-p2-c", title:"Debug: Slow Response Issues", desc:"Side-by-side expected vs actual waveforms. Fault sliders for excess R and excess C. Fix toggle restores correct response." },
+  { id:"P2-C-1.5.2", slug:"P2-C-1.5.2_Debug_Oversized_Capacitor_Problems", phase:"p2", section:"Phase 2 — Capacitor", gridId:"grid-p2-c", title:"Debug: Oversized Capacitor Problems", desc:"Three-panel view: inrush current, filter cutoff shift, phase margin. Shows how each metric degrades as C increases beyond nominal." },
+  { id:"P2-C-1.5.3", slug:"P2-C-1.5.3_Optimize_Noise_Filtering", phase:"p2", section:"Phase 2 — Capacitor", gridId:"grid-p2-c", title:"Optimize: Noise Filtering", desc:"Frequency response of multi-cap filter bank. Self-resonance dip per cap. Add/remove caps to see combined response filling frequency gaps." },
+  { id:"P2-L-2.1.1", slug:"P2-L-2.1.1_Magnetic_Field_Formation", phase:"p2", section:"Phase 2 — Inductor", gridId:"grid-p2-l", title:"Magnetic Field Formation", desc:"Coil animation with adjustable turns N and current I. B-field strength visualization with live flux and inductance trend readouts." },
+  { id:"P2-L-2.1.2", slug:"P2-L-2.1.2_Current_and_Flux_Relationship", phase:"p2", section:"Phase 2 — Inductor", gridId:"grid-p2-l", title:"Current and Flux Relationship", desc:"Φ-I graph with linear region and saturation knee. Core material selector (air/ferrite/silicon steel). Live L and Φ readouts showing saturation." },
+  { id:"P2-L-2.1.3", slug:"P2-L-2.1.3_Energy_Storage_LI2", phase:"p2", section:"Phase 2 — Inductor", gridId:"grid-p2-l", title:"Energy Storage (½LI²)", desc:"Energy bar and I-Ψ triangle analogous to Q-V for capacitors. L and I sliders, live energy readout. Side-by-side comparison with ½CV²." },
+  { id:"P2-L-2.2.1", slug:"P2-L-2.2.1_Why_Current_Cannot_Change_Instantly", phase:"p2", section:"Phase 2 — Inductor", gridId:"grid-p2-l", title:"Why Current Cannot Change Instantly", desc:"Step voltage applied to RL circuit showing smooth current rise. V_L spike at t=0, τ=L/R marker, initial condition slider for pre-existing current." },
+  { id:"P2-L-2.2.2", slug:"P2-L-2.2.2_Voltage_Spike", phase:"p2", section:"Phase 2 — Inductor", gridId:"grid-p2-l", title:"Voltage Spike (L di/dt)", desc:"Switch-off voltage spike visualization. L and I₀ sliders. Shows spike amplitude V=L×di/dt with flyback diode clamp comparison." },
+  { id:"P2-L-2.2.3", slug:"P2-L-2.2.3_Switching_Behavior", phase:"p2", section:"Phase 2 — Inductor", gridId:"grid-p2-l", title:"Switching Behavior", desc:"Inductor current during PWM switching. ON/OFF phase shading, triangular ripple waveform, duty cycle and frequency sliders." },
+  { id:"P2-L-2.3.1", slug:"P2-L-2.3.1_RL_Time_Constant", phase:"p2", section:"Phase 2 — Inductor", gridId:"grid-p2-l", title:"RL Time Constant (τ = L/R)", desc:"L and R sliders with live τ=L/R readout. Exponential rise curve with tangent line at t=0, 63.2% milestone marker." },
+  { id:"P2-L-2.3.2", slug:"P2-L-2.3.2_Current_Rise_Curve", phase:"p2", section:"Phase 2 — Inductor", gridId:"grid-p2-l", title:"Current Rise Curve", desc:"RL current rise I(t)=I_final(1−e^(−t/τ)) plotted with annotated milestones at 1τ–5τ. Live I, dI/dt, and V_L readouts." },
+  { id:"P2-L-2.3.3", slug:"P2-L-2.3.3_Steady_State_Behavior", phase:"p2", section:"Phase 2 — Inductor", gridId:"grid-p2-l", title:"Steady State Behavior", desc:"Transient vs steady-state display showing V_L→0 and I→V/R. V and R sliders, energy dissipated bar, short-circuit at-steady-state indicator." },
+  { id:"P2-L-2.4.1", slug:"P2-L-2.4.1_RL_Circuit_Application", phase:"p2", section:"Phase 2 — Inductor", gridId:"grid-p2-l", title:"RL Circuit Application", desc:"Buck converter inductor current with triangular ripple. V_in, V_out, L, f_sw sliders. Live D, ΔI, I_peak, I_valley, CCM/DCM mode readouts." },
+  { id:"P2-L-2.4.2", slug:"P2-L-2.4.2_Inductive_Load_Relay_Motor", phase:"p2", section:"Phase 2 — Inductor", gridId:"grid-p2-l", title:"Inductive Load (Relay and Motor)", desc:"Relay coil drive sim with pull-in detection. Flyback diode on/off toggle showing spike vs clamped decay. Live τ, I_pull-in, V_spike readouts." },
+  { id:"P2-L-2.4.3", slug:"P2-L-2.4.3_Energy_Transfer_Systems", phase:"p2", section:"Phase 2 — Inductor", gridId:"grid-p2-l", title:"Energy Transfer Systems", desc:"Flyback energy transfer: triangular inductor current with energy-shaded areas, energy-per-cycle bar, and P_avg vs frequency curve." },
+  { id:"P2-L-2.5.1", slug:"P2-L-2.5.1_Debug_Voltage_Spikes", phase:"p2", section:"Phase 2 — Inductor", gridId:"grid-p2-l", title:"Debug: Voltage Spikes and Protection", desc:"Switch node voltage with/without TVS protection. TVS clamp voltage dropdown, MOSFET limit line, safety check indicator." },
+  { id:"P2-L-2.5.2", slug:"P2-L-2.5.2_Debug_Flyback_Diode", phase:"p2", section:"Phase 2 — Inductor", gridId:"grid-p2-l", title:"Debug: Flyback Diode Usage", desc:"Four diode scenarios: no diode (unbounded spike), Schottky SS3P3, slow 1N4007 with ringing, and reversed diode warning." },
+  { id:"P2-L-2.5.3", slug:"P2-L-2.5.3_Optimize_Switching_Optimization", phase:"p2", section:"Phase 2 — Inductor", gridId:"grid-p2-l", title:"Optimize: Switching Optimization", desc:"ΔI vs L and ΔI vs f on log scales with L_crit boundary, 30% ripple guideline, and L×f iso-ripple curve." },
+  { id:"P2-FO-3.1.1", slug:"P2-FO-3.1.1_Differential_Equation_Form", phase:"p2", section:"Phase 2 — First-Order Systems", gridId:"grid-p2-fo", title:"Differential Equation Form", desc:"Interactive τ(dy/dt)+y=x ODE visualizer. Time constant slider drives live exponential solution, showing pole at s=−1/τ on s-plane." },
+  { id:"P2-FO-3.1.2", slug:"P2-FO-3.1.2_Exponential_Solution", phase:"p2", section:"Phase 2 — First-Order Systems", gridId:"grid-p2-fo", title:"Exponential Solution", desc:"y(t)=A·e^(−t/τ) with adjustable A and τ. Shows time constant tangent line, half-life marker, and live decay rate readout." },
+  { id:"P2-FO-3.2.1", slug:"P2-FO-3.2.1_Step_Response", phase:"p2", section:"Phase 2 — First-Order Systems", gridId:"grid-p2-fo", title:"Step Response", desc:"RC step response with R and C sliders. Live τ readout, annotated 63%/95%/99% milestones, and current waveform plotted simultaneously." },
+  { id:"P2-FO-3.2.2", slug:"P2-FO-3.2.2_Impulse_Response", phase:"p2", section:"Phase 2 — First-Order Systems", gridId:"grid-p2-fo", title:"Impulse Response", desc:"h(t)=(1/τ)·e^(−t/τ) impulse response with adjustable τ. Area-under-curve shaded to show total energy = 1/τ." },
+  { id:"P2-FO-3.3.1", slug:"P2-FO-3.3.1_Rise_Time", phase:"p2", section:"Phase 2 — First-Order Systems", gridId:"grid-p2-fo", title:"Rise Time", desc:"10%–90% rise time measurement with bracket annotation. τ slider shifts the cross-hair markers, live t_r = 2.2τ readout." },
+  { id:"P2-FO-3.3.2", slug:"P2-FO-3.3.2_Settling_Time", phase:"p2", section:"Phase 2 — First-Order Systems", gridId:"grid-p2-fo", title:"Settling Time", desc:"Settling band selector (±1%, ±2%, ±5%) with live t_settle readout. Shows how error band choice changes settling time dramatically." },
+  { id:"P2-FO-3.3.3", slug:"P2-FO-3.3.3_Delay", phase:"p2", section:"Phase 2 — First-Order Systems", gridId:"grid-p2-fo", title:"Delay", desc:"50% delay time t_d = 0.69τ visualization. Step input vs output waveform with delay bracket annotation and τ slider." },
+  { id:"P2-FO-3.4.1", slug:"P2-FO-3.4.1_Speed_vs_Stability_Insight", phase:"p2", section:"Phase 2 — First-Order Systems", gridId:"grid-p2-fo", title:"Speed vs Stability Insight", desc:"Side-by-side fast (small τ) vs stable (large τ) response comparison with noise injection slider showing trade-off." },
+  { id:"P2-FO-3.4.2", slug:"P2-FO-3.4.2_Engineering_Trade_offs", phase:"p2", section:"Phase 2 — First-Order Systems", gridId:"grid-p2-fo", title:"Engineering Trade-offs", desc:"Interactive trade-off matrix: move τ slider and watch speed, noise immunity, and power metrics update simultaneously." },
+  { id:"P2-FO-3.5.1", slug:"P2-FO-3.5.1_Transient_Analysis_Simulation", phase:"p2", section:"Phase 2 — First-Order Systems", gridId:"grid-p2-fo", title:"Transient Analysis Simulation", desc:"NGSpice .tran setup visualizer: time step and stop time sliders, annotated waveform output with Nyquist sampling guide." },
+  { id:"P2-FO-3.5.2", slug:"P2-FO-3.5.2_Parameter_Sweep_Simulation", phase:"p2", section:"Phase 2 — First-Order Systems", gridId:"grid-p2-fo", title:"Parameter Sweep Simulation", desc:"Family of 5 curves with R sweep (×0.25 to ×4). Overlay plot showing how τ shifts with each R value, color-coded legend." },
+  { id:"P2-SO-4.1.1", slug:"P2-SO-4.1.1_Energy_Exchange", phase:"p2", section:"Phase 2 — Second-Order Systems", gridId:"grid-p2-so", title:"Energy Exchange (L ↔ C)", desc:"Animated LC tank showing energy sloshing between inductor (magnetic) and capacitor (electric). Live E_L, E_C, and total energy bars." },
+  { id:"P2-SO-4.1.2", slug:"P2-SO-4.1.2_Oscillation_Mechanism", phase:"p2", section:"Phase 2 — Second-Order Systems", gridId:"grid-p2-so", title:"Oscillation Mechanism", desc:"Undamped LC oscillation with ω₀ readout. L and C sliders. Phase-space (V vs I) circular orbit shown alongside time waveform." },
+  { id:"P2-SO-4.2.1", slug:"P2-SO-4.2.1_Characteristic_Equation", phase:"p2", section:"Phase 2 — Second-Order Systems", gridId:"grid-p2-so", title:"Characteristic Equation", desc:"s²+2ζω₀s+ω₀²=0 root locus: complex conjugate poles moving as ζ changes from 0→2. Pole positions on s-plane." },
+  { id:"P2-SO-4.2.2", slug:"P2-SO-4.2.2_Natural_Frequency", phase:"p2", section:"Phase 2 — Second-Order Systems", gridId:"grid-p2-so", title:"Natural Frequency (ω₀)", desc:"ω₀=1/√(LC) explorer with L and C sliders. Live ω₀ and f₀ readouts, showing oscillation period on animated waveform." },
+  { id:"P2-SO-4.2.3", slug:"P2-SO-4.2.3_Damping_Ratio", phase:"p2", section:"Phase 2 — Second-Order Systems", gridId:"grid-p2-so", title:"Damping Ratio (ζ)", desc:"ζ slider from 0 to 2 with live pole positions on s-plane. Response waveform transitions from oscillatory to overdamped." },
+  { id:"P2-SO-4.3.1", slug:"P2-SO-4.3.1_Underdamped_Response", phase:"p2", section:"Phase 2 — Second-Order Systems", gridId:"grid-p2-so", title:"Underdamped Response", desc:"ζ<1 damped sinusoid with overshoot percentage, ringing period, and decay envelope shown. ζ and ω₀ sliders." },
+  { id:"P2-SO-4.3.2", slug:"P2-SO-4.3.2_Critically_Damped_Response", phase:"p2", section:"Phase 2 — Second-Order Systems", gridId:"grid-p2-so", title:"Critically Damped Response", desc:"ζ=1 fastest no-overshoot response. Comparison overlay with slightly under/overdamped. Shows optimal settling time." },
+  { id:"P2-SO-4.3.3", slug:"P2-SO-4.3.3_Overdamped_Response", phase:"p2", section:"Phase 2 — Second-Order Systems", gridId:"grid-p2-so", title:"Overdamped Response", desc:"ζ>1 sluggish response with two real poles. Shows dominant pole approximation and how far ζ is from critical." },
+  { id:"P2-SO-4.4.1", slug:"P2-SO-4.4.1_Overshoot", phase:"p2", section:"Phase 2 — Second-Order Systems", gridId:"grid-p2-so", title:"Overshoot", desc:"Overshoot% = exp(−πζ/√(1−ζ²))×100 plotted vs ζ. Click any ζ to see step response with overshoot bracket annotated." },
+  { id:"P2-SO-4.4.2", slug:"P2-SO-4.4.2_Ringing", phase:"p2", section:"Phase 2 — Second-Order Systems", gridId:"grid-p2-so", title:"Ringing", desc:"Ringing frequency ω_d=ω₀√(1−ζ²) visualizer. Shows oscillation count before settling into ±2% band with ζ slider." },
+  { id:"P2-SO-4.6.2", slug:"P2-SO-4.6.2_Damping_Variation_Simulation", phase:"p2", section:"Phase 2 — Second-Order Systems", gridId:"grid-p2-so", title:"Damping Variation Simulation", desc:"Family of step responses for ζ=0.1, 0.3, 0.5, 0.7, 1.0, 1.5. Color-coded overlay with overshoot and settling annotations." },
+  { id:"P2-WI-5.1.1", slug:"P2-WI-5.1.1_Pattern_Exponential_Rise", phase:"p2", section:"Phase 2 — Waveform Interpretation", gridId:"grid-p2-wi", title:"Pattern: Exponential Rise", desc:"Identify RC/RL charging waveforms. Annotated curve with τ tangent, 63%/95%/99% milestones. Test: given a mystery waveform, extract τ." },
+  { id:"P2-WI-5.1.2", slug:"P2-WI-5.1.2_Pattern_Exponential_Decay", phase:"p2", section:"Phase 2 — Waveform Interpretation", gridId:"grid-p2-wi", title:"Pattern: Exponential Decay", desc:"RC/RL discharge pattern with τ extraction. Half-life marker, 37%/14%/5% milestones. Overlay with rise curve to show mirror symmetry." },
+  { id:"P2-WI-5.1.3", slug:"P2-WI-5.1.3_Pattern_Oscillation", phase:"p2", section:"Phase 2 — Waveform Interpretation", gridId:"grid-p2-wi", title:"Pattern: Oscillation", desc:"Damped sinusoid with ζ and ω₀ sliders. Annotates frequency, damping envelope, and overshoot. Distinguishes under/critical/over-damped." },
+  { id:"P2-WI-5.2.1", slug:"P2-WI-5.2.1_Identify_Circuit_from_Graph", phase:"p2", section:"Phase 2 — Waveform Interpretation", gridId:"grid-p2-wi", title:"Identify Circuit from Graph", desc:"Mystery waveform quiz: four waveform shapes presented, select which RC/RL/RLC topology produced each. Explanation on reveal." },
+  { id:"P2-WI-5.2.2", slug:"P2-WI-5.2.2_Estimate_Time_Constant", phase:"p2", section:"Phase 2 — Waveform Interpretation", gridId:"grid-p2-wi", title:"Estimate Time Constant", desc:"Given a plotted waveform, use the 63% crosshair method or tangent-line method to read τ. Live error feedback against known τ." },
+  { id:"P2-DB-6.1.1", slug:"P2-DB-6.1.1_Fault_No_Output", phase:"p2", section:"Phase 2 — Debugging Framework", gridId:"grid-p2-db", title:"Fault: No Output", desc:"RC circuit with injected faults (open C, open R, broken ground). Shows expected vs actual waveform. Fault dropdown, fix button." },
+  { id:"P2-DB-6.1.2", slug:"P2-DB-6.1.2_Fault_Slow_Output", phase:"p2", section:"Phase 2 — Debugging Framework", gridId:"grid-p2-db", title:"Fault: Slow Output", desc:"Oversized R or C fault making τ 10× too slow. Side-by-side expected vs faulty waveform with fault magnitude slider." },
+  { id:"P2-DB-6.1.3", slug:"P2-DB-6.1.3_Fault_Oscillation", phase:"p2", section:"Phase 2 — Debugging Framework", gridId:"grid-p2-db", title:"Fault: Oscillation", desc:"Parasitic inductance causing unexpected ringing. L_parasitic slider triggers oscillation. Shows how damping resistor fixes it." },
+  { id:"P2-DB-6.2.1", slug:"P2-DB-6.2.1_Process_Check_Input", phase:"p2", section:"Phase 2 — Debugging Framework", gridId:"grid-p2-db", title:"Process: Check Input", desc:"Debug flowchart sim: probe input node first. Toggle input present/absent and see how output changes (or doesn't) to isolate fault." },
+  { id:"P2-DB-6.2.2", slug:"P2-DB-6.2.2_Process_Check_Energy_Elements", phase:"p2", section:"Phase 2 — Debugging Framework", gridId:"grid-p2-db", title:"Process: Check Energy Elements", desc:"Step-by-step probing sequence: V_in → V_R → V_C. Each probe reveals information. Dead capacitor / shorted inductor scenarios." },
+  { id:"P2-DB-6.2.3", slug:"P2-DB-6.2.3_Process_Compare_Expected_vs_Actual", phase:"p2", section:"Phase 2 — Debugging Framework", gridId:"grid-p2-db", title:"Process: Compare Expected vs Actual", desc:"Overlay of mathematically expected curve vs measured waveform with error shading. Quantifies deviation to localize fault." },
+  { id:"P2-DB-6.3.1", slug:"P2-DB-6.3.1_Scenario_Missing_Ground", phase:"p2", section:"Phase 2 — Debugging Framework", gridId:"grid-p2-db", title:"Scenario: Missing Ground", desc:"Floating ground reference scenario. Shows erratic output behavior vs stable grounded output. Ground wire toggle." },
+  { id:"P2-DB-6.3.2", slug:"P2-DB-6.3.2_Scenario_Wrong_Component_Value", phase:"p2", section:"Phase 2 — Debugging Framework", gridId:"grid-p2-db", title:"Scenario: Wrong Component Value", desc:"Component value error simulator: R×10, C×0.1, wrong units (μF vs nF). Shows resulting τ mismatch vs spec." },
+  { id:"P2-DB-6.3.3", slug:"P2-DB-6.3.3_Scenario_Wrong_Connection", phase:"p2", section:"Phase 2 — Debugging Framework", gridId:"grid-p2-db", title:"Scenario: Wrong Connection", desc:"Reversed capacitor polarity, swapped nodes, bridged nodes. Each fault produces a distinct symptom pattern for identification." },
+  { id:"P2-OP-7.1.1", slug:"P2-OP-7.1.1_Metric_Speed", phase:"p2", section:"Phase 2 — Optimization Framework", gridId:"grid-p2-op", title:"Metric: Speed", desc:"Rise time t_r = 2.2τ explorer. Shows which component (R or C) controls speed. Live t_r readout as sliders adjust." },
+  { id:"P2-OP-7.1.2", slug:"P2-OP-7.1.2_Metric_Stability", phase:"p2", section:"Phase 2 — Optimization Framework", gridId:"grid-p2-op", title:"Metric: Stability", desc:"Damping ratio ζ vs component values. Phase margin indicator. Shows region of oscillation vs stable region on ζ-ω₀ plane." },
+  { id:"P2-OP-7.1.3", slug:"P2-OP-7.1.3_Metric_Ripple", phase:"p2", section:"Phase 2 — Optimization Framework", gridId:"grid-p2-op", title:"Metric: Ripple", desc:"Ripple voltage ΔV vs C for a given load current. ΔV = I×T/C readout. Shows ESR contribution to ripple floor." },
+  { id:"P2-OP-7.2.1", slug:"P2-OP-7.2.1_Technique_Adjust_RC_Values", phase:"p2", section:"Phase 2 — Optimization Framework", gridId:"grid-p2-op", title:"Technique: Adjust RC Values", desc:"Sensitivity analysis: ∂τ/∂R and ∂τ/∂C bars. Shows which knob gives finer control over time constant for your range." },
+  { id:"P2-OP-7.2.2", slug:"P2-OP-7.2.2_Technique_Add_Damping", phase:"p2", section:"Phase 2 — Optimization Framework", gridId:"grid-p2-op", title:"Technique: Add Damping", desc:"Add series resistance to RLC circuit to kill oscillation. ζ readout increases as R_damp slider moves. Overshoot percentage drops." },
+  { id:"P2-OP-7.2.3", slug:"P2-OP-7.2.3_Technique_Filter_Design", phase:"p2", section:"Phase 2 — Optimization Framework", gridId:"grid-p2-op", title:"Technique: Filter Design", desc:"Design workflow: specify f_cutoff → compute RC → verify Bode plot. Interactive back-calculation with standard component picker." },
+  { id:"P2-OP-7.3.1", slug:"P2-OP-7.3.1_Trade_off_Speed_vs_Noise", phase:"p2", section:"Phase 2 — Optimization Framework", gridId:"grid-p2-op", title:"Trade-off: Speed vs Noise", desc:"Noise-injected circuit: small τ → fast but noisy output; large τ → clean but slow. SNR and bandwidth shown simultaneously." },
+  { id:"P2-OP-7.3.2", slug:"P2-OP-7.3.2_Trade_off_Stability_vs_Responsiveness", phase:"p2", section:"Phase 2 — Optimization Framework", gridId:"grid-p2-op", title:"Trade-off: Stability vs Responsiveness", desc:"Phase margin vs bandwidth trade-off curve. Draggable operating point on Gain-Phase plane. Stability/speed indicators update live." },
+  { id:"P2-RW-8.1.1", slug:"P2-RW-8.1.1_Power_Ripple_Filtering", phase:"p2", section:"Phase 2 — Real-World Applications", gridId:"grid-p2-rw", title:"Power: Ripple Filtering", desc:"AC rectifier output with smoothing capacitor. C and load R sliders. Live ripple voltage ΔV and percentage readout." },
+  { id:"P2-RW-8.1.2", slug:"P2-RW-8.1.2_Power_Energy_Storage", phase:"p2", section:"Phase 2 — Real-World Applications", gridId:"grid-p2-rw", title:"Power: Energy Storage", desc:"Hold-up time calculator: C, V_min, V_max, P_load sliders. Live t_holdup = ½C(V²max−V²min)/P readout with energy bar." },
+  { id:"P2-RW-8.2.1", slug:"P2-RW-8.2.1_Signal_Filtering", phase:"p2", section:"Phase 2 — Real-World Applications", gridId:"grid-p2-rw", title:"Signal: Filtering", desc:"Audio/sensor signal with high-frequency noise. RC low-pass removes noise above f_cutoff. Input/output waveform comparison." },
+  { id:"P2-RW-8.2.2", slug:"P2-RW-8.2.2_Signal_Noise_Reduction", phase:"p2", section:"Phase 2 — Real-World Applications", gridId:"grid-p2-rw", title:"Signal: Noise Reduction", desc:"ADC input protection filter. Shows aliasing above Nyquist and how RC filter prevents it. Live SNR improvement readout." },
+  { id:"P2-RW-8.3.1", slug:"P2-RW-8.3.1_Timing_Delay_Generation", phase:"p2", section:"Phase 2 — Real-World Applications", gridId:"grid-p2-rw", title:"Timing: Delay Generation", desc:"555-timer-style delay circuit. R and C sliders set delay time t_delay = 1.1RC. Input pulse → delayed output trigger shown." },
+  { id:"P2-RW-8.3.2", slug:"P2-RW-8.3.2_Timing_Pulse_Shaping", phase:"p2", section:"Phase 2 — Real-World Applications", gridId:"grid-p2-rw", title:"Timing: Pulse Shaping", desc:"RC differentiator producing short pulses from long input. Pulse width vs τ explorer showing leading/trailing edge spikes." },
+  { id:"P2-SIM-9.1.1", slug:"P2-SIM-9.1.1_NGSpice_Transient_Analysis_tran_Setup", phase:"p2", section:"Phase 2 — NGSpice Mastery", gridId:"grid-p2-sim", title:"NGSpice: Transient Analysis .tran Setup", desc:"Annotated .tran syntax display: step, stop, UIC. Live waveform preview updates as step and stop parameters change." },
+  { id:"P2-SIM-9.1.2", slug:"P2-SIM-9.1.2_NGSpice_Time_Step_Selection", phase:"p2", section:"Phase 2 — NGSpice Mastery", gridId:"grid-p2-sim", title:"NGSpice: Time Step Selection", desc:"Nyquist sampling guide: step ≤ τ/10 rule. Aliasing artifacts shown when step is too large. Recommended step calculator." },
+  { id:"P2-SIM-9.2.1", slug:"P2-SIM-9.2.1_NGSpice_Parameter_Sweep_R_Variation", phase:"p2", section:"Phase 2 — NGSpice Mastery", gridId:"grid-p2-sim", title:"NGSpice: Parameter Sweep R Variation", desc:".step param R variation syntax with 5-curve overlay. Each curve color-coded to its R value. τ table alongside plot." },
+  { id:"P2-SIM-9.2.2", slug:"P2-SIM-9.2.2_NGSpice_Parameter_Sweep_C_L_Variation", phase:"p2", section:"Phase 2 — NGSpice Mastery", gridId:"grid-p2-sim", title:"NGSpice: Parameter Sweep C and L Variation", desc:"C and L sweep with overlay waveforms. Toggle C-sweep vs L-sweep mode. Shows how each component shifts τ and ω₀." },
+  { id:"P2-SIM-9.3.1", slug:"P2-SIM-9.3.1_NGSpice_Graph_Analysis_Voltage_vs_Time", phase:"p2", section:"Phase 2 — NGSpice Mastery", gridId:"grid-p2-sim", title:"NGSpice: Graph Analysis Voltage vs Time", desc:"Dual-cursor V(t) plot with Δt/ΔV readout. Crosshair placement, auto-measured τ, peak/final value annotations." },
+  { id:"P2-SIM-9.3.2", slug:"P2-SIM-9.3.2_NGSpice_Graph_Analysis_Current_vs_Time", phase:"p2", section:"Phase 2 — NGSpice Mastery", gridId:"grid-p2-sim", title:"NGSpice: Graph Analysis Current vs Time", desc:"Dual-trace V(t)/I(t) with power P(t) panel. Two cursors with Δt, ΔV, ΔI readout. Auto-measures I_peak, τ, E_stored, E_diss." },
+  { id:"M3-D-1.1.1", slug:"M3-D-1.1.1_Formation_of_PN_Junction", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Formation of PN Junction", desc:"Interactive PN junction showing donor/acceptor doping, depletion region formation, built-in potential, and electric field profile." },
+  { id:"M3-D-1.1.2", slug:"M3-D-1.1.2_Depletion_Region", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Depletion Region", desc:"Depletion width vs doping concentration. Sliders for ND and NA, live W_dep and built-in potential readout, E-field triangle visualization." },
+  { id:"M3-D-1.1.3", slug:"M3-D-1.1.3_Barrier_Potential", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Barrier Potential (~0.7V Silicon)", desc:"Built-in potential V_bi vs temperature and doping. Shows why silicon has ~0.7V barrier and how it shifts with temperature." },
+  { id:"M3-D-1.2.1", slug:"M3-D-1.2.1_Forward_Bias_Behavior", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Forward Bias Behavior", desc:"Exponential I-V curve with forward bias voltage slider. Depletion region narrows, current flows. Live I and dynamic resistance r_d." },
+  { id:"M3-D-1.2.2", slug:"M3-D-1.2.2_Reverse_Bias_Behavior", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Reverse Bias Behavior", desc:"Reverse bias widens depletion region. Shows leakage current I_S and capacitance C_j vs V_R. Zener/avalanche threshold marker." },
+  { id:"M3-D-1.2.3", slug:"M3-D-1.2.3_Breakdown_Region", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Breakdown Region", desc:"Avalanche vs Zener breakdown mechanisms. V_BR slider, sharp knee visualization, power dissipation warning indicator." },
+  { id:"M3-D-1.3.1", slug:"M3-D-1.3.1_Ideal_vs_Practical_Diode", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Ideal vs Practical Diode", desc:"Overlay of ideal (0V drop) vs practical (0.7V) vs Schottky (0.3V) I-V curves. Toggle between models to see circuit impact." },
+  { id:"M3-D-1.3.2", slug:"M3-D-1.3.2_Exponential_IV_Behavior", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Exponential I-V Behavior", desc:"Shockley equation I=I_S(e^(V/nV_T)−1) plotted on linear and log scales. n and I_S sliders, live V_T = kT/q readout." },
+  { id:"M3-D-1.3.3", slug:"M3-D-1.3.3_Dynamic_Resistance", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Dynamic Resistance", desc:"r_d = V_T/I_D plotted vs bias current. Shows how r_d shrinks at high current. Tangent line on I-V curve at operating point." },
+  { id:"M3-D-1.4.1", slug:"M3-D-1.4.1_One_Way_Current_Valve", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Diode as One-Way Current Valve", desc:"Water analogy animation. Forward/reverse voltage toggle. Current flows in forward, blocked in reverse. Power and polarity indicators." },
+  { id:"M3-D-1.4.2", slug:"M3-D-1.4.2_When_to_Use_Diode", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"When to Use Diode", desc:"Application selector: rectification, protection, level-shift, OR-ing. Each scenario shows circuit schematic and waveforms." },
+  { id:"M3-D-1.4.3", slug:"M3-D-1.4.3_When_NOT_to_Use_Diode", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"When NOT to Use Diode", desc:"Failure scenarios: high-frequency application, low-voltage drop-sensitive circuits. Shows where MOSFET or Schottky wins." },
+  { id:"M3-D-1.5.1", slug:"M3-D-1.5.1_Half_Wave_Rectifier", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Diode App: Half-Wave Rectifier", desc:"AC sine input → half-wave rectified output. Live V_peak, V_avg, ripple. Frequency and amplitude sliders." },
+  { id:"M3-D-1.5.2", slug:"M3-D-1.5.2_Full_Wave_Rectifier", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Diode App: Full-Wave Rectifier", desc:"Center-tap full-wave rectifier waveform. Comparison with half-wave showing doubled ripple frequency and improved V_avg." },
+  { id:"M3-D-1.5.3", slug:"M3-D-1.5.3_Bridge_Rectifier", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Diode App: Bridge Rectifier", desc:"Bridge rectifier with 4 diodes animated. Shows current path for each half-cycle. 2×0.7V drop loss indicated." },
+  { id:"M3-D-1.5.4", slug:"M3-D-1.5.4_Filtering_with_Capacitor", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Diode App: Filtering with Capacitor", desc:"Rectified output with smoothing cap. C and R_load sliders. Live ripple ΔV = I/fC readout, charge/discharge cycle shown." },
+  { id:"M3-D-1.6.1", slug:"M3-D-1.6.1_Positive_Clipper", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Diode App: Positive Clipper", desc:"Input/output waveform pair with clip level slider. Shows positive peaks clipped at V_clip + 0.7V threshold." },
+  { id:"M3-D-1.6.2", slug:"M3-D-1.6.2_Negative_Clipper", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Diode App: Negative Clipper", desc:"Negative clipper waveform with adjustable threshold. Reversed diode orientation shown in schematic alongside output." },
+  { id:"M3-D-1.6.3", slug:"M3-D-1.6.3_Biased_Clipper", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Diode App: Biased Clipper", desc:"Clipper with DC bias voltage. V_bias slider shifts clip threshold. Dual-diode window clipper configuration option." },
+  { id:"M3-D-1.7.1", slug:"M3-D-1.7.1_Positive_Clamper", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Diode App: Positive Clamper", desc:"DC level shift upward. Shows capacitor charges to peak and shifts entire waveform up. Before/after overlay." },
+  { id:"M3-D-1.7.2", slug:"M3-D-1.7.2_Negative_Clamper", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Diode App: Negative Clamper", desc:"DC level shift downward. Reversed diode clamps negative peaks to 0. Input/output waveform comparison." },
+  { id:"M3-D-1.7.3", slug:"M3-D-1.7.3_DC_Level_Shifting", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Diode App: DC Level Shifting", desc:"Diode chain for precise DC level shifting. N diodes × 0.7V per diode. Temperature coefficient shown: −2mV/°C per diode." },
+  { id:"M3-D-1.8.1", slug:"M3-D-1.8.1_Zener_Regulator", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Diode Sim: Zener Regulator", desc:"Zener shunt regulator with V_Z and R_series sliders. Load regulation curve, power dissipation bar, dropout margin indicator." },
+  { id:"M3-D-1.8.2", slug:"M3-D-1.8.2_LED_Operation", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Diode Sim: LED Operation", desc:"LED I-V curve with V_f vs wavelength (color). Current-limiting resistor calculator. Brightness vs current relationship shown." },
+  { id:"M3-D-1.8.3", slug:"M3-D-1.8.3_Photodiode", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Diode Sim: Photodiode", desc:"Photodiode in photoconductive mode. Reverse bias vs photocurrent vs illumination. TIA circuit with transimpedance gain." },
+  { id:"M3-D-1.9.1", slug:"M3-D-1.9.1_Debug_No_Output", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Diode Debug: No Output", desc:"Fault scenarios: reversed diode, open diode, short. Each shows its distinctive output signature. Fix dropdown." },
+  { id:"M3-D-1.9.2", slug:"M3-D-1.9.2_Debug_Wrong_Voltage", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Diode Debug: Wrong Voltage", desc:"Expected vs measured output voltage. Wrong diode type (Si vs Ge vs Schottky) gives different V_f drops." },
+  { id:"M3-D-1.9.3", slug:"M3-D-1.9.3_Debug_Excessive_Ripple", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Diode Debug: Excessive Ripple", desc:"Ripple too high fault: undersized cap, high load current, wrong frequency assumption. Each cause with fix." },
+  { id:"M3-D-1.9.4", slug:"M3-D-1.9.4_Debug_Diode_Running_Hot", phase:"m3", section:"Module 3 — Diode", gridId:"grid-m3-d", title:"Diode Debug: Diode Running Hot", desc:"Thermal runaway visualization. Power dissipation = V_f × I_F. Current vs temperature derating curve with safe operating area." },
+  { id:"M3-B-2.1.1", slug:"M3-B-2.1.1_NPN_Structure", phase:"m3", section:"Module 3 — BJT", gridId:"grid-m3-b", title:"BJT: NPN Structure", desc:"NPN transistor structure with E/B/C regions. I_C vs V_CE family of curves with I_B slider. Active/saturation/cutoff regions labeled." },
+  { id:"M3-B-2.1.2", slug:"M3-B-2.1.2_BJT_Biasing", phase:"m3", section:"Module 3 — BJT", gridId:"grid-m3-b", title:"BJT: Biasing", desc:"Voltage divider bias Q-point solver. R1, R2, RC, RE sliders with live V_CE, I_C, V_B readouts. Load line plotted on I-V curves." },
+  { id:"M3-B-2.2.1", slug:"M3-B-2.2.1_BJT_Amplifier", phase:"m3", section:"Module 3 — BJT", gridId:"grid-m3-b", title:"BJT: CE Amplifier", desc:"Common-emitter amplifier with input sine and amplified/inverted output. Gain slider, clipping detection, 180° phase shift shown." },
+  { id:"M3-B-2.2.2", slug:"M3-B-2.2.2_BJT_Switch", phase:"m3", section:"Module 3 — BJT", gridId:"grid-m3-b", title:"BJT: Switch Operation", desc:"BJT as digital switch. I_B drive requirement for saturation, V_CE_sat readout, switching waveform with storage time effect." },
+  { id:"M3-B-2.3.1", slug:"M3-B-2.3.1_BJT_Current_Mirror", phase:"m3", section:"Module 3 — BJT", gridId:"grid-m3-b", title:"BJT: Current Mirror", desc:"Simple BJT current mirror accuracy vs V_CE. Reference vs output current bars. Base current error quantified." },
+  { id:"M3-B-2.3.2", slug:"M3-B-2.3.2_BJT_Differential_Pair", phase:"m3", section:"Module 3 — BJT", gridId:"grid-m3-b", title:"BJT: Differential Pair", desc:"BJT diff pair tanh transfer curve. Differential input slider, tail current source, live V_out readout showing CMRR." },
+  { id:"M3-B-2.4.1", slug:"M3-B-2.4.1_BJT_Debug_No_Turn_On", phase:"m3", section:"Module 3 — BJT", gridId:"grid-m3-b", title:"BJT Debug: No Turn-On", desc:"Fault scenarios: insufficient I_B, wrong polarity, open base. Diagnostic bar chart showing V_BE, V_CE, I_C for each fault." },
+  { id:"M3-M-3.1.1", slug:"M3-M-3.1.1_MOSFET_Structure", phase:"m3", section:"Module 3 — MOSFET", gridId:"grid-m3-m", title:"MOSFET: N-Channel Structure", desc:"NMOS I_D vs V_GS/V_DS family of curves. V_GS slider, V_th marker, linear/saturation/cutoff regions color-coded." },
+  { id:"M3-M-3.1.2", slug:"M3-M-3.1.2_MOSFET_Biasing", phase:"m3", section:"Module 3 — MOSFET", gridId:"grid-m3-m", title:"MOSFET: Biasing", desc:"CS amplifier Q-point solver. V_GS bias, R_D, V_DD sliders. Live I_D, V_DS, g_m readouts. Load line on I_D-V_DS curves." },
+  { id:"M3-M-3.2.1", slug:"M3-M-3.2.1_MOSFET_Amplifier", phase:"m3", section:"Module 3 — MOSFET", gridId:"grid-m3-m", title:"MOSFET: CS Amplifier", desc:"Common-source amplifier gain = −g_m×R_D. Input sine + amplified output. V_GS bias, R_D sliders. Channel-length modulation effect." },
+  { id:"M3-M-3.2.2", slug:"M3-M-3.2.2_MOSFET_Switch", phase:"m3", section:"Module 3 — MOSFET", gridId:"grid-m3-m", title:"MOSFET: Power Switch", desc:"High-side/low-side MOSFET switch. Gate drive voltage, switching loss calculation. R_DS_on vs V_GS curve, conduction loss readout." },
+  { id:"M3-M-3.3.1", slug:"M3-M-3.3.1_MOSFET_Applications", phase:"m3", section:"Module 3 — MOSFET", gridId:"grid-m3-m", title:"MOSFET: CMOS Applications", desc:"CMOS inverter transfer curve V_out vs V_in. NMOS/PMOS sizing ratio slider. Noise margin readouts, switching threshold." },
+  { id:"M3-M-3.4.1", slug:"M3-M-3.4.1_MOSFET_Debug", phase:"m3", section:"Module 3 — MOSFET", gridId:"grid-m3-m", title:"MOSFET Debug", desc:"Power MOSFET loss budget: conduction + switching + gate drive. I_D and f_sw sliders. Pie chart of total loss breakdown." },
+  { id:"M3-DS-4.1", slug:"M3-DS-4.1_BJT_vs_MOSFET", phase:"m3", section:"Module 3 — Device Selection", gridId:"grid-m3-ds", title:"Device Selection: BJT vs MOSFET", desc:"Interactive comparison matrix: g_m, input impedance, noise, speed, power. Sliders adjust application requirements, best device highlighted." },
+  { id:"M3-DS-4.2", slug:"M3-DS-4.2_Datasheet_Reading", phase:"m3", section:"Module 3 — Device Selection", gridId:"grid-m3-ds", title:"Device Selection: Datasheet Reading", desc:"Thermal derating calculator: P_D vs T_case curve. θ_JA and T_J_max sliders. Safe operating area boundary with margin indicator." },
+  { id:"M3-DS-4.3", slug:"M3-DS-4.3_PCB_Layout", phase:"m3", section:"Module 3 — Device Selection", gridId:"grid-m3-ds", title:"Device Selection: PCB Layout", desc:"Parasitic inductance spike visualizer for power devices. Gate loop area slider drives L_parasitic and resultant V_spike." },
+  { id:"M3-INT-5.1", slug:"M3-INT-5.1_Complete_AFE", phase:"m3", section:"Module 3 — Integration", gridId:"grid-m3-int", title:"Integration: Complete Analog Front End", desc:"Noise budget calculator for sensor → filter → amplifier → ADC chain. Each block contributes noise floor, total SNR readout." },
+  { id:"M3-INT-5.2", slug:"M3-INT-5.2_Power_Supply_Analog", phase:"m3", section:"Module 3 — Integration", gridId:"grid-m3-int", title:"Integration: Analog Power Supply", desc:"LDO efficiency vs dropout voltage and load current. Ripple rejection vs frequency curve. Input/output voltage sliders." },
+  { id:"M3-INT-5.3", slug:"M3-INT-5.3_System_Debug", phase:"m3", section:"Module 3 — Integration", gridId:"grid-m3-int", title:"Integration: System Debug", desc:"BJT DC operating point debugger. Measured V_B, V_C, V_E inputs → live diagnosis of biasing fault with suggested fix." },
+  { id:"M4A-AMP-1.1.1", slug:"M4A-AMP-1.1.1_What_is_Amplification", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"Amplification: What is Amplification", desc:"Power gain concept: P_out > P_in drawn from supply. Voltage, current, and power gain bars with adjustable source/load." },
+  { id:"M4A-AMP-1.1.2", slug:"M4A-AMP-1.1.2_Types_of_Gain", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"Amplification: Types of Gain (V, I, Power)", desc:"Voltage gain Av, current gain Ai, power gain Ap = Av×Ai shown simultaneously. dB conversion calculator." },
+  { id:"M4A-AMP-1.1.3", slug:"M4A-AMP-1.1.3_Linear_vs_Nonlinear", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"Amplification: Linear vs Non-linear", desc:"Input-output transfer curve: linear region, compression, clipping. THD readout as drive level slider pushes into nonlinearity." },
+  { id:"M4A-AMP-1.2.1", slug:"M4A-AMP-1.2.1_CE_Amplifier_Circuit_Structure", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CE Amplifier: Circuit Structure", desc:"NPN common-emitter schematic with voltage-divider bias. VCC, RC, R1, R2 sliders. DC operating point V_CE and I_C readout." },
+  { id:"M4A-AMP-1.2.2", slug:"M4A-AMP-1.2.2_CE_Amplifier_Gain_Derivation", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CE Amplifier: Gain Derivation", desc:"Av = −gm×RC = −RC/re derivation. Input sine + inverted amplified output. RC and I_C sliders drive live gain readout." },
+  { id:"M4A-AMP-1.2.3", slug:"M4A-AMP-1.2.3_CE_Phase_Inversion", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CE Amplifier: Phase Inversion (180°)", desc:"Input and output waveforms overlaid showing 180° phase shift. Phasor display. Toggle AC-coupled vs DC-coupled view." },
+  { id:"M4A-AMP-1.2.4", slug:"M4A-AMP-1.2.4_CE_Input_Output_Impedance", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CE Amplifier: Input and Output Impedance", desc:"Z_in = R1||R2||β×re, Z_out ≈ RC. Source loading effect on gain. β and re sliders with live Zin and gain readout." },
+  { id:"M4A-AMP-1.2.5", slug:"M4A-AMP-1.2.5_CE_Biasing_Requirements", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CE Amplifier: Biasing Requirements", desc:"Q-point stability: V_B, V_E, V_CE calculation. Load line on IC-VCE plot. Shows Q-point shift with β variation." },
+  { id:"M4A-AMP-1.2.6", slug:"M4A-AMP-1.2.6_CE_Gain_vs_Stability_Tradeoff", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CE Amplifier: Gain vs Stability Trade-off", desc:"RE increases stability but reduces gain. RE slider shows gain dropping as bias stability improves. Bypass cap restores gain." },
+  { id:"M4A-AMP-1.2.7", slug:"M4A-AMP-1.2.7_CE_Effect_of_Emitter_Resistance", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CE Amplifier: Effect of Emitter Resistance", desc:"Av = −RC/(re+RE). RE slider: higher RE → lower gain, lower distortion, higher Z_in. Bypass cap toggle removes RE for AC." },
+  { id:"M4A-AMP-1.2.8", slug:"M4A-AMP-1.2.8_CE_Thermal_Stability", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CE Amplifier: Thermal Stability", desc:"Thermal runaway: IC rises → T rises → β rises → IC rises. RE negative feedback breaks this loop. Temperature slider." },
+  { id:"M4A-AMP-1.3.1", slug:"M4A-AMP-1.3.1_CS_Amplifier_Circuit_Structure", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CS Amplifier: Circuit Structure", desc:"NMOS common-source with voltage divider bias. VDD, RD, R1, R2 sliders. DC operating point VDS and ID readout." },
+  { id:"M4A-AMP-1.3.2", slug:"M4A-AMP-1.3.2_CS_Amplifier_Gain_Expression", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CS Amplifier: Gain Expression", desc:"Av = −gm×RD. gm = 2×ID/Vov. ID and RD sliders with live gm and Av readout. Channel-length modulation effect toggle." },
+  { id:"M4A-AMP-1.3.3", slug:"M4A-AMP-1.3.3_CS_Amplifier_High_Input_Impedance", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CS Amplifier: High Input Impedance", desc:"Z_in = R1||R2 ≫ β×re of BJT. Comparison bar chart. Shows why MOSFET preferred for sensor interfaces." },
+  { id:"M4A-AMP-1.3.4", slug:"M4A-AMP-1.3.4_CS_Amplifier_Biasing_VGS_Setting", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CS Amplifier: Biasing VGS Setting", desc:"VGS = VG − VS with source degeneration RS. Q-point on ID-VGS curve. RS slider for bias stability vs gain trade-off." },
+  { id:"M4A-AMP-1.3.5", slug:"M4A-AMP-1.3.5_CS_Amplifier_Gain_vs_Output_Swing", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CS Amplifier: Gain vs Output Swing", desc:"High RD → high gain but clipped swing. Shows output waveform clipping as gain slider pushes VDS toward rails." },
+  { id:"M4A-AMP-1.3.6", slug:"M4A-AMP-1.3.6_CS_Amplifier_Channel_Length_Modulation", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CS Amplifier: Channel Length Modulation Effect", desc:"λ causes ID to rise with VDS: finite ro = VA/ID. Gain = gm×(RD||ro). λ slider shows gain reduction from finite ro." },
+  { id:"M4A-AMP-1.3.7", slug:"M4A-AMP-1.3.7_CG_Amplifier_Common_Gate_Configuration_Concept", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CG Amplifier: Common Gate Concept", desc:"Input at source, output at drain, gate AC-grounded. Non-inverting, low Zin, high Zout, no Miller effect." },
+  { id:"M4A-AMP-1.3.8", slug:"M4A-AMP-1.3.8_CG_Amplifier_Circuit_Structure", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CG Amplifier: Circuit Structure", desc:"NMOS CG schematic with bias network. Current flows in at source, out at drain. AC signal path highlighted." },
+  { id:"M4A-AMP-1.3.9", slug:"M4A-AMP-1.3.9_CG_Amplifier_Voltage_Gain_Derivation", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CG Amplifier: Voltage Gain Derivation", desc:"Av = gm×RD (non-inverting). Small-signal model derivation shown step by step. gm and RD sliders." },
+  { id:"M4A-AMP-1.3.10", slug:"M4A-AMP-1.3.10_CG_Amplifier_Low_Input_Impedance", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CG Amplifier: Low Input Impedance (1/gm)", desc:"Zin = 1/gm ≈ 25Ω typical. Source matching for RF. gm slider shows Zin = 50Ω design point for RF applications." },
+  { id:"M4A-AMP-1.3.11", slug:"M4A-AMP-1.3.11_CG_Amplifier_High_Output_Impedance", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CG Amplifier: High Output Impedance", desc:"Zout ≈ ro×(1+gm×RS) ≫ CS stage. Shows current source behavior. ro and RS sliders." },
+  { id:"M4A-AMP-1.3.12", slug:"M4A-AMP-1.3.12_CG_Amplifier_No_Phase_Inversion", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CG Amplifier: No Phase Inversion", desc:"Input and output in phase (0°). Waveform overlay confirms non-inverting behavior. CS vs CG phase comparison." },
+  { id:"M4A-AMP-1.3.13", slug:"M4A-AMP-1.3.13_CG_Amplifier_Current_Buffer_Behavior", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CG Amplifier: Current Buffer Behavior", desc:"CG passes current with near-unity current gain and impedance transformation. Current in = current out visualization." },
+  { id:"M4A-AMP-1.3.14", slug:"M4A-AMP-1.3.14_CG_Amplifier_Frequency_Response_Advantage", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CG Amplifier: Frequency Response (No Miller Effect)", desc:"Cgd not multiplied by gain in CG config. Bandwidth comparison CS vs CG on Bode plot. Cgd slider shows impact." },
+  { id:"M4A-AMP-1.3.15", slug:"M4A-AMP-1.3.15_CG_Amplifier_When_to_Use_CG", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CG Amplifier: When to Use CG", desc:"Application map: RF LNA cascode, wideband amp, transimpedance. Each shows why CG topology is chosen." },
+  { id:"M4A-AMP-1.3.16", slug:"M4A-AMP-1.3.16_CG_Amplifier_CS_vs_CG_vs_CD_Comparison", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CG Amplifier: CS vs CG vs CD Comparison", desc:"Three-topology comparison table: gain, phase, Zin, Zout, bandwidth. Interactive toggle to highlight differences." },
+  { id:"M4A-AMP-1.3.17", slug:"M4A-AMP-1.3.17_CG_Amplifier_Biasing_for_Common_Gate", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CG Amplifier: Biasing for Common Gate", desc:"V_G sets operating point. V_GS = V_G − V_in_DC constraint. Bias network design with source AC-input compliance." },
+  { id:"M4A-AMP-1.3.18", slug:"M4A-AMP-1.3.18_CG_Amplifier_Debug_Input_Impedance_Mismatch", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CG Amplifier Debug: Input Impedance Mismatch", desc:"Source impedance ≠ 1/gm causes reflection in RF systems. S11 vs gm mismatch. Matching network fix." },
+  { id:"M4A-AMP-1.3.19", slug:"M4A-AMP-1.3.19_CG_Amplifier_Debug_Wrong_Bias_at_Gate", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CG Amplifier Debug: Wrong Bias at Gate", desc:"If VG too low: MOSFET in cutoff. If VG too high: device saturates incorrectly. Fault slider shows output collapse." },
+  { id:"M4A-AMP-1.3.20", slug:"M4A-AMP-1.3.20_CG_Amplifier_Optimize_Maximizing_Bandwidth", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"CG Amplifier Optimize: Maximizing Bandwidth", desc:"Cascode = CS + CG stacked. Miller effect eliminated, bandwidth extended. CS vs cascode Bode plot overlay." },
+  { id:"M4A-AMP-1.4.1", slug:"M4A-AMP-1.4.1_Op-Amp_Ideal_Infinite_Gain", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"Op-Amp Ideal: Infinite Gain", desc:"A_OL → ∞ with negative feedback forces V+ = V−. Virtual short concept visualized with gain slider from 10 to ∞." },
+  { id:"M4A-AMP-1.4.2", slug:"M4A-AMP-1.4.2_Op-Amp_Ideal_Infinite_Input_Impedance", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"Op-Amp Ideal: Infinite Input Impedance", desc:"Zero input current → no loading of source. Input impedance slider shows gain error vs Zin for real op-amps." },
+  { id:"M4A-AMP-1.4.3", slug:"M4A-AMP-1.4.3_Op-Amp_Ideal_Zero_Output_Impedance", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"Op-Amp Ideal: Zero Output Impedance", desc:"Zero Zout → no load regulation drop. Zout slider shows voltage sag under load for real vs ideal op-amp." },
+  { id:"M4A-AMP-1.4.4", slug:"M4A-AMP-1.4.4_Op-Amp_Practical_Finite_Gain", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"Op-Amp Practical: Finite Gain", desc:"Closed-loop gain error from finite A_OL: Acl = A_OL/(1+A_OL×β). A_OL slider from 60dB to 120dB shows gain accuracy." },
+  { id:"M4A-AMP-1.4.5", slug:"M4A-AMP-1.4.5_Op-Amp_Practical_Bandwidth_Limitation", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"Op-Amp Practical: Bandwidth Limitation", desc:"GBW product: Av×BW = constant. Gain slider shifts bandwidth on Bode plot. GBW readout stays fixed." },
+  { id:"M4A-AMP-1.4.6", slug:"M4A-AMP-1.4.6_Op-Amp_Practical_Input_Offset_Voltage", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"Op-Amp Practical: Input Offset Voltage", desc:"V_OS at input appears amplified at output: V_out_error = V_OS × (1+Rf/R1). Gain and V_OS sliders." },
+  { id:"M4A-AMP-1.4.7", slug:"M4A-AMP-1.4.7_Op-Amp_Config_Inverting_Amplifier", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"Op-Amp Config: Inverting Amplifier", desc:"Av = −Rf/R1. Virtual ground at inverting input. R1 and Rf sliders, input/output waveform overlay, gain readout." },
+  { id:"M4A-AMP-1.4.8", slug:"M4A-AMP-1.4.8_Op-Amp_Config_Non-Inverting_Amplifier", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"Op-Amp Config: Non-Inverting Amplifier", desc:"Av = 1+Rf/R1. High Zin, non-inverting. Resistor sliders, gain readout, frequency response limitation shown." },
+  { id:"M4A-AMP-1.4.9", slug:"M4A-AMP-1.4.9_Op-Amp_Config_Voltage_Follower", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"Op-Amp Config: Voltage Follower", desc:"Unity gain buffer: Av = 1, Zin → ∞, Zout → 0. Impedance isolation demo: heavy load no longer sags signal." },
+  { id:"M4A-AMP-1.4.10", slug:"M4A-AMP-1.4.10_Op-Amp_Feedback_Negative_Feedback_Benefits", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"Op-Amp Feedback: Negative Feedback Benefits", desc:"Reduces gain but improves linearity, bandwidth, and stability. Distortion comparison open-loop vs closed-loop." },
+  { id:"M4A-AMP-1.4.11", slug:"M4A-AMP-1.4.11_Op-Amp_Feedback_Gain_Stabilization", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"Op-Amp Feedback: Gain Stabilization", desc:"Acl ≈ 1/β insensitive to A_OL variations. A_OL varies ±20dB but Acl stays within 0.1%. β slider drives sensitivity calc." },
+  { id:"M4A-AMP-1.4.12", slug:"M4A-AMP-1.4.12_Op-Amp_Feedback_Bandwidth_Improvement", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"Op-Amp Feedback: Bandwidth Improvement", desc:"Negative feedback extends bandwidth by (1+A_OL×β). BW increases as gain is traded. GBW constant hyperbola shown." },
+  { id:"M4A-AMP-1.5.1", slug:"M4A-AMP-1.5.1_Amplifier_Selection_When_to_Use_CE", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"Amplifier Selection: When to Use CE", desc:"CE best for: moderate gain, audio, signal amplification. Decision matrix: frequency, impedance, supply, cost axes." },
+  { id:"M4A-AMP-1.5.2", slug:"M4A-AMP-1.5.2_Amplifier_Selection_When_to_Use_CS", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"Amplifier Selection: When to Use CS", desc:"CS best for: high Zin, low power, CMOS integration. Comparison radar chart vs CE and Op-Amp topologies." },
+  { id:"M4A-AMP-1.5.3", slug:"M4A-AMP-1.5.3_Amplifier_Selection_When_to_Use_Op-Amp", phase:"m4a", section:"Module 4A — Amplification", gridId:"grid-m4a-amp", title:"Amplifier Selection: When to Use Op-Amp", desc:"Op-Amp best for: precision, programmable gain, high CMRR, virtual ground. Application scenario selector." },
+  { id:"M4A-GB-2.1.1", slug:"M4A-GB-2.1.1_Voltage_Gain_Definition", phase:"m4a", section:"Module 4A — Gain and Bandwidth", gridId:"grid-m4a-gb", title:"Gain and Bandwidth: Voltage Gain Definition", desc:"Av = Vout/Vin. Input and output amplitudes with slider. dB conversion. Linear vs log gain scale toggle." },
+  { id:"M4A-GB-2.1.2", slug:"M4A-GB-2.1.2_Gain_in_dB", phase:"m4a", section:"Module 4A — Gain and Bandwidth", gridId:"grid-m4a-gb", title:"Gain and Bandwidth: Gain in dB", desc:"dB = 20×log10(Av). Gain slider maps between linear and dB. Key reference: 6dB ≈ ×2, 20dB = ×10, 40dB = ×100." },
+  { id:"M4A-GB-2.2.1", slug:"M4A-GB-2.2.1_Bandwidth_-3dB_Point", phase:"m4a", section:"Module 4A — Gain and Bandwidth", gridId:"grid-m4a-gb", title:"Gain and Bandwidth: Bandwidth −3dB Point", desc:"Bode plot with −3dB frequency marked. Frequency slider crosses the knee. Phase = −45° at f_c. RC pole derivation." },
+  { id:"M4A-GB-2.2.2", slug:"M4A-GB-2.2.2_Low_and_High_Cutoff_Frequencies", phase:"m4a", section:"Module 4A — Gain and Bandwidth", gridId:"grid-m4a-gb", title:"Gain and Bandwidth: Low and High Cutoff Frequencies", desc:"Bandpass region between f_L and f_H. Coupling cap sets f_L, parasitic cap sets f_H. Both sliders active." },
+  { id:"M4A-GB-2.3.1", slug:"M4A-GB-2.3.1_Gain-Bandwidth_Product", phase:"m4a", section:"Module 4A — Gain and Bandwidth", gridId:"grid-m4a-gb", title:"Gain and Bandwidth: Gain-Bandwidth Product (GBW)", desc:"GBW = Av × BW = constant. Gain slider shifts bandwidth inversely. GBW hyperbola plotted on gain-BW plane." },
+  { id:"M4A-GB-2.3.2", slug:"M4A-GB-2.3.2_Practical_Implications_of_GBW", phase:"m4a", section:"Module 4A — Gain and Bandwidth", gridId:"grid-m4a-gb", title:"Gain and Bandwidth: Practical Implications of GBW", desc:"Signal at high frequency needs low gain. Application frequency vs gain budget calculator with op-amp selection guide." },
+  { id:"M4A-GB-2.4.1", slug:"M4A-GB-2.4.1_Bode_Plot_Magnitude", phase:"m4a", section:"Module 4A — Gain and Bandwidth", gridId:"grid-m4a-gb", title:"Gain and Bandwidth: Bode Plot Magnitude", desc:"Asymptotic Bode magnitude: flat → −20dB/dec per pole. Multiple poles and zeros selectable. Exact vs asymptotic overlay." },
+  { id:"M4A-GB-2.4.2", slug:"M4A-GB-2.4.2_Bode_Plot_Phase_Response", phase:"m4a", section:"Module 4A — Gain and Bandwidth", gridId:"grid-m4a-gb", title:"Gain and Bandwidth: Bode Plot Phase Response", desc:"Phase: 0° → −45° at f_p → −90° per pole. Phase margin at unity gain crossing. Multiple poles accumulate." },
+  { id:"M4A-GB-2.5.1", slug:"M4A-GB-2.5.1_Why_High_Gain_Reduces_Bandwidth", phase:"m4a", section:"Module 4A — Gain and Bandwidth", gridId:"grid-m4a-gb", title:"Gain and Bandwidth: Why High Gain Reduces Bandwidth", desc:"Miller effect: Cgd×(1+|Av|) effective capacitance. Av slider shows bandwidth collapsing as gain increases." },
+  { id:"M4A-GB-2.5.2", slug:"M4A-GB-2.5.2_Design_Trade-offs", phase:"m4a", section:"Module 4A — Gain and Bandwidth", gridId:"grid-m4a-gb", title:"Gain and Bandwidth: Design Trade-offs", desc:"Gain vs bandwidth trade-off design space. Target application point (audio/video/RF) overlaid. Feasibility check." },
+  { id:"M4A-GB-2.6.1", slug:"M4A-GB-2.6.1_AC_Analysis_Setup", phase:"m4a", section:"Module 4A — Gain and Bandwidth", gridId:"grid-m4a-gb", title:"Gain and Bandwidth Sim: AC Analysis Setup", desc:"NGSpice .ac dec 100 1 100Meg syntax visualizer. Start/stop frequency sliders, points-per-decade selector." },
+  { id:"M4A-GB-2.6.2", slug:"M4A-GB-2.6.2_Gain_vs_Frequency_Plot", phase:"m4a", section:"Module 4A — Gain and Bandwidth", gridId:"grid-m4a-gb", title:"Gain and Bandwidth Sim: Gain vs Frequency Plot", desc:"Animated gain curve generation from AC sweep. Pole frequencies auto-detected and annotated on plot." },
+  { id:"M4A-GB-2.6.3", slug:"M4A-GB-2.6.3_Bandwidth_Extraction", phase:"m4a", section:"Module 4A — Gain and Bandwidth", gridId:"grid-m4a-gb", title:"Gain and Bandwidth Sim: Bandwidth Extraction", desc:"Cursor-based −3dB measurement on Bode plot. Automated f_c detection with tolerance band. GBW readout." },
+  { id:"M4A-FLT-3.1.1", slug:"M4A-FLT-3.1.1_Why_Filtering_is_Needed", phase:"m4a", section:"Module 4A — Filters", gridId:"grid-m4a-flt", title:"Filters: Why Filtering is Needed", desc:"Noisy signal with desired frequency component. Without filter: noise corrupts signal. With filter: clean output." },
+  { id:"M4A-FLT-3.1.2", slug:"M4A-FLT-3.1.2_Filter_Types_Overview", phase:"m4a", section:"Module 4A — Filters", gridId:"grid-m4a-flt", title:"Filters: Filter Types Overview", desc:"LP / HP / BP / notch response shapes overlaid. Frequency sliders for each. Toggle between types to see passband." },
+  { id:"M4A-FLT-3.2.1", slug:"M4A-FLT-3.2.1_RC_Filter_Transfer_Function", phase:"m4a", section:"Module 4A — Filters", gridId:"grid-m4a-flt", title:"Filters: RC Low-Pass Transfer Function", desc:"H(jω) = 1/(1+jωRC). Magnitude and phase on Bode plot. R and C sliders, live f_c = 1/(2πRC) readout." },
+  { id:"M4A-FLT-3.2.2", slug:"M4A-FLT-3.2.2_Active_vs_Passive_Filters", phase:"m4a", section:"Module 4A — Filters", gridId:"grid-m4a-flt", title:"Filters: Active vs Passive Filters", desc:"Passive RC: no gain, loaded by source. Active Sallen-Key: buffers load, can provide gain. Comparison plot." },
+  { id:"M4A-FLT-3.3.1", slug:"M4A-FLT-3.3.1_Sallen-Key_Topology", phase:"m4a", section:"Module 4A — Filters", gridId:"grid-m4a-flt", title:"Filters: Sallen-Key Topology", desc:"2nd-order LP with ζ and ω₀ sliders. Q factor controls peaking. Butterworth/Chebyshev Q values pre-set." },
+  { id:"M4A-FLT-3.3.2", slug:"M4A-FLT-3.3.2_Multiple_Feedback_Topology", phase:"m4a", section:"Module 4A — Filters", gridId:"grid-m4a-flt", title:"Filters: Multiple Feedback Topology", desc:"MFB bandpass filter with center frequency and Q sliders. Inverting configuration, high Q capability shown." },
+  { id:"M4A-FLT-3.4.1", slug:"M4A-FLT-3.4.1_Butterworth_Chebyshev_Bessel", phase:"m4a", section:"Module 4A — Filters", gridId:"grid-m4a-flt", title:"Filters: Butterworth, Chebyshev, Bessel", desc:"Three response overlays: Butterworth (maximally flat), Chebyshev (equiripple), Bessel (linear phase). N selector." },
+  { id:"M4A-FLT-3.4.2", slug:"M4A-FLT-3.4.2_Filter_Order_and_Rolloff", phase:"m4a", section:"Module 4A — Filters", gridId:"grid-m4a-flt", title:"Filters: Filter Order and Roll-off", desc:"N=1,2,3,4 overlaid: −20N dB/decade stopband. Shows roll-off steepness vs complexity trade-off." },
+  { id:"M4A-FLT-3.5.1", slug:"M4A-FLT-3.5.1_Frequency_Scaling_and_Component_Selection", phase:"m4a", section:"Module 4A — Filters", gridId:"grid-m4a-flt", title:"Filters: Frequency Scaling and Component Selection", desc:"Scale normalized prototype to target f_c. R and C value calculator with standard value selector (E24/E96 series)." },
+  { id:"M4A-FLT-3.5.2", slug:"M4A-FLT-3.5.2_Filter_Simulation_and_Verification", phase:"m4a", section:"Module 4A — Filters", gridId:"grid-m4a-flt", title:"Filters: Filter Simulation and Verification", desc:"Expected vs actual response overlay. Component tolerance slider causes passband ripple and cutoff shift." },
+  { id:"M4A-FLT-3.6.1", slug:"M4A-FLT-3.6.1_Notch_and_Band-Pass_Filters", phase:"m4a", section:"Module 4A — Filters", gridId:"grid-m4a-flt", title:"Filters: Notch and Band-Pass Filters", desc:"Twin-T notch: deep null at f_notch. Bandpass with center frequency and Q sliders. 50/60Hz notch application." },
+  { id:"M4A-FLT-3.6.2", slug:"M4A-FLT-3.6.2_Filter_Design_Walkthrough", phase:"m4a", section:"Module 4A — Filters", gridId:"grid-m4a-flt", title:"Filters: Filter Design Walkthrough", desc:"Complete design flow: enter specs (f_c, order, type) → component values calculated → Bode verified. Export table." },
+  { id:"M4A-SD-4.1.1", slug:"M4A-SD-4.1.1_Stability_Basics_Phase_Margin", phase:"m4a", section:"Module 4A — Stability and Distortion", gridId:"grid-m4a-sd", title:"Stability: Phase Margin Basics", desc:"Phase margin = 180° + phase at unity gain. PM < 45° → ringing; PM < 0° → oscillation. Bode plot with PM marker." },
+  { id:"M4A-SD-4.1.2", slug:"M4A-SD-4.1.2_Gain_Margin_and_Nyquist", phase:"m4a", section:"Module 4A — Stability and Distortion", gridId:"grid-m4a-sd", title:"Stability: Gain Margin and Nyquist", desc:"GM = dB gain below 0dB at 180° phase crossing. Nyquist plot encirclement of −1 point. PM and GM linked." },
+  { id:"M4A-SD-4.2.1", slug:"M4A-SD-4.2.1_Oscillation_and_Ringing", phase:"m4a", section:"Module 4A — Stability and Distortion", gridId:"grid-m4a-sd", title:"Stability: Oscillation and Ringing", desc:"Step response: PM=90° clean, PM=60° slight ring, PM=30° heavy ringing, PM<0° sustained oscillation." },
+  { id:"M4A-SD-4.2.2", slug:"M4A-SD-4.2.2_Compensation_Techniques", phase:"m4a", section:"Module 4A — Stability and Distortion", gridId:"grid-m4a-sd", title:"Stability: Compensation Techniques", desc:"Dominant pole, lag, lead-lag compensation. Each changes Bode plot shape. PM improvement vs bandwidth loss shown." },
+  { id:"M4A-SD-4.3.1", slug:"M4A-SD-4.3.1_THD_and_Harmonic_Distortion", phase:"m4a", section:"Module 4A — Stability and Distortion", gridId:"grid-m4a-sd", title:"Distortion: THD and Harmonic Distortion", desc:"THD = √(H2²+H3²+...)/H1. Spectrum showing fundamental + harmonics. Drive level slider increases THD." },
+  { id:"M4A-SD-4.3.2", slug:"M4A-SD-4.3.2_Intermodulation_Distortion", phase:"m4a", section:"Module 4A — Stability and Distortion", gridId:"grid-m4a-sd", title:"Distortion: Intermodulation Distortion", desc:"Two-tone input f1+f2 produces IMD products at 2f1−f2, 2f2−f1. IIP3 readout. Mixer-like nonlinearity model." },
+  { id:"M4A-SD-4.4.1", slug:"M4A-SD-4.4.1_Slew_Rate_and_Full_Power_Bandwidth", phase:"m4a", section:"Module 4A — Stability and Distortion", gridId:"grid-m4a-sd", title:"Distortion: Slew Rate and Full-Power Bandwidth", desc:"SR = I_SS/C_c. FPBW = SR/(2π×V_peak). Large-signal step showing slew-limited ramp then linear settling." },
+  { id:"M4A-SD-4.4.2", slug:"M4A-SD-4.4.2_Clipping_and_Crossover_Distortion", phase:"m4a", section:"Module 4A — Stability and Distortion", gridId:"grid-m4a-sd", title:"Distortion: Clipping and Crossover Distortion", desc:"Output clipping at rail and crossover notch in class-B. Both distortion types shown with THD readout." },
+  { id:"M4A-SD-4.5.1", slug:"M4A-SD-4.5.1_Noise_Floor_and_SNR", phase:"m4a", section:"Module 4A — Stability and Distortion", gridId:"grid-m4a-sd", title:"Noise: Noise Floor and SNR", desc:"SNR = signal power / noise power in dB. Bandwidth slider raises noise floor. Signal amplitude vs noise margin." },
+  { id:"M4A-SD-4.5.2", slug:"M4A-SD-4.5.2_Noise_Sources_in_Amplifiers", phase:"m4a", section:"Module 4A — Stability and Distortion", gridId:"grid-m4a-sd", title:"Noise: Noise Sources in Amplifiers", desc:"Thermal noise (white) + flicker noise (1/f). Corner frequency slider. Input-referred voltage and current noise." },
+  { id:"M4A-DT-5.1.1", slug:"M4A-DT-5.1.1_Design_Requirements_and_Specs", phase:"m4a", section:"Module 4A — Design Thinking", gridId:"grid-m4a-dt", title:"Design Thinking: Requirements and Specs", desc:"Translate application needs to electrical specs: gain, BW, noise, supply, load. Spec sheet builder interactive." },
+  { id:"M4A-DT-5.1.2", slug:"M4A-DT-5.1.2_Topology_Selection", phase:"m4a", section:"Module 4A — Design Thinking", gridId:"grid-m4a-dt", title:"Design Thinking: Topology Selection", desc:"Given specs, which topology wins? CE / CS / CG / Op-Amp decision matrix with requirement sliders." },
+  { id:"M4A-DT-5.2.1", slug:"M4A-DT-5.2.1_Worst_Case_Analysis", phase:"m4a", section:"Module 4A — Design Thinking", gridId:"grid-m4a-dt", title:"Design Thinking: Worst-Case Analysis", desc:"Component tolerance ±10%, temperature range, supply variation. Worst-case gain and BW bounds calculated." },
+  { id:"M4A-DT-5.2.2", slug:"M4A-DT-5.2.2_Component_Selection", phase:"m4a", section:"Module 4A — Design Thinking", gridId:"grid-m4a-dt", title:"Design Thinking: Component Selection", desc:"Resistor precision vs cost, capacitor dielectric vs frequency, op-amp selection by GBW/noise/supply. Pareto chart." },
+  { id:"M4A-DT-5.3.1", slug:"M4A-DT-5.3.1_Simulation_Strategy", phase:"m4a", section:"Module 4A — Design Thinking", gridId:"grid-m4a-dt", title:"Design Thinking: Simulation Strategy", desc:"DC → AC → Transient → Monte Carlo workflow. Each sim type reveals different failure modes. Checklist." },
+  { id:"M4A-DT-5.4.1", slug:"M4A-DT-5.4.1_Design_Review_Checklist", phase:"m4a", section:"Module 4A — Design Thinking", gridId:"grid-m4a-dt", title:"Design Thinking: Design Review Checklist", desc:"Interactive checklist: bias verified, gain meets spec, PM > 45°, noise budget closed, ESD protection. Completion tracker." },
+  { id:"M4A-DBG-6.1.1", slug:"M4A-DBG-6.1.1_Oscilloscope_Techniques", phase:"m4a", section:"Module 4A — Debug", gridId:"grid-m4a-dbg", title:"Debug: Oscilloscope Techniques", desc:"Probe placement, trigger settings, AC coupling, bandwidth limiting. Shows how wrong probe setup hides the fault." },
+  { id:"M4A-DBG-6.1.2", slug:"M4A-DBG-6.1.2_Spectrum_Analyzer_Use", phase:"m4a", section:"Module 4A — Debug", gridId:"grid-m4a-dbg", title:"Debug: Spectrum Analyzer Use", desc:"Frequency domain view of amplifier output. Harmonic spurs, noise floor, spurious signals. RBW and span sliders." },
+  { id:"M4A-DBG-6.2.1", slug:"M4A-DBG-6.2.1_DC_Bias_Debugging", phase:"m4a", section:"Module 4A — Debug", gridId:"grid-m4a-dbg", title:"Debug: DC Bias Debugging", desc:"Step-by-step DC bias check: V_B, V_E, V_C for BJT; V_GS, V_DS for MOSFET. Each reading narrows the fault." },
+  { id:"M4A-DBG-6.2.2", slug:"M4A-DBG-6.2.2_AC_Signal_Path_Debugging", phase:"m4a", section:"Module 4A — Debug", gridId:"grid-m4a-dbg", title:"Debug: AC Signal Path Debugging", desc:"Inject signal, probe at each stage. Open coupling cap, shorted bypass cap faults shown with their signatures." },
+  { id:"M4A-DBG-6.3.1", slug:"M4A-DBG-6.3.1_Noise_Debugging", phase:"m4a", section:"Module 4A — Debug", gridId:"grid-m4a-dbg", title:"Debug: Noise Debugging", desc:"Ground loop, power supply noise, high-impedance pickup. Each noise source has a distinct frequency signature." },
+  { id:"M4A-DBG-6.3.2", slug:"M4A-DBG-6.3.2_Stability_Debugging", phase:"m4a", section:"Module 4A — Debug", gridId:"grid-m4a-dbg", title:"Debug: Stability Debugging", desc:"Oscillation: add capacitive load → ringing worsens. Add series R at output or compensation cap → fix. PM readout." },
+  { id:"M4A-DBG-6.4.1", slug:"M4A-DBG-6.4.1_Power_Supply_Debugging", phase:"m4a", section:"Module 4A — Debug", gridId:"grid-m4a-dbg", title:"Debug: Power Supply Debugging", desc:"PSRR visualization: supply ripple appears at output scaled by −PSRR. Decoupling cap value vs ripple rejection." },
+  { id:"M4A-DBG-6.4.2", slug:"M4A-DBG-6.4.2_PCB_Layout_and_Parasitics", phase:"m4a", section:"Module 4A — Debug", gridId:"grid-m4a-dbg", title:"Debug: PCB Layout and Parasitics", desc:"Trace inductance and capacitance causing unexpected resonances. Layout length slider → parasitic L → bandwidth loss." },
+  { id:"M4A-OPT-7.1.1", slug:"M4A-OPT-7.1.1_Increase_Gain_Without_Instability", phase:"m4a", section:"Module 4A — Optimization", gridId:"grid-m4a-opt", title:"Optimization: Increase Gain without Instability", desc:"Techniques: cascode, active load, cascade stages with compensation. Each step's gain addition with PM impact shown." },
+  { id:"M4A-OPT-7.1.2", slug:"M4A-OPT-7.1.2_Improve_Bandwidth_and_Speed", phase:"m4a", section:"Module 4A — Optimization", gridId:"grid-m4a-opt", title:"Optimization: Improve Bandwidth and Speed", desc:"Reduce parasitic caps, increase gm, use CG stage to eliminate Miller. Each technique's BW improvement quantified." },
+  { id:"M4A-OPT-7.2.1", slug:"M4A-OPT-7.2.1_Reduce_Oscillation", phase:"m4a", section:"Module 4A — Optimization", gridId:"grid-m4a-opt", title:"Optimization: Reduce Oscillation", desc:"Dominant-pole compensation: reduce C at output node or add C_c. PM improvement vs bandwidth penalty trade-off." },
+  { id:"M4A-OPT-7.2.2", slug:"M4A-OPT-7.2.2_Gain_vs_Bandwidth_Tradeoff", phase:"m4a", section:"Module 4A — Optimization", gridId:"grid-m4a-opt", title:"Optimization: Gain vs Bandwidth Trade-off", desc:"GBW hyperbola with application requirements overlaid. Shows where on the curve your design should operate." },
+  { id:"M4A-OPT-7.3.1", slug:"M4A-OPT-7.3.1_Speed_vs_Stability_Tradeoff", phase:"m4a", section:"Module 4A — Optimization", gridId:"grid-m4a-opt", title:"Optimization: Speed vs Stability Trade-off", desc:"PM vs BW trade-off with operating region map. ζ = cos(PM×π/180) linking PM to step response overshoot. Settling time analysis." },
+  { id:"M4B-CM-1.1.1", slug:"M4B-CM-1.1.1_What_is_Current_Mirroring", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"Current Mirror: What is Current Mirroring", desc:"Reference vs output current bars with VDS sweep. Mirror ratio slider. Shows how matched VGS forces equal drain currents in CMOS." },
+  { id:"M4B-CM-1.1.2", slug:"M4B-CM-1.1.2_Role_in_IC_Design", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"Current Mirror: Role in IC Design", desc:"IC design map showing where current mirrors appear: bias generators, active loads, diff pair tail sources. Interactive block diagram." },
+  { id:"M4B-CM-1.2.1", slug:"M4B-CM-1.2.1_Current_Mirror_BJT_VBE_Matching", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"BJT Mirror: VBE Matching Condition", desc:"VBE vs IC exponential. Two BJTs with matched VBE: shows how I_C2 = I_C1 when V_BE1 = V_BE2. Temperature effect on V_BE." },
+  { id:"M4B-CM-1.2.2", slug:"M4B-CM-1.2.2_Current_Mirror_BJT_Collector_Current_Replication", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"BJT Mirror: Collector Current Replication", desc:"Base current error (2/β loss) quantified. β slider shows how error scales. Wilson mirror comparison reduces error." },
+  { id:"M4B-CM-1.3.1", slug:"M4B-CM-1.3.1_Current_Mirror_MOSFET_VGS_Matching", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"MOSFET Mirror: VGS Matching Principle", desc:"MOSFET I_D vs VGS curves for reference and output transistors. W/L ratio slider scales output current. Live I_D readout." },
+  { id:"M4B-CM-1.3.2", slug:"M4B-CM-1.3.2_Current_Mirror_MOSFET_Drain_Current_Control", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"MOSFET Mirror: Drain Current Control", desc:"Output current vs W/L ratio. Channel length modulation effect at different V_DS values. Compliance voltage indicator." },
+  { id:"M4B-CM-1.4.1", slug:"M4B-CM-1.4.1_Current_Mirror_Non_Ideal_Channel_Length_Modulation", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"Non-Ideal: Channel Length Modulation", desc:"I_out vs V_out slope due to λ. λ slider shows how output current rises with V_DS. Longer channel L → flatter characteristic." },
+  { id:"M4B-CM-1.4.2", slug:"M4B-CM-1.4.2_Current_Mirror_Non_Ideal_Output_Resistance", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"Non-Ideal: Output Resistance r_out", desc:"r_out = VA/I_D plot. Early voltage VA slider, current bias slider. Cascode improvement comparison showing 100× higher r_out." },
+  { id:"M4B-CM-1.4.3", slug:"M4B-CM-1.4.3_Current_Mirror_Non_Ideal_Mismatch", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"Non-Ideal: Mismatch Issues", desc:"Monte Carlo–style current scatter. ΔVth and ΔW/L mismatch sliders. Shows current error distribution and 3σ worst case." },
+  { id:"M4B-CM-1.5.1", slug:"M4B-CM-1.5.1_Current_Mirror_Advanced_Simple_Mirror_Limitations", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"Advanced: Simple Mirror Limitations", desc:"I_out vs V_out for simple mirror: current drops at low V_out. Minimum compliance voltage annotated. Accuracy vs V_DS chart." },
+  { id:"M4B-CM-1.5.2", slug:"M4B-CM-1.5.2_Current_Mirror_Advanced_Cascode", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"Advanced: Cascode Current Mirror", desc:"Simple vs cascode mirror overlay. Output resistance 100× improvement. Compliance voltage penalty shown with V_min indicator." },
+  { id:"M4B-CM-1.5.3", slug:"M4B-CM-1.5.3_Current_Mirror_Advanced_Widlar", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"Advanced: Widlar Current Source", desc:"Widlar mirror with emitter resistor RE. Very small output current from large reference. RE slider shifts I_out on log scale." },
+  { id:"M4B-CM-1.6.1", slug:"M4B-CM-1.6.1_Current_Mirror_Compliance_Voltage", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"Design: Compliance Voltage", desc:"Minimum output voltage for proper mirror operation. V_DS_min = V_GS − V_th = V_ov. Headroom calculator with VDD budget." },
+  { id:"M4B-CM-1.6.2", slug:"M4B-CM-1.6.2_Current_Mirror_Accuracy_vs_Complexity", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"Design: Accuracy vs Complexity", desc:"Trade-off chart: simple / Wilson / cascode / regulated cascode vs accuracy, headroom, transistor count. Interactive selector." },
+  { id:"M4B-CM-1.7.1", slug:"M4B-CM-1.7.1_Current_Mirror_Sim_Sweep_Output_Voltage", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"Sim: Sweep Output Voltage", desc:"I_out vs V_out family of curves for different W/L ratios. Compliance knee, saturation region, output resistance slope all labeled." },
+  { id:"M4B-CM-1.7.2", slug:"M4B-CM-1.7.2_Current_Mirror_Sim_Observe_Current_Stability", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"Sim: Observe Current Stability", desc:"I_out vs temperature for simple vs cascode mirror. Shows PTAT error and how cascode reduces V_DS sensitivity." },
+  { id:"M4B-CM-1.8.1", slug:"M4B-CM-1.8.1_Current_Mirror_Debug_Current_Not_Matching", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"Debug: Current Not Matching", desc:"Fault diagnosis: wrong W/L, V_GS mismatch, body effect. Each fault shows its I_out error signature with fix." },
+  { id:"M4B-CM-1.8.2", slug:"M4B-CM-1.8.2_Current_Mirror_Debug_Low_Output_Resistance", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"Debug: Low Output Resistance", desc:"Short channel λ causing large output slope. Shows how increasing L from 0.18μm to 1μm flattens I-V curve." },
+  { id:"M4B-CM-1.9.1", slug:"M4B-CM-1.9.1_Current_Mirror_Debug_Output_Varies_with_Voltage", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"Debug: Output Varies with Voltage", desc:"I_out change with V_DS due to channel-length modulation. Simple mirror vs cascode comparison. V_DS variation slider." },
+  { id:"M4B-CM-1.9.2", slug:"M4B-CM-1.9.2_Current_Mirror_Debug_Current_Too_Small_or_Too_Large", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"Debug: Current Too Small or Too Large", desc:"W/L ratio error diagnosis. Shows how 2× W error gives 2× current. Systematic vs random mismatch comparison." },
+  { id:"M4B-CM-1.10.1", slug:"M4B-CM-1.10.1_Current_Mirror_Optimize_Improve_Accuracy", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"Optimize: Improve Accuracy", desc:"Larger transistors and cascode stack reduce mismatch. Area vs accuracy trade-off curve. σ(ΔI/I) vs W·L plot." },
+  { id:"M4B-CM-1.10.2", slug:"M4B-CM-1.10.2_Current_Mirror_Optimize_Increase_Output_Resistance", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"Optimize: Increase Output Resistance", desc:"r_out comparison: simple → cascode → regulated cascode. Gain-boosting loop added. Output resistance vs complexity bar chart." },
+  { id:"M4B-CM-1.10.3", slug:"M4B-CM-1.10.3_Current_Mirror_Optimize_Reduce_Power_Consumption", phase:"m4b", section:"Module 4B — Current Mirror", gridId:"grid-m4b-cm", title:"Optimize: Reduce Power Consumption", desc:"Sub-threshold mirror for nA-range bias. I_ref slider from 1nA to 100μA. V_ov vs power vs noise trade-off display." },
+  { id:"M4B-DA-2.1.1", slug:"M4B-DA-2.1.1_Differential_Amplifier_What_is_a_Differential_Pair", phase:"m4b", section:"Module 4B — Differential Amplifier", gridId:"grid-m4b-da", title:"Diff Amp: What is a Differential Pair", desc:"Two matched MOSFETs with shared tail current. V_id slider shows how current steers between sides. Tanh transfer curve." },
+  { id:"M4B-DA-2.1.2", slug:"M4B-DA-2.1.2_Differential_Amplifier_Role_in_Analog_IC_Design", phase:"m4b", section:"Module 4B — Differential Amplifier", gridId:"grid-m4b-da", title:"Diff Amp: Role in Analog IC Design", desc:"Diff pair as first stage of op-amp. Shows error amplifier, comparator, and instrumentation amp contexts. Block diagram." },
+  { id:"M4B-DA-2.2.1", slug:"M4B-DA-2.2.1_Differential_Amplifier_Small_Signal_Gain", phase:"m4b", section:"Module 4B — Differential Amplifier", gridId:"grid-m4b-da", title:"Diff Amp: Small Signal Gain", desc:"A_d = g_m × R_D derivation. g_m and R_D sliders with live gain readout. Half-circuit model visualization." },
+  { id:"M4B-DA-2.2.2", slug:"M4B-DA-2.2.2_Differential_Amplifier_CMRR", phase:"m4b", section:"Module 4B — Differential Amplifier", gridId:"grid-m4b-da", title:"Diff Amp: CMRR", desc:"CMRR = A_d/A_cm in dB. Tail current source impedance slider. Shows how weak tail source degrades CMRR." },
+  { id:"M4B-DA-2.3.1", slug:"M4B-DA-2.3.1_Differential_Amplifier_Differential_and_Common_Mode_Analysis", phase:"m4b", section:"Module 4B — Differential Amplifier", gridId:"grid-m4b-da", title:"Diff Amp: Differential vs Common Mode Analysis", desc:"Apply V_id and V_cm separately. Output shows differential gain passes signal, common mode gain rejected." },
+  { id:"M4B-DA-2.3.2", slug:"M4B-DA-2.3.2_Differential_Amplifier_Tail_Current_Source_Effect", phase:"m4b", section:"Module 4B — Differential Amplifier", gridId:"grid-m4b-da", title:"Diff Amp: Tail Current Source Effect", desc:"Ideal vs real tail current source CMRR comparison. Finite r_out of tail source lets common mode signal through." },
+  { id:"M4B-DA-2.4.1", slug:"M4B-DA-2.4.1_Differential_Amplifier_Non_Idealities_Input_Offset", phase:"m4b", section:"Module 4B — Differential Amplifier", gridId:"grid-m4b-da", title:"Diff Amp: Input Offset Voltage", desc:"ΔVth mismatch causes V_os. Mismatch slider drives offset. Shows how larger transistors reduce offset (Pelgrom model)." },
+  { id:"M4B-DA-2.4.2", slug:"M4B-DA-2.4.2_Differential_Amplifier_Non_Idealities_Noise", phase:"m4b", section:"Module 4B — Differential Amplifier", gridId:"grid-m4b-da", title:"Diff Amp: Noise", desc:"Input-referred noise spectral density: thermal + flicker. Frequency slider, bias current slider. SNR vs gm trade-off." },
+  { id:"M4B-DA-2.5.1", slug:"M4B-DA-2.5.1_Differential_Amplifier_Advanced_Active_Load", phase:"m4b", section:"Module 4B — Differential Amplifier", gridId:"grid-m4b-da", title:"Diff Amp: Active Load Pair", desc:"PMOS current mirror active load on diff pair. Single-ended output gain doubles vs resistive load. Live A_d readout." },
+  { id:"M4B-DA-2.5.2", slug:"M4B-DA-2.5.2_Differential_Amplifier_Advanced_Folded_Cascode", phase:"m4b", section:"Module 4B — Differential Amplifier", gridId:"grid-m4b-da", title:"Diff Amp: Folded Cascode Variant", desc:"Folded cascode diff pair topology. Input pair at top, cascode below. Higher output resistance, full-swing capability." },
+  { id:"M4B-DA-2.6.1", slug:"M4B-DA-2.6.1_Differential_Amplifier_Sim_AC_Response", phase:"m4b", section:"Module 4B — Differential Amplifier", gridId:"grid-m4b-da", title:"Diff Amp Sim: AC Response", desc:"Bode plot of diff amp: flat gain, −20dB/decade roll-off, phase margin. Load capacitance slider shifts dominant pole." },
+  { id:"M4B-DA-2.6.2", slug:"M4B-DA-2.6.2_Differential_Amplifier_Sim_CMRR_Measurement", phase:"m4b", section:"Module 4B — Differential Amplifier", gridId:"grid-m4b-da", title:"Diff Amp Sim: CMRR Measurement", desc:"Apply common-mode sweep, measure output. CMRR vs frequency plot. Shows CMRR degradation at high frequency." },
+  { id:"M4B-DA-2.7.1", slug:"M4B-DA-2.7.1_Differential_Amplifier_Debug_Low_Gain", phase:"m4b", section:"Module 4B — Differential Amplifier", gridId:"grid-m4b-da", title:"Diff Amp Debug: Low Gain", desc:"Causes: low gm (low I_D), low R_D, channel-length modulation. Each fault's contribution to gain loss shown." },
+  { id:"M4B-DA-2.7.2", slug:"M4B-DA-2.7.2_Differential_Amplifier_Debug_Poor_CMRR", phase:"m4b", section:"Module 4B — Differential Amplifier", gridId:"grid-m4b-da", title:"Diff Amp Debug: Poor CMRR", desc:"Weak tail current source, transistor mismatch. Each cause shown with its CMRR impact and recommended fix." },
+  { id:"M4B-DA-2.8.1", slug:"M4B-DA-2.8.1_Differential_Amplifier_Debug_Output_Clipping_Headroom", phase:"m4b", section:"Module 4B — Differential Amplifier", gridId:"grid-m4b-da", title:"Diff Amp Debug: Output Clipping / Headroom", desc:"Output clipping when V_DS_min violated. VDD and bias sliders show safe operating region boundary." },
+  { id:"M4B-DA-2.8.2", slug:"M4B-DA-2.8.2_Differential_Amplifier_Debug_Offset_Issues", phase:"m4b", section:"Module 4B — Differential Amplifier", gridId:"grid-m4b-da", title:"Diff Amp Debug: Offset Issues", desc:"Output stuck at rail despite zero input. Mismatch sources: ΔVth, ΔW/L, ΔR. Trimming technique shown." },
+  { id:"M4B-DA-2.9.1", slug:"M4B-DA-2.9.1_Differential_Amplifier_Optimize_Improve_Gain", phase:"m4b", section:"Module 4B — Differential Amplifier", gridId:"grid-m4b-da", title:"Diff Amp Optimize: Improve Gain", desc:"Techniques: increase gm (raise I_D or W/L), use active load, add cascode. Each step's gain improvement shown." },
+  { id:"M4B-DA-2.9.2", slug:"M4B-DA-2.9.2_Differential_Amplifier_Optimize_Improve_CMRR", phase:"m4b", section:"Module 4B — Differential Amplifier", gridId:"grid-m4b-da", title:"Diff Amp Optimize: Improve CMRR", desc:"Stronger tail current source with cascode. CMRR improvement vs transistor count and headroom trade-off." },
+  { id:"M4B-DA-2.9.3", slug:"M4B-DA-2.9.3_Differential_Amplifier_Optimize_Reduce_Offset", phase:"m4b", section:"Module 4B — Differential Amplifier", gridId:"grid-m4b-da", title:"Diff Amp Optimize: Reduce Offset", desc:"Larger transistors, chopper stabilization, auto-zeroing. Shows V_os reduction vs area cost for each technique." },
+  { id:"M4B-AL-3.1.1", slug:"M4B-AL-3.1.1_Active_Load_What_is_an_Active_Load", phase:"m4b", section:"Module 4B — Active Load", gridId:"grid-m4b-al", title:"Active Load: What is an Active Load", desc:"PMOS current mirror replacing drain resistor. Gain A_v = gm×(ro_n||ro_p) vs gm×R_D comparison. Gain bar chart." },
+  { id:"M4B-AL-3.2.1", slug:"M4B-AL-3.2.1_Active_Load_PMOS_Current_Mirror_Load", phase:"m4b", section:"Module 4B — Active Load", gridId:"grid-m4b-al", title:"Active Load: PMOS Current Mirror Load", desc:"PMOS mirror load on NMOS diff pair. Single-ended output. Shows how signal from right side adds to mirror-reflected left signal." },
+  { id:"M4B-AL-3.3.1", slug:"M4B-AL-3.3.1_Active_Load_Cascode_Active_Load", phase:"m4b", section:"Module 4B — Active Load", gridId:"grid-m4b-al", title:"Active Load: Cascode Active Load", desc:"Cascode PMOS load for ultra-high output resistance. r_out comparison simple vs cascode. Voltage headroom penalty." },
+  { id:"M4B-AL-3.4.1", slug:"M4B-AL-3.4.1_Active_Load_Output_Resistance_and_Gain", phase:"m4b", section:"Module 4B — Active Load", gridId:"grid-m4b-al", title:"Active Load: Output Resistance and Gain", desc:"A_v = gm×(ro_n||ro_p). As ro → ∞ with cascode, gain can reach 60–80dB. Output resistance vs gain plot." },
+  { id:"M4B-AL-3.5.1", slug:"M4B-AL-3.5.1_Active_Load_Headroom_and_Output_Swing", phase:"m4b", section:"Module 4B — Active Load", gridId:"grid-m4b-al", title:"Active Load: Headroom and Output Swing", desc:"V_out swing limited by V_DS_min of NMOS and PMOS. VDD and V_ov sliders showing swing reduction with cascode." },
+  { id:"M4B-AL-3.6.1", slug:"M4B-AL-3.6.1_Active_Load_Noise_from_Active_Load", phase:"m4b", section:"Module 4B — Active Load", gridId:"grid-m4b-al", title:"Active Load: Noise from Active Load", desc:"PMOS load noise referred to input. Factor of 2 noise penalty of current mirror load vs resistive. g_m ratio slider." },
+  { id:"M4B-AL-3.7.1", slug:"M4B-AL-3.7.1_Active_Load_Mismatch_and_Offset", phase:"m4b", section:"Module 4B — Active Load", gridId:"grid-m4b-al", title:"Active Load: Mismatch and Offset", desc:"PMOS load transistor mismatch creates systematic offset. ΔVth slider shows DC output shift. Layout matching strategy." },
+  { id:"M4B-AL-3.7.2", slug:"M4B-AL-3.7.2_Active_Load_Optimize_Load_Selection_and_Trade_offs", phase:"m4b", section:"Module 4B — Active Load", gridId:"grid-m4b-al", title:"Active Load: Optimize Load Selection", desc:"Resistive vs CM vs cascode CM vs regulated cascode: gain / noise / swing / complexity radar chart. Interactive selector." },
+  { id:"M4B-CAS-4.1.1", slug:"M4B-CAS-4.1.1_Cascode_What_is_a_Cascode", phase:"m4b", section:"Module 4B — Cascode", gridId:"grid-m4b-cas", title:"Cascode: What is a Cascode", desc:"CS + CG stacked transistors. Output resistance ro×(1+gm×ro) derivation. Simple vs cascode gain comparison bar." },
+  { id:"M4B-CAS-4.2.1", slug:"M4B-CAS-4.2.1_Cascode_Telescopic_Cascode", phase:"m4b", section:"Module 4B — Cascode", gridId:"grid-m4b-cas", title:"Cascode: Telescopic Cascode", desc:"Telescopic cascode topology with all stacked transistors. Maximum gain, minimum headroom. V_out swing calculator." },
+  { id:"M4B-CAS-4.2.2", slug:"M4B-CAS-4.2.2_Cascode_Folded_Cascode", phase:"m4b", section:"Module 4B — Cascode", gridId:"grid-m4b-cas", title:"Cascode: Folded Cascode", desc:"PMOS input pair with NMOS cascode. Wider input range, more headroom than telescopic. Bias current split visualization." },
+  { id:"M4B-CAS-4.3.1", slug:"M4B-CAS-4.3.1_Cascode_Output_Resistance", phase:"m4b", section:"Module 4B — Cascode", gridId:"grid-m4b-cas", title:"Cascode: Output Resistance", desc:"r_out_cas ≈ gm×ro² derivation. Shows 40–60dB gain with cascode load. Stacking factor vs headroom cost chart." },
+  { id:"M4B-CAS-4.3.2", slug:"M4B-CAS-4.3.2_Cascode_Bandwidth_and_Miller_Effect", phase:"m4b", section:"Module 4B — Cascode", gridId:"grid-m4b-cas", title:"Cascode: Bandwidth and Miller Effect", desc:"CG stage eliminates Miller multiplication of Cgd. Bandwidth comparison CS vs cascode on Bode plot. Cgd slider." },
+  { id:"M4B-CAS-4.4.1", slug:"M4B-CAS-4.4.1_Cascode_Bias_Design", phase:"m4b", section:"Module 4B — Cascode", gridId:"grid-m4b-cas", title:"Cascode: Bias Design", desc:"Bias voltage generation for cascode gate. V_b = V_GS + V_DS_min constraint. Wide-swing bias generator circuit." },
+  { id:"M4B-CAS-4.4.2", slug:"M4B-CAS-4.4.2_Cascode_Wide_Swing_Cascode", phase:"m4b", section:"Module 4B — Cascode", gridId:"grid-m4b-cas", title:"Cascode: Wide-Swing Cascode", desc:"Self-biased cascode keeps V_DS ≥ V_ov for both transistors. Swing improvement vs conventional cascode comparison." },
+  { id:"M4B-CAS-4.5.1", slug:"M4B-CAS-4.5.1_Cascode_Regulated_Cascode_Gain_Boosted", phase:"m4b", section:"Module 4B — Cascode", gridId:"grid-m4b-cas", title:"Cascode: Regulated / Gain-Boosted", desc:"Gain-boosted cascode with auxiliary amplifier. Output resistance ≈ A×gm×ro². A slider shows incremental improvement." },
+  { id:"M4B-CAS-4.6.1", slug:"M4B-CAS-4.6.1_Cascode_Sim_AC_Response", phase:"m4b", section:"Module 4B — Cascode", gridId:"grid-m4b-cas", title:"Cascode Sim: AC Response", desc:"Bode plot: simple CS vs cascode gain vs frequency. Gain improvement and bandwidth trade-off shown with C_L slider." },
+  { id:"M4B-CAS-4.6.2", slug:"M4B-CAS-4.6.2_Cascode_Debug_Cascode_in_Triode", phase:"m4b", section:"Module 4B — Cascode", gridId:"grid-m4b-cas", title:"Cascode Debug: Cascode in Triode", desc:"Cascode MOSFET enters triode when V_DS < V_ov. Gain collapses. Shows correct bias design to keep both in saturation." },
+  { id:"M4B-CAS-4.7.1", slug:"M4B-CAS-4.7.1_Cascode_Optimize_Gain_vs_Headroom", phase:"m4b", section:"Module 4B — Cascode", gridId:"grid-m4b-cas", title:"Cascode Optimize: Gain vs Headroom", desc:"Gain vs V_out_swing trade-off space. Telescopic vs folded vs regulated cascode on gain-swing plane. Design point selector." },
+  { id:"M4B-CAS-4.7.2", slug:"M4B-CAS-4.7.2_Cascode_Optimize_Regulated_Cascode_Stability", phase:"m4b", section:"Module 4B — Cascode", gridId:"grid-m4b-cas", title:"Cascode Optimize: Regulated Cascode Stability", desc:"Gain-boost amplifier must be stable. Phase margin of boost loop. C_boost slider to add compensation." },
+  { id:"M4B-MS-5.1.1", slug:"M4B-MS-5.1.1_Gain_Limitation_of_Single_Stage", phase:"m4b", section:"Module 4B — Multi-Stage", gridId:"grid-m4b-ms", title:"Multi-Stage: Gain Limitation of Single Stage", desc:"Single CS stage max gain ≈ gm×ro ~ 20–40dB. Shows why 80–100dB op-amp requires multiple stages." },
+  { id:"M4B-MS-5.2.1", slug:"M4B-MS-5.2.1_Cascaded_Stages_Structure", phase:"m4b", section:"Module 4B — Multi-Stage", gridId:"grid-m4b-ms", title:"Multi-Stage: Cascaded Stages Structure", desc:"Two-stage: diff pair + CS output stage. Total gain = A1×A2. Each stage's contribution shown as separate Bode plot." },
+  { id:"M4B-MS-5.3.1", slug:"M4B-MS-5.3.1_Stability_Issues", phase:"m4b", section:"Module 4B — Multi-Stage", gridId:"grid-m4b-ms", title:"Multi-Stage: Stability Issues", desc:"Multiple poles accumulate phase shift. Two poles → 180° total, oscillation risk. Phase margin calculator." },
+  { id:"M4B-MS-5.3.2", slug:"M4B-MS-5.3.2_Phase_Shift_Accumulation", phase:"m4b", section:"Module 4B — Multi-Stage", gridId:"grid-m4b-ms", title:"Multi-Stage: Phase Shift Accumulation", desc:"Each pole contributes −90° asymptotically. Phase plot shows how two poles approach −180° well before GBW." },
+  { id:"M4B-MS-5.4.1", slug:"M4B-MS-5.4.1_Multi-Stage_Debug_Oscillation", phase:"m4b", section:"Module 4B — Multi-Stage", gridId:"grid-m4b-ms", title:"Multi-Stage Debug: Oscillation", desc:"Phase margin < 45° → ringing; < 0° → oscillation. C_comp slider adds Miller cap to fix oscillation." },
+  { id:"M4B-MS-5.4.2", slug:"M4B-MS-5.4.2_Multi-Stage_Debug_Gain_Too_Low", phase:"m4b", section:"Module 4B — Multi-Stage", gridId:"grid-m4b-ms", title:"Multi-Stage Debug: Gain Too Low", desc:"Stage loading reduces gain. R_out of stage 1 loaded by R_in of stage 2. Buffer stage insertion fix." },
+  { id:"M4B-MS-5.5.1", slug:"M4B-MS-5.5.1_Multi-Stage_Optimize_Increase_Gain", phase:"m4b", section:"Module 4B — Multi-Stage", gridId:"grid-m4b-ms", title:"Multi-Stage Optimize: Increase Gain", desc:"Add cascode stages, use active loads, increase gm. Each technique's gain contribution plotted incrementally." },
+  { id:"M4B-MS-5.5.2", slug:"M4B-MS-5.5.2_Multi-Stage_Optimize_Maintain_Stability", phase:"m4b", section:"Module 4B — Multi-Stage", gridId:"grid-m4b-ms", title:"Multi-Stage Optimize: Maintain Stability", desc:"Miller compensation C_c placement. Pole splitting: dominant pole moves down, non-dominant moves up. Phase margin improvement." },
+  { id:"M4B-FC-6.1.1", slug:"M4B-FC-6.1.1_Frequency_Compensation_Need_Prevent_Oscillation", phase:"m4b", section:"Module 4B — Frequency Compensation", gridId:"grid-m4b-fc", title:"Freq Comp: Need — Prevent Oscillation", desc:"Two-stage op-amp without compensation oscillates. Step response shows ringing. Phase margin < 45° danger zone." },
+  { id:"M4B-FC-6.2.1", slug:"M4B-FC-6.2.1_Frequency_Compensation_Technique_Miller_Compensation", phase:"m4b", section:"Module 4B — Frequency Compensation", gridId:"grid-m4b-fc", title:"Freq Comp: Miller Compensation", desc:"C_c across second stage CS. Pole splitting: p1 → low freq, p2 → high freq. C_c slider drives phase margin readout." },
+  { id:"M4B-FC-6.3.1", slug:"M4B-FC-6.3.1_Frequency_Compensation_Dominant_Pole_Concept", phase:"m4b", section:"Module 4B — Frequency Compensation", gridId:"grid-m4b-fc", title:"Freq Comp: Dominant Pole Concept", desc:"Single dominant pole ensures −20dB/decade roll-off at unity gain. Non-dominant pole pushed beyond GBW." },
+  { id:"M4B-FC-6.4.1", slug:"M4B-FC-6.4.1_Frequency_Compensation_Technique_Feedforward", phase:"m4b", section:"Module 4B — Frequency Compensation", gridId:"grid-m4b-fc", title:"Freq Comp: Feedforward Compensation", desc:"Right-half-plane zero in Miller comp causes phase dip. Nulling resistor R_z eliminates RHP zero. R_z slider." },
+  { id:"M4B-FC-6.5.1", slug:"M4B-FC-6.5.1_Frequency_Compensation_Cascode_Compensation", phase:"m4b", section:"Module 4B — Frequency Compensation", gridId:"grid-m4b-fc", title:"Freq Comp: Cascode Compensation", desc:"No RHP zero problem. Indirect feedback path via cascode. Wider GBW than Miller comp. Phase margin comparison." },
+  { id:"M4B-FC-6.6.1", slug:"M4B-FC-6.6.1_Frequency_Compensation_Three_Stage_NMC", phase:"m4b", section:"Module 4B — Frequency Compensation", gridId:"grid-m4b-fc", title:"Freq Comp: Three-Stage NMC", desc:"Nested Miller Compensation for three-stage amplifiers. Two compensating capacitors, stability analysis." },
+  { id:"M4B-FC-6.7.1", slug:"M4B-FC-6.7.1_Frequency_Compensation_Debug_Stability", phase:"m4b", section:"Module 4B — Frequency Compensation", gridId:"grid-m4b-fc", title:"Freq Comp Debug: Stability", desc:"Phase margin vs C_c trade-off. Underdamped step response with C_c too small. Overdamped with C_c too large." },
+  { id:"M4B-FC-6.7.2", slug:"M4B-FC-6.7.2_Frequency_Compensation_Optimize_GBW_vs_PM", phase:"m4b", section:"Module 4B — Frequency Compensation", gridId:"grid-m4b-fc", title:"Freq Comp Optimize: GBW vs Phase Margin", desc:"GBW vs phase margin trade-off curve. Optimal C_c for target PM. Speed vs stability operating point selector." },
+  { id:"M4B-OTA-7.1.1", slug:"M4B-OTA-7.1.1_OTA_Introduction_What_Is_an_OTA", phase:"m4b", section:"Module 4B — OTA", gridId:"grid-m4b-ota", title:"OTA: Introduction — What Is an OTA", desc:"Voltage-to-current converter concept. V_id → I_out = gm×V_id. Comparison with op-amp: high-Z output, no output stage." },
+  { id:"M4B-OTA-7.2.1", slug:"M4B-OTA-7.2.1_OTA_Differential_Pair_Core", phase:"m4b", section:"Module 4B — OTA", gridId:"grid-m4b-ota", title:"OTA: Differential Pair Core", desc:"NMOS diff pair with PMOS mirror load. I_out vs V_id transfer curve. gm = √(2×k×I_SS) derivation with sliders." },
+  { id:"M4B-OTA-7.3.1", slug:"M4B-OTA-7.3.1_OTA_Telescopic_Cascode", phase:"m4b", section:"Module 4B — OTA", gridId:"grid-m4b-ota", title:"OTA: Telescopic Cascode OTA", desc:"Cascode transistors on input pair and load. r_out = (gm×ro²)_n || (gm×ro²)_p. Gain vs swing trade-off." },
+  { id:"M4B-OTA-7.4.1", slug:"M4B-OTA-7.4.1_OTA_Folded_Cascode", phase:"m4b", section:"Module 4B — OTA", gridId:"grid-m4b-ota", title:"OTA: Folded Cascode OTA", desc:"PMOS input with NMOS cascode fold. Full supply swing at output. Bias current split slider, gain and swing readouts." },
+  { id:"M4B-OTA-7.5.1", slug:"M4B-OTA-7.5.1_OTA_Gain_Boosting", phase:"m4b", section:"Module 4B — OTA", gridId:"grid-m4b-ota", title:"OTA: Gain Boosting", desc:"Regulated cascode adds 40dB of gain. Auxiliary amplifier A slider drives output resistance up to gm×ro×A×ro." },
+  { id:"M4B-OTA-7.6.1", slug:"M4B-OTA-7.6.1_OTA_Comparison_Topology_Selection", phase:"m4b", section:"Module 4B — OTA", gridId:"grid-m4b-ota", title:"OTA: Topology Comparison and Selection", desc:"5T vs telescopic vs folded cascode vs gain-boosted radar chart: gain, swing, noise, power, complexity." },
+  { id:"M4B-OTA-7.6.2", slug:"M4B-OTA-7.6.2_OTA_Design_Worksheet", phase:"m4b", section:"Module 4B — OTA", gridId:"grid-m4b-ota", title:"OTA: Design Worksheet", desc:"Spec-driven design: enter gain, GBW, C_L, VDD → calculator sizes I_SS, W/L for each transistor. gm, ro, PM readouts." },
+  { id:"M4B-2OTA-8.1.1", slug:"M4B-2OTA-8.1.1_Two_Stage_OTA_Architecture", phase:"m4b", section:"Module 4B — Two-Stage OTA", gridId:"grid-m4b-2ota", title:"Two-Stage OTA: Architecture", desc:"Stage 1: folded cascode diff pair. Stage 2: CS with active load. Miller C_c between them. Full signal path animation." },
+  { id:"M4B-2OTA-8.1.2", slug:"M4B-2OTA-8.1.2_Two_Stage_OTA_Miller_Compensation_Detail", phase:"m4b", section:"Module 4B — Two-Stage OTA", gridId:"grid-m4b-2ota", title:"Two-Stage OTA: Miller Compensation Detail", desc:"C_c splits poles. p1 = 1/(g_m2×ro2×C_c), p2 = g_m2/C_L. Sliders show how C_c and C_L affect both poles." },
+  { id:"M4B-2OTA-8.2.1", slug:"M4B-2OTA-8.2.1_Two_Stage_OTA_Design_Sizing", phase:"m4b", section:"Module 4B — Two-Stage OTA", gridId:"grid-m4b-2ota", title:"Two-Stage OTA: Design Sizing", desc:"GBW = gm1/(2π×C_c) constraint. Sizing procedure: I_D1, W/L1, C_c, I_D2, W/L2 calculator with target specs." },
+  { id:"M4B-2OTA-8.2.2", slug:"M4B-2OTA-8.2.2_Two_Stage_OTA_Slew_Rate_Settling", phase:"m4b", section:"Module 4B — Two-Stage OTA", gridId:"grid-m4b-2ota", title:"Two-Stage OTA: Slew Rate and Settling", desc:"SR = I_SS/C_c. Large-signal step response showing slew then exponential settling. SR and GBW vs C_c and I_SS." },
+  { id:"M4B-2OTA-8.3.1", slug:"M4B-2OTA-8.3.1_Two_Stage_OTA_Noise_Offset", phase:"m4b", section:"Module 4B — Two-Stage OTA", gridId:"grid-m4b-2ota", title:"Two-Stage OTA: Noise and Offset", desc:"Input-referred noise: stage 1 dominates if A1 is high. Offset contributions from ΔVth of input pair vs load." },
+  { id:"M4B-5T-9.1.1", slug:"M4B-5T-9.1.1_Five_Transistor_OTA_Architecture", phase:"m4b", section:"Module 4B — Five-Transistor OTA", gridId:"grid-m4b-5t", title:"5T-OTA: Architecture", desc:"Five transistors: M1/M2 diff pair, M3/M4 current mirror load, M5 tail source. Schematic with node voltages shown." },
+  { id:"M4B-5T-9.1.2", slug:"M4B-5T-9.1.2_Five_Transistor_OTA_Sizing", phase:"m4b", section:"Module 4B — Five-Transistor OTA", gridId:"grid-m4b-5t", title:"5T-OTA: Transistor Sizing", desc:"Size for gm, I_SS, V_ov trade-offs. W/L sliders for input pair and tail. Live gm = √(2×k×I_D), SR = I_SS/C_L." },
+  { id:"M4B-5T-9.2.1", slug:"M4B-5T-9.2.1_Five_Transistor_OTA_CMRR_PSRR", phase:"m4b", section:"Module 4B — Five-Transistor OTA", gridId:"grid-m4b-5t", title:"5T-OTA: CMRR and PSRR", desc:"CMRR limited by tail current source ro. PSRR+ and PSRR− paths. VDD noise coupling to output visualization." },
+  { id:"M4B-5T-9.2.2", slug:"M4B-5T-9.2.2_Five_Transistor_OTA_Swing_Input_Range", phase:"m4b", section:"Module 4B — Five-Transistor OTA", gridId:"grid-m4b-5t", title:"5T-OTA: Swing and Input Common Mode Range", desc:"Output swing = VDD − 2×V_ov. ICMR: V_CM from V_GS5+V_ov1 to VDD−|V_GS3|. Slider-driven boundary visualization." },
+  { id:"M4B-5T-9.3.1", slug:"M4B-5T-9.3.1_Five_Transistor_OTA_Noise", phase:"m4b", section:"Module 4B — Five-Transistor OTA", gridId:"grid-m4b-5t", title:"5T-OTA: Noise Analysis", desc:"Input-referred noise from all 5 transistors. Dominant: M1/M2 and M3/M4. Thermal + flicker noise spectral density." },
+  { id:"M4B-5T-9.3.2", slug:"M4B-5T-9.3.2_Five_Transistor_OTA_Mismatch_Layout", phase:"m4b", section:"Module 4B — Five-Transistor OTA", gridId:"grid-m4b-5t", title:"5T-OTA: Mismatch and Layout", desc:"Common-centroid layout for M1/M2 and M3/M4. Shows how interdigitation cancels gradient mismatch. ΔVth reduction." },
+  { id:"M4B-5T-9.4.1", slug:"M4B-5T-9.4.1_Five_Transistor_OTA_Applications", phase:"m4b", section:"Module 4B — Five-Transistor OTA", gridId:"grid-m4b-5t", title:"5T-OTA: Applications", desc:"SC integrator, track-and-hold, sample-and-hold using 5T-OTA. Each application shows settling time vs gm trade-off." },
+  { id:"M4B-OAD-10.1.1", slug:"M4B-OAD-10.1.1_Full_OpAmp_Architecture_Overview", phase:"m4b", section:"Module 4B — Full Op-Amp Design", gridId:"grid-m4b-oad", title:"Full Op-Amp: Architecture Overview", desc:"Complete op-amp block diagram: bias → diff pair → active load → gain stage → compensation → output. Signal path traced." },
+  { id:"M4B-OAD-10.2.1", slug:"M4B-OAD-10.2.1_Full_OpAmp_Input_Stage", phase:"m4b", section:"Module 4B — Full Op-Amp Design", gridId:"grid-m4b-oad", title:"Full Op-Amp: Input Stage Design", desc:"Input diff pair sizing for gm target. ICMR constraint. gm1 = GBW × 2π × C_c. Noise and offset optimization." },
+  { id:"M4B-OAD-10.3.1", slug:"M4B-OAD-10.3.1_Full_OpAmp_Gain_Output_Stage", phase:"m4b", section:"Module 4B — Full Op-Amp Design", gridId:"grid-m4b-oad", title:"Full Op-Amp: Gain and Output Stage", desc:"Second stage CS amplifier sizing. gm2 ≥ 2.2×gm1 for PM>60°. Output stage class-AB for large capacitive load." },
+  { id:"M4B-OAD-10.4.1", slug:"M4B-OAD-10.4.1_Full_OpAmp_Bias_Circuit", phase:"m4b", section:"Module 4B — Full Op-Amp Design", gridId:"grid-m4b-oad", title:"Full Op-Amp: Bias Circuit", desc:"PTAT + CTAT bias generation for temperature-stable I_bias. Self-biased reference, startup circuit, current mirror tree." },
+  { id:"M4B-OAD-10.5.1", slug:"M4B-OAD-10.5.1_Full_OpAmp_Complete_Design_Example", phase:"m4b", section:"Module 4B — Full Op-Amp Design", gridId:"grid-m4b-oad", title:"Full Op-Amp: Complete Design Example", desc:"End-to-end 5T + two-stage op-amp: enter specs (gain, GBW, PM, SR, VDD) → full transistor sizing table + Bode plot." },
+  { id:"M4B-PM-11.1.1", slug:"M4B-PM-11.1.1_Performance_Metrics_Overview", phase:"m4b", section:"Module 4B — Performance", gridId:"grid-m4b-pm", title:"Performance: Metrics Overview", desc:"Radar chart of all op-amp metrics: gain, BW, SR, noise, offset, power, swing. Topology presets (5T / two-stage / folded cascode) compared." },
+  { id:"M4B-PM-11.2.1", slug:"M4B-PM-11.2.1_Performance_Metrics_Gain_Bandwidth", phase:"m4b", section:"Module 4B — Performance", gridId:"grid-m4b-pm", title:"Performance: Gain and Bandwidth", desc:"GBW = gm/(2π×C_c). Two-stage Bode plot with unity-gain crossover. Phase margin vs C_c and gm₂ sliders." },
+  { id:"M4B-PM-11.3.1", slug:"M4B-PM-11.3.1_Performance_Metrics_Noise", phase:"m4b", section:"Module 4B — Performance", gridId:"grid-m4b-pm", title:"Performance: Noise", desc:"Input-referred noise: thermal 4kT/gm + flicker Kf/(WLCox²f). Noise spectral density with 1/f corner. FoM_n = GBW/noise." },
+  { id:"M4B-PM-11.4.1", slug:"M4B-PM-11.4.1_Performance_Metrics_Offset_Mismatch", phase:"m4b", section:"Module 4B — Performance", gridId:"grid-m4b-pm", title:"Performance: Offset and Mismatch", desc:"Pelgrom model: σ(ΔVth) = A_VT/√(W×L). Offset vs transistor area scatter plot. Systematic + random offset sources." },
+  { id:"M4B-PM-11.5.1", slug:"M4B-PM-11.5.1_Performance_Metrics_Power_Efficiency", phase:"m4b", section:"Module 4B — Performance", gridId:"grid-m4b-pm", title:"Performance: Power Efficiency", desc:"FoM_s = GBW×C_L/I_DD. Power vs performance trade-off. Class-A vs class-AB efficiency comparison. SR/I_DD readout." },
+  { id:"M4B-PM-11.6.1", slug:"M4B-PM-11.6.1_Performance_Metrics_Linearity_Distortion", phase:"m4b", section:"Module 4B — Performance", gridId:"grid-m4b-pm", title:"Performance: Linearity and Distortion", desc:"THD vs frequency: loop-gain suppression at low f, rises at high f. Two-tone IMD spectrum. ENOB vs op-amp THD chart." },
+  { id:"M4B-PM-11.7.1", slug:"M4B-PM-11.7.1_Performance_Metrics_Input_Output_Range", phase:"m4b", section:"Module 4B — Performance", gridId:"grid-m4b-pm", title:"Performance: Input/Output Range", desc:"Output swing V_OH/V_OL vs I_out. ICMR bar for PMOS/NMOS/RRI topologies. Dynamic range waterfall: noise + THD floors." },
+  { id:"M4B-PM-11.8.1", slug:"M4B-PM-11.8.1_Performance_Metrics_Dynamic_Performance", phase:"m4b", section:"Module 4B — Performance", gridId:"grid-m4b-pm", title:"Performance: Dynamic Performance", desc:"Two-phase settling: slew rate ramp + exponential settling. PM vs overshoot curve. SR budget bar chart vs requirement." },
+  { id:"M4B-PM-11.9.1", slug:"M4B-PM-11.9.1_Performance_Metrics_FoM_Topology_Comparison", phase:"m4b", section:"Module 4B — Performance", gridId:"grid-m4b-pm", title:"Performance: FoM and Topology Comparison", desc:"5-axis radar for two user-defined designs. FoM_s benchmark bar chart for 8 reference topologies. Spec-driven topology scorer." },
+];
+
+// ── Phase detection ──
+function phaseOf(id) {
+  if (id.startsWith('P2'))  return 'p2';
+  if (id.startsWith('M3'))  return 'm3';
+  if (id.startsWith('M4A')) return 'm4a';
+  if (id.startsWith('M4B')) return 'm4b';
+  return 'p2';
+}
+
+function gridIdOf(id) {
+  const p = id.toUpperCase();
+  if (p.startsWith('P2-C'))    return 'grid-p2-c';
+  if (p.startsWith('P2-L'))    return 'grid-p2-l';
+  if (p.startsWith('P2-FO'))   return 'grid-p2-fo';
+  if (p.startsWith('P2-SO'))   return 'grid-p2-so';
+  if (p.startsWith('P2-WI'))   return 'grid-p2-wi';
+  if (p.startsWith('P2-DB'))   return 'grid-p2-db';
+  if (p.startsWith('P2-OP'))   return 'grid-p2-op';
+  if (p.startsWith('P2-RW'))   return 'grid-p2-rw';
+  if (p.startsWith('P2-SIM'))  return 'grid-p2-sim';
+  if (p.startsWith('M3-D'))    return 'grid-m3-d';
+  if (p.startsWith('M3-B'))    return 'grid-m3-b';
+  if (p.startsWith('M3-M'))    return 'grid-m3-m';
+  if (p.startsWith('M3-DS'))   return 'grid-m3-ds';
+  if (p.startsWith('M3-INT'))  return 'grid-m3-int';
+  if (p.startsWith('M4A-AMP')) return 'grid-m4a-amp';
+  if (p.startsWith('M4A-GB'))  return 'grid-m4a-gb';
+  if (p.startsWith('M4A-FLT')) return 'grid-m4a-flt';
+  if (p.startsWith('M4A-SD'))  return 'grid-m4a-sd';
+  if (p.startsWith('M4A-DT'))  return 'grid-m4a-dt';
+  if (p.startsWith('M4A-DBG')) return 'grid-m4a-dbg';
+  if (p.startsWith('M4A-OPT')) return 'grid-m4a-opt';
+  if (p.startsWith('M4B-CM'))  return 'grid-m4b-cm';
+  if (p.startsWith('M4B-DA'))  return 'grid-m4b-da';
+  if (p.startsWith('M4B-AL'))  return 'grid-m4b-al';
+  if (p.startsWith('M4B-CAS')) return 'grid-m4b-cas';
+  if (p.startsWith('M4B-MS'))  return 'grid-m4b-ms';
+  if (p.startsWith('M4B-FC'))  return 'grid-m4b-fc';
+  if (p.startsWith('M4B-2OTA'))return 'grid-m4b-2ota';
+  if (p.startsWith('M4B-5T'))  return 'grid-m4b-5t';
+  if (p.startsWith('M4B-OAD')) return 'grid-m4b-oad';
+  if (p.startsWith('M4B-PM'))  return 'grid-m4b-pm';
+  if (p.startsWith('M4B-OTA')) return 'grid-m4b-ota';
+  return 'grid-p2-c';
+}
+
+function makeCard(c) {
+  const ph = phaseOf(c.id);
+  return `
+    <div class="card" data-id="${c.id}" data-title="${c.title.toLowerCase()}">
+      <div class="card-top">
+        <span class="id-badge ${ph}">${c.id}</span>
+        <span class="card-section">${c.section}</span>
+      </div>
+      <div class="card-title">${c.title}</div>
+      <div class="card-desc">${c.desc}</div>
+      <a class="card-btn" href="${c.slug}_sim.html">Open Simulation →</a>
+    </div>`;
+}
+
+function render() {
+  const total = CARDS.length;
+  const counts = { p2: 0, m3: 0, m4a: 0, m4b: 0 };
+
+  // Clear all grids
+  document.querySelectorAll('.card-grid').forEach(g => g.innerHTML = '');
+
+  CARDS.forEach(c => {
+    const ph = phaseOf(c.id);
+    counts[ph]++;
+    const gridId = c.gridId || gridIdOf(c.id);
+    const grid = document.getElementById(gridId);
+    if (grid) grid.insertAdjacentHTML('beforeend', makeCard(c));
+  });
+
+  // Update counters
+  document.getElementById('sim-count').textContent =
+    `${total} interactive simulation${total !== 1 ? 's' : ''} across 4 modules`;
+  document.getElementById('cnt-p2').textContent  = counts.p2;
+  document.getElementById('cnt-m3').textContent  = counts.m3;
+  document.getElementById('cnt-m4a').textContent = counts.m4a;
+  document.getElementById('cnt-m4b').textContent = counts.m4b;
+
+  // Show/hide empty state
+  document.getElementById('empty-state').classList.toggle('hidden', total > 0);
+
+  // Show phase headings and section labels only when they have cards
+  const phaseMap = {
+    p2: 'phase-p2', m3: 'phase-m3', m4a: 'phase-m4a', m4b: 'phase-m4b'
+  };
+  Object.entries(counts).forEach(([ph, n]) => {
+    const el = document.getElementById(phaseMap[ph]);
+    if (el) el.classList.toggle('hidden', n === 0);
+  });
+
+  // Show section sub-headers for non-empty grids
+  document.querySelectorAll('.card-grid').forEach(grid => {
+    const prev = grid.previousElementSibling;
+    if (prev && prev.id) {
+      prev.classList.toggle('hidden', grid.children.length === 0);
+    }
+  });
+}
+
+// ── Search ──
+document.getElementById('search').addEventListener('input', function() {
+  const q = this.value.toLowerCase().trim();
+  document.querySelectorAll('.card').forEach(card => {
+    const id = card.dataset.id.toLowerCase();
+    const title = card.dataset.title;
+    card.classList.toggle('hidden', q !== '' && !id.includes(q) && !title.includes(q));
+  });
+});
+
+// ── Init ──
+render();
+</script>
+</body>
+</html>

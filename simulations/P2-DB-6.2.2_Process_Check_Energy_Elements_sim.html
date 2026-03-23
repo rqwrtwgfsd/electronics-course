@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-DB-6.2.2 Check Energy Elements</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:12px;padding:12px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:240px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.btn{display:block;width:100%;margin-top:5px;padding:6px;background:#1a1a3a;border:1px solid #334;color:#ccc;cursor:pointer;font-family:inherit;font-size:11px;border-radius:3px;text-align:left}
+.btn.active{background:#440000;border-color:#ff4444;color:#ff6666}
+.btn.ok{background:#004400;border-color:#00ff88;color:#00ff88}
+.sym{font-size:11px;color:#ffaa00;margin-top:8px;line-height:1.6;border-top:1px solid #222;padding-top:6px}
+.diag{font-size:11px;color:#00aaff;margin-top:6px;line-height:1.5}
+</style>
+</head>
+<body>
+<h1>P2-DB-6.2.2 — Check Energy Elements: Capacitor and Inductor Health</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="580" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>Circuit</h2>
+<label>R (kΩ)
+<input type="range" id="R" min="0.5" max="50" step="0.5" value="10">
+<div class="readout" id="R_v">R = 10 kΩ</div>
+</label>
+<label>C (nF) or L (μH) — see fault
+<input type="range" id="CL" min="10" max="1000" step="10" value="100">
+<div class="readout" id="CL_v">C = 100 nF</div>
+</label>
+<h2 style="margin-top:10px">Fault Mode</h2>
+<button class="btn ok" id="b_norm" onclick="setFault('norm')">Normal RC Circuit</button>
+<button class="btn" id="b_esr" onclick="setFault('esr')">High ESR Capacitor</button>
+<button class="btn" id="b_leak" onclick="setFault('leak')">Leaky Capacitor (internal short)</button>
+<button class="btn" id="b_openL" onclick="setFault('openL')">Open Inductor (RL series)</button>
+<button class="btn" id="b_shortC" onclick="setFault('shortC')">Shorted Capacitor</button>
+<div class="sym" id="sym">Symptoms will appear here.</div>
+<div class="diag" id="diag"></div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let R=10,CL=100,fault='norm';
+const W=580,H=380,PAD={l:60,r:20,t:30,b:40};
+const CW=W-PAD.l-PAD.r,CH=H-PAD.t-PAD.b;
+const Vin=5;
+
+const faults={
+  norm:{lbl:'Normal',col:'#00ff88',sym:'RC charge: smooth exponential. ESR minimal.',diag:'Verify τ=R×C. Measure at 63.2% crossing.',wf:(t,tm,R,C)=>Vin*(1-Math.exp(-t/(R*C)))},
+  esr:{lbl:'High ESR',col:'#ffaa00',sym:'Voltage step at t=0 proportional to I_peak × ESR, then slow charge.',diag:'ESR = ΔV_step / I_peak = ΔV_step × R / V_in. High ESR = worn electrolytic.',wf:(t,tm,R,C)=>{const ESR=0.3*R;const I0=Vin/(R+ESR);const tau=(R+ESR)*C;return Vin*(1-Math.exp(-t/tau))-I0*ESR*Math.exp(-t/tau)+I0*ESR;}},
+  leak:{lbl:'Leaky Cap',col:'#ff6600',sym:'Charge faster than expected; final voltage less than V_in (voltage divider with internal leakage R).',diag:'V_final < V_in indicates parallel leakage. V_final = V_in × R_leak/(R + R_leak).',wf:(t,tm,R,C)=>{const Rleak=R*3;const Req=R*Rleak/(R+Rleak);const tau=Req*C;const Vf=Vin*Rleak/(R+Rleak);return Vf*(1-Math.exp(-t/tau));}},
+  openL:{lbl:'Open Inductor',col:'#aa44ff',sym:'No current flows; V_out = V_in (inductor open = series open). For RL: V_L = V_in instantly.',diag:'V across open L = V_supply. Zero current. Replace inductor.',wf:(t,tm,R,C)=>Vin},
+  shortC:{lbl:'Short Cap',col:'#ff4444',sym:'V_out = 0 always. Capacitor shorted to ground. High supply current.',diag:'V_out = 0V but V_in present → short to ground. Measure I_supply (will be V_in/R = high).',wf:(t,tm,R,C)=>0},
+};
+
+function setFault(f){
+  fault=f;
+  Object.keys(faults).forEach(k=>{
+    const b=document.getElementById('b_'+k);
+    b.className='btn'+(k===f?(k==='norm'?' ok':' active'):'');
+  });
+  document.getElementById('sym').textContent=faults[f].sym;
+  document.getElementById('diag').textContent=faults[f].diag;
+  draw();
+}
+
+document.getElementById('R').oninput=function(){R=parseFloat(this.value);document.getElementById('R_v').textContent='R = '+R+' kΩ';draw();};
+document.getElementById('CL').oninput=function(){CL=parseFloat(this.value);document.getElementById('CL_v').textContent='C = '+CL+' nF';draw();};
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const Roh=R*1e3,Cf=CL*1e-9;
+  const tau_nom=Roh*Cf*1000; // ms
+  const tmax=tau_nom*7;
+  function toPx(t,v){return[PAD.l+CW*(t/tmax),PAD.t+CH*(1-v/(Vin*1.15))];}
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=7;i++){const x=PAD.l+CW*(i/7);ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=PAD.t+CH*(i/5);ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+CH);ctx.moveTo(PAD.l,PAD.t+CH);ctx.lineTo(PAD.l+CW,PAD.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=7;i++){const t=tmax*i/7;const x=PAD.l+CW*(i/7);ctx.fillText(t.toFixed(2)+'ms',x,PAD.t+CH+14);}
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){const v=Vin*1.15*(1-i/5);const y=PAD.t+CH*(i/5);ctx.fillText(v.toFixed(2)+'V',PAD.l-4,y+4);}
+  // Normal reference
+  ctx.strokeStyle='#1a3a1a';ctx.lineWidth=1.5;ctx.setLineDash([3,4]);
+  ctx.beginPath();
+  for(let i=0;i<=400;i++){const t=tmax*i/400;const v=faults.norm.wf(t,tmax,Roh,Cf);const[x,y]=toPx(t,v);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();ctx.setLineDash([]);
+  // Fault waveform
+  const fd=faults[fault];
+  ctx.strokeStyle=fd.col;ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=600;i++){
+    const t=tmax*i/600;
+    const v=fd.wf(t,tmax,Roh,Cf);
+    const[x,y]=toPx(t,v);
+    if(y>PAD.t-5&&y<PAD.t+CH+5){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  }
+  ctx.stroke();
+  ctx.fillStyle=fd.col;ctx.font='bold 11px Courier New';ctx.textAlign='left';
+  ctx.fillText('Fault: '+fd.lbl+' | τ_nom='+tau_nom.toFixed(2)+'ms',PAD.l+4,PAD.t+14);
+  ctx.fillStyle='#333';ctx.font='10px Courier New';ctx.fillText('— Normal reference',PAD.l+4,PAD.t+28);
+}
+setFault('norm');
+</script>
+</body>
+</html>

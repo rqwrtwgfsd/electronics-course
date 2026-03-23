@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.1.3 — Linear vs Non-linear Amplification</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:13px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;align-items:baseline;gap:16px;}
+  .id{font-weight:bold;font-size:14px;} .topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:270px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:14px;overflow-y:auto;display:flex;flex-direction:column;gap:12px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:10px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:8px;letter-spacing:.05em;}
+  label{display:block;font-size:11px;margin-bottom:3px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:5px 8px;margin-top:5px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .badge{display:inline-block;padding:3px 8px;border-radius:3px;font-size:11px;font-weight:bold;margin-top:4px;}
+  .linear{background:#006600;color:#fff;} .comp{background:#cc6600;color:#fff;} .clip{background:#cc0000;color:#fff;}
+  .plots{padding:14px;display:flex;flex-direction:column;gap:12px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em;}
+  .mrow{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:8px;text-align:center;}
+  .met .v{font-size:15px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:10px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.1.3</div>
+  <div class="topic">Linear vs Non-linear Amplification — Distortion Simulator</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>BJT Amplifier Bias</h3>
+      <label>Quiescent IC: <b id="ic_lbl">1.0 mA</b></label>
+      <input type="range" id="ic" min="0.1" max="5" value="1" step="0.1">
+      <label>Emitter Degeneration RE: <b id="re_lbl">0 Ω</b></label>
+      <input type="range" id="re" min="0" max="500" value="0" step="10">
+      <label>Collector Load RC: <b id="rc_lbl">5 kΩ</b></label>
+      <input type="range" id="rc" min="1000" max="20000" value="5000" step="500">
+    </div>
+    <div class="cg">
+      <h3>Input Signal</h3>
+      <label>Input Amplitude: <b id="vin_lbl">20 mV pk</b></label>
+      <input type="range" id="vin" min="1" max="200" value="20" step="1">
+      <label>Mode: <b id="mode_lbl">Nonlinear (BJT exp model)</b></label>
+      <input type="range" id="mode" min="0" max="1" value="0" step="1">
+    </div>
+    <div class="cg">
+      <h3>Computed Parameters</h3>
+      <div class="rd">gm: <span id="r_gm">38.5</span> mA/V</div>
+      <div class="rd">gm_eff (with RE): <span id="r_gmeff">38.5</span> mA/V</div>
+      <div class="rd">Av (small signal): <span id="r_av">-192</span> V/V</div>
+      <div class="rd">HD2: <span id="r_hd2">19.2</span> %</div>
+      <div class="rd">HD3 (est.): <span id="r_hd3">4.6</span> %</div>
+      <div id="region_badge" class="badge linear">LINEAR REGION</div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_gm">38.5</div><div class="l">gm (mA/V)</div></div>
+      <div class="met"><div class="v" id="m_hd2">19%</div><div class="l">HD2</div></div>
+      <div class="met"><div class="v" id="m_av">192</div><div class="l">|Av| V/V</div></div>
+      <div class="met"><div class="v" id="m_lin">–</div><div class="l">Linearity</div></div>
+    </div>
+    <div>
+      <div class="pl">Input (blue) vs Output (orange) — real BJT exponential model</div>
+      <canvas id="waveCanvas" height="220"></canvas>
+    </div>
+    <div>
+      <div class="pl">HD2 vs Input Amplitude — linearity threshold</div>
+      <canvas id="hdCanvas" height="180"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+const VT = 0.026; // 26mV thermal voltage
+const VCC = 12;
+
+function getParams() {
+  return {
+    ic: parseFloat(document.getElementById('ic').value) * 1e-3,
+    re: parseFloat(document.getElementById('re').value),
+    rc: parseFloat(document.getElementById('rc').value),
+    vin: parseFloat(document.getElementById('vin').value) * 1e-3,
+    mode: parseFloat(document.getElementById('mode').value)
+  };
+}
+
+function compute(p) {
+  const gm = p.ic / VT;
+  const gm_eff = gm / (1 + gm * p.re);
+  const av = -gm_eff * p.rc;
+  const hd2 = p.vin / (4 * VT * (1 + gm * p.re));
+  const hd3 = (p.vin * p.vin) / (24 * VT * VT * (1 + gm * p.re) * (1 + gm * p.re));
+  return { gm, gm_eff, av, hd2, hd3 };
+}
+
+function update() {
+  const p = getParams();
+  document.getElementById('ic_lbl').textContent = (p.ic*1000).toFixed(1)+' mA';
+  document.getElementById('re_lbl').textContent = p.re+' Ω';
+  document.getElementById('rc_lbl').textContent = p.rc>=1000?(p.rc/1000).toFixed(1)+'kΩ':p.rc+'Ω';
+  document.getElementById('vin_lbl').textContent = (p.vin*1000).toFixed(0)+' mV pk';
+  document.getElementById('mode_lbl').textContent = p.mode > 0.5 ? 'Linear (ideal model)' : 'Nonlinear (BJT exp model)';
+
+  const c = compute(p);
+  document.getElementById('r_gm').textContent = (c.gm*1000).toFixed(1);
+  document.getElementById('r_gmeff').textContent = (c.gm_eff*1000).toFixed(1);
+  document.getElementById('r_av').textContent = c.av.toFixed(1);
+  document.getElementById('r_hd2').textContent = (c.hd2*100).toFixed(1);
+  document.getElementById('r_hd3').textContent = (c.hd3*100).toFixed(2);
+
+  document.getElementById('m_gm').textContent = (c.gm_eff*1000).toFixed(1);
+  document.getElementById('m_hd2').textContent = (c.hd2*100).toFixed(1)+'%';
+  document.getElementById('m_av').textContent = Math.abs(c.av).toFixed(0);
+
+  const badge = document.getElementById('region_badge');
+  const mlin = document.getElementById('m_lin');
+  if (c.hd2 < 0.01) {
+    badge.textContent = 'LINEAR (<1% HD2)'; badge.className='badge linear'; mlin.textContent='OK';
+  } else if (c.hd2 < 0.1) {
+    badge.textContent = 'MILD DISTORTION'; badge.className='badge comp'; mlin.textContent='MILD';
+  } else {
+    badge.textContent = 'HIGH DISTORTION'; badge.className='badge clip'; mlin.textContent='DIST';
+  }
+
+  drawWaveform(p, c);
+  drawHD(p, c);
+}
+
+function drawWaveform(p, c) {
+  const canvas = document.getElementById('waveCanvas');
+  const W = canvas.clientWidth||600; canvas.width=W;
+  const H = canvas.height;
+  const ctx = canvas.getContext('2d');
+  const cs = getComputedStyle(document.documentElement);
+  ctx.fillStyle = cs.getPropertyValue('--bg').trim(); ctx.fillRect(0,0,W,H);
+
+  const N = 400;
+  const scaleV = Math.max(VCC, Math.abs(c.av) * p.vin * 1.5) / (H/2 - 15);
+  const scaleIn = p.vin / (H/2 - 30) * 8; // scale input visible
+
+  function yOf(v, scale) { return H/2 - v/scale; }
+
+  // Grid
+  ctx.strokeStyle = cs.getPropertyValue('--grid').trim(); ctx.lineWidth=0.5;
+  for(let i=0;i<=8;i++){const y=i/8*H;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  for(let i=0;i<=10;i++){const x=i/10*W;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  ctx.strokeStyle=cs.getPropertyValue('--fg').trim();ctx.lineWidth=0.5;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(0,H/2);ctx.lineTo(W,H/2);ctx.stroke();ctx.setLineDash([]);
+
+  const IS = p.ic * Math.exp(-p.ic * VT / (p.ic * VT)); // IS = ic/exp(vbe0/VT)... simplified
+  // Compute actual IS from Q-point: IC0 = IS*exp(VBE0/VT) => IS = IC0*exp(-VBE0/VT)
+  // We only need the delta: di = IS*exp((VBE0+vbe)/VT) - IC0
+  // = IC0 * (exp(vbe/VT) - 1)
+  const IC0 = p.ic;
+
+  // Input waveform (blue) — scaled for visibility
+  ctx.strokeStyle='#0066cc'; ctx.lineWidth=1.5;
+  ctx.beginPath();
+  for(let px=0;px<W;px++){
+    const t = px/W * 2;
+    const vin = p.vin * Math.sin(2*Math.PI*t);
+    const y = H/2 - vin / (p.vin * 1.2) * (H/4);
+    if(px===0)ctx.moveTo(px,y);else ctx.lineTo(px,y);
+  }
+  ctx.stroke();
+
+  // Output waveform — nonlinear or linear model
+  ctx.strokeStyle='#ff8800'; ctx.lineWidth=2;
+  ctx.beginPath();
+  const voutScale = Math.max(Math.abs(c.av) * p.vin * 1.2, 0.1);
+  for(let px=0;px<W;px++){
+    const t = px/W * 2;
+    const vin = p.vin * Math.sin(2*Math.PI*t);
+    let vout;
+    if(p.mode > 0.5) {
+      // Linear model
+      vout = c.av * vin;
+    } else {
+      // Nonlinear: delta_ic = IC0*(exp(vin/(VT*(1+gm*re)))-1) ... simplified: effective input divider
+      const vbe_eff = vin / (1 + IC0/VT * p.re);
+      const delta_ic = IC0 * (Math.exp(vbe_eff / VT) - 1);
+      vout = -delta_ic * p.rc;
+    }
+    // Clip to supply rails
+    vout = Math.max(-VCC, Math.min(VCC, vout));
+    const y = H/2 - vout / voutScale * (H/2 - 15);
+    if(px===0)ctx.moveTo(px,y);else ctx.lineTo(px,y);
+  }
+  ctx.stroke();
+
+  // Labels
+  ctx.font='10px Courier New';
+  ctx.fillStyle='#0066cc'; ctx.fillText('── Input ×(scale)',W-200,18);
+  ctx.fillStyle='#ff8800'; ctx.fillText('── Output',W-200,32);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();
+  ctx.fillText(p.mode>0.5?'Mode: Linear (ideal)':'Mode: Nonlinear (BJT exp)',10,18);
+}
+
+function drawHD(p, c) {
+  const canvas = document.getElementById('hdCanvas');
+  const W = canvas.clientWidth||600; canvas.width=W;
+  const H = canvas.height;
+  const ctx = canvas.getContext('2d');
+  const cs = getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim(); ctx.fillRect(0,0,W,H);
+
+  const pad={l:45,r:10,t:10,b:28};
+  const pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
+  const VIN_MAX = 0.2; // 200 mV max
+  function xOf(v){return pad.l + v/VIN_MAX*pw;}
+  function yOf(hd){return pad.t + ph - Math.min(hd,1)/1*ph;}
+
+  // Grid
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [0,0.1,0.2,0.3,0.5,1.0].forEach(hd=>{
+    const y=yOf(hd);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText((hd*100).toFixed(0)+'%',2,y+3);
+  });
+  [0,0.05,0.1,0.15,0.2].forEach(v=>{
+    const x=xOf(v);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText((v*1000).toFixed(0)+'mV',x-12,H-4);
+  });
+
+  const gm = p.ic / VT;
+  const denom = 4 * VT * (1 + gm * p.re);
+
+  // HD2 curve
+  ctx.strokeStyle='#cc6600';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const vin=px/pw*VIN_MAX;
+    const hd2=vin/denom;
+    const y=yOf(hd2);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  // 1% threshold line
+  ctx.strokeStyle='#cc0000';ctx.lineWidth=1;ctx.setLineDash([6,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,yOf(0.01));ctx.lineTo(pad.l+pw,yOf(0.01));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#cc0000';ctx.font='10px Courier New';
+  ctx.fillText('1% HD2 threshold',pad.l+5,yOf(0.01)-3);
+
+  // Current operating point marker
+  const xCur = xOf(p.vin);
+  const hd2Cur = p.vin / denom;
+  const yCur = yOf(Math.min(hd2Cur,1));
+  ctx.fillStyle='#ff8800';
+  ctx.beginPath();ctx.arc(xCur,yCur,5,0,2*Math.PI);ctx.fill();
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='10px Courier New';
+  ctx.fillText('HD2='+(hd2Cur*100).toFixed(1)+'%',xCur+7,yCur-4);
+
+  ctx.font='10px Courier New';
+  ctx.fillStyle='#cc6600';ctx.fillText('── HD2 = Vin / (4VT(1+gmRE))',W-280,22);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();
+  ctx.fillText('Input Amplitude →',W/2-50,H-1);
+}
+
+['ic','re','rc','vin','mode'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-DB-6.3.2 Wrong Component Value</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:12px;padding:12px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:230px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.warn{color:#ff4444;font-size:11px;margin-top:4px}
+.ok{color:#00ff88;font-size:11px;margin-top:4px}
+.btn{display:block;width:100%;margin-top:5px;padding:5px;background:#1a1a3a;border:1px solid #334;color:#ccc;cursor:pointer;font-family:inherit;font-size:11px;border-radius:3px}
+.btn.active{background:#440000;border-color:#ff4444;color:#ffaa00}
+.formula{color:#ffaa00;font-size:11px;margin-top:8px;line-height:1.6}
+</style>
+</head>
+<body>
+<h1>P2-DB-6.3.2 — Wrong Component Value: E-Series Decade Errors</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="580" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>Design Target</h2>
+<label>Target τ (ms)
+<input type="range" id="tau_t" min="0.1" max="10" step="0.05" value="1">
+<div class="readout" id="tau_t_v">τ_target = 1.00 ms</div>
+</label>
+<label>R_design (kΩ)
+<input type="range" id="rd" min="1" max="100" step="1" value="10">
+<div class="readout" id="rd_v">R_design = 10 kΩ (C_design = 100 nF)</div>
+</label>
+<h2 style="margin-top:10px">Installed Error</h2>
+<button class="btn" id="b_ok" onclick="setErr('ok')">Correct (10 kΩ, 100 nF)</button>
+<button class="btn active" id="b_r10x" onclick="setErr('r10x')">R 10× too large (100 kΩ)</button>
+<button class="btn" id="b_r10d" onclick="setErr('r10d')">R 10× too small (1 kΩ)</button>
+<button class="btn" id="b_c10x" onclick="setErr('c10x')">C 10× too large (1 μF)</button>
+<button class="btn" id="b_c10d" onclick="setErr('c10d')">C 10× too small (10 nF)</button>
+<div class="readout" id="tau_act">τ_actual = —</div>
+<div id="err_msg" class="warn"></div>
+<div class="readout" id="fc_diff">f_c shift: —</div>
+<div class="formula">Decade error → 10× τ error<br>Resistor: red band → orange<br>Cap: 104 code → 105</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let tau_t=1,rd=10,err='r10x';
+const W=580,H=380,PAD={l:60,r:20,t:30,b:40};
+const CW=W-PAD.l-PAD.r,CH=H-PAD.t-PAD.b;
+const Vin=5;
+const errors={
+  ok:{lbl:'Correct',Rk:null,Cn:null,Rf:1,Cf:1},
+  r10x:{lbl:'R×10',Rf:10,Cf:1},
+  r10d:{lbl:'R/10',Rf:0.1,Cf:1},
+  c10x:{lbl:'C×10',Rf:1,Cf:10},
+  c10d:{lbl:'C/10',Rf:1,Cf:0.1},
+};
+
+function setErr(e){err=e;Object.keys(errors).forEach(k=>document.getElementById('b_'+k).classList.toggle('active',k===e));draw();}
+document.getElementById('tau_t').oninput=function(){tau_t=parseFloat(this.value);document.getElementById('tau_t_v').textContent='τ_target = '+tau_t.toFixed(2)+' ms';draw();};
+document.getElementById('rd').oninput=function(){rd=parseFloat(this.value);const cd=tau_t*1e6/(rd*1e3);document.getElementById('rd_v').textContent='R_design = '+rd+' kΩ (C = '+(cd).toFixed(0)+' nF)';draw();};
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const cd=tau_t*1e6/(rd*1e3); // nF
+  const ef=errors[err];
+  const tau_act=tau_t*ef.Rf*ef.Cf;
+  const tmax=Math.max(tau_act,tau_t)*7;
+  function toPx(t,v){return[PAD.l+CW*(t/tmax),PAD.t+CH*(1-v/(Vin*1.15))];}
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=7;i++){const x=PAD.l+CW*(i/7);ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=PAD.t+CH*(i/5);ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+CH);ctx.moveTo(PAD.l,PAD.t+CH);ctx.lineTo(PAD.l+CW,PAD.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=7;i++){const t=tmax*i/7;const x=PAD.l+CW*(i/7);ctx.fillText(t.toFixed(2)+'ms',x,PAD.t+CH+14);}
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){const v=Vin*1.15*(1-i/5);const y=PAD.t+CH*(i/5);ctx.fillText(v.toFixed(1)+'V',PAD.l-4,y+4);}
+  // Design
+  ctx.strokeStyle='#00ff88';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=400;i++){const t=tmax*i/400;const v=Vin*(1-Math.exp(-t/tau_t));const[x,y]=toPx(t,v);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  ctx.fillStyle='#00ff88';ctx.font='11px Courier New';ctx.textAlign='left';
+  ctx.fillText('Design: τ='+tau_t.toFixed(2)+'ms (R='+rd+'kΩ, C='+(cd).toFixed(0)+'nF)',PAD.l+4,PAD.t+14);
+  // Actual
+  const col=tau_act===tau_t?'#00ff88':'#ff4444';
+  ctx.strokeStyle=col;ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=500;i++){const t=tmax*i/500;const v=Vin*(1-Math.exp(-t/tau_act));const[x,y]=toPx(t,v);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  const lbl_R=rd*ef.Rf,lbl_C=cd*ef.Cf;
+  ctx.fillStyle=col;ctx.font='11px Courier New';
+  ctx.fillText('Installed: τ='+tau_act.toFixed(2)+'ms (R='+lbl_R.toFixed(0)+'kΩ, C='+lbl_C.toFixed(0)+'nF)',PAD.l+4,PAD.t+28);
+  // τ markers
+  const[xt,yt]=toPx(tau_t,0.632*Vin);const[xa,ya]=toPx(tau_act,0.632*Vin);
+  ctx.fillStyle='#00ff88';ctx.beginPath();ctx.arc(xt,yt,4,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle=col;ctx.beginPath();ctx.arc(xa,ya,4,0,Math.PI*2);ctx.fill();
+  // Readouts
+  document.getElementById('tau_act').textContent='τ_actual = '+tau_act.toFixed(3)+' ms';
+  const ratio=tau_act/tau_t;
+  const fc_des=1000/(2*Math.PI*tau_t),fc_act=1000/(2*Math.PI*tau_act);
+  document.getElementById('fc_diff').textContent='f_c: design='+fc_des.toFixed(0)+'Hz, actual='+fc_act.toFixed(0)+'Hz';
+  const emsg=document.getElementById('err_msg');
+  if(ratio===1){emsg.className='ok';emsg.textContent='Correct values installed.';}
+  else{emsg.className='warn';emsg.textContent='ERROR: τ is '+ratio.toFixed(0)+'× wrong. '+ef.lbl+'. Check part markings carefully.';}
+  setErr(err);// keep button state
+}
+draw();
+</script>
+</body>
+</html>

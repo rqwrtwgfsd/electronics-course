@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-OP-7.3.2 Stability vs Responsiveness</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.row{display:flex;gap:8px;padding:8px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:10px;min-width:200px}
+.panel h2{color:#0066cc;font-size:11px;margin-bottom:6px;text-transform:uppercase}
+label{display:block;margin-top:6px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:2px}
+.readout{color:#00ff88;font-size:11px;margin-top:2px}
+.opt{color:#ffaa00;font-size:10px;margin-top:6px;line-height:1.5}
+</style>
+</head>
+<body>
+<h1>P2-OP-7.3.2 — Stability vs Responsiveness: ζ, Settling, Phase Margin</h1>
+<div class="row">
+<div class="panel">
+<h2>RLC Control</h2>
+<label>Damping Ratio ζ
+<input type="range" id="zeta" min="0.05" max="2" step="0.01" value="0.7">
+<div class="readout" id="zeta_v">ζ = 0.70</div>
+</label>
+<label>ω₀ (krad/s)
+<input type="range" id="w0" min="1" max="20" step="0.5" value="5">
+<div class="readout" id="w0_v">ω₀ = 5.0 krad/s</div>
+</label>
+<h2 style="margin-top:8px">Readouts</h2>
+<div class="readout" id="ts">t_settle(2%): —</div>
+<div class="readout" id="os">Overshoot: —</div>
+<div class="readout" id="pm">Phase Margin: —</div>
+<div class="readout" id="wd_v">ω_d: —</div>
+<div class="opt" id="opt"></div>
+</div>
+<canvas id="c_step" width="380" height="220"></canvas>
+</div>
+<div class="row" style="padding-top:0">
+<canvas id="c_bode" width="380" height="200"></canvas>
+<canvas id="c_ts" width="260" height="200"></canvas>
+</div>
+<script>
+let zeta=0.7,w0=5;
+['zeta','w0'].forEach(id=>{
+  document.getElementById(id).oninput=function(){
+    if(id==='zeta'){zeta=parseFloat(this.value);document.getElementById('zeta_v').textContent='ζ = '+zeta.toFixed(2);}
+    if(id==='w0'){w0=parseFloat(this.value);document.getElementById('w0_v').textContent='ω₀ = '+w0.toFixed(1)+' krad/s';}
+    draw();
+  };
+});
+
+function vt(t,z,w){
+  const a=z*w;
+  if(z>=1){const q=Math.sqrt(z*z-1)*w;const r1=-a+q,r2=-a-q;return 5*(1-(r2*Math.exp(r1*t)-r1*Math.exp(r2*t))/(r2-r1));}
+  const wd=w*Math.sqrt(1-z*z);
+  return 5*(1-Math.exp(-a*t)*(Math.cos(wd*t)+a/wd*Math.sin(wd*t)));
+}
+
+function drawStep(){
+  const cv=document.getElementById('c_step');const ctx=cv.getContext('2d');
+  const W=380,H=220,pl=55,pr=15,pt=15,pb=30;
+  const CW=W-pl-pr,CH=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+  const a=zeta*w0;const tmax=Math.max(8/(a+0.001),6);
+  function toPx(t,v){return[pl+CW*(t/tmax),pt+CH*(1-v/7)];}
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=6;i++){const y=pt+CH*(i/6);ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.beginPath();ctx.moveTo(pl,pt);ctx.lineTo(pl,pt+CH);ctx.moveTo(pl,pt+CH);ctx.lineTo(pl+CW,pt+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='9px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=6;i++){const t=tmax*i/6;ctx.fillText(t.toFixed(1)+'ms',pl+CW*(i/6),pt+CH+18);}
+  ctx.textAlign='right';for(let i=0;i<=5;i++){ctx.fillText((7*(1-i/5)).toFixed(0)+'V',pl-3,pt+CH*(i/5)+3);}
+  // ±2% band
+  const[,y5p]=toPx(0,5.1),_v_=toPx(0,4.9);const y5m=_v_[1];
+  ctx.fillStyle='rgba(0,100,0,0.1)';ctx.fillRect(pl,y5m,CW,y5p-y5m);
+  // Zeta=0.7 guide
+  ctx.strokeStyle='#0066cc44';ctx.lineWidth=1.5;ctx.setLineDash([4,2]);
+  ctx.beginPath();for(let i=0;i<=400;i++){const t=tmax*i/400;const v=vt(t*1e-3,0.7,w0*1e3);const[x,y]=toPx(t,v);if(y>pt-5&&y<pt+CH+5){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}}ctx.stroke();ctx.setLineDash([]);
+  const os_val=zeta<1?Math.exp(-Math.PI*zeta/Math.sqrt(1-zeta*zeta))*100:0;
+  const col=Math.abs(zeta-0.7)<0.1?'#00ff88':(zeta<0.5?'#ff4444':'#ffaa00');
+  ctx.strokeStyle=col;ctx.lineWidth=2.5;
+  ctx.beginPath();for(let i=0;i<=600;i++){const t=tmax*i/600;const v=vt(t*1e-3,zeta,w0*1e3);const[x,y]=toPx(t,v);if(y>pt-5&&y<pt+CH+5){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}}ctx.stroke();
+  ctx.fillStyle=col;ctx.font='10px Courier New';ctx.textAlign='left';ctx.fillText('ζ='+zeta.toFixed(2)+' OS='+os_val.toFixed(0)+'%',pl+4,pt+12);
+  ctx.fillStyle='#0066cc';ctx.fillText('ζ=0.7 ref',pl+4,pt+24);
+}
+
+function drawBode(){
+  const cv=document.getElementById('c_bode');const ctx=cv.getContext('2d');
+  const W=380,H=200,pl=55,pr=10,pt=15,pb=28;const CW=W-pl-pr,CH=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+  const fmin=w0*1e3/(2*Math.PI)/100,fmax=w0*1e3/(2*Math.PI)*100;
+  function toPx(f,dB){
+    const x=pl+CW*(Math.log10(f/fmin))/(Math.log10(fmax/fmin));
+    const y=pt+CH*(1-(dB+30)/50);return[x,y];
+  }
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=5;i++){const y=pt+CH*(i/5);ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.beginPath();ctx.moveTo(pl,pt);ctx.lineTo(pl,pt+CH);ctx.moveTo(pl,pt+CH);ctx.lineTo(pl+CW,pt+CH);ctx.stroke();
+  ctx.textAlign='right';ctx.fillStyle='#888';ctx.font='9px Courier New';
+  for(let dB=-20;dB<=20;dB+=10){const y=pt+CH*(1-(dB+30)/50);if(y>pt&&y<pt+CH)ctx.fillText(dB+'dB',pl-3,y+3);}
+  // H(jw) = w0^2 / (s^2 + 2*zeta*w0*s + w0^2)
+  const os=zeta<1?Math.exp(-Math.PI*zeta/Math.sqrt(1-zeta*zeta))*100:0;
+  const col=Math.abs(zeta-0.7)<0.1?'#00ff88':(zeta<0.5?'#ff4444':'#ffaa00');
+  ctx.strokeStyle=col;ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=400;i++){
+    const f=fmin*Math.pow(fmax/fmin,i/400);
+    const w=2*Math.PI*f,wn=w0*1e3;
+    const re=wn*wn-w*w,im=2*zeta*wn*w;
+    const H=wn*wn/Math.sqrt(re*re+im*im);
+    const dB=20*Math.log10(H);
+    const[x,y]=toPx(f,dB);
+    if(y>pt-5&&y<pt+CH+5){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  }
+  ctx.stroke();
+  ctx.fillStyle=col;ctx.font='10px Courier New';ctx.textAlign='left';ctx.fillText('Bode: ζ='+zeta.toFixed(2),pl+4,pt+12);
+  // Resonance peak marker
+  if(zeta<0.7071){
+    const wr=w0*1e3*Math.sqrt(1-2*zeta*zeta);
+    const fr=wr/(2*Math.PI);
+    const wn=w0*1e3;
+    const H_peak=wn*wn/Math.sqrt(Math.pow(wn*wn-wr*wr,2)+Math.pow(2*zeta*wn*wr,2));
+    const peak_dB=20*Math.log10(H_peak);
+    const[xp,yp]=toPx(fr,peak_dB);
+    ctx.fillStyle='#ff4444';ctx.beginPath();ctx.arc(xp,yp,4,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#ff4444';ctx.font='9px Courier New';ctx.textAlign='left';ctx.fillText(peak_dB.toFixed(1)+'dB peak',xp+5,yp-3);
+  }
+}
+
+function drawTs(){
+  const cv=document.getElementById('c_ts');const ctx=cv.getContext('2d');
+  const W=260,H=200,pl=55,pr=10,pt=15,pb=28;const CW=W-pl-pr,CH=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+  const zetas=Array.from({length:50},(_,i)=>0.1+i*0.038);
+  const ts=zetas.map(z=>4/(z*w0));
+  const tsmax=Math.max(...ts)*1.05;
+  function toPx(z,t){return[pl+CW*(z/2),pt+CH*(1-t/tsmax)];}
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=5;i++){const y=pt+CH*(i/5);ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.beginPath();ctx.moveTo(pl,pt);ctx.lineTo(pl,pt+CH);ctx.moveTo(pl,pt+CH);ctx.lineTo(pl+CW,pt+CH);ctx.stroke();
+  ctx.strokeStyle='#00aaff';ctx.lineWidth=2;
+  ctx.beginPath();zetas.forEach((z,i)=>{const[x,y]=toPx(z,ts[i]);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});ctx.stroke();
+  const[xm,ym]=toPx(zeta,4/(zeta*w0));
+  ctx.fillStyle='#ffaa00';ctx.beginPath();ctx.arc(xm,ym,4,0,Math.PI*2);ctx.fill();
+  // ζ=0.7 mark
+  const[x7,y7]=toPx(0.7,4/(0.7*w0));
+  ctx.strokeStyle='#00ff88';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(x7,pt);ctx.lineTo(x7,pt+CH);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#888';ctx.font='9px Courier New';ctx.textAlign='center';ctx.fillText('ζ',pl+CW/2,pt+CH+18);
+  ctx.save();ctx.translate(10,pt+CH/2);ctx.rotate(-Math.PI/2);ctx.fillText('t_s(2%) ms',0,0);ctx.restore();
+  ctx.fillStyle='#00aaff';ctx.textAlign='left';ctx.fillText('Settling vs ζ',pl+3,pt+12);
+}
+
+function draw(){
+  const a=zeta*w0;
+  const ts=4/(zeta*w0);
+  const os=zeta<1?Math.exp(-Math.PI*zeta/Math.sqrt(1-zeta*zeta))*100:0;
+  const pm=100*zeta;
+  const wd=zeta<1?w0*Math.sqrt(1-zeta*zeta):0;
+  document.getElementById('ts').textContent='t_settle(2%) = '+ts.toFixed(3)+' ms';
+  document.getElementById('os').textContent='Overshoot: '+os.toFixed(1)+'%';
+  document.getElementById('pm').textContent='Phase Margin ≈ '+pm.toFixed(0)+'°';
+  document.getElementById('wd_v').textContent='ω_d = '+wd.toFixed(2)+' krad/s';
+  const opt=document.getElementById('opt');
+  if(Math.abs(zeta-0.7)<0.05)opt.textContent='ζ≈0.7: minimum settling time + maximally flat.';
+  else if(zeta<0.5)opt.textContent='Underdamped: overshoot >16%, ringing present.';
+  else if(zeta>1.2)opt.textContent='Overdamped: unnecessarily slow settling.';
+  else opt.textContent='';
+  drawStep();drawBode();drawTs();
+}
+draw();
+</script>
+</body>
+</html>

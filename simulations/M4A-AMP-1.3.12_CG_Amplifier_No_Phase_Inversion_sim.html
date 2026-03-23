@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.3.12 — CG No Phase Inversion</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;gap:16px;align-items:baseline;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:14px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.3.12</div>
+  <div class="topic">CG Non-Inverting — Phase Comparison, Balun, Cascaded Stage Phase Count</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>Amplifier</h3>
+      <label>gm (mA/V): <b id="gm_lbl">8</b></label>
+      <input type="range" id="gm" min="0.5" max="30" value="8" step="0.5">
+      <label>RD (kΩ): <b id="rd_lbl">3.0</b></label>
+      <input type="range" id="rd" min="0.1" max="20" value="3" step="0.1">
+    </div>
+    <div class="cg">
+      <h3>Cascade Topology</h3>
+      <label>Num CS stages: <b id="ncs_lbl">1</b></label>
+      <input type="range" id="ncs" min="0" max="5" value="1" step="1">
+      <label>Num CG stages: <b id="ncg_lbl">0</b></label>
+      <input type="range" id="ncg" min="0" max="5" value="0" step="1">
+    </div>
+    <div class="cg">
+      <h3>Results</h3>
+      <div class="rd">CG Av: <span id="r_cg">—</span></div>
+      <div class="rd">CS Av: <span id="r_cs">—</span></div>
+      <div class="rd">Net phase: <span id="r_phase">—</span></div>
+      <div class="rd">Total |Av|: <span id="r_av">—</span></div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_cg">—</div><div class="l">CG Av</div></div>
+      <div class="met"><div class="v" id="m_cs">—</div><div class="l">CS Av</div></div>
+      <div class="met"><div class="v" id="m_phase">—</div><div class="l">Net phase</div></div>
+    </div>
+    <div>
+      <div class="pl">Waveform: input vs CG output vs CS output</div>
+      <canvas id="waveCanvas" height="220"></canvas>
+    </div>
+    <div>
+      <div class="pl">Cascaded stages: output waveform phase</div>
+      <canvas id="cascCanvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">CS+CG balun: differential output from single-ended input</div>
+      <canvas id="balunCanvas" height="180"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+function update(){
+  const gm=parseFloat(document.getElementById('gm').value)*1e-3;
+  const rd=parseFloat(document.getElementById('rd').value)*1e3;
+  const ncs=parseInt(document.getElementById('ncs').value);
+  const ncg=parseInt(document.getElementById('ncg').value);
+
+  document.getElementById('gm_lbl').textContent=(gm*1e3).toFixed(1);
+  document.getElementById('rd_lbl').textContent=(rd/1e3).toFixed(1);
+  document.getElementById('ncs_lbl').textContent=ncs;
+  document.getElementById('ncg_lbl').textContent=ncg;
+
+  const av_stage=gm*rd;
+  const cg_phase=0,cs_phase=180;
+  const total_phase=(ncs*cs_phase+ncg*cg_phase)%360;
+  const total_inv=ncs%2;
+  const total_av=Math.pow(av_stage,ncs+ncg);
+  const sign=total_inv?'-':'+';
+
+  document.getElementById('r_cg').textContent='+'+av_stage.toFixed(1)+' V/V';
+  document.getElementById('r_cs').textContent='-'+av_stage.toFixed(1)+' V/V';
+  document.getElementById('r_phase').textContent=total_phase+'°';
+  document.getElementById('r_av').textContent=sign+total_av.toFixed(0)+' V/V';
+
+  document.getElementById('m_cg').textContent='+'+av_stage.toFixed(1);
+  document.getElementById('m_cs').textContent='-'+av_stage.toFixed(1);
+  document.getElementById('m_phase').textContent=total_phase+'°';
+
+  drawWave(av_stage);
+  drawCasc(ncs,ncg,av_stage);
+  drawBalun(av_stage);
+}
+
+function drawWave(av){
+  const canvas=document.getElementById('waveCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const N=400;const vin_amp=Math.min(H*0.12,25);const vout_amp=Math.min(vin_amp*Math.min(av,5),H*0.3);
+  const rows=3;const rH=H/rows;
+
+  ['vin (input)','CG output (+Av)','CS output (–Av)'].forEach((lbl,r)=>{
+    const mid=rH*r+rH/2;
+    ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.3;
+    ctx.beginPath();ctx.moveTo(0,mid);ctx.lineTo(W,mid);ctx.stroke();
+    const color=[cs.getPropertyValue('--fg').trim(),'#006633',cs.getPropertyValue('--accent').trim()][r];
+    const amp=r===0?vin_amp:vout_amp;
+    const phase=r===2?Math.PI:0;
+    ctx.strokeStyle=color;ctx.lineWidth=r===0?1:2;
+    ctx.beginPath();
+    for(let i=0;i<N;i++){
+      const x=i/N*W;
+      const y=mid-amp*Math.sin(2*Math.PI*i*2/N+phase);
+      if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    ctx.fillStyle=color;ctx.font='9px Courier New';
+    ctx.fillText(lbl,5,mid-amp-3);
+  });
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+  ctx.fillText('Time →',W-60,H-3);
+}
+
+function drawCasc(ncs,ncg,av_stage){
+  const canvas=document.getElementById('cascCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const mid=H/2;const vin_amp=15;
+  const total_inv=ncs%2;
+  const phase=total_inv?Math.PI:0;
+  const total_av=Math.pow(av_stage,ncs+ncg);
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  ctx.beginPath();ctx.moveTo(0,mid);ctx.lineTo(W,mid);ctx.stroke();
+
+  // Input
+  ctx.strokeStyle='#888';ctx.lineWidth=1.2;ctx.setLineDash([4,4]);
+  ctx.beginPath();
+  for(let i=0;i<400;i++){
+    const x=i/400*W;const y=mid-vin_amp*Math.sin(2*Math.PI*i*2/400);
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();ctx.setLineDash([]);
+
+  // Output (clamped to H*0.45 max)
+  const out_amp=Math.min(vin_amp*Math.min(total_av,1e6),H*0.45);
+  const clipped=out_amp>=H*0.44;
+  ctx.strokeStyle=clipped?'#cc0000':cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<400;i++){
+    const x=i/400*W;const y=mid-out_amp*Math.sin(2*Math.PI*i*2/400+phase);
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+  const label=(ncs+ncg)===0?'No stages':`${ncs} CS + ${ncg} CG → ${total_inv?'Inv':'Non-inv'}, |Av|=${total_av.toFixed(0)}`;
+  ctx.fillText(label,5,15);
+  if(clipped)ctx.fillText('(amplitude clipped for display)',5,H-5);
+  ctx.fillText('Time →',W-60,H-3);
+}
+
+function drawBalun(av){
+  const canvas=document.getElementById('balunCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const mid=H/2;const vin_amp=10;const out_amp=Math.min(vin_amp*Math.min(av,5),H*0.35);
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  ctx.beginPath();ctx.moveTo(0,mid);ctx.lineTo(W,mid);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(0,H/4);ctx.lineTo(W,H/4);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(0,3*H/4);ctx.lineTo(W,3*H/4);ctx.stroke();
+
+  ctx.strokeStyle='#888';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  for(let i=0;i<400;i++){const x=i/400*W;const y=H/4-vin_amp*Math.sin(2*Math.PI*i*2/400);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}
+  ctx.stroke();ctx.setLineDash([]);
+  // CS output (inverted)
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<400;i++){const x=i/400*W;const y=mid-out_amp*Math.sin(2*Math.PI*i*2/400+Math.PI);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}
+  ctx.stroke();
+  // CG output (non-inverted)
+  ctx.strokeStyle='#006633';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<400;i++){const x=i/400*W;const y=3*H/4-out_amp*Math.sin(2*Math.PI*i*2/400);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}
+  ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='8px Courier New';ctx.fillText('Input',5,H/4-vin_amp-3);
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.fillText('CS out (–Av, inv)',5,mid-out_amp-3);
+  ctx.fillStyle='#006633';ctx.fillText('CG out (+Av, non-inv)',5,3*H/4-out_amp-3);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';
+  ctx.fillText('Balun: CS+CG = differential from single-ended',5,H-3);
+}
+
+['gm','rd','ncs','ncg'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-FLT-3.5.1 Frequency Scaling and Component Selection</title>
+<style>
+  :root{--bg:#f5f5f5;--panel:#fff;--text:#1a1a1a;--muted:#666;--border:#ddd;
+    --a:#2563eb;--a2:#16a34a;--a3:#dc2626;--a4:#9333ea;--a5:#ea580c;
+    --cb:#fafafa;--gr:#e5e7eb;--hi:#fef9c3;--tb:#bfdbfe;}
+  @media(prefers-color-scheme:dark){:root{
+    --bg:#0f1117;--panel:#1e2130;--text:#e8eaf0;--muted:#8892a4;--border:#2d3348;
+    --a:#60a5fa;--a2:#4ade80;--a3:#f87171;--a4:#c084fc;--a5:#fb923c;
+    --cb:#161926;--gr:#2d3348;--hi:#2d2a0f;--tb:#3b82f6;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px;}
+  h1{font-size:16px;font-weight:700;padding:12px 18px;border-bottom:1px solid var(--border);background:var(--panel);}
+  h1 span{color:var(--muted);font-size:13px;font-weight:400;margin-left:8px;}
+  .layout{display:flex;height:calc(100vh - 47px);}
+  .left{width:300px;background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
+  .right{flex:1;display:flex;flex-direction:column;padding:10px;gap:8px;overflow:hidden;}
+  .sec{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:10px;}
+  .sec h3{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;}
+  label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:3px;}
+  label span{font-weight:600;color:var(--a);}
+  input[type=range]{width:100%;accent-color:var(--a);cursor:pointer;margin-bottom:5px;}
+  select{width:100%;padding:5px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);font-size:12px;margin-bottom:5px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+  .card{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;}
+  .card .lb{font-size:10px;color:var(--muted);text-transform:uppercase;}
+  .card .vl{font-size:12px;font-weight:700;font-family:monospace;color:var(--a);margin-top:2px;}
+  .card.g .vl{color:var(--a2);}
+  .card.r .vl{color:var(--a3);}
+  .card.p .vl{color:var(--a4);}
+  canvas{display:block;border-radius:6px;background:var(--cb);border:1px solid var(--border);width:100%;}
+  .tip{background:var(--hi);border:1px solid var(--tb);border-radius:6px;padding:8px;font-size:11px;line-height:1.5;}
+  table{width:100%;border-collapse:collapse;font-size:11px;}
+  td,th{padding:4px 6px;border:1px solid var(--border);text-align:left;}
+  th{background:var(--bg);font-weight:600;color:var(--muted);}
+  tr:nth-child(even){background:var(--bg);}
+</style>
+</head>
+<body>
+<h1>M4A-FLT-3.5.1 — Frequency Scaling & Component Selection <span>Scale prototype to target frequency, choose standard values</span></h1>
+<div class="layout">
+<div class="left">
+
+  <div class="sec">
+    <h3>Target Design</h3>
+    <label>Target fp (kHz) <span id="lbl_fp">1</span></label>
+    <input type="range" id="fp_target" min="0.01" max="500" value="1" step="0.01" oninput="update()">
+    <label>Impedance Z0 (kΩ) <span id="lbl_z0">10</span></label>
+    <input type="range" id="z0" min="0.1" max="1000" value="10" step="0.1" oninput="update()">
+    <label>Filter Type</label>
+    <select id="ftype" onchange="update()">
+      <option value="bw2_lp">2nd Order Butterworth LP (Sallen-Key)</option>
+      <option value="bw4_lp">4th Order Butterworth LP (2×SK)</option>
+      <option value="ch2_lp">2nd Order Chebyshev 1dB LP</option>
+      <option value="rc1_lp">1st Order RC LP</option>
+    </select>
+  </div>
+
+  <div class="sec">
+    <h3>Scaled (Exact) Values</h3>
+    <table id="exact_table">
+      <tr><th>Component</th><th>Exact Value</th><th>Standard (E24)</th><th>Error</th></tr>
+    </table>
+  </div>
+
+  <div class="sec">
+    <h3>Standard Value Results</h3>
+    <div class="grid2">
+      <div class="card g"><div class="lb">Designed fp</div><div class="vl" id="r_fp_des">—</div></div>
+      <div class="card r"><div class="lb">Actual fp</div><div class="vl" id="r_fp_act">—</div></div>
+      <div class="card"><div class="lb">fp error</div><div class="vl" id="r_fp_err">—</div></div>
+      <div class="card p"><div class="lb">Q (actual)</div><div class="vl" id="r_q_act">—</div></div>
+    </div>
+  </div>
+
+  <div class="tip" id="tip">Adjust target frequency and impedance to see how component values scale.</div>
+
+</div>
+<div class="right">
+  <canvas id="c_bode" style="flex:3;"></canvas>
+  <canvas id="c_comp" style="flex:2;"></canvas>
+</div>
+</div>
+<script>
+// E24 standard values
+const E24=[1.0,1.1,1.2,1.3,1.5,1.6,1.8,2.0,2.2,2.4,2.7,3.0,3.3,3.6,3.9,4.3,4.7,5.1,5.6,6.2,6.8,7.5,8.2,9.1];
+function nearestE24(val){
+  const decade=Math.pow(10,Math.floor(Math.log10(val)));
+  const norm=val/decade;
+  let best=E24[0],bestErr=Math.abs(norm-E24[0]);
+  E24.forEach(v=>{
+    const err=Math.abs(norm-v);
+    if(err<bestErr){bestErr=err;best=v;}
+  });
+  return best*decade;
+}
+
+function fmtVal(v,unit){
+  if(unit==='F'){
+    if(v>=1e-6) return (v*1e6).toFixed(2)+' µF';
+    if(v>=1e-9) return (v*1e9).toFixed(2)+' nF';
+    return (v*1e12).toFixed(2)+' pF';
+  }
+  if(unit==='R'){
+    if(v>=1e6) return (v/1e6).toFixed(2)+' MΩ';
+    if(v>=1e3) return (v/1e3).toFixed(2)+' kΩ';
+    return v.toFixed(0)+' Ω';
+  }
+  return v.toFixed(4);
+}
+function fmtHz(f){
+  if(f>=1e6) return (f/1e6).toFixed(2)+' MHz';
+  if(f>=1e3) return (f/1e3).toFixed(f>1e5?0:2)+' kHz';
+  return f.toFixed(f>100?0:2)+' Hz';
+}
+function cv(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function getCtx(id){
+  const c=document.getElementById(id);
+  c.width=c.offsetWidth*devicePixelRatio;
+  c.height=c.offsetHeight*devicePixelRatio;
+  const ctx=c.getContext('2d');
+  ctx.scale(devicePixelRatio,devicePixelRatio);
+  ctx.W=c.offsetWidth;ctx.H=c.offsetHeight;
+  return ctx;
+}
+
+function bwMag(f,fc,n){return -10*Math.log10(1+Math.pow(f/fc,2*n));}
+function skGainDB(f, wn, Q) {
+  const w=2*Math.PI*f;
+  const re=wn*wn-w*w;
+  const im=w*wn/Q;
+  return 20*Math.log10(Math.max(wn*wn/Math.sqrt(re*re+im*im),1e-10));
+}
+
+function update(){
+  const fp_khz=parseFloat(document.getElementById('fp_target').value);
+  const z0_k=parseFloat(document.getElementById('z0').value);
+  const ftype=document.getElementById('ftype').value;
+  const fp=fp_khz*1e3;
+  const Z0=z0_k*1e3;
+  const wn=2*Math.PI*fp;
+
+  document.getElementById('lbl_fp').textContent=fp_khz.toFixed(fp_khz<1?3:fp_khz<10?2:1);
+  document.getElementById('lbl_z0').textContent=z0_k.toFixed(z0_k<1?2:1);
+
+  // Calculate component values based on filter type
+  let components=[];
+  let R_exact=[], C_exact=[];
+  let designed_fp=fp, designed_Q=0.707;
+
+  if(ftype==='rc1_lp'){
+    const R=Z0, C=1/(Z0*wn);
+    components=[
+      {name:'R', exact:R, unit:'R'},
+      {name:'C', exact:C, unit:'F'},
+    ];
+    R_exact=[R]; C_exact=[C];
+    designed_Q=0; // 1st order
+  } else if(ftype==='bw2_lp'){
+    // Butterworth SK: R1=R2=Z0, C1=sqrt(2)/wn/Z0, C2=1/sqrt(2)/wn/Z0
+    const R=Z0;
+    const C1=Math.SQRT2/(wn*Z0);
+    const C2=1/(Math.SQRT2*wn*Z0);
+    components=[
+      {name:'R1', exact:R, unit:'R'},
+      {name:'R2', exact:R, unit:'R'},
+      {name:'C1', exact:C1, unit:'F'},
+      {name:'C2', exact:C2, unit:'F'},
+    ];
+    R_exact=[R,R]; C_exact=[C1,C2];
+    designed_Q=0.707;
+  } else if(ftype==='bw4_lp'){
+    // 4th order BW: two SK stages with Q1=0.5412, Q2=1.3066
+    // Stage 1: Q=0.5412, Stage 2: Q=1.3066
+    const R=Z0;
+    // For SK with equal R: Q = sqrt(C1*C2)/(C1+C2)*... use known relationship
+    // C2 = 1/(wn*R), C1 = 1/(4*Q^2*wn*R) for each stage
+    function skComps(Q){
+      const C2=1/(wn*R);
+      const C1=1/(4*Q*Q*wn*R);
+      // Adjust: exact formula for SK: Q = sqrt(R1R2C1C2)/(C2(R1+R2)), with R1=R2=R
+      // Q = sqrt(C1/C2)/(2) => C1 = 4Q^2 * C2
+      const C1s=4*Q*Q*C2;
+      return {C1:C1s, C2:C2};
+    }
+    const s1=skComps(0.5412), s2=skComps(1.3066);
+    components=[
+      {name:'Stage1 R1=R2', exact:R, unit:'R'},
+      {name:'Stage1 C1', exact:s1.C1, unit:'F'},
+      {name:'Stage1 C2', exact:s1.C2, unit:'F'},
+      {name:'Stage2 R1=R2', exact:R, unit:'R'},
+      {name:'Stage2 C1', exact:s2.C1, unit:'F'},
+      {name:'Stage2 C2', exact:s2.C2, unit:'F'},
+    ];
+    designed_Q=0.707; // effective
+  } else if(ftype==='ch2_lp'){
+    // Chebyshev 1dB 2nd order LP: Q = 0.9565
+    const Q=0.9565;
+    const R=Z0;
+    const C1=4*Q*Q/(wn*R);
+    const C2=1/(wn*R);
+    components=[
+      {name:'R1=R2', exact:R, unit:'R'},
+      {name:'C1', exact:C1, unit:'F'},
+      {name:'C2', exact:C2, unit:'F'},
+    ];
+    designed_Q=Q;
+  }
+
+  // Round to E24 and compute errors
+  const rounded=components.map(c=>{
+    const std=nearestE24(c.exact);
+    const err=((std-c.exact)/c.exact*100);
+    return {...c, std:std, err:err};
+  });
+
+  // Update table
+  const tbody=document.getElementById('exact_table');
+  tbody.innerHTML='<tr><th>Component</th><th>Exact Value</th><th>Standard (E24)</th><th>Error</th></tr>';
+  rounded.forEach(c=>{
+    const tr=document.createElement('tr');
+    const errAbs=Math.abs(c.err);
+    const errColor=errAbs<1?'var(--a2)':errAbs<5?'var(--a5)':'var(--a3)';
+    tr.innerHTML=`<td>${c.name}</td><td>${fmtVal(c.exact,c.unit)}</td><td style="font-weight:600">${fmtVal(c.std,c.unit)}</td><td style="color:${errColor}">${c.err>0?'+':''}${c.err.toFixed(1)}%</td>`;
+    tbody.appendChild(tr);
+  });
+
+  // Compute actual fp from rounded values
+  let actual_fp=fp, actual_Q=designed_Q;
+  if(ftype==='rc1_lp'||ftype==='bw2_lp'||ftype==='ch2_lp'){
+    const R_std=rounded.find(c=>c.name.startsWith('R1')||c.name==='R')?.std||Z0;
+    const C1_std=rounded.find(c=>c.name==='C1')?.std||rounded.find(c=>c.name==='C')?.std||1e-9;
+    const C2_std=rounded.find(c=>c.name==='C2')?.std||C1_std;
+    if(ftype==='rc1_lp'){
+      actual_fp=1/(2*Math.PI*R_std*C1_std);
+    } else {
+      const wn_act=1/Math.sqrt(R_std*R_std*C1_std*C2_std);
+      actual_fp=wn_act/(2*Math.PI);
+      actual_Q=Math.sqrt(R_std*R_std*C1_std*C2_std)/(C2_std*(R_std+R_std));
+    }
+  } else {
+    actual_fp=fp*(1+rounded.reduce((s,c)=>s+c.err/100,0)/rounded.length);
+  }
+
+  const fp_err=(actual_fp-fp)/fp*100;
+
+  document.getElementById('r_fp_des').textContent=fmtHz(fp);
+  document.getElementById('r_fp_act').textContent=fmtHz(actual_fp);
+  document.getElementById('r_fp_err').textContent=(fp_err>0?'+':'')+fp_err.toFixed(1)+'%';
+  document.getElementById('r_q_act').textContent=actual_Q>0?actual_Q.toFixed(3):'N/A (1st)';
+
+  document.getElementById('tip').textContent=
+    `Z0=${z0_k.toFixed(1)}kΩ, R=${fmtVal(Z0,'R')}. Standard values shift fp by ${fp_err.toFixed(1)}%. `+
+    (Math.abs(fp_err)<2?'Acceptable for most apps.':'Consider adjusting Z0 or using 1% components.');
+
+  drawBode(fp,actual_fp,ftype,designed_Q,actual_Q);
+  drawComp(rounded);
+}
+
+function drawBode(fp_des,fp_act,ftype,Q_des,Q_act){
+  const ctx=getCtx('c_bode');
+  const W=ctx.W,H=ctx.H,pl=55,pr=18,pt=28,pb=34;
+  const pw=W-pl-pr,ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  const fMin=fp_des*0.05,fMax=fp_des*50;
+  const lMin=Math.log10(fMin),lMax=Math.log10(fMax);
+  const dbMin=-80,dbMax=10;
+  const fx=f=>pl+(Math.log10(f)-lMin)/(lMax-lMin)*pw;
+  const fy=db=>pt+(1-(db-dbMin)/(dbMax-dbMin))*ph;
+
+  ctx.strokeStyle=cv('--gr');ctx.lineWidth=0.7;
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    if(x>=pl&&x<=pl+pw){ctx.beginPath();ctx.moveTo(x,pt);ctx.lineTo(x,pt+ph);ctx.stroke();}
+  }
+  [-80,-60,-40,-20,0].forEach(db=>{
+    const y=fy(db);
+    if(y>=pt&&y<=pt+ph){
+      ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+pw,y);ctx.stroke();
+      ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';ctx.fillText(db,2,y+4);
+    }
+  });
+
+  function drawCurve(fpv, Qv, color, dash){
+    const wn=2*Math.PI*fpv;
+    const n=ftype.includes('4')?4:ftype==='rc1_lp'?1:2;
+    ctx.strokeStyle=color;ctx.lineWidth=2;
+    if(dash)ctx.setLineDash(dash);else ctx.setLineDash([]);
+    ctx.beginPath();let first=true;
+    for(let i=0;i<=600;i++){
+      const lf=lMin+i/600*(lMax-lMin);
+      const f=Math.pow(10,lf);
+      let db;
+      if(n===1) db=-10*Math.log10(1+(f/fpv)**2);
+      else db=skGainDB(f, wn, Qv>0?Qv:0.5);
+      const x=pl+i/600*pw,y=fy(Math.max(dbMin,Math.min(dbMax,db)));
+      if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+    }
+    ctx.stroke();ctx.setLineDash([]);
+  }
+
+  drawCurve(fp_des, Q_des, cv('--a5'), [5,3]); // designed (dashed)
+  drawCurve(fp_act, Q_act, cv('--a'), []); // actual (solid)
+
+  // fp markers
+  [fp_des,fp_act].forEach((f,i)=>{
+    const x=fx(f);
+    if(x>=pl&&x<=pl+pw){
+      ctx.strokeStyle=i===0?cv('--a5'):cv('--a');
+      ctx.lineWidth=1;ctx.setLineDash([3,3]);
+      ctx.beginPath();ctx.moveTo(x,pt);ctx.lineTo(x,pt+ph);ctx.stroke();ctx.setLineDash([]);
+      ctx.fillStyle=i===0?cv('--a5'):cv('--a');ctx.font='9px system-ui';
+      ctx.fillText(i===0?'designed':'actual',x+2,i===0?pt+12:pt+22);
+    }
+  });
+
+  ctx.strokeStyle=cv('--muted');ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pl,fy(-3));ctx.lineTo(pl+pw,fy(-3));ctx.stroke();ctx.setLineDash([]);
+
+  ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    const f=Math.pow(10,d);
+    const l=f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f;
+    if(x>=pl&&x<=pl+pw)ctx.fillText(l,x-6,pt+ph+14);
+  }
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Gain (dB)',4,pt-8);
+  ctx.fillText('Frequency',pl+pw/2-30,H-2);
+  ctx.fillText('Designed (dashed) vs Standard Values (solid)',pl+4,pt-10);
+}
+
+function drawComp(comps){
+  const ctx=getCtx('c_comp');
+  const W=ctx.W,H=ctx.H,pl=18,pr=18,pt=28,pb=20;
+  const pw=W-pl-pr,ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Component Error from Standard Values',pl+2,pt-10);
+
+  const n=comps.length;
+  const barW=pw/Math.max(n,1);
+  const maxErr=10;
+
+  comps.forEach((c,i)=>{
+    const x=pl+(i+0.1)*barW;
+    const err=Math.abs(c.err);
+    const barH=Math.min(err/maxErr,1)*ph*0.7;
+    const color=err<1?cv('--a2'):err<5?cv('--a5'):cv('--a3');
+    // Bar
+    ctx.fillStyle=color;
+    ctx.fillRect(x,pt+ph*0.15+ph*0.7-barH,barW*0.8,barH);
+    // Label
+    ctx.fillStyle=cv('--muted');ctx.font='8px system-ui';
+    const label=c.name.length>8?c.name.slice(0,7)+'..':c.name;
+    ctx.fillText(label,x,pt+ph+14);
+    ctx.fillStyle=color;ctx.font='9px system-ui';
+    ctx.fillText((c.err>0?'+':'')+c.err.toFixed(1)+'%',x,pt+ph*0.15+ph*0.7-barH-3);
+  });
+
+  // 1% and 5% lines
+  ctx.strokeStyle=cv('--a2');ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  const y1=pt+ph*0.15+ph*0.7-1/maxErr*ph*0.7;
+  ctx.beginPath();ctx.moveTo(pl,y1);ctx.lineTo(pl+pw,y1);ctx.stroke();
+  ctx.fillStyle=cv('--a2');ctx.font='9px system-ui';ctx.fillText('1%',pl+2,y1-2);
+
+  ctx.strokeStyle=cv('--a5');
+  const y5=pt+ph*0.15+ph*0.7-5/maxErr*ph*0.7;
+  ctx.beginPath();ctx.moveTo(pl,y5);ctx.lineTo(pl+pw,y5);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=cv('--a5');ctx.font='9px system-ui';ctx.fillText('5%',pl+2,y5-2);
+
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('|Error|',0,pt-4);
+}
+
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

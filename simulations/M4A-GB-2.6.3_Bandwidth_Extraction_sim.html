@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-GB-2.6.3 Bandwidth Extraction</title>
+<style>
+  :root {
+    --bg: #f5f5f5; --panel: #ffffff; --text: #1a1a1a; --muted: #666;
+    --border: #ddd; --accent: #2563eb; --accent2: #16a34a; --accent3: #dc2626;
+    --accent4: #9333ea; --accent5: #ea580c; --canvas-bg: #fafafa; --grid: #e5e7eb;
+    --highlight: #fef9c3; --tag-border: #bfdbfe;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1117; --panel: #1e2130; --text: #e8eaf0; --muted: #8892a4;
+      --border: #2d3348; --accent: #60a5fa; --accent2: #4ade80; --accent3: #f87171;
+      --accent4: #c084fc; --accent5: #fb923c; --canvas-bg: #161926; --grid: #2d3348;
+      --highlight: #2d2a0f; --tag-border: #3b82f6;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; }
+  h1 { font-size: 16px; font-weight: 700; padding: 14px 18px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  h1 span { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 8px; }
+  .layout { display: flex; height: calc(100vh - 49px); }
+  .left { width: 300px; min-width: 260px; background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+  .right { flex: 1; display: flex; flex-direction: column; overflow: hidden; padding: 10px; gap: 8px; }
+  .section { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 11px; }
+  .section h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 8px; }
+  label { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+  label span { font-weight: 600; color: var(--accent); font-size: 13px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; margin-bottom: 6px; }
+  select { width: 100%; padding: 5px; border: 1px solid var(--border); border-radius: 5px; background: var(--bg); color: var(--text); font-size: 12px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 7px 9px; }
+  .card .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; }
+  .card .val { font-size: 14px; font-weight: 700; font-family: monospace; color: var(--accent); margin-top: 2px; }
+  .card.g .val { color: var(--accent2); }
+  .card.r .val { color: var(--accent3); }
+  .card.p .val { color: var(--accent4); }
+  .card.o .val { color: var(--accent5); }
+  canvas { display: block; border-radius: 6px; background: var(--canvas-bg); border: 1px solid var(--border); width: 100%; }
+  .tip { background: var(--highlight); border: 1px solid var(--tag-border); border-radius: 6px; padding: 7px 9px; font-size: 11px; line-height: 1.5; }
+  .step-row { display: flex; gap: 6px; align-items: flex-start; font-size: 11px; padding: 5px 0; border-bottom: 1px solid var(--border); }
+  .step-row:last-child { border: none; }
+  .step-num { width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+  .step-num.done { background: var(--accent2); }
+  .step-text { flex: 1; color: var(--text); line-height: 1.4; }
+</style>
+</head>
+<body>
+<h1>M4A-GB-2.6.3 — Bandwidth Extraction <span>Step-by-step: midband → reference → -3 dB crossings → BW</span></h1>
+<div class="layout">
+  <div class="left">
+
+    <div class="section">
+      <h3>Amplifier Setup</h3>
+      <select id="preset" onchange="applyPreset()">
+        <option value="typical">Typical CE Stage (40 dB)</option>
+        <option value="high_gain">High-Gain (60 dB)</option>
+        <option value="wideband">Wideband LNA (20 dB)</option>
+        <option value="audio">Audio Amp (34 dB)</option>
+        <option value="peaking">Peaking Response (Q=1.2)</option>
+      </select>
+    </div>
+
+    <div class="section">
+      <h3>Parameters</h3>
+      <label>Midband Gain (dB) <span id="lbl_dc">40</span></label>
+      <input type="range" id="dc_gain" min="6" max="80" value="40" step="1" oninput="update()">
+      <label>Upper Pole f_H (kHz) <span id="lbl_fh">200</span></label>
+      <input type="range" id="fh" min="1" max="2000" value="200" step="1" oninput="update()">
+      <label>Lower Pole f_L (Hz) <span id="lbl_fl">50</span></label>
+      <input type="range" id="fl" min="1" max="2000" value="50" step="1" oninput="update()">
+      <label>Peak Q factor <span id="lbl_q">0.5</span></label>
+      <input type="range" id="q_val" min="0.1" max="2.5" value="0.5" step="0.05" oninput="update()">
+    </div>
+
+    <div class="section">
+      <h3>Extraction Steps</h3>
+      <div class="step-row">
+        <div class="step-num done" id="s1n">1</div>
+        <div class="step-text" id="s1t">Find flat midband region and read gain.</div>
+      </div>
+      <div class="step-row">
+        <div class="step-num" id="s2n">2</div>
+        <div class="step-text" id="s2t">Subtract 3 dB → draw reference line.</div>
+      </div>
+      <div class="step-row">
+        <div class="step-num" id="s3n">3</div>
+        <div class="step-text" id="s3t">Find f_L where gain crosses reference from below.</div>
+      </div>
+      <div class="step-row">
+        <div class="step-num" id="s4n">4</div>
+        <div class="step-text" id="s4t">Find f_H where gain crosses reference from above.</div>
+      </div>
+      <div class="step-row">
+        <div class="step-num" id="s5n">5</div>
+        <div class="step-text" id="s5t">BW = f_H − f_L. Verify with GBW.</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h3>Extracted Results</h3>
+      <div class="grid2">
+        <div class="card"><div class="lbl">Midband Gain</div><div class="val" id="r_mid">—</div></div>
+        <div class="card r"><div class="lbl">f_L (-3 dB)</div><div class="val" id="r_fl">—</div></div>
+        <div class="card g"><div class="lbl">f_H (-3 dB)</div><div class="val" id="r_fh">—</div></div>
+        <div class="card p"><div class="lbl">Bandwidth</div><div class="val" id="r_bw">—</div></div>
+        <div class="card o"><div class="lbl">GBW Product</div><div class="val" id="r_gbw">—</div></div>
+        <div class="card"><div class="lbl">Peak vs Mid</div><div class="val" id="r_peak">—</div></div>
+      </div>
+    </div>
+
+    <div class="tip" id="tip_box">Adjust parameters and read the annotated Bode plot.</div>
+
+  </div>
+
+  <div class="right">
+    <canvas id="bode" style="flex:3;"></canvas>
+    <canvas id="gbw_chart" style="flex:2;"></canvas>
+  </div>
+</div>
+
+<script>
+function applyPreset() {
+  const p = document.getElementById('preset').value;
+  const map = {
+    typical:   {dc:40, fh:200, fl:50,   q:0.5},
+    high_gain: {dc:60, fh:20,  fl:10,   q:0.5},
+    wideband:  {dc:20, fh:800, fl:5,    q:0.6},
+    audio:     {dc:34, fh:20,  fl:20,   q:0.5},
+    peaking:   {dc:36, fh:100, fl:30,   q:1.2},
+  };
+  const s = map[p];
+  document.getElementById('dc_gain').value = s.dc;
+  document.getElementById('fh').value = s.fh;
+  document.getElementById('fl').value = s.fl;
+  document.getElementById('q_val').value = s.q;
+  update();
+}
+
+function gainDB(f, dcDB, fL, fH, q) {
+  const dcLin = Math.pow(10, dcDB/20);
+  const wL = 2*Math.PI*fL, w = 2*Math.PI*f, wH = 2*Math.PI*fH;
+  const hp = (w/wL)/Math.sqrt(1+(w/wL)**2);
+  const u = wH/w;
+  const denom = Math.sqrt((1-u**2)**2+(u/q)**2);
+  const lp = 1/denom;
+  return 20*Math.log10(Math.max(dcLin*hp*lp, 1e-10));
+}
+
+function formatHz(f) {
+  if (f>=1e6) return (f/1e6).toFixed(2)+' MHz';
+  if (f>=1e3) return (f/1e3).toFixed(f>100e3?0:1)+' kHz';
+  return f.toFixed(f>100?0:1)+' Hz';
+}
+
+function update() {
+  const dcDB = +document.getElementById('dc_gain').value;
+  const fH_khz = +document.getElementById('fh').value;
+  const fL_hz = +document.getElementById('fl').value;
+  const q = +document.getElementById('q_val').value;
+  const fH_hz = fH_khz*1e3;
+
+  document.getElementById('lbl_dc').textContent = dcDB;
+  document.getElementById('lbl_fh').textContent = fH_khz;
+  document.getElementById('lbl_fl').textContent = fL_hz;
+  document.getElementById('lbl_q').textContent = q.toFixed(2);
+
+  // Midband
+  const f_mid = Math.sqrt(fL_hz * fH_hz);
+  const midband_db = gainDB(f_mid, dcDB, fL_hz, fH_hz, q);
+  const threshold = midband_db - 3;
+
+  // Peak gain
+  let peak_db = midband_db;
+  for (let lf=-1; lf<=7; lf+=0.01) {
+    const g = gainDB(Math.pow(10,lf), dcDB, fL_hz, fH_hz, q);
+    if (g > peak_db) peak_db = g;
+  }
+
+  function bisect_lower(lo, hi) {
+    for (let i=0;i<60;i++) {
+      const m = Math.sqrt(lo*hi);
+      if (gainDB(m,dcDB,fL_hz,fH_hz,q)<threshold) lo=m; else hi=m;
+    }
+    return Math.sqrt(lo*hi);
+  }
+  function bisect_upper(lo, hi) {
+    for (let i=0;i<60;i++) {
+      const m = Math.sqrt(lo*hi);
+      if (gainDB(m,dcDB,fL_hz,fH_hz,q)>threshold) lo=m; else hi=m;
+    }
+    return Math.sqrt(lo*hi);
+  }
+  const fL_3 = bisect_lower(0.01, f_mid);
+  const fH_3 = bisect_upper(f_mid, 1e8);
+  const bw = fH_3 - fL_3;
+  const avLin = Math.pow(10, midband_db/20);
+  const gbw = avLin * bw;
+
+  document.getElementById('r_mid').textContent = midband_db.toFixed(1)+' dB';
+  document.getElementById('r_fl').textContent = formatHz(fL_3);
+  document.getElementById('r_fh').textContent = formatHz(fH_3);
+  document.getElementById('r_bw').textContent = formatHz(bw);
+  document.getElementById('r_gbw').textContent = gbw>=1e6?(gbw/1e6).toFixed(2)+' MHz':(gbw/1e3).toFixed(1)+' kHz';
+  const peakDiff = peak_db - midband_db;
+  document.getElementById('r_peak').textContent = peakDiff < 0.1 ? '0.0 dB (flat)' : '+'+peakDiff.toFixed(1)+' dB';
+
+  // Update step highlights
+  const steps = ['s1n','s2n','s3n','s4n','s5n'];
+  steps.forEach(id => document.getElementById(id).classList.remove('done'));
+  steps.forEach(id => document.getElementById(id).classList.add('done'));
+
+  document.getElementById('s1t').textContent = `Midband: flat region ≈ ${midband_db.toFixed(1)} dB`;
+  document.getElementById('s2t').textContent = `Reference line: ${midband_db.toFixed(1)} − 3 = ${threshold.toFixed(1)} dB`;
+  document.getElementById('s3t').textContent = `f_L = ${formatHz(fL_3)} (gain crosses ${threshold.toFixed(1)} dB rising)`;
+  document.getElementById('s4t').textContent = `f_H = ${formatHz(fH_3)} (gain crosses ${threshold.toFixed(1)} dB falling)`;
+  document.getElementById('s5t').textContent = `BW = ${formatHz(bw)}, GBW = ${gbw>=1e6?(gbw/1e6).toFixed(2)+' MHz':(gbw/1e3).toFixed(1)+' kHz'}`;
+
+  // Tip
+  if (peakDiff > 0.5) {
+    document.getElementById('tip_box').textContent = `Warning: Gain peaks ${peakDiff.toFixed(1)} dB above midband (Q=${q.toFixed(2)}). Reference is still midband, not the peak. Phase margin is likely below 65° — check stability.`;
+  } else {
+    document.getElementById('tip_box').textContent = `Response is flat within ${peakDiff.toFixed(2)} dB. Good: no peaking means healthy phase margin (Q ≤ 0.707 at -3 dB frequency).`;
+  }
+
+  drawBode(dcDB, fL_hz, fH_hz, q, midband_db, threshold, fL_3, fH_3);
+  drawGBWChart(midband_db, bw, gbw);
+}
+
+function getCtx(id) {
+  const c = document.getElementById(id);
+  c.width = c.offsetWidth * devicePixelRatio;
+  c.height = c.offsetHeight * devicePixelRatio;
+  const ctx = c.getContext('2d');
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+  ctx.W = c.offsetWidth; ctx.H = c.offsetHeight;
+  return ctx;
+}
+
+function cv(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+function drawBode(dcDB, fL_hz, fH_hz, q, midband_db, threshold, fL_3, fH_3) {
+  const ctx = getCtx('bode');
+  const W=ctx.W, H=ctx.H;
+  const pl=62, pr=18, pt=28, pb=36;
+  const pw=W-pl-pr, ph=H-pt-pb;
+
+  ctx.clearRect(0,0,W,H);
+
+  const fMin=0.1, fMax=1e7, logMin=Math.log10(fMin), logMax=Math.log10(fMax);
+  const gainMin=threshold-15, gainMax=midband_db+15;
+
+  const fx=f=>pl+(Math.log10(f)-logMin)/(logMax-logMin)*pw;
+  const fy=db=>pt+(1-(db-gainMin)/(gainMax-gainMin))*ph;
+
+  // Grid
+  ctx.strokeStyle=cv('--grid'); ctx.lineWidth=0.7;
+  for (let d=-1;d<=7;d++) {
+    const x=fx(Math.pow(10,d));
+    ctx.beginPath();ctx.moveTo(x,pt);ctx.lineTo(x,pt+ph);ctx.stroke();
+    for (let s=2;s<=9;s++) {
+      const xs=fx(Math.pow(10,d)*s);
+      ctx.globalAlpha=0.3;ctx.beginPath();ctx.moveTo(xs,pt);ctx.lineTo(xs,pt+ph);ctx.stroke();ctx.globalAlpha=1;
+    }
+  }
+  for (let db=Math.ceil(gainMin/10)*10;db<=gainMax;db+=10) {
+    const y=fy(db);
+    ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+pw,y);ctx.stroke();
+  }
+
+  // Midband line
+  ctx.strokeStyle=cv('--accent'); ctx.lineWidth=1.2; ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pl,fy(midband_db));ctx.lineTo(pl+pw,fy(midband_db));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=cv('--accent'); ctx.font='10px system-ui';
+  ctx.fillText('Midband '+midband_db.toFixed(1)+' dB', pl+4, fy(midband_db)-3);
+
+  // -3 dB reference line
+  ctx.strokeStyle=cv('--accent3'); ctx.lineWidth=1.5; ctx.setLineDash([6,4]);
+  ctx.beginPath();ctx.moveTo(pl,fy(threshold));ctx.lineTo(pl+pw,fy(threshold));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=cv('--accent3'); ctx.font='bold 10px system-ui';
+  ctx.fillText('-3 dB ref: '+threshold.toFixed(1)+' dB', pl+4, fy(threshold)-3);
+
+  // Shaded passband
+  ctx.fillStyle=cv('--accent')+'22';
+  const xfL3=fx(fL_3), xfH3=fx(fH_3);
+  ctx.fillRect(xfL3, fy(midband_db+10), xfH3-xfL3, fy(threshold)-fy(midband_db+10));
+
+  // Gain curve
+  ctx.strokeStyle=cv('--accent'); ctx.lineWidth=2.5; ctx.setLineDash([]);
+  ctx.beginPath();
+  let first=true;
+  for (let i=0;i<=800;i++) {
+    const lf=logMin+i/800*(logMax-logMin);
+    const f=Math.pow(10,lf);
+    const db=gainDB(f,dcDB,fL_hz,fH_hz,q);
+    const x=pl+i/800*pw, y=fy(Math.max(gainMin,Math.min(gainMax,db)));
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // f_L annotation
+  const yFL=fy(gainDB(fL_3,dcDB,fL_hz,fH_hz,q));
+  ctx.fillStyle=cv('--accent3');
+  ctx.beginPath();ctx.arc(xfL3,yFL,5,0,2*Math.PI);ctx.fill();
+  ctx.strokeStyle=cv('--accent3');ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(xfL3,pt);ctx.lineTo(xfL3,pt+ph);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=cv('--accent3');ctx.font='bold 10px system-ui';
+  ctx.fillText('f_L', xfL3+3, fy(threshold)+12);
+  ctx.fillText(formatHz(fL_3), xfL3-10, pt+ph+14);
+
+  // f_H annotation
+  const yFH=fy(gainDB(fH_3,dcDB,fL_hz,fH_hz,q));
+  ctx.fillStyle=cv('--accent2');
+  ctx.beginPath();ctx.arc(xfH3,yFH,5,0,2*Math.PI);ctx.fill();
+  ctx.strokeStyle=cv('--accent2');ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(xfH3,pt);ctx.lineTo(xfH3,pt+ph);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=cv('--accent2');ctx.font='bold 10px system-ui';
+  ctx.fillText('f_H', xfH3+3, fy(threshold)+12);
+  ctx.fillText(formatHz(fH_3), xfH3-10, pt+ph+14);
+
+  // BW arrow
+  const arrowY = pt+ph-12;
+  ctx.strokeStyle=cv('--accent4');ctx.lineWidth=1.5;ctx.setLineDash([]);
+  ctx.beginPath();ctx.moveTo(xfL3,arrowY);ctx.lineTo(xfH3,arrowY);ctx.stroke();
+  // arrowheads
+  [[xfL3,-1],[xfH3,1]].forEach(([x,d]) => {
+    ctx.beginPath();ctx.moveTo(x,arrowY);ctx.lineTo(x+d*8,arrowY-4);ctx.lineTo(x+d*8,arrowY+4);ctx.fill();
+  });
+  ctx.fillStyle=cv('--accent4');ctx.font='bold 10px system-ui';
+  const bwLabel = formatHz(fH_3-fL_3);
+  ctx.fillText('BW = '+bwLabel, (xfL3+xfH3)/2-30, arrowY-4);
+
+  // Axes
+  ctx.fillStyle=cv('--muted');ctx.font='11px system-ui';
+  for (let db=Math.ceil(gainMin/10)*10;db<=gainMax;db+=10) ctx.fillText(db,2,fy(db)+4);
+  [0.1,1,10,100,1e3,1e4,1e5,1e6,1e7].forEach((f,i)=>{
+    const x=fx(f);if(x>pl&&x<pl+pw) ctx.fillText(['0.1','1','10','100','1k','10k','100k','1M','10M'][i],x-8,pt+ph+16);
+  });
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Gain (dB)',4,pt-10);
+  ctx.fillText('Frequency (Hz)',pl+pw/2-50,H-2);
+}
+
+function drawGBWChart(midband_db, bw, gbw) {
+  const ctx = getCtx('gbw_chart');
+  const W=ctx.W, H=ctx.H;
+  const pl=60, pr=20, pt=28, pb=36;
+  const pw=W-pl-pr, ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  // GBW hyperbola: Av_lin * BW = GBW
+  // x-axis: BW (Hz) log scale from 1 Hz to GBW
+  // y-axis: gain_linear log scale
+  const bwMax = gbw * 2;
+  const avMax = Math.pow(10, midband_db/20) * 3;
+
+  const fMin2=1, fMax2=bwMax;
+  const lMin2=Math.log10(fMin2), lMax2=Math.log10(fMax2);
+  const gMin2=1, gMax2=avMax;
+  const lgMin2=Math.log10(gMin2), lgMax2=Math.log10(gMax2);
+
+  function hx(bwv) { return pl+(Math.log10(Math.max(bwv,0.001))-lMin2)/(lMax2-lMin2)*pw; }
+  function hy(av)  { return pt+(1-(Math.log10(Math.max(av,0.01))-lgMin2)/(lgMax2-lgMin2))*ph; }
+
+  // Grid
+  ctx.strokeStyle=cv('--grid');ctx.lineWidth=0.7;
+  const nDecBW = Math.ceil(lMax2)-Math.floor(lMin2);
+  for (let d=Math.floor(lMin2);d<=Math.ceil(lMax2);d++) {
+    const x=hx(Math.pow(10,d));
+    if(x>=pl&&x<=pl+pw){ctx.beginPath();ctx.moveTo(x,pt);ctx.lineTo(x,pt+ph);ctx.stroke();}
+  }
+  for (let d=Math.floor(lgMin2);d<=Math.ceil(lgMax2);d++) {
+    const y=hy(Math.pow(10,d));
+    if(y>=pt&&y<=pt+ph){ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+pw,y);ctx.stroke();}
+  }
+
+  // GBW hyperbola: for given BW on x-axis, Av = GBW/BW
+  ctx.strokeStyle=cv('--accent4');ctx.lineWidth=2;ctx.setLineDash([]);
+  ctx.beginPath();let first=true;
+  for (let i=0;i<=400;i++) {
+    const lbw=lMin2+i/400*(lMax2-lMin2);
+    const bwv=Math.pow(10,lbw);
+    const av=gbw/bwv;
+    if(av<gMin2||av>gMax2){first=true;continue;}
+    const x=hx(bwv),y=hy(av);
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  ctx.fillStyle=cv('--accent4');ctx.font='10px system-ui';
+  ctx.fillText('GBW = const', pl+pw/2, hy(gMax2*0.7));
+
+  // Current operating point
+  const avCurr = Math.pow(10,midband_db/20);
+  const xop=hx(bw), yop=hy(avCurr);
+  if(xop>=pl&&xop<=pl+pw&&yop>=pt&&yop<=pt+ph) {
+    ctx.fillStyle=cv('--accent');
+    ctx.beginPath();ctx.arc(xop,yop,7,0,2*Math.PI);ctx.fill();
+    ctx.fillStyle=cv('--text');ctx.font='bold 10px system-ui';
+    ctx.fillText('Operating point', Math.min(xop+10,pl+pw-90), yop-6);
+    ctx.fillText('BW='+formatHz(bw), Math.min(xop+10,pl+pw-90), yop+8);
+    ctx.fillText('Av='+avCurr.toFixed(0)+'×', Math.min(xop+10,pl+pw-90), yop+20);
+  }
+
+  // Axes labels
+  ctx.fillStyle=cv('--muted');ctx.font='11px system-ui';
+  for (let d=Math.floor(lMin2);d<=Math.ceil(lMax2);d++) {
+    const x=hx(Math.pow(10,d));
+    const f=Math.pow(10,d);
+    if(x>=pl&&x<=pl+pw) ctx.fillText(f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f, x-8, pt+ph+16);
+  }
+  for (let d=Math.floor(lgMin2);d<=Math.ceil(lgMax2);d++) {
+    const y=hy(Math.pow(10,d));
+    if(y>=pt&&y<=pt+ph) ctx.fillText('10^'+d, 2, y+4);
+  }
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Gain (×)',4,pt-10);
+  ctx.fillText('Bandwidth (Hz)',pl+pw/2-50,H-2);
+  ctx.fillText('GBW Trade-off Curve', pl+pw/2-60, pt-10);
+}
+
+window.addEventListener('resize', update);
+update();
+</script>
+</body>
+</html>

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CAS-4.7.1 — Optimize: Gain vs Headroom</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#4d9fff;--green:#00cc66;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  select{background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:13px;width:100%;}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  .ro.warn span{color:#cc4400;}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CAS-4.7.1</div>
+  <h1>Cascode — Optimize: Gain vs Headroom</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Optimization Knobs</h2>
+      <label>Process node: <select id="node">
+        <option value="180">180nm (V_A0 = 5 V/μm)</option>
+        <option value="65">65nm (V_A0 = 2 V/μm)</option>
+        <option value="28">28nm (V_A0 = 0.8 V/μm)</option>
+      </select></label>
+      <label>Transistor L (μm): <b id="L_l">0.18</b> <input type="range" id="L" min="0.18" max="5" value="0.18" step="0.02"></label>
+      <label>I_D (μA): <b id="id_l">100</b> <input type="range" id="id" min="5" max="500" value="100" step="5"></label>
+      <label>V_ov (mV): <b id="vov_l">200</b> <input type="range" id="vov" min="50" max="400" value="200" step="10"></label>
+      <label>V_DD (V): <b id="vdd_l">1.8</b> <input type="range" id="vdd" min="0.6" max="3.3" value="1.8" step="0.1"></label>
+      <label>Regulated A_amp: <b id="aamp_l">1</b>× <input type="range" id="aamp" min="1" max="50" value="1" step="1"></label>
+      <label>A_v target (dB): <b id="avt_l">120</b> <input type="range" id="avt" min="40" max="180" value="120" step="1"></label>
+
+      <div class="ro">r_o (per device): <span id="ro_out">--</span> kΩ</div>
+      <div class="ro">g_m: <span id="gm_out">--</span> mA/V</div>
+      <div class="ro" id="av_ro">A_v: <span id="av_out">--</span> dB</div>
+      <div class="ro">Swing (wide-swing): <span id="swing_out">--</span> V</div>
+      <div class="ro g">Intrinsic gain g_m×r_o: <span id="intrinsic">--</span></div>
+
+      <div class="insight" id="insight_box">Adjust parameters to explore the gain/headroom trade-off.</div>
+    </div>
+
+    <div class="card">
+      <h2>A_v and Swing vs Transistor Length L</h2>
+      <canvas id="cv" height="320"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  const VA0_map = {180: 5, 65: 2, 28: 0.8}; // V/μm
+
+  function compute(){
+    const node = +document.getElementById('node').value;
+    const L    = +document.getElementById('L').value;
+    const ID   = +document.getElementById('id').value * 1e-6;
+    const Vov  = +document.getElementById('vov').value / 1000;
+    const VDD  = +document.getElementById('vdd').value;
+    const Aamp = +document.getElementById('aamp').value;
+    const Av_tgt = +document.getElementById('avt').value;
+
+    document.getElementById('L_l').textContent   = L.toFixed(2);
+    document.getElementById('id_l').textContent  = (ID*1e6).toFixed(0);
+    document.getElementById('vov_l').textContent = (Vov*1000).toFixed(0);
+    document.getElementById('vdd_l').textContent = VDD.toFixed(1);
+    document.getElementById('aamp_l').textContent = Aamp.toFixed(0);
+    document.getElementById('avt_l').textContent  = Av_tgt.toFixed(0);
+
+    const VA0 = VA0_map[node];
+    const ro   = VA0 * L / ID; // V_A = VA0 * L; r_o = V_A / I_D
+    const gm   = 2 * ID / Vov;
+
+    // Cascode r_out (NMOS + PMOS, each side identical)
+    const rout_cas_side = gm * ro * ro; // one side
+    const rout_total = rout_cas_side / 2; // parallel of two equal sides
+
+    const rout_rgc = Aamp * rout_total;
+    const Av       = gm * rout_rgc;
+    const Av_dB    = 20 * Math.log10(Math.max(1, Av));
+
+    // Swing: wide-swing telescopic (tail + 2Vov NMOS + 2Vov PMOS)
+    const V_n = 3 * Vov; // tail + pair + NMOS cascode
+    const V_p = 2 * Vov; // PMOS mirror + PMOS cascode (wide-swing)
+    const swing = Math.max(0, VDD - V_n - V_p);
+
+    const intrinsic = (gm * ro).toFixed(0);
+
+    document.getElementById('ro_out').textContent   = (ro/1e3).toFixed(1);
+    document.getElementById('gm_out').textContent   = (gm*1e3).toFixed(2);
+    document.getElementById('av_out').textContent   = Av_dB.toFixed(1);
+    document.getElementById('swing_out').textContent = swing.toFixed(3);
+    document.getElementById('intrinsic').textContent = intrinsic;
+
+    const avRo = document.getElementById('av_ro');
+    avRo.className = Av_dB >= Av_tgt ? 'ro g' : 'ro warn';
+
+    document.getElementById('insight_box').textContent =
+      (Av_dB >= Av_tgt ? 'Gain target met: ' : 'Gain insufficient by ' + (Av_tgt - Av_dB).toFixed(0) + ' dB. Increase L or A_amp. ') +
+      'g_m×r_o = ' + intrinsic + '. r_out = ' + (rout_rgc >= 1e9 ? (rout_rgc/1e9).toFixed(1)+'GΩ' : (rout_rgc/1e6).toFixed(0)+'MΩ') +
+      '. Swing = ' + (swing*1000).toFixed(0) + ' mV.';
+
+    draw(node, ID, Vov, VDD, Aamp, Av_tgt, L);
+  }
+
+  function draw(node, ID, Vov, VDD, Aamp, Av_tgt, L_op){
+    const cv  = document.getElementById('cv');
+    const W   = cv.parentElement.clientWidth - 36;
+    cv.width = W; cv.height = 320;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, W, 320);
+
+    const isDark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+    const axCol  = isDark ? '#8899bb' : '#8888aa';
+
+    const VA0 = VA0_map[node];
+    const gm  = 2 * ID / Vov;
+
+    const pL=52, pT=14, pB=40, pH=320-pT-pB, pW=W-pL-10;
+    const L_min = 0.18, L_max = 5.0;
+
+    // Dual y-axis: left = A_v (dB), right = swing (V)
+    const Av_min = 40, Av_max = 200;
+    const sw_min = 0, sw_max = VDD;
+
+    function xPos(L){ return pL + ((L - L_min)/(L_max - L_min))*pW; }
+    function yAv(dB){ return pT + pH - ((dB - Av_min)/(Av_max - Av_min))*pH; }
+
+    // Axes
+    ctx.strokeStyle=axCol; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+pH); ctx.lineTo(pL+pW,pT+pH); ctx.stroke();
+
+    // Left grid (A_v)
+    for(let dB=Av_min; dB<=Av_max; dB+=20){
+      const y=yAv(dB); if(y<pT||y>pT+pH) continue;
+      ctx.fillStyle=axCol; ctx.font='8px system-ui'; ctx.textAlign='right';
+      ctx.fillText(dB+'dB', pL-3, y+3);
+      ctx.strokeStyle=axCol+'22'; ctx.lineWidth=0.5;
+      ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pW,y); ctx.stroke();
+    }
+
+    // X labels
+    [0.18, 0.5, 1, 2, 3, 5].forEach(v=>{
+      if(v < L_min || v > L_max) return;
+      const x=xPos(v);
+      ctx.fillStyle=axCol; ctx.font='8px system-ui'; ctx.textAlign='center';
+      ctx.fillText(v+'μm', x, pT+pH+14);
+    });
+
+    // A_v curve vs L
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2;
+    ctx.beginPath(); let first=true;
+    for(let px=0; px<=pW; px++){
+      const L = L_min + (px/pW)*(L_max-L_min);
+      const ro_L = VA0 * L / ID;
+      const rout = Aamp * gm * ro_L * ro_L / 2;
+      const Av_dB = 20*Math.log10(Math.max(1, gm * rout));
+      const y = yAv(Av_dB);
+      if(y<pT-8||y>pT+pH+8){first=true;continue;}
+      first?ctx.moveTo(pL+px,y):ctx.lineTo(pL+px,y); first=false;
+    }
+    ctx.stroke();
+
+    // Swing: constant vs L (V_ov fixed)
+    const swing_val = Math.max(0, VDD - 3*Vov - 2*Vov);
+    const ysw = yAv(swing_val * (Av_max - Av_min) / VDD + Av_min); // Scale swing onto same axis
+    // Actually draw swing as a horizontal dashed line normalized to the A_v scale
+    // Let's draw it in a separate color on the right y-axis scale as annotation
+    // Simpler: just annotate
+    ctx.fillStyle='#ff8800'; ctx.font='9px system-ui'; ctx.textAlign='right';
+    ctx.fillText('Swing = ' + (swing_val*1000).toFixed(0) + ' mV (fixed)', pL+pW, pT+pH-10);
+
+    // Av target line
+    const ytgt = yAv(Av_tgt);
+    if(ytgt >= pT && ytgt <= pT+pH){
+      ctx.strokeStyle='#cc220088'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+      ctx.beginPath(); ctx.moveTo(pL,ytgt); ctx.lineTo(pL+pW,ytgt); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle='#cc2200'; ctx.font='9px system-ui'; ctx.textAlign='left';
+      ctx.fillText('Target: '+Av_tgt+'dB', pL+5, ytgt-4);
+    }
+
+    // Op point
+    const ro_op = VA0 * L_op / ID;
+    const rout_op = Aamp * gm * ro_op * ro_op / 2;
+    const Av_op = 20*Math.log10(Math.max(1, gm*rout_op));
+    const xop = xPos(L_op);
+    const yop = yAv(Av_op);
+    ctx.fillStyle = Av_op >= Av_tgt ? '#00994d' : '#cc4400';
+    ctx.beginPath(); ctx.arc(xop, yop, 6, 0, 2*Math.PI); ctx.fill();
+
+    // Legend
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(pL+pW-130,pT+12); ctx.lineTo(pL+pW-110,pT+12); ctx.stroke();
+    ctx.fillStyle=axCol; ctx.font='9px system-ui'; ctx.textAlign='left';
+    ctx.fillText('A_v vs L', pL+pW-106, pT+16);
+
+    ctx.textAlign='center'; ctx.fillStyle=axCol; ctx.font='9px system-ui';
+    ctx.fillText('Transistor Length L (μm) →', pL+pW/2, pT+pH+28);
+    ctx.save(); ctx.translate(12,pT+pH/2); ctx.rotate(-Math.PI/2);
+    ctx.fillText('A_v (dB) →', 0, 0); ctx.restore();
+    ctx.font='bold 10px system-ui'; ctx.textAlign='center';
+    ctx.fillText('Gain vs Length ('+node+'nm node)', pL+pW/2, pT-2);
+  }
+
+  document.querySelectorAll('input[type=range],select').forEach(e => e.addEventListener('input', compute));
+  compute();
+  window.addEventListener('resize', compute);
+</script>
+</body>
+</html>

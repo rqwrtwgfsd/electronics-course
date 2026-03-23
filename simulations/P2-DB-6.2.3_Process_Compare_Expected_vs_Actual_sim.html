@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-DB-6.2.3 Compare Expected vs Actual</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:12px;padding:12px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:230px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.warn{color:#ff4444;font-size:11px;margin-top:4px}
+.ok{color:#00ff88;font-size:11px;margin-top:4px}
+.formula{color:#ffaa00;font-size:11px;margin-top:8px;line-height:1.6}
+</style>
+</head>
+<body>
+<h1>P2-DB-6.2.3 — Compare Expected vs Actual τ | Fault Magnitude</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="580" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>Design Values</h2>
+<label>R_design (kΩ)
+<input type="range" id="rd" min="1" max="100" step="1" value="10">
+<div class="readout" id="rd_v">R_d = 10 kΩ</div>
+</label>
+<label>C_design (nF)
+<input type="range" id="cd" min="10" max="2000" step="10" value="100">
+<div class="readout" id="cd_v">C_d = 100 nF</div>
+</label>
+<h2 style="margin-top:10px">Measured τ_actual</h2>
+<label>τ_measured (ms) — move to match oscilloscope reading
+<input type="range" id="tm_s" min="0.1" max="30" step="0.05" value="1">
+<div class="readout" id="tm_v">τ_measured = 1.00 ms</div>
+</label>
+<h2 style="margin-top:10px">Diagnosis</h2>
+<div class="readout" id="tau_d">τ_design = —</div>
+<div class="readout" id="tau_r">τ_ratio = —</div>
+<div class="readout" id="delta_R">ΔR extra = —</div>
+<div class="readout" id="delta_C">ΔC factor = —</div>
+<div id="fault_msg" class="warn"></div>
+<div class="formula">ΔR = (τ_act − τ_des) / C_des<br>ΔC_factor = τ_act / τ_des (if R ok)</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let rd=10,cd=100,tm=1;
+const W=580,H=380,PAD={l:60,r:20,t:30,b:40};
+const CW=W-PAD.l-PAD.r,CH=H-PAD.t-PAD.b;
+const Vin=5;
+
+['rd','cd','tm_s'].forEach(id=>{
+  document.getElementById(id).oninput=function(){
+    if(id==='rd'){rd=parseFloat(this.value);document.getElementById('rd_v').textContent='R_d = '+rd+' kΩ';}
+    if(id==='cd'){cd=parseFloat(this.value);document.getElementById('cd_v').textContent='C_d = '+cd+' nF';}
+    if(id==='tm_s'){tm=parseFloat(this.value);document.getElementById('tm_v').textContent='τ_measured = '+tm.toFixed(2)+' ms';}
+    draw();
+  };
+});
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const tau_d=rd*cd/1000; // ms (kΩ × nF = μs → / 1000 = ms? no: kΩ × nF = 10³ × 10⁻⁹ = 10⁻⁶ s = μs. × 1000 = ms? no. τ[ms] = R[kΩ]×C[nF]/1000)
+  const tau_des=rd*1e3*cd*1e-9*1000; // ms
+  const tmax=Math.max(tau_des,tm)*7;
+  function toPx(t,v){return[PAD.l+CW*(t/tmax),PAD.t+CH*(1-v/(Vin*1.15))];}
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=7;i++){const x=PAD.l+CW*(i/7);ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=PAD.t+CH*(i/5);ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+CH);ctx.moveTo(PAD.l,PAD.t+CH);ctx.lineTo(PAD.l+CW,PAD.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=7;i++){const t=tmax*i/7;const x=PAD.l+CW*(i/7);ctx.fillText(t.toFixed(2)+'ms',x,PAD.t+CH+14);}
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){const v=Vin*1.15*(1-i/5);const y=PAD.t+CH*(i/5);ctx.fillText(v.toFixed(1)+'V',PAD.l-4,y+4);}
+  const[,yvf]=toPx(0,Vin);
+  ctx.strokeStyle='#333';ctx.setLineDash([4,4]);ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,yvf);ctx.lineTo(PAD.l+CW,yvf);ctx.stroke();ctx.setLineDash([]);
+  // Expected
+  ctx.strokeStyle='#00ff88';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=500;i++){const t=tmax*i/500;const v=Vin*(1-Math.exp(-t/tau_des));const[x,y]=toPx(t,v);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  ctx.fillStyle='#00ff88';ctx.font='11px Courier New';ctx.textAlign='left';
+  ctx.fillText('Expected τ='+tau_des.toFixed(3)+'ms',PAD.l+4,PAD.t+14);
+  // Actual (measured)
+  ctx.strokeStyle='#ff4444';ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=500;i++){const t=tmax*i/500;const v=Vin*(1-Math.exp(-t/tm));const[x,y]=toPx(t,v);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  ctx.fillStyle='#ff4444';ctx.font='11px Courier New';
+  ctx.fillText('Actual τ='+tm.toFixed(3)+'ms',PAD.l+4,PAD.t+28);
+  // τ markers
+  const[xtd,ytd]=toPx(tau_des,0.632*Vin);
+  const[xtm,ytm_p]=toPx(tm,0.632*Vin);
+  ctx.fillStyle='#00ff88';ctx.beginPath();ctx.arc(xtd,ytd,4,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#ff4444';ctx.beginPath();ctx.arc(xtm,ytm_p,4,0,Math.PI*2);ctx.fill();
+  // Shaded region between curves at 63.2% line
+  const[,y63]=toPx(0,0.632*Vin);
+  ctx.strokeStyle='#ff440044';ctx.setLineDash([2,2]);ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,y63);ctx.lineTo(PAD.l+CW,y63);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#ff440022';
+  ctx.fillRect(Math.min(xtd,xtm),PAD.t,Math.abs(xtm-xtd),CH);
+  // Diagnosis
+  const ratio=tm/tau_des;
+  const deltaR=(tm-tau_des)/1000*1e6/(cd*1e-9)/1000; // kΩ
+  const deltaC_factor=ratio;
+  document.getElementById('tau_d').textContent='τ_design = '+tau_des.toFixed(3)+' ms';
+  document.getElementById('tau_r').textContent='τ ratio = '+ratio.toFixed(3)+'× ('+((ratio-1)*100).toFixed(1)+'%)';
+  document.getElementById('delta_R').textContent='ΔR (if C ok) = +'+(deltaR).toFixed(1)+' kΩ';
+  document.getElementById('delta_C').textContent='ΔC factor (if R ok) = '+deltaC_factor.toFixed(2)+'×';
+  const msg=document.getElementById('fault_msg');
+  if(Math.abs(ratio-1)<0.05)msg.textContent='';
+  else if(ratio>1)msg.textContent='τ too large by '+((ratio-1)*100).toFixed(0)+'%. Check for excess R or C. E-series decade error?';
+  else msg.textContent='τ too small by '+((1-ratio)*100).toFixed(0)+'%. MLCC derated? Wrong R value?';
+}
+draw();
+</script>
+</body>
+</html>

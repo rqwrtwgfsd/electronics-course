@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-OAD-10.8.1 — Advanced Op-Amp Topologies</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0e1117; color: #cdd6f4; font-family: 'Segoe UI', sans-serif; font-size: 14px; }
+  h1 { text-align: center; padding: 18px; font-size: 17px; color: #cba6f7; border-bottom: 1px solid #313244; }
+  .tabs { display: flex; background: #181825; border-bottom: 1px solid #313244; }
+  .tab { padding: 10px 22px; cursor: pointer; color: #a6adc8; font-size: 13px; border-bottom: 3px solid transparent; transition: all .2s; }
+  .tab.active { color: #cba6f7; border-bottom-color: #cba6f7; }
+  .tab:hover:not(.active) { color: #cdd6f4; }
+  .panel { display: none; padding: 18px; }
+  .panel.active { display: block; }
+  canvas { display: block; background: #1e1e2e; border-radius: 8px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+  .ctrl { background: #181825; border-radius: 8px; padding: 14px; min-width: 220px; }
+  .ctrl label { display: block; color: #a6adc8; font-size: 12px; margin-bottom: 6px; }
+  .ctrl input[type=range] { width: 100%; accent-color: #cba6f7; margin-bottom: 2px; }
+  .ctrl .val { color: #a6e3a1; font-size: 12px; text-align: right; margin-bottom: 8px; }
+  .info-box { background: #181825; border-radius: 8px; padding: 12px; margin-top: 12px; font-size: 12px; line-height: 1.7; }
+  .hi { color: #a6e3a1; font-weight: bold; }
+  .warn { color: #f38ba8; font-weight: bold; }
+  .note { color: #fab387; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+  .leg-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #a6adc8; }
+  .leg-dot { width: 18px; height: 3px; border-radius: 2px; display: inline-block; }
+</style>
+</head>
+<body>
+<h1>M4B-OAD-10.8.1 — Advanced Op-Amp Topologies</h1>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">Topology Comparison</div>
+  <div class="tab" onclick="showTab(1)">Three-Stage NMC Stability</div>
+  <div class="tab" onclick="showTab(2)">Fully Differential CMFB</div>
+</div>
+
+<!-- TAB 0: Topology Comparison radar -->
+<div class="panel active" id="tab0">
+  <div class="row">
+    <canvas id="c0" width="660" height="420"></canvas>
+    <div class="ctrl" style="max-width:220px;">
+      <label>Select topology:</label>
+      <select id="s_topo" onchange="draw0()" style="background:#1e1e2e;color:#cdd6f4;border:1px solid #313244;padding:5px;width:100%;margin-bottom:12px;border-radius:4px;">
+        <option value="0">Two-Stage Classic</option>
+        <option value="1">Folded Cascode OTA</option>
+        <option value="2">Recycling Folded Cascode</option>
+        <option value="3">Gain-Boosted Cascode</option>
+        <option value="4">Three-Stage NMC</option>
+        <option value="5">Fully Differential + CMFB</option>
+        <option value="6">Current-Feedback (CFOA)</option>
+      </select>
+      <label>ISS (μA): <span class="val" id="v0_iss">200</span></label>
+      <input type="range" id="r0_iss" min="50" max="1000" step="10" value="200" oninput="draw0()">
+      <label>CL (pF): <span class="val" id="v0_cl">1.0</span></label>
+      <input type="range" id="r0_cl" min="0.1" max="50" step="0.1" value="1.0" oninput="draw0()">
+      <label>VDD (V): <span class="val" id="v0_vdd">1.2</span></label>
+      <input type="range" id="r0_vdd" min="0.8" max="1.8" step="0.05" value="1.2" oninput="draw0()">
+    </div>
+  </div>
+  <div class="info-box" id="info0"></div>
+</div>
+
+<!-- TAB 1: NMC Stability -->
+<div class="panel" id="tab1">
+  <div class="row">
+    <canvas id="c1" width="640" height="420"></canvas>
+    <div class="ctrl" style="max-width:220px;">
+      <label>gm1 (mA/V): <span class="val" id="v1_gm1">1.0</span></label>
+      <input type="range" id="r1_gm1" min="0.2" max="5.0" step="0.1" value="1.0" oninput="draw1()">
+      <label>gm2 (mA/V): <span class="val" id="v1_gm2">5.0</span></label>
+      <input type="range" id="r1_gm2" min="1.0" max="20.0" step="0.5" value="5.0" oninput="draw1()">
+      <label>gm3 (mA/V): <span class="val" id="v1_gm3">15.0</span></label>
+      <input type="range" id="r1_gm3" min="2.0" max="50.0" step="1.0" value="15.0" oninput="draw1()">
+      <label>Cm1 inner (pF): <span class="val" id="v1_cm1">0.5</span></label>
+      <input type="range" id="r1_cm1" min="0.1" max="3.0" step="0.1" value="0.5" oninput="draw1()">
+      <label>Cm2 outer (pF): <span class="val" id="v1_cm2">2.0</span></label>
+      <input type="range" id="r1_cm2" min="0.5" max="10.0" step="0.1" value="2.0" oninput="draw1()">
+      <label>CL (pF): <span class="val" id="v1_cl">20</span></label>
+      <input type="range" id="r1_cl" min="1" max="100" step="1" value="20" oninput="draw1()">
+    </div>
+  </div>
+  <div class="info-box" id="info1"></div>
+</div>
+
+<!-- TAB 2: CMFB -->
+<div class="panel" id="tab2">
+  <div class="row">
+    <canvas id="c2" width="640" height="420"></canvas>
+    <div class="ctrl" style="max-width:220px;">
+      <label>Diff-mode GBW (MHz): <span class="val" id="v2_gbw">400</span></label>
+      <input type="range" id="r2_gbw" min="50" max="1000" step="10" value="400" oninput="draw2()">
+      <label>CMFB DC gain (dB): <span class="val" id="v2_dcg">30</span></label>
+      <input type="range" id="r2_dcg" min="10" max="60" step="1" value="30" oninput="draw2()">
+      <label>CMFB fp (MHz): <span class="val" id="v2_fp">50</span></label>
+      <input type="range" id="r2_fp" min="5" max="500" step="5" value="50" oninput="draw2()">
+      <label>CMFB fp2 (MHz): <span class="val" id="v2_fp2">800</span></label>
+      <input type="range" id="r2_fp2" min="100" max="2000" step="10" value="800" oninput="draw2()">
+    </div>
+  </div>
+  <div class="info-box" id="info2"></div>
+</div>
+
+<script>
+const dpr = window.devicePixelRatio || 1;
+function setupCanvas(id, w, h) {
+  const c = document.getElementById(id);
+  c.width = w*dpr; c.height = h*dpr;
+  c.style.width = w+'px'; c.style.height = h+'px';
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr,dpr);
+  return ctx;
+}
+function g(id) { return parseFloat(document.getElementById(id).value); }
+function sv(id,v) { document.getElementById(id).textContent = v; }
+function showTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
+  if(n===1) draw1();
+  if(n===2) draw2();
+}
+
+// ── TAB 0: Topology Comparison (spider chart) ───────────────────────────────
+const topologies = [
+  { name:'Two-Stage Classic', color:'#89b4fa',
+    axes:[0.80, 0.85, 0.75, 0.60, 0.80, 0.70, 0.75, 0.70],
+    notes:'Workhorse. Excellent all-around. CL limited to ~5 pF.' },
+  { name:'Folded Cascode OTA', color:'#a6e3a1',
+    axes:[0.60, 0.95, 0.70, 0.90, 0.55, 0.80, 0.85, 0.65],
+    notes:'High output impedance and Av0. Good for single-stage precision.' },
+  { name:'RFC OTA', color:'#f9e2af',
+    axes:[0.85, 0.90, 0.80, 0.85, 0.60, 0.70, 0.80, 0.90],
+    notes:'Best GBW/power. Slightly higher noise than folded cascode.' },
+  { name:'Gain-Boosted Cascode', color:'#fab387',
+    axes:[0.55, 0.99, 0.65, 0.95, 0.45, 0.90, 0.85, 0.50],
+    notes:'Highest Av0. Complex design. Needs boost amplifier stabilization.' },
+  { name:'Three-Stage NMC', color:'#cba6f7',
+    axes:[0.40, 0.95, 0.55, 0.80, 0.90, 0.60, 0.70, 0.45],
+    notes:'Best for large CL (>10 pF). GBW lower per milliwatt. Complex comp.' },
+  { name:'Fully Diff + CMFB', color:'#f38ba8',
+    axes:[0.90, 0.85, 0.90, 0.70, 0.80, 0.85, 0.80, 0.95],
+    notes:'Best noise/swing. Needs CMFB. Doubles component count.' },
+  { name:'CFOA', color:'#74c7ec',
+    axes:[0.99, 0.50, 0.55, 0.50, 0.60, 0.40, 0.60, 0.65],
+    notes:'Highest SR. GBW independent of gain. No capacitive feedback.' },
+];
+const axisLabels = ['SR','Av0','GBW/Power','Swing','Large CL','Precision','Noise','Speed'];
+
+function draw0() {
+  const isel = parseInt(document.getElementById('s_topo').value);
+  const ISS = g('r0_iss'), CL = g('r0_cl'), VDD = g('r0_vdd');
+  sv('v0_iss', ISS.toFixed(0)); sv('v0_cl', CL.toFixed(1)); sv('v0_vdd', VDD.toFixed(2));
+
+  const ctx = setupCanvas('c0', 660, 420);
+  const W=660, H=420;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+
+  // Spider chart (left side)
+  const cx=200, cy=210, R=150;
+  const N=axisLabels.length;
+  const angles = axisLabels.map((_,i) => -Math.PI/2 + 2*Math.PI*i/N);
+
+  // Background rings
+  [0.25,0.5,0.75,1.0].forEach(r => {
+    ctx.beginPath();
+    angles.forEach((a,i) => {
+      const x=cx+r*R*Math.cos(a), y=cy+r*R*Math.sin(a);
+      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.closePath();
+    ctx.strokeStyle = r===1 ? '#45475a' : '#313244';
+    ctx.lineWidth = r===1 ? 1.2 : 0.7;
+    ctx.stroke();
+  });
+
+  // Axes
+  angles.forEach((a,i) => {
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+R*Math.cos(a), cy+R*Math.sin(a));
+    ctx.strokeStyle='#585b70'; ctx.lineWidth=1; ctx.stroke();
+    const lx=cx+1.22*R*Math.cos(a), ly=cy+1.22*R*Math.sin(a);
+    ctx.fillStyle='#a6adc8'; ctx.font='10px Segoe UI'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(axisLabels[i], lx, ly);
+  });
+
+  // All topologies (faint gray)
+  topologies.forEach((topo,ti) => {
+    if(ti===isel) return;
+    ctx.beginPath();
+    topo.axes.forEach((r,i) => {
+      const x=cx+r*R*Math.cos(angles[i]), y=cy+r*R*Math.sin(angles[i]);
+      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.closePath();
+    ctx.strokeStyle='rgba(88,91,112,0.4)'; ctx.lineWidth=1; ctx.stroke();
+  });
+
+  // Selected topology (colored, filled)
+  const topo = topologies[isel];
+  ctx.beginPath();
+  topo.axes.forEach((r,i) => {
+    const x=cx+r*R*Math.cos(angles[i]), y=cy+r*R*Math.sin(angles[i]);
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.closePath();
+  ctx.fillStyle = topo.color.replace(')', ', 0.2)').replace('rgb', 'rgba').replace('#', 'rgba(').replace(', 0.2)', ');') || 'rgba(137,180,250,0.2)';
+  // Simple alpha fill:
+  ctx.save();
+  ctx.globalAlpha=0.2; ctx.fillStyle=topo.color; ctx.fill(); ctx.globalAlpha=1;
+  ctx.restore();
+  ctx.strokeStyle=topo.color; ctx.lineWidth=2.5; ctx.stroke();
+
+  // Dot markers
+  topo.axes.forEach((r,i) => {
+    const x=cx+r*R*Math.cos(angles[i]), y=cy+r*R*Math.sin(angles[i]);
+    ctx.beginPath(); ctx.arc(x,y,4,0,2*Math.PI);
+    ctx.fillStyle=topo.color; ctx.fill();
+  });
+
+  // Title
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText(topo.name, cx, cy-R-28);
+
+  // Right side: horizontal bar comparison (selected vs all)
+  const rx=400, ry=35, barW=200;
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 12px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText('All topologies — '+axisLabels[0]+' to '+axisLabels[N-1], rx, ry);
+
+  topologies.forEach((t,ti) => {
+    const y=ry+18+ti*50;
+    ctx.fillStyle = ti===isel ? t.color : '#585b70';
+    ctx.font = ti===isel ? 'bold 11px Segoe UI' : '10px Segoe UI';
+    ctx.fillText(t.name, rx, y);
+    // mini bar (average score)
+    const avg = t.axes.reduce((a,b)=>a+b,0)/N;
+    const blen = barW*avg;
+    ctx.fillStyle = ti===isel ? t.color : '#313244';
+    ctx.fillRect(rx, y+4, blen, 8);
+    if(ti===isel) {
+      ctx.fillStyle='#cdd6f4'; ctx.font='10px Segoe UI';
+      ctx.fillText((avg*100).toFixed(0)+'%', rx+blen+4, y+12);
+    }
+  });
+
+  document.getElementById('info0').innerHTML =
+    `<span class="hi">${topo.name}: </span><span class="note">${topo.notes}</span>
+     <br>Overall score: ${(topo.axes.reduce((a,b)=>a+b,0)/N*100).toFixed(0)}%.
+     Best axes: ${axisLabels[topo.axes.indexOf(Math.max(...topo.axes))]} (${(Math.max(...topo.axes)*100).toFixed(0)}%).
+     Weakest: ${axisLabels[topo.axes.indexOf(Math.min(...topo.axes))]} (${(Math.min(...topo.axes)*100).toFixed(0)}%).`;
+}
+
+// ── TAB 1: Three-Stage NMC Bode ─────────────────────────────────────────────
+function draw1() {
+  const gm1=g('r1_gm1')*1e-3, gm2=g('r1_gm2')*1e-3, gm3=g('r1_gm3')*1e-3;
+  const Cm1=g('r1_cm1')*1e-12, Cm2=g('r1_cm2')*1e-12, CL=g('r1_cl')*1e-12;
+  sv('v1_gm1', g('r1_gm1').toFixed(1)); sv('v1_gm2', g('r1_gm2').toFixed(1));
+  sv('v1_gm3', g('r1_gm3').toFixed(1)); sv('v1_cm1', g('r1_cm1').toFixed(1));
+  sv('v1_cm2', g('r1_cm2').toFixed(1)); sv('v1_cl', g('r1_cl').toFixed(0));
+
+  // NMC GBW = gm1 / (2π × Cm2)
+  const GBW_nmc = gm1/(2*Math.PI*Cm2);
+  // fp2 ≈ gm2/(2π×Cm1) [inner stage pole]
+  const fp2_nmc = gm2/(2*Math.PI*Cm1);
+  // fp3 ≈ gm3/(2π×CL)
+  const fp3_nmc = gm3/(2*Math.PI*CL);
+
+  // Stability check (simplified Eschauzier):
+  const cond1 = Cm1 >= Cm2*gm3/gm2; // inner cap constraint
+  const cond2 = gm2 >= 4*gm1*CL/Cm2; // outer loop stability (conservative)
+  const PM_approx = 90 - Math.atan(GBW_nmc/fp2_nmc)*180/Math.PI
+                       - Math.atan(GBW_nmc/fp3_nmc)*180/Math.PI;
+
+  const ctx = setupCanvas('c1', 640, 420);
+  const W=640, H=420;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+
+  const mL=65, mR=30, mT=35, mB=50;
+  const bW=W-mL-mR, bH=H-mT-mB;
+
+  const fMin=1e3, fMax=1e11;
+  function fx(f){return mL+bW*Math.log10(f/fMin)/Math.log10(fMax/fMin);}
+  const gMin=-40, gMax=120;
+  function gy(db){return mT+bH*(1-(db-gMin)/(gMax-gMin));}
+  const phMin=-280, phMax=20;
+  function py(ph){return mT+bH*(1-(ph-phMin)/(phMax-phMin));}
+
+  // Grid
+  [-40,-20,0,20,40,60,80,100,120].forEach(db=>{
+    ctx.beginPath(); ctx.moveTo(mL,gy(db)); ctx.lineTo(mL+bW,gy(db));
+    ctx.strokeStyle=db===0?'#f38ba8':'#313244';
+    ctx.lineWidth=db===0?1.5:0.7; ctx.setLineDash(db===0?[4,3]:[]);
+    ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='right';
+    ctx.fillText(db,mL-4,gy(db)+3);
+  });
+  [1e3,1e4,1e5,1e6,1e7,1e8,1e9,1e10,1e11].forEach(f=>{
+    const x=fx(f);
+    ctx.beginPath(); ctx.moveTo(x,mT); ctx.lineTo(x,mT+bH);
+    ctx.strokeStyle='#313244'; ctx.lineWidth=0.7; ctx.stroke();
+    const labels={1e3:'1k',1e4:'10k',1e5:'100k',1e6:'1M',1e7:'10M',1e8:'100M',1e9:'1G',1e10:'10G',1e11:'100G'};
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText(labels[f]||'', x, mT+bH+14);
+  });
+
+  // DC gain estimate
+  const Rout_each = 200e3; // simplification
+  const Av0_db = 20*Math.log10(gm1*gm2*gm3*Rout_each**3/(gm1*gm2*gm3));
+  const Av0_approx = 80; // typical
+
+  // NMC Bode approximation (simplified 3-pole model)
+  const pts_g=[], pts_p=[];
+  const nPts=300;
+  for(let i=0;i<=nPts;i++) {
+    const f=fMin*Math.pow(fMax/fMin,i/nPts);
+    const w=2*Math.PI*f;
+    // dominant pole: fp1 ≈ gm1/(2π*Av0*Cm2) very low
+    const fp1 = gm1/(2*Math.PI*Av0_approx*Cm2);
+    const mag = 10**( Av0_approx/20 ) /
+      (Math.sqrt(1+(w/(2*Math.PI*fp1))**2) *
+       Math.sqrt(1+(w/(2*Math.PI*fp2_nmc))**2) *
+       Math.sqrt(1+(w/(2*Math.PI*fp3_nmc))**2));
+    const gain_db = 20*Math.log10(Math.max(mag,1e-6));
+    const phase = -Math.atan(w/(2*Math.PI*fp1))*180/Math.PI
+                  -Math.atan(w/(2*Math.PI*fp2_nmc))*180/Math.PI
+                  -Math.atan(w/(2*Math.PI*fp3_nmc))*180/Math.PI;
+    pts_g.push([f, gain_db]);
+    pts_p.push([f, phase]);
+  }
+
+  // Gain curve
+  ctx.beginPath();
+  pts_g.forEach(([f,db],i)=>{
+    const x=fx(f), y=gy(Math.max(gMin+1,Math.min(gMax-1,db)));
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle='#89b4fa'; ctx.lineWidth=2; ctx.stroke();
+
+  // Phase curve
+  ctx.beginPath();
+  pts_p.forEach(([f,ph],i)=>{
+    const x=fx(f), y=py(Math.max(phMin+1,Math.min(phMax-1,ph)));
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle='#a6e3a1'; ctx.lineWidth=2; ctx.stroke();
+
+  // Pole markers
+  [[GBW_nmc,'GBW','#fab387'],[fp2_nmc,'fp2','#cba6f7'],[fp3_nmc,'fp3','#f38ba8']].forEach(([f,label,col])=>{
+    if(f>fMin && f<fMax) {
+      const x=fx(f);
+      ctx.beginPath(); ctx.moveTo(x,mT); ctx.lineTo(x,mT+bH);
+      ctx.strokeStyle=col; ctx.lineWidth=1; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle=col; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+      ctx.fillText(label, x, mT-5);
+      ctx.fillText((f*1e-6).toFixed(0)+'M', x, mT+8);
+    }
+  });
+
+  // PM marker
+  const x_ugain = fx(GBW_nmc);
+  const phase_at_ugain = -Math.atan(GBW_nmc/fp2_nmc)*180/Math.PI - Math.atan(GBW_nmc/fp3_nmc)*180/Math.PI - 90;
+  ctx.beginPath(); ctx.arc(x_ugain, py(phase_at_ugain), 5, 0, 2*Math.PI);
+  ctx.fillStyle='#fab387'; ctx.fill();
+
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Three-Stage NMC Op-Amp — Open-Loop Bode', W/2, 20);
+  ctx.fillStyle='#585b70'; ctx.font='10px Segoe UI';
+  ctx.fillText('Frequency', W/2, H-8);
+
+  // Right-side annotations
+  const rx=mL+bW-150, ry_ann=mT+10;
+  ctx.fillStyle='#89b4fa'; ctx.font='11px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText('GBW = '+(GBW_nmc*1e-6).toFixed(1)+' MHz', rx, ry_ann);
+  ctx.fillStyle='#a6e3a1';
+  ctx.fillText('PM ≈ '+PM_approx.toFixed(1)+'°', rx, ry_ann+16);
+  ctx.fillStyle = cond1&&cond2 ? '#a6e3a1' : '#f38ba8';
+  ctx.fillText('Stability: '+(cond1&&cond2?'OK':'CHECK'), rx, ry_ann+32);
+
+  document.getElementById('info1').innerHTML =
+    `GBW = ${(GBW_nmc*1e-6).toFixed(1)} MHz (= gm1/2π×Cm2).  fp2 = ${(fp2_nmc*1e-9).toFixed(2)} GHz.  fp3 = ${(fp3_nmc*1e-6).toFixed(0)} MHz.
+     <br>PM ≈ ${PM_approx.toFixed(1)}°.
+     Stability check: Cm1 ≥ Cm2×gm3/gm2 → ${(Cm2*gm3/gm2*1e12).toFixed(2)} pF — ${cond1?'<span class="hi">PASS</span>':'<span class="warn">FAIL — increase Cm1</span>'}.
+     gm2 ≥ 4×gm1×CL/Cm2 → ${(4*gm1*CL/Cm2*1e3).toFixed(1)} mA/V — ${cond2?'<span class="hi">PASS</span>':'<span class="warn">FAIL — increase gm2</span>'}.
+     <br><span class="note">Large CL = ${g('r1_cl').toFixed(0)} pF supported — two-stage would need gm3 = ${(2*Math.PI*500e6*CL*1e3).toFixed(0)} mA/V at same GBW.</span>`;
+}
+
+// ── TAB 2: CMFB loop Bode ────────────────────────────────────────────────────
+function draw2() {
+  const GBW_diff=g('r2_gbw')*1e6, DCG=Math.pow(10,g('r2_dcg')/20);
+  const fp_cmfb=g('r2_fp')*1e6, fp2_cmfb=g('r2_fp2')*1e6;
+  sv('v2_gbw', g('r2_gbw').toFixed(0));
+  sv('v2_dcg', g('r2_dcg').toFixed(0));
+  sv('v2_fp', g('r2_fp').toFixed(0));
+  sv('v2_fp2', g('r2_fp2').toFixed(0));
+
+  // CMFB GBW_cmfb = DCG × fp_cmfb (rough, if DC gain >>> 1)
+  const GBW_cmfb = DCG * fp_cmfb;
+  const PM_cmfb = 90 - Math.atan(GBW_cmfb/fp2_cmfb)*180/Math.PI;
+  const ratio = GBW_cmfb/GBW_diff;
+
+  const ctx = setupCanvas('c2', 640, 420);
+  const W=640, H=420;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+
+  const mL=65, mR=20, mT=35, mB=50;
+  const bW=W-mL-mR, bH=H-mT-mB;
+
+  const fMin=1e4, fMax=1e10;
+  function fx(f){return mL+bW*Math.log10(f/fMin)/Math.log10(fMax/fMin);}
+  const gMin=-40, gMax=80;
+  function gy(db){return mT+bH*(1-(db-gMin)/(gMax-gMin));}
+  const phMin=-220, phMax=20;
+  function py(ph){return mT+bH*(1-(ph-phMin)/(phMax-phMin));}
+
+  // Grid
+  [-40,-20,0,20,40,60,80].forEach(db=>{
+    ctx.beginPath(); ctx.moveTo(mL,gy(db)); ctx.lineTo(mL+bW,gy(db));
+    ctx.strokeStyle=db===0?'#f38ba8':'#313244'; ctx.lineWidth=db===0?1.5:0.7;
+    ctx.setLineDash(db===0?[4,3]:[]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='right';
+    ctx.fillText(db,mL-4,gy(db)+3);
+  });
+  [1e4,1e5,1e6,1e7,1e8,1e9,1e10].forEach(f=>{
+    const x=fx(f);
+    ctx.beginPath(); ctx.moveTo(x,mT); ctx.lineTo(x,mT+bH);
+    ctx.strokeStyle='#313244'; ctx.lineWidth=0.7; ctx.stroke();
+    const ls={1e4:'10k',1e5:'100k',1e6:'1M',1e7:'10M',1e8:'100M',1e9:'1G',1e10:'10G'};
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText(ls[f]||'', x, mT+bH+14);
+  });
+
+  const nPts=300;
+  const pts_g_cm=[], pts_p_cm=[];
+  for(let i=0;i<=nPts;i++) {
+    const f=fMin*Math.pow(fMax/fMin,i/nPts);
+    const w=2*Math.PI*f;
+    const mag=DCG/Math.sqrt((1+(w/(2*Math.PI*fp_cmfb))**2)*(1+(w/(2*Math.PI*fp2_cmfb))**2));
+    const db=20*Math.log10(Math.max(mag,1e-6));
+    const ph=-Math.atan(w/(2*Math.PI*fp_cmfb))*180/Math.PI - Math.atan(w/(2*Math.PI*fp2_cmfb))*180/Math.PI;
+    pts_g_cm.push([f,db]); pts_p_cm.push([f,ph]);
+  }
+
+  // CMFB gain
+  ctx.beginPath();
+  pts_g_cm.forEach(([f,db],i)=>{
+    const x=fx(f), y=gy(Math.max(gMin+1,Math.min(gMax-1,db)));
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle='#fab387'; ctx.lineWidth=2.5; ctx.stroke();
+
+  // CMFB phase
+  ctx.beginPath();
+  pts_p_cm.forEach(([f,ph],i)=>{
+    const x=fx(f), y=py(Math.max(phMin+1,Math.min(phMax-1,ph)));
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle='#cba6f7'; ctx.lineWidth=2; ctx.stroke();
+
+  // GBW_diff vertical line
+  const x_diff = fx(GBW_diff);
+  if(x_diff>=mL && x_diff<=mL+bW) {
+    ctx.beginPath(); ctx.moveTo(x_diff,mT); ctx.lineTo(x_diff,mT+bH);
+    ctx.strokeStyle='#89b4fa'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#89b4fa'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText('Diff GBW', x_diff, mT-5);
+  }
+
+  // CMFB GBW line
+  const x_cmfb=fx(GBW_cmfb);
+  if(x_cmfb>=mL && x_cmfb<=mL+bW) {
+    ctx.beginPath(); ctx.moveTo(x_cmfb,mT); ctx.lineTo(x_cmfb,mT+bH);
+    ctx.strokeStyle='#fab387'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#fab387'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText('CMFB GBW', x_cmfb, mT+8);
+  }
+
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('CMFB Loop Bode (Fully Differential Op-Amp)', W/2, 20);
+
+  const ratio_ok = GBW_cmfb >= GBW_diff*3;
+  const pm_ok = PM_cmfb >= 55;
+
+  document.getElementById('info2').innerHTML =
+    `CMFB GBW = ${(GBW_cmfb*1e-6).toFixed(0)} MHz.  Differential GBW = ${(GBW_diff*1e-6).toFixed(0)} MHz.  Ratio = ${ratio.toFixed(1)}×.
+     <br>CMFB PM = ${PM_cmfb.toFixed(1)}°.
+     <br>${ratio_ok?'<span class="hi">CMFB GBW ≥ 3× Diff GBW — adequate separation.</span>':'<span class="warn">CMFB GBW < 3× Diff GBW — CMFB may degrade differential PM. Increase CMFB fp (lower Rout of CMFB sense circuit).</span>'}
+     <br>${pm_ok?'<span class="hi">CMFB PM = '+PM_cmfb.toFixed(1)+'° ≥ 55° — stable.</span>':'<span class="warn">CMFB PM = '+PM_cmfb.toFixed(1)+'° < 55° — CMFB oscillation risk. Reduce CMFB GBW or add compensation.</span>'}`;
+}
+
+draw0();
+draw1();
+draw2();
+</script>
+</body>
+</html>

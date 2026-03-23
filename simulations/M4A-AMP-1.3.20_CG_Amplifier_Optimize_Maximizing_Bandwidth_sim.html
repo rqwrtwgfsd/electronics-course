@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.3.20 — CG Bandwidth Optimization</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;gap:16px;align-items:baseline;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:12px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.3.20</div>
+  <div class="topic">CG Bandwidth Optimization — Three-Pole Analysis, Peaking, fT vs Vov</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>Transistor</h3>
+      <label>gm (mA/V): <b id="gm_lbl">10</b></label>
+      <input type="range" id="gm" min="1" max="50" value="10" step="0.5">
+      <label>Cgs (fF): <b id="cgs_lbl">100</b></label>
+      <input type="range" id="cgs" min="10" max="500" value="100" step="5">
+      <label>Cint (fF): <b id="cint_lbl">80</b></label>
+      <input type="range" id="cint" min="10" max="300" value="80" step="5">
+    </div>
+    <div class="cg">
+      <h3>Circuit</h3>
+      <label>Rs (Ω): <b id="rs_lbl">200</b></label>
+      <input type="range" id="rs" min="25" max="2000" value="200" step="25">
+      <label>RD (kΩ): <b id="rd_lbl">2.0</b></label>
+      <input type="range" id="rd" min="0.05" max="10" value="2" step="0.05">
+      <label>Cout (fF): <b id="cout_lbl">150</b></label>
+      <input type="range" id="cout" min="10" max="500" value="150" step="5">
+      <label>Peaking Ls (pH): <b id="ls_lbl">0</b></label>
+      <input type="range" id="ls" min="0" max="3000" value="0" step="50">
+    </div>
+    <div class="cg">
+      <h3>Bandwidth Summary</h3>
+      <div class="rd">fp1 (input): <span id="r_fp1">—</span></div>
+      <div class="rd">fp2 (internal): <span id="r_fp2">—</span></div>
+      <div class="rd">fp3 (output): <span id="r_fp3">—</span></div>
+      <div class="rd">Dominant: <span id="r_dom">—</span></div>
+      <div class="rd">–3dB BW: <span id="r_bw">—</span></div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_fp1">—</div><div class="l">fp1 Input</div></div>
+      <div class="met"><div class="v" id="m_fp3">—</div><div class="l">fp3 Output</div></div>
+      <div class="met"><div class="v" id="m_bw">—</div><div class="l">–3dB BW</div></div>
+    </div>
+    <div>
+      <div class="pl">Frequency response: all three poles + peaking effect</div>
+      <canvas id="freqCanvas" height="220"></canvas>
+    </div>
+    <div>
+      <div class="pl">BW vs RD: output pole dominates (fp1, fp2 shown as references)</div>
+      <canvas id="rdCanvas" height="190"></canvas>
+    </div>
+    <div>
+      <div class="pl">fT vs Vov (process: TSMC 28nm, 65nm, 180nm)</div>
+      <canvas id="ftCanvas" height="160"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+function fmtHz(f){if(f>=1e9)return (f/1e9).toFixed(2)+'GHz';if(f>=1e6)return (f/1e6).toFixed(1)+'MHz';return (f/1e3).toFixed(0)+'kHz';}
+
+function getPoles(gm,cgs,cint,rs,rd,cout){
+  const fp1=1/(2*Math.PI*rs*cgs);
+  const fp2=gm/(2*Math.PI*cint);
+  const fp3=1/(2*Math.PI*rd*cout);
+  return{fp1,fp2,fp3};
+}
+
+function getBW(fp1,fp2,fp3){
+  const tau1=1/(2*Math.PI*fp1),tau2=1/(2*Math.PI*fp2),tau3=1/(2*Math.PI*fp3);
+  return 1/(2*Math.PI*Math.sqrt(tau1*tau1+tau2*tau2+tau3*tau3));
+}
+
+function update(){
+  const gm=parseFloat(document.getElementById('gm').value)*1e-3;
+  const cgs=parseFloat(document.getElementById('cgs').value)*1e-15;
+  const cint=parseFloat(document.getElementById('cint').value)*1e-15;
+  const rs=parseFloat(document.getElementById('rs').value);
+  const rd=parseFloat(document.getElementById('rd').value)*1e3;
+  const cout=parseFloat(document.getElementById('cout').value)*1e-15;
+  const ls=parseFloat(document.getElementById('ls').value)*1e-12;
+
+  document.getElementById('gm_lbl').textContent=(gm*1e3).toFixed(1);
+  document.getElementById('cgs_lbl').textContent=(cgs*1e15).toFixed(0);
+  document.getElementById('cint_lbl').textContent=(cint*1e15).toFixed(0);
+  document.getElementById('rs_lbl').textContent=rs.toFixed(0);
+  document.getElementById('rd_lbl').textContent=(rd/1e3).toFixed(2);
+  document.getElementById('cout_lbl').textContent=(cout*1e15).toFixed(0);
+  document.getElementById('ls_lbl').textContent=(ls*1e12).toFixed(0);
+
+  const{fp1,fp2,fp3}=getPoles(gm,cgs,cint,rs,rd,cout);
+  const bw=getBW(fp1,fp2,fp3);
+  const dom=[{f:fp1,n:'fp1 Input'},{f:fp2,n:'fp2 Internal'},{f:fp3,n:'fp3 Output'}].reduce((a,b)=>a.f<b.f?a:b);
+
+  document.getElementById('r_fp1').textContent=fmtHz(fp1);
+  document.getElementById('r_fp2').textContent=fmtHz(fp2);
+  document.getElementById('r_fp3').textContent=fmtHz(fp3);
+  document.getElementById('r_dom').textContent=dom.n;
+  document.getElementById('r_bw').textContent=fmtHz(bw);
+
+  document.getElementById('m_fp1').textContent=fmtHz(fp1);
+  document.getElementById('m_fp3').textContent=fmtHz(fp3);
+  document.getElementById('m_bw').textContent=fmtHz(bw);
+
+  drawFreq(gm,cgs,cint,rs,rd,cout,ls);
+  drawRD(gm,cgs,cint,rs,cout,rd);
+  drawFT();
+}
+
+function drawFreq(gm0,cgs0,cint0,rs0,rd0,cout0,ls0){
+  const canvas=document.getElementById('freqCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:55,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+  const{fp1,fp2,fp3}=getPoles(gm0,cgs0,cint0,rs0,rd0,cout0);
+  const bw=getBW(fp1,fp2,fp3);
+
+  const fmin=1e7,fmax=1e12;
+  const toX=f=>pad.l+(Math.log10(f)-Math.log10(fmin))/(Math.log10(fmax)-Math.log10(fmin))*pw;
+  const toY_dB=dB=>pad.t+(1-(dB+30)/30)*ph; // -30 to 0 dB
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [-30,-20,-10,-3,0].forEach(v=>{
+    const y=toY_dB(v);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(v+'dB',pad.l-26,y+3);
+  });
+  [1e7,1e8,1e9,1e10,1e11,1e12].forEach(v=>{
+    const x=toX(v);ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    const lbl=v>=1e9?(v/1e9).toFixed(0)+'G':(v/1e6).toFixed(0)+'M';
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(lbl,x-8,pad.t+ph+12);
+  });
+
+  function gain_dB(f){
+    const w=2*Math.PI*f;
+    // Three-pole response (magnitude)
+    const G1=1/Math.sqrt(1+(f/fp1)*(f/fp1));
+    const G2=1/Math.sqrt(1+(f/fp2)*(f/fp2));
+    // Output: with inductive peaking if ls>0
+    let G3;
+    if(ls0>0){
+      // Shunt peaking: H = (1+jw*Ls/RD) / (1+jw*RD*Cout+jw*Ls/RD+(jw)^2*Ls*Cout/...)
+      // Approximate: |H|² = (1+(wLs/RD)²)/((1-w²LsCout)²+(wRDCout)²)
+      const a=1+(w*ls0/rd0)*(w*ls0/rd0);
+      const b_re=1-w*w*ls0*cout0;
+      const b_im=w*rd0*cout0;
+      G3=Math.sqrt(a)/Math.sqrt(b_re*b_re+b_im*b_im);
+    }else{
+      G3=1/Math.sqrt(1+(f/fp3)*(f/fp3));
+    }
+    return 20*Math.log10(G1*G2*G3);
+  }
+
+  // Without peaking
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=400;i++){
+    const f=Math.pow(10,Math.log10(fmin)+i/400*Math.log10(fmax/fmin));
+    const dB=gain_dB(f);
+    const y=toY_dB(Math.max(dB,-30));
+    if(i===0)ctx.moveTo(toX(f),y);else ctx.lineTo(toX(f),y);
+  }
+  ctx.stroke();
+
+  // –3 dB line
+  ctx.strokeStyle='#cc0000';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,toY_dB(-3));ctx.lineTo(pad.l+pw,toY_dB(-3));ctx.stroke();ctx.setLineDash([]);
+
+  // Pole markers
+  const pcolors=['#006633','#cc6600','#0099cc'];
+  [{f:fp1,n:'fp1'},{f:fp2,n:'fp2'},{f:fp3,n:'fp3'}].forEach((p,i)=>{
+    const x=toX(p.f);
+    ctx.strokeStyle=pcolors[i];ctx.lineWidth=1;ctx.setLineDash([3,2]);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=pcolors[i];ctx.font='8px Courier New';ctx.fillText(p.n,x+2,pad.t+15+i*10);
+  });
+
+  // BW marker
+  const x_bw=toX(bw);
+  ctx.strokeStyle='#cc0000';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(x_bw,pad.t);ctx.lineTo(x_bw,pad.t+ph);ctx.stroke();
+  ctx.fillStyle='#cc0000';ctx.font='9px Courier New';ctx.fillText('BW',x_bw+3,pad.t+12);
+
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='9px Courier New';ctx.fillText('|H(f)| — three-pole response',pad.l+5,pad.t+14);
+  if(ls0>0){ctx.fillStyle='#009900';ctx.fillText('Inductive peaking active',pad.l+5,pad.t+26);}
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('f →',W/2-10,H-3);
+}
+
+function drawRD(gm0,cgs0,cint0,rs0,cout0,rd0){
+  const canvas=document.getElementById('rdCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:65,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+  const rdmin=100,rdmax=10000;
+  const toX=rd=>pad.l+(Math.log10(rd)-Math.log10(rdmin))/(Math.log10(rdmax)-Math.log10(rdmin))*pw;
+  const fp1=1/(2*Math.PI*rs0*cgs0);
+  const fp2=gm0/(2*Math.PI*cint0);
+  const bwmax=Math.max(fp1,fp2)*1.2;
+  const toY=f=>pad.t+(1-f/bwmax)*ph;
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [0.25,0.5,0.75,1.0].forEach(frac=>{
+    const y=pad.t+frac*ph;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(fmtHz(bwmax*(1-frac)),pad.l-42,y+3);
+  });
+
+  // fp3 vs RD
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=300;i++){
+    const rd=Math.pow(10,Math.log10(rdmin)+i/300*Math.log10(rdmax/rdmin));
+    const fp3=1/(2*Math.PI*rd*cout0);
+    const bw=getBW(fp1,fp2,fp3);
+    const y=toY(Math.min(bw,bwmax));
+    if(i===0)ctx.moveTo(pad.l+i/300*pw,y);else ctx.lineTo(pad.l+i/300*pw,y);
+  }
+  ctx.stroke();
+
+  // fp1 reference (flat)
+  ctx.strokeStyle='#006633';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,toY(fp1));ctx.lineTo(pad.l+pw,toY(fp1));ctx.stroke();ctx.setLineDash([]);
+
+  // fp2 reference
+  ctx.strokeStyle='#cc6600';ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,toY(fp2));ctx.lineTo(pad.l+pw,toY(fp2));ctx.stroke();ctx.setLineDash([]);
+
+  // current RD point
+  const fp3_cur=1/(2*Math.PI*rd0*cout0);
+  const bw_cur=getBW(fp1,fp2,fp3_cur);
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.beginPath();ctx.arc(toX(rd0),toY(bw_cur),5,0,2*Math.PI);ctx.fill();
+
+  [100,300,1000,3000,10000].forEach(v=>{ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';const lbl=v>=1000?(v/1000)+'k':v+'';ctx.fillText(lbl,toX(v)-8,pad.t+ph+12);});
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='9px Courier New';ctx.fillText('System BW',pad.l+5,pad.t+14);
+  ctx.fillStyle='#006633';ctx.fillText('fp1 input',pad.l+5,toY(fp1)-3);
+  ctx.fillStyle='#cc6600';ctx.fillText('fp2 internal',pad.l+5,toY(fp2)-3);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('RD (Ω) →',W/2-20,H-3);
+  ctx.save();ctx.translate(10,H/2+15);ctx.rotate(-Math.PI/2);ctx.fillText('BW',0,0);ctx.restore();
+}
+
+function drawFT(){
+  const canvas=document.getElementById('ftCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:65,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+  // fT = 3 * µ * Vov / (4π * L²)
+  // Nodes: 28nm (L=28nm, µ_eff=0.04 m²/Vs), 65nm (L=65nm, µ=0.04), 180nm (L=180nm, µ=0.045)
+  const nodes=[
+    {L:28e-9,mu:0.04,c:'#cc0000',name:'28nm'},
+    {L:65e-9,mu:0.04,c:cs.getPropertyValue('--accent').trim(),name:'65nm'},
+    {L:180e-9,mu:0.045,c:'#006633',name:'180nm'},
+  ];
+  const vov_max=0.8;
+  const toX=vov=>pad.l+(vov/vov_max)*pw;
+  const ftmax=500e9;
+  const toY=ft=>pad.t+(1-ft/ftmax)*ph;
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [0,100,200,300,400,500].forEach(v=>{
+    const f=v*1e9;const y=toY(f);if(y<pad.t||y>pad.t+ph)return;
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(v+'G',pad.l-28,y+3);
+  });
+  [0,0.2,0.4,0.6,0.8].forEach(v=>{ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(v.toFixed(1),toX(v)-5,pad.t+ph+12);});
+
+  nodes.forEach(node=>{
+    ctx.strokeStyle=node.c;ctx.lineWidth=2;
+    ctx.beginPath();
+    for(let i=0;i<=200;i++){
+      const vov=i/200*vov_max+0.01;
+      const ft=3*node.mu*vov/(4*Math.PI*node.L*node.L);
+      const y=toY(Math.min(ft,ftmax));
+      if(i===0)ctx.moveTo(toX(vov),y);else ctx.lineTo(toX(vov),y);
+    }
+    ctx.stroke();
+    const vov_label=0.5;
+    const ft_label=Math.min(3*node.mu*vov_label/(4*Math.PI*node.L*node.L),ftmax);
+    ctx.fillStyle=node.c;ctx.font='9px Courier New';ctx.fillText(node.name,toX(vov_label)+3,toY(ft_label)-2);
+  });
+
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('Vov (V) →',W/2-20,H-3);
+  ctx.save();ctx.translate(10,H/2+15);ctx.rotate(-Math.PI/2);ctx.fillText('fT (Hz)',0,0);ctx.restore();
+  ctx.font='9px Courier New';ctx.fillText('fT = 3µVov/(4πL²)',pad.l+5,pad.t+14);
+}
+
+['gm','cgs','cint','rs','rd','cout','ls'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

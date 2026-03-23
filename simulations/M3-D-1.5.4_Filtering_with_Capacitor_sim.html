@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M3-D-1.5.4 — Filter Capacitor</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--text2:#8b949e;--accent:#0066cc;--accent2:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922}
+@media(prefers-color-scheme:light){:root{--bg:#ffffff;--surface:#f6f8fa;--border:#d0d7de;--text:#24292f;--text2:#656d76;--accent:#0066cc;--accent2:#0969da;--green:#2da44e;--red:#cf222e;--yellow:#9a6700}}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;font-size:14px;padding:16px}
+h2{color:var(--accent2);font-size:16px;margin-bottom:12px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px}
+canvas{width:100%;border-radius:6px;background:var(--bg);display:block}
+.controls{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px}
+.ctrl{flex:1;min-width:180px}
+label{display:block;color:var(--text2);font-size:12px;margin-bottom:4px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.readout{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.ro{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;font-size:12px;font-family:monospace}
+.ro span{color:var(--accent2);font-weight:bold}
+.note{color:var(--text2);font-size:12px;margin-top:8px;line-height:1.5}
+</style></head>
+<body>
+<h2>M3-D-1.5.4 — Filtering with Capacitor</h2>
+<div class="panel">
+<canvas id="cv1" height="260"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>V_rms (V): <b id="lVrms">18</b></label>
+    <input type="range" id="Vrms" min="5" max="50" step="1" value="18"></div>
+  <div class="ctrl"><label>C (µF): <b id="lC">2200</b></label>
+    <input type="range" id="C" min="100" max="10000" step="100" value="2200"></div>
+  <div class="ctrl"><label>I_load (mA): <b id="lIL">500</b></label>
+    <input type="range" id="IL" min="10" max="2000" step="10" value="500"></div>
+</div>
+<div class="readout">
+  <div class="ro">V_peak: <span id="rvpk">0.00</span> V</div>
+  <div class="ro">V_DC: <span id="rvdc">0.00</span> V</div>
+  <div class="ro">V_ripple: <span id="rrip">0.00</span> V</div>
+  <div class="ro">V_DC_min: <span id="rvmin">0.00</span> V</div>
+</div>
+<p class="note">Filter capacitor: V_ripple = I_load/(2×f×C). V_DC ≈ V_peak − 1.4 − V_ripple/2. Larger C reduces ripple but increases peak current.</p>
+</div>
+
+<div class="panel">
+<canvas id="cv2" height="260"></canvas>
+<p class="note">Ripple waveform with capacitor discharge between pulses. Adjust C to see the effect on ripple amplitude and V_DC_min.</p>
+</div>
+
+<script>
+
+const isDark=()=>window.matchMedia('(prefers-color-scheme:dark)').matches;
+function gs(id){return parseFloat(document.getElementById(id).value);}
+function sv(id,val){document.getElementById(id).textContent=val;}
+function resize(cv,draw){cv.width=cv.offsetWidth*devicePixelRatio;cv.height=260*devicePixelRatio;cv.getContext('2d').scale(devicePixelRatio,devicePixelRatio);draw();}
+function drawAxes(ctx,W,H,pad,xl,yl,color){
+  ctx.strokeStyle=color;ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  ctx.fillStyle=color;ctx.font='11px system-ui';
+  ctx.fillText(yl,pad+4,pad+12);ctx.fillText(xl,W-pad-2,H-pad-4);
+}
+
+const cv1=document.getElementById('cv1'),ctx1=cv1.getContext('2d');
+const cv2=document.getElementById('cv2'),ctx2=cv2.getContext('2d');
+
+function draw(){
+  const vrms=gs('Vrms'),C=gs('C')*1e-6,il=gs('IL')*1e-3;
+  document.getElementById('lVrms').textContent=vrms.toFixed(0);
+  document.getElementById('lC').textContent=(C*1e6).toFixed(0);
+  document.getElementById('lIL').textContent=(il*1000).toFixed(0);
+  const vpk=vrms*Math.SQRT2;
+  const vf=0.7,vdc_peak=vpk-1.4;
+  const ripple=il/(2*60*C);
+  const vdc=vdc_peak-ripple/2;
+  const vmin=vdc_peak-ripple;
+  sv('rvpk',vpk.toFixed(2));sv('rvdc',vdc.toFixed(2));
+  sv('rrip',ripple.toFixed(2));sv('rvmin',vmin.toFixed(2));
+
+  const W=cv1.offsetWidth,H=260,pad=40;
+  const bg=isDark()?'#0d1117':'#fff',fg=isDark()?'#8b949e':'#656d76';
+  ctx1.clearRect(0,0,W,H);ctx1.fillStyle=bg;ctx1.fillRect(0,0,W,H);
+
+  // Ripple vs C chart
+  const maxC=10000e-6,minC=100e-6,steps=80;
+  const xsc=(W-2*pad)/steps;
+  const maxRip=il/(2*60*minC),ysc=(H-2*pad)/Math.min(maxRip,30);
+  drawAxes(ctx1,W,H,pad,'C →','V_ripple ↑',fg);
+  ctx1.strokeStyle='#58a6ff';ctx1.lineWidth=2;ctx1.beginPath();
+  for(let s=0;s<=steps;s++){
+    const cc=minC+s*(maxC-minC)/steps;
+    const rip=il/(2*60*cc);
+    const x=pad+s*xsc,y=H-pad-Math.min(rip,maxRip)*ysc;
+    if(s===0)ctx1.moveTo(x,y);else ctx1.lineTo(x,y);
+  }
+  ctx1.stroke();
+  // Current operating point
+  const s_op=(C-minC)/(maxC-minC)*steps;
+  const xop=pad+s_op*xsc,yop=H-pad-Math.min(ripple,maxRip)*ysc;
+  ctx1.fillStyle='#f85149';ctx1.beginPath();ctx1.arc(xop,yop,6,0,Math.PI*2);ctx1.fill();
+  ctx1.fillStyle=fg;ctx1.font='11px system-ui';
+  ctx1.fillText('V_ripple='+ripple.toFixed(1)+'V at '+(C*1e6).toFixed(0)+'µF',xop+8,yop);
+  ctx1.fillText('100µF',pad,H-pad+14);ctx1.fillText('10mF',W-pad-30,H-pad+14);
+  ctx1.fillText('I_load='+Math.round(il*1000)+'mA',pad,pad+15);
+
+  // Panel 2: time domain waveform
+  const W2=cv2.offsetWidth;
+  ctx2.clearRect(0,0,W2,H);ctx2.fillStyle=bg;ctx2.fillRect(0,0,W2,H);
+  drawAxes(ctx2,W2,H,pad,'t →','V ↑',fg);
+  const T=1/120,Nsamp=W2-2*pad;
+  const tmax=4*T;
+  const ysc2=(H-2*pad)/(vpk+2);
+  const ybase=H-pad;
+  // Simulate with capacitor discharge
+  ctx2.strokeStyle='#3fb950';ctx2.lineWidth=2;ctx2.beginPath();
+  let vcap=vdc_peak;
+  for(let i=0;i<Nsamp;i++){
+    const t=i/Nsamp*tmax;
+    const vin_abs=Math.abs(vpk*Math.sin(2*Math.PI*120*t));
+    const vdiode_in=vin_abs-1.4;
+    if(vdiode_in>vcap){vcap=vdiode_in;}
+    else{vcap=vcap-il/(C*Nsamp/tmax);}
+    vcap=Math.max(0,vcap);
+    const x=pad+i,y=ybase-vcap*ysc2;
+    if(i===0)ctx2.moveTo(x,y);else ctx2.lineTo(x,y);
+  }
+  ctx2.stroke();
+  ctx2.strokeStyle='#d29922';ctx2.lineWidth=1;ctx2.setLineDash([6,3]);
+  ctx2.beginPath();ctx2.moveTo(pad,ybase-vdc*ysc2);ctx2.lineTo(W2-pad,ybase-vdc*ysc2);ctx2.stroke();
+  ctx2.setLineDash([]);
+  ctx2.fillStyle='#d29922';ctx2.font='11px system-ui';ctx2.fillText('V_DC='+vdc.toFixed(1)+'V',W2-pad-100,ybase-vdc*ysc2-5);
+  ctx2.fillStyle='#f85149';
+  ctx2.beginPath();ctx2.setLineDash([4,4]);
+  ctx2.moveTo(pad,ybase-vmin*ysc2);ctx2.lineTo(W2-pad,ybase-vmin*ysc2);ctx2.stroke();
+  ctx2.setLineDash([]);
+  ctx2.fillText('V_min='+vmin.toFixed(1)+'V',W2-pad-100,ybase-vmin*ysc2+14);
+}
+
+document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',draw));
+window.addEventListener('resize',()=>{resize(cv1,draw);resize(cv2,draw);});
+resize(cv1,draw);resize(cv2,draw);
+</script>
+</body></html>

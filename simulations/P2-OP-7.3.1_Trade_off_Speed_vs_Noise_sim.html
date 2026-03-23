@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-OP-7.3.1 Speed vs Noise Trade-off</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.row{display:flex;gap:8px;padding:8px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:10px;min-width:200px}
+.panel h2{color:#0066cc;font-size:11px;margin-bottom:6px;text-transform:uppercase}
+label{display:block;margin-top:6px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:2px}
+.readout{color:#00ff88;font-size:11px;margin-top:2px}
+.key{color:#ffaa00;font-size:10px;margin-top:6px;line-height:1.5;border-top:1px solid #222;padding-top:5px}
+</style>
+</head>
+<body>
+<h1>P2-OP-7.3.1 — Speed vs Noise Trade-off: Noise-Bandwidth Product</h1>
+<div class="row">
+<div class="panel">
+<h2>Control</h2>
+<label>τ (μs)
+<input type="range" id="tau" min="0.1" max="200" step="0.5" value="10">
+<div class="readout" id="tau_v">τ = 10 μs</div>
+</label>
+<label>Input noise density (μV/√Hz)
+<input type="range" id="vn" min="1" max="100" step="1" value="10">
+<div class="readout" id="vn_v">v_n = 10 μV/√Hz</div>
+</label>
+<h2 style="margin-top:8px">Readouts</h2>
+<div class="readout" id="tr">t_rise: —</div>
+<div class="readout" id="bw">BW_noise: —</div>
+<div class="readout" id="noise">V_noise_rms: —</div>
+<div class="readout" id="product">t_r × BW_n: —</div>
+<div class="key">Constant: t_r × BW_n = 0.55<br>Increasing τ → slower + quieter<br>Decreasing τ → faster + noisier<br>kT/C noise independent of R</div>
+</div>
+<canvas id="c_wave" width="340" height="200"></canvas>
+</div>
+<div class="row" style="padding-top:0">
+<canvas id="c_tr" width="280" height="180"></canvas>
+<canvas id="c_bw" width="280" height="180"></canvas>
+<canvas id="c_noise" width="280" height="180"></canvas>
+</div>
+<script>
+let tau=10,vn=10;
+document.getElementById('tau').oninput=function(){tau=parseFloat(this.value);document.getElementById('tau_v').textContent='τ = '+tau.toFixed(1)+' μs';draw();};
+document.getElementById('vn').oninput=function(){vn=parseFloat(this.value);document.getElementById('vn_v').textContent='v_n = '+vn+' μV/√Hz';draw();};
+
+function drawSmall(id,label,xs,ys,col,xlab,ylab,marker_x,marker_y){
+  const cv=document.getElementById(id);const ctx=cv.getContext('2d');
+  const W=280,H=180,PAD={l:50,r:10,t:15,b:28};
+  const CW=W-PAD.l-PAD.r,CH=H-PAD.t-PAD.b;
+  ctx.clearRect(0,0,W,H);
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=5;i++){const y=PAD.t+CH*(i/5);ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+CH);ctx.moveTo(PAD.l,PAD.t+CH);ctx.lineTo(PAD.l+CW,PAD.t+CH);ctx.stroke();
+  const xmin=xs[0],xmax=xs[xs.length-1];
+  const ymax_v=Math.max(...ys)*1.05;
+  function toPx(x,y){return[PAD.l+CW*(x-xmin)/(xmax-xmin),PAD.t+CH*(1-y/ymax_v)];}
+  ctx.strokeStyle=col;ctx.lineWidth=2;
+  ctx.beginPath();xs.forEach((x,i)=>{const[px,py]=toPx(x,ys[i]);i===0?ctx.moveTo(px,py):ctx.lineTo(px,py);});ctx.stroke();
+  if(marker_x!==undefined){
+    const[mx,my]=toPx(marker_x,marker_y);
+    ctx.fillStyle='#ffaa00';ctx.beginPath();ctx.arc(mx,my,4,0,Math.PI*2);ctx.fill();
+  }
+  ctx.fillStyle='#888';ctx.font='9px Courier New';ctx.textAlign='center';
+  ctx.fillText(xlab,PAD.l+CW/2,PAD.t+CH+18);
+  ctx.save();ctx.translate(10,PAD.t+CH/2);ctx.rotate(-Math.PI/2);ctx.fillText(ylab,0,0);ctx.restore();
+  ctx.fillStyle=col;ctx.textAlign='left';ctx.fillText(label,PAD.l+3,PAD.t+12);
+}
+
+function drawWaveform(){
+  const cv=document.getElementById('c_wave');const ctx=cv.getContext('2d');
+  const W=340,H=200,PAD={l:55,r:10,t:20,b=30};
+  // use literal values
+  const pl=55,pr=10,pt=20,pb=30,CW_w=W-pl-pr,CH_w=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+  const tmax=6*tau;
+  function toPx(t,v){return[pl+CW_w*(t/tmax),pt+CH_w*(1-v/5.5)];}
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=6;i++){const x=pl+CW_w*(i/6);ctx.beginPath();ctx.moveTo(x,pt);ctx.lineTo(x,pt+CH_w);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pl,pt);ctx.lineTo(pl,pt+CH_w);ctx.moveTo(pl,pt+CH_w);ctx.lineTo(pl+CW_w,pt+CH_w);ctx.stroke();
+  // Noisy input
+  ctx.strokeStyle='#ff444488';ctx.lineWidth=1;
+  ctx.beginPath();
+  for(let i=0;i<=400;i++){
+    const t=tmax*i/400;const signal=5;const noise=(Math.random()-0.5)*vn*0.1;
+    const[x,y]=toPx(t,signal+noise);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  // Filtered output
+  ctx.strokeStyle='#00ff88';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=400;i++){const t=tmax*i/400;const v=5*(1-Math.exp(-t/tau));const[x,y]=toPx(t,v);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  ctx.fillText('τ='+tau.toFixed(0)+'μs',pl+CW_w/2,pt+CH_w+20);
+  ctx.fillStyle='#00ff88';ctx.textAlign='left';ctx.fillText('Filtered',pl+4,pt+12);
+  ctx.fillStyle='#ff4444';ctx.fillText('Noisy input',pl+60,pt+12);
+}
+
+function draw(){
+  const tr=2.2*tau;
+  const bw=250/tau;
+  const vnoise=vn*Math.sqrt(bw*1000);
+  document.getElementById('tr').textContent='t_rise = '+(tr).toFixed(2)+' μs';
+  document.getElementById('bw').textContent='BW_noise = '+bw.toFixed(2)+' kHz';
+  document.getElementById('noise').textContent='V_noise_rms = '+vnoise.toFixed(1)+' μV';
+  document.getElementById('product').textContent='t_r × BW_n = '+(tr*bw/1000).toFixed(3)+' Hz·s';
+  const taus=Array.from({length:40},(_,i)=>0.5+(i*5));
+  drawSmall('c_tr','Rise Time',taus,taus.map(t=>2.2*t),'#00ff88','τ (μs)','t_r (μs)',tau,2.2*tau);
+  drawSmall('c_bw','Noise BW',taus,taus.map(t=>250/t),'#00aaff','τ (μs)','BW_n (kHz)',tau,250/tau);
+  drawSmall('c_noise','RMS Noise',taus,taus.map(t=>vn*Math.sqrt(250/t*1000)),'#ff6600','τ (μs)','V_n (μV)',tau,vn*Math.sqrt(250/tau*1000));
+  drawWaveform();
+}
+draw();
+</script>
+</body>
+</html>

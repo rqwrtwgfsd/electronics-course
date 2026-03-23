@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-PM-11.1.1 — Performance Metrics Overview</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0e1117; color: #cdd6f4; font-family: 'Segoe UI', sans-serif; font-size: 14px; }
+  h1 { text-align: center; padding: 18px; font-size: 17px; color: #cba6f7; border-bottom: 1px solid #313244; }
+  .tabs { display: flex; background: #181825; border-bottom: 1px solid #313244; }
+  .tab { padding: 10px 22px; cursor: pointer; color: #a6adc8; font-size: 13px; border-bottom: 3px solid transparent; transition: all .2s; }
+  .tab.active { color: #cba6f7; border-bottom-color: #cba6f7; }
+  .tab:hover:not(.active) { color: #cdd6f4; }
+  .panel { display: none; padding: 18px; }
+  .panel.active { display: block; }
+  canvas { display: block; background: #1e1e2e; border-radius: 8px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+  .ctrl { background: #181825; border-radius: 8px; padding: 14px; min-width: 220px; }
+  .ctrl label { display: block; color: #a6adc8; font-size: 12px; margin-bottom: 6px; }
+  .ctrl input[type=range] { width: 100%; accent-color: #cba6f7; margin-bottom: 2px; }
+  .ctrl .val { color: #a6e3a1; font-size: 12px; text-align: right; margin-bottom: 8px; }
+  .info-box { background: #181825; border-radius: 8px; padding: 12px; margin-top: 12px; font-size: 12px; line-height: 1.7; }
+  .hi { color: #a6e3a1; font-weight: bold; }
+  .warn { color: #f38ba8; font-weight: bold; }
+  .note { color: #fab387; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th { background: #313244; color: #cba6f7; padding: 6px 8px; text-align: center; }
+  td { padding: 5px 8px; border-bottom: 1px solid #313244; text-align: center; }
+</style>
+</head>
+<body>
+<h1>M4B-PM-11.1.1 — Analog IC Performance Metrics Overview</h1>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">Figure of Merit Calculator</div>
+  <div class="tab" onclick="showTab(1)">Technology Scaling Impact</div>
+  <div class="tab" onclick="showTab(2)">Metrics Taxonomy Map</div>
+</div>
+
+<!-- TAB 0: FoM Calculator -->
+<div class="panel active" id="tab0">
+  <div class="row">
+    <canvas id="c0" width="600" height="400"></canvas>
+    <div class="ctrl" style="max-width:240px;">
+      <label style="color:#cba6f7;font-weight:bold;margin-bottom:10px;">Op-Amp A</label>
+      <label>GBW (MHz): <span class="val" id="va_gbw">500</span></label>
+      <input type="range" id="ra_gbw" min="10" max="2000" step="10" value="500" oninput="draw0()">
+      <label>Iq (mA): <span class="val" id="va_iq">2.0</span></label>
+      <input type="range" id="ra_iq" min="0.1" max="20" step="0.1" value="2.0" oninput="draw0()">
+      <label>Vn (nV/√Hz): <span class="val" id="va_vn">5.0</span></label>
+      <input type="range" id="ra_vn" min="0.5" max="50" step="0.5" value="5.0" oninput="draw0()">
+      <label style="color:#89b4fa;font-weight:bold;margin-top:10px;margin-bottom:6px;">Op-Amp B</label>
+      <label>GBW (MHz): <span class="val" id="vb_gbw">300</span></label>
+      <input type="range" id="rb_gbw" min="10" max="2000" step="10" value="300" oninput="draw0()">
+      <label>Iq (mA): <span class="val" id="vb_iq">0.8</span></label>
+      <input type="range" id="rb_iq" min="0.1" max="20" step="0.1" value="0.8" oninput="draw0()">
+      <label>Vn (nV/√Hz): <span class="val" id="vb_vn">8.0</span></label>
+      <input type="range" id="rb_vn" min="0.5" max="50" step="0.5" value="8.0" oninput="draw0()">
+      <label style="margin-top:8px;">CL (pF): <span class="val" id="v0_cl">1.0</span></label>
+      <input type="range" id="r0_cl" min="0.1" max="20" step="0.1" value="1.0" oninput="draw0()">
+    </div>
+  </div>
+  <div class="info-box" id="info0"></div>
+</div>
+
+<!-- TAB 1: Technology scaling -->
+<div class="panel" id="tab1">
+  <div class="row">
+    <canvas id="c1" width="640" height="420"></canvas>
+  </div>
+  <div class="info-box" id="info1">Technology scaling data for TSMC/GlobalFoundries process nodes. Hover/inspect to compare.</div>
+</div>
+
+<!-- TAB 2: Taxonomy map -->
+<div class="panel" id="tab2">
+  <div class="row">
+    <canvas id="c2" width="680" height="450"></canvas>
+  </div>
+  <div class="info-box" id="info2">Click a metric category to see details.</div>
+</div>
+
+<script>
+const dpr = window.devicePixelRatio || 1;
+function setupCanvas(id, w, h) {
+  const c = document.getElementById(id);
+  c.width = w*dpr; c.height = h*dpr;
+  c.style.width = w+'px'; c.style.height = h+'px';
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr,dpr);
+  return ctx;
+}
+function g(id) { return parseFloat(document.getElementById(id).value); }
+function sv(id,v) { document.getElementById(id).textContent = v; }
+function showTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
+  if(n===1) draw1();
+  if(n===2) draw2();
+}
+
+// ── TAB 0: FoM ──────────────────────────────────────────────────────────────
+function draw0() {
+  const GBW_A=g('ra_gbw'), Iq_A=g('ra_iq'), Vn_A=g('ra_vn');
+  const GBW_B=g('rb_gbw'), Iq_B=g('rb_iq'), Vn_B=g('rb_vn');
+  const CL=g('r0_cl');
+  sv('va_gbw', GBW_A); sv('va_iq', Iq_A.toFixed(1)); sv('va_vn', Vn_A.toFixed(1));
+  sv('vb_gbw', GBW_B); sv('vb_iq', Iq_B.toFixed(1)); sv('vb_vn', Vn_B.toFixed(1));
+  sv('v0_cl', CL.toFixed(1));
+
+  const FoMs_A = GBW_A*CL/Iq_A;
+  const FoMs_B = GBW_B*CL/Iq_B;
+  const Vn_rms_A = Vn_A*1e-9*Math.sqrt(GBW_A*1e6)*1e6; // μV rms
+  const Vn_rms_B = Vn_B*1e-9*Math.sqrt(GBW_B*1e6)*1e6;
+  const P_A = Iq_A * 1.2; // mW at 1.2V
+  const P_B = Iq_B * 1.2;
+  const SNR_per_mW_A = GBW_A / Vn_rms_A / P_A;
+  const SNR_per_mW_B = GBW_B / Vn_rms_B / P_B;
+
+  const ctx = setupCanvas('c0', 600, 400);
+  const W=600, H=400;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('FoM Comparison — Op-Amp A vs B', W/2, 22);
+
+  // Bar chart: 4 metrics side by side
+  const metrics = [
+    { label:'FoM_s\n(MHz·pF/mA)', A:FoMs_A, B:FoMs_B, maxV:Math.max(FoMs_A,FoMs_B)*1.3, fmt:(v)=>v.toFixed(0) },
+    { label:'GBW/Iq\n(MHz/mA)', A:GBW_A/Iq_A, B:GBW_B/Iq_B, maxV:Math.max(GBW_A/Iq_A,GBW_B/Iq_B)*1.3, fmt:(v)=>v.toFixed(0) },
+    { label:'Noise\nVn_rms (μV)', A:Vn_rms_A, B:Vn_rms_B, maxV:Math.max(Vn_rms_A,Vn_rms_B)*1.3, fmt:(v)=>v.toFixed(0), lower_better:true },
+    { label:'SNR/mW\n(relative)', A:SNR_per_mW_A/Math.max(SNR_per_mW_A,SNR_per_mW_B), B:SNR_per_mW_B/Math.max(SNR_per_mW_A,SNR_per_mW_B), maxV:1.3, fmt:(v)=>(v*100).toFixed(0)+'%' },
+  ];
+
+  const mL=60, mR=20, mT=45, mB=70;
+  const grpW=(W-mL-mR)/metrics.length;
+  const bH=H-mT-mB;
+  const bW_each=grpW*0.3;
+
+  metrics.forEach((m,gi) => {
+    const gx=mL+gi*grpW+grpW*0.1;
+    // Bar A
+    const hA=bH*(m.A/m.maxV);
+    ctx.fillStyle='#cba6f7';
+    ctx.fillRect(gx, mT+bH-hA, bW_each, hA);
+    ctx.fillStyle='#cba6f7'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText(m.fmt(m.A), gx+bW_each/2, mT+bH-hA-4);
+    // Bar B
+    const hB=bH*(m.B/m.maxV);
+    ctx.fillStyle='#89b4fa';
+    ctx.fillRect(gx+bW_each+4, mT+bH-hB, bW_each, hB);
+    ctx.fillStyle='#89b4fa'; ctx.font='10px Segoe UI';
+    ctx.fillText(m.fmt(m.B), gx+bW_each+4+bW_each/2, mT+bH-hB-4);
+    // Label
+    ctx.fillStyle='#a6adc8'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+    const lines=m.label.split('\n');
+    lines.forEach((l,li) => ctx.fillText(l, gx+bW_each, mT+bH+15+li*13));
+    // Winner arrow
+    const Awins = m.lower_better ? m.A < m.B : m.A > m.B;
+    const winner_x = Awins ? gx+bW_each/2 : gx+bW_each+4+bW_each/2;
+    ctx.fillStyle='#a6e3a1'; ctx.font='bold 14px Segoe UI';
+    ctx.fillText('★', winner_x, mT+bH-Math.max(hA,hB)-18);
+  });
+
+  // Legend
+  ctx.fillStyle='#cba6f7'; ctx.fillRect(mL, H-20, 12, 8);
+  ctx.fillStyle='#cba6f7'; ctx.font='11px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText('Op-Amp A', mL+16, H-13);
+  ctx.fillStyle='#89b4fa'; ctx.fillRect(mL+100, H-20, 12, 8);
+  ctx.fillStyle='#89b4fa'; ctx.font='11px Segoe UI';
+  ctx.fillText('Op-Amp B', mL+116, H-13);
+  ctx.fillStyle='#a6e3a1'; ctx.font='11px Segoe UI';
+  ctx.fillText('★ = winner per metric', mL+220, H-13);
+
+  document.getElementById('info0').innerHTML =
+    `<b>Op-Amp A:</b> FoM_s = ${FoMs_A.toFixed(0)} MHz·pF/mA, Vn_rms = ${Vn_rms_A.toFixed(0)} μV, P = ${P_A.toFixed(2)} mW.
+     <br><b>Op-Amp B:</b> FoM_s = ${FoMs_B.toFixed(0)} MHz·pF/mA, Vn_rms = ${Vn_rms_B.toFixed(0)} μV, P = ${P_B.toFixed(2)} mW.
+     <br>${FoMs_A>FoMs_B?'<span class="hi">A is more current-efficient (higher FoM_s).</span>':'<span class="hi">B is more current-efficient (higher FoM_s).</span>'}
+     ${Vn_rms_A<Vn_rms_B?'<span class="note"> A has lower noise.</span>':'<span class="note"> B has lower noise.</span>'}`;
+}
+
+// ── TAB 1: Technology scaling ────────────────────────────────────────────────
+function draw1() {
+  const ctx = setupCanvas('c1', 640, 420);
+  const W=640, H=420;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('CMOS Process Scaling — Key Analog Metrics', W/2, 22);
+
+  const nodes = [
+    {nm:180, gm_ro:80,  Avth_n:10, Avth_p:8,  Cox:8.6,  Vth:0.50, fT:25,  color:'#89b4fa'},
+    {nm:130, gm_ro:55,  Avth_n:8,  Avth_p:6.5, Cox:11,  Vth:0.48, fT:60,  color:'#a6e3a1'},
+    {nm:90,  gm_ro:35,  Avth_n:7,  Avth_p:5.5, Cox:13,  Vth:0.45, fT:100, color:'#f9e2af'},
+    {nm:65,  gm_ro:20,  Avth_n:6,  Avth_p:4,   Cox:17,  Vth:0.40, fT:200, color:'#fab387'},
+    {nm:40,  gm_ro:14,  Avth_n:5,  Avth_p:3.5, Cox:22,  Vth:0.37, fT:350, color:'#cba6f7'},
+    {nm:28,  gm_ro:10,  Avth_n:3.5,Avth_p:2.5, Cox:31,  Vth:0.35, fT:500, color:'#f38ba8'},
+    {nm:16,  gm_ro:7,   Avth_n:2.8,Avth_p:2.0, Cox:40,  Vth:0.32, fT:800, color:'#74c7ec'},
+  ];
+
+  // Plot 4 panels
+  const panels = [
+    { title:'Intrinsic Gain gm×ro', key:'gm_ro', unit:'V/V', color:'#89b4fa', ymax:100 },
+    { title:'Pelgrom A_Vth (NMOS)', key:'Avth_n', unit:'mV·μm', color:'#f38ba8', ymax:12, lower_better:true },
+    { title:'Cox', key:'Cox', unit:'fF/μm²', color:'#a6e3a1', ymax:45 },
+    { title:'fT', key:'fT', unit:'GHz', color:'#fab387', ymax:900 },
+  ];
+
+  const pW=(W-40)/2-10, pH=(H-50)/2-10;
+  panels.forEach((p,pi) => {
+    const px=20+(pi%2)*(pW+20);
+    const py=40+Math.floor(pi/2)*(pH+20);
+    ctx.fillStyle='#252535'; ctx.fillRect(px,py,pW,pH);
+    ctx.fillStyle=p.color; ctx.font='bold 11px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText(p.title+' ('+p.unit+')', px+pW/2, py+14);
+
+    const mL=30, mR=10, mT=22, mB=30;
+    const bW=pW-mL-mR, bH=pH-mT-mB;
+    const N=nodes.length;
+
+    // x positions
+    function nx(i) { return px+mL+bW*i/(N-1); }
+    // y from value
+    function nvy(v) { return py+mT+bH*(1-v/p.ymax); }
+
+    // Draw line
+    ctx.beginPath();
+    nodes.forEach((nd,i) => {
+      const y=nvy(nd[p.key]);
+      i===0?ctx.moveTo(nx(i),y):ctx.lineTo(nx(i),y);
+    });
+    ctx.strokeStyle=p.color; ctx.lineWidth=2; ctx.stroke();
+
+    // Dots + labels
+    nodes.forEach((nd,i) => {
+      const y=nvy(nd[p.key]);
+      ctx.beginPath(); ctx.arc(nx(i),y,3,0,2*Math.PI);
+      ctx.fillStyle=nd.color; ctx.fill();
+      ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='center';
+      ctx.fillText(nd.nm+'nm', nx(i), py+py+pH+mB-20 > py+pH+mB-20 ? py+mT+bH+12 : py+mT+bH+12);
+    });
+
+    // x-axis node labels
+    nodes.forEach((nd,i) => {
+      ctx.fillStyle='#a6adc8'; ctx.font='8px Segoe UI'; ctx.textAlign='center';
+      ctx.fillText(nd.nm, nx(i), py+pH-8);
+    });
+
+    // y reference line at 65nm
+    const idx65=nodes.findIndex(nd=>nd.nm===65);
+    if(idx65>=0) {
+      const y65=nvy(nodes[idx65][p.key]);
+      ctx.beginPath(); ctx.moveTo(px+mL,y65); ctx.lineTo(px+mL+bW,y65);
+      ctx.strokeStyle='rgba(255,255,255,0.1)'; ctx.lineWidth=0.8; ctx.setLineDash([2,3]);
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+
+    // Value at 65nm label
+    const v65=nodes[idx65][p.key];
+    ctx.fillStyle=p.color; ctx.font='bold 10px Segoe UI'; ctx.textAlign='left';
+    ctx.fillText('65nm: '+v65+' '+p.unit, px+mL+3, py+mT+15);
+  });
+
+  document.getElementById('info1').innerHTML =
+    `Key trends: intrinsic gain (gm×ro) drops from 80 at 180nm to 7 at 16nm — achieving 80 dB Av0 gets progressively harder.
+     Pelgrom A_Vth improves (decreases), enabling smaller differential pairs for the same offset spec.
+     Cox increases with scaling, boosting fT and capacitance-limited GBW, but also increasing gate capacitance parasitics.
+     <br><span class="note">Rule of thumb: each process node halves gm×ro. You need one more gain stage approximately every two nodes.</span>`;
+}
+
+// ── TAB 2: Taxonomy map ──────────────────────────────────────────────────────
+const taxCategories = [
+  { label:'Signal\nFidelity', x:100, y:80, w:160, h:70, color:'#89b4fa',
+    items:'Av0, GBW, THD, SNR, IMD, SFDR, Noise PSD, Noise integral',
+    desc:'How faithfully the circuit processes signals. Includes gain accuracy, bandwidth, and all noise/distortion metrics.' },
+  { label:'I/O\nInterface', x:320, y:80, w:160, h:70, color:'#a6e3a1',
+    items:'ICMR, Vout_swing, VOS, IB, Zout, Zin, ISC',
+    desc:'Where the circuit can operate within supply rails. Defines usable input/output range and loading behavior.' },
+  { label:'Power &\nEfficiency', x:540, y:80, w:130, h:70, color:'#fab387',
+    items:'Iq, P_quiescent, FoM_s, FoM_n, NEF, NPP',
+    desc:'How much power is used for the signal processing achieved. Critical for battery-powered and high-density designs.' },
+  { label:'Robustness', x:100, y:220, w:160, h:70, color:'#cba6f7',
+    items:'CMRR, PSRR, TC, PVT sensitivity, ESD, Aging',
+    desc:'How well performance is maintained under non-ideal conditions: supply noise, temperature, process, radiation.' },
+  { label:'Dynamic\nPerformance', x:320, y:220, w:160, h:70, color:'#f9e2af',
+    items:'SR, t_settle, PM, GM, Overshoot, GD',
+    desc:'Transient and stability metrics. Phase margin, slew rate, settling time, group delay.' },
+  { label:'Matching\n& Offset', x:540, y:220, w:130, h:70, color:'#f38ba8',
+    items:'VOS, TCVOS, IBOS, σ(VOS), Pelgrom, Layout',
+    desc:'Random and systematic offset from transistor mismatch and layout effects. Dominated by Pelgrom statistics.' },
+];
+
+let sel_cat = -1;
+
+function draw2() {
+  const ctx = setupCanvas('c2', 680, 450);
+  const W=680, H=450;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Performance Metric Taxonomy — Click a category', W/2, 22);
+
+  taxCategories.forEach((cat, i) => {
+    const isSelected = i === sel_cat;
+    ctx.save();
+    ctx.shadowColor = isSelected ? cat.color : 'transparent';
+    ctx.shadowBlur = isSelected ? 15 : 0;
+    ctx.fillStyle = isSelected ? cat.color.replace('#','rgba(').replace(')',',0.25)') || '#252535' : '#252535';
+    ctx.strokeStyle = isSelected ? cat.color : '#45475a';
+    ctx.lineWidth = isSelected ? 2.5 : 1;
+    ctx.beginPath(); ctx.roundRect(cat.x, cat.y, cat.w, cat.h, 8);
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+
+    ctx.fillStyle = isSelected ? '#cdd6f4' : cat.color;
+    ctx.font = 'bold 12px Segoe UI'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    const lines = cat.label.split('\n');
+    lines.forEach((l,li) => {
+      ctx.fillText(l, cat.x+cat.w/2, cat.y+cat.h/2 + (li - (lines.length-1)/2)*14);
+    });
+    ctx.textBaseline='alphabetic';
+
+    // Sub-items (small)
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI';
+    const firstItem = cat.items.split(',')[0].trim()+'...';
+    ctx.fillText(firstItem, cat.x+cat.w/2, cat.y+cat.h-8);
+  });
+
+  // Connections
+  const pairs = [[0,1],[1,2],[0,3],[3,4],[4,5],[1,4],[0,4]];
+  pairs.forEach(([a,b]) => {
+    const ca=taxCategories[a], cb=taxCategories[b];
+    ctx.beginPath();
+    ctx.moveTo(ca.x+ca.w/2, ca.y+ca.h/2);
+    ctx.lineTo(cb.x+cb.w/2, cb.y+cb.h/2);
+    ctx.strokeStyle='#313244'; ctx.lineWidth=0.8; ctx.setLineDash([3,3]); ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  // Bottom: tradeoff summary
+  const tradeoffs = [
+    ['Noise ↕ Power', 'More ISS → lower noise, higher power', '#89b4fa'],
+    ['GBW ↕ PM', 'Higher GBW → more phase loss from non-dominant poles', '#a6e3a1'],
+    ['Swing ↕ Gain', 'Lower Vov → higher Av, but less headroom for swing', '#fab387'],
+    ['Speed ↕ Accuracy', 'Faster SR → more ISS → possible noise increase', '#cba6f7'],
+  ];
+  const ty=H-120;
+  ctx.fillStyle='#585b70'; ctx.font='11px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText('Key trade-offs:', 20, ty);
+  tradeoffs.forEach((t,i) => {
+    const bx=20+i*165, by=ty+16;
+    ctx.fillStyle=t[2]; ctx.font='bold 10px Segoe UI';
+    ctx.fillText(t[0], bx, by);
+    ctx.fillStyle='#a6adc8'; ctx.font='9px Segoe UI';
+    const words=t[1].split(' ');
+    let line='', lnum=0;
+    words.forEach(w=>{
+      if((line+w).length>20){ctx.fillText(line, bx, by+12+lnum*11); line=w+' '; lnum++;}
+      else line+=w+' ';
+    });
+    ctx.fillText(line, bx, by+12+lnum*11);
+  });
+}
+
+document.getElementById('c2').addEventListener('click', function(e) {
+  const rect=this.getBoundingClientRect();
+  const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+  let found=-1;
+  taxCategories.forEach((cat,i) => {
+    if(mx>=cat.x && mx<=cat.x+cat.w && my>=cat.y && my<=cat.y+cat.h) found=i;
+  });
+  if(found>=0) {
+    sel_cat=found;
+    draw2();
+    const cat=taxCategories[found];
+    document.getElementById('info2').innerHTML =
+      `<span class="hi">${cat.label.replace('\n',' ')}: </span>${cat.desc}
+       <br><span class="note">Metrics: ${cat.items}</span>`;
+  }
+});
+
+draw0();
+draw1();
+draw2();
+</script>
+</body>
+</html>

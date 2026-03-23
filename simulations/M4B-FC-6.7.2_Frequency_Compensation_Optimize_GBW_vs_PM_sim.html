@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-FC-6.7.2 — GBW vs PM Optimization</title>
+<style>
+  :root { --bg:#ffffff; --bg2:#f5f5f5; --text:#1a1a1a; --text2:#555; --border:#ddd; --accent:#0066cc; --green:#00994d; --canvas-bg:#fafafa; --warn:#cc4400; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1a1a1a; --bg2:#242424; --text:#e8e8e8; --text2:#aaa; --border:#444; --canvas-bg:#1f1f1f; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); font-size:14px; }
+  header { background:var(--bg2); border-bottom:2px solid var(--accent); padding:12px 20px; }
+  header .id { font-family:monospace; font-size:12px; color:var(--accent); font-weight:700; }
+  header h1 { font-size:16px; margin-top:2px; }
+  .tabs { display:flex; border-bottom:1px solid var(--border); background:var(--bg2); padding:0 16px; }
+  .tab { padding:8px 16px; cursor:pointer; font-size:13px; border-bottom:3px solid transparent; color:var(--text2); }
+  .tab.active { border-bottom-color:var(--accent); color:var(--accent); font-weight:700; }
+  .tab-content { display:none; }
+  .tab-content.active { display:flex; gap:16px; padding:16px; flex-wrap:wrap; }
+  .panel { background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:14px; }
+  .sim-panel { flex:1; min-width:380px; }
+  .ctrl-panel { width:260px; min-width:240px; }
+  canvas { background:var(--canvas-bg); border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .readouts { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+  .readout { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 10px; }
+  .readout label { font-size:11px; color:var(--text2); display:block; }
+  .readout .val { font-family:monospace; font-size:14px; font-weight:700; color:var(--accent); }
+  .ctrl { margin-bottom:12px; }
+  .ctrl label { display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px; }
+  .ctrl label span { font-family:monospace; color:var(--accent); font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .section-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text2); margin-bottom:8px; }
+  .insight { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 12px; margin-top:10px; font-size:12px; color:var(--text2); line-height:1.5; }
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4B-FC-6.7.2</div>
+  <h1>Frequency Compensation — Optimize: GBW vs Phase Margin</h1>
+</header>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">Design Space Map</div>
+  <div class="tab" onclick="showTab(1)">Step Response vs PM</div>
+</div>
+
+<!-- TAB 0: GBW vs PM -->
+<div class="tab-content active" id="tab0">
+  <div class="panel sim-panel">
+    <canvas id="cv0" height="340"></canvas>
+    <div class="readouts">
+      <div class="readout"><label>GBW</label><span class="val" id="r0-gbw">—</span></div>
+      <div class="readout"><label>gm2/gm1 ratio</label><span class="val" id="r0-ratio">—</span></div>
+      <div class="readout"><label>Phase Margin</label><span class="val" id="r0-pm">—</span></div>
+      <div class="readout"><label>Est. Overshoot</label><span class="val" id="r0-os">—</span></div>
+      <div class="readout"><label>Opt. Cc (PM=60°)</label><span class="val" id="r0-cc-opt">—</span></div>
+      <div class="readout"><label>Power factor</label><span class="val" id="r0-pwr">—</span></div>
+    </div>
+    <div class="insight" id="ins0">—</div>
+  </div>
+  <div class="panel ctrl-panel">
+    <div class="section-title">Design Parameters</div>
+    <div class="ctrl">
+      <label>gm1 (mA/V) <span id="lbl0-gm1">1.0</span></label>
+      <input type="range" id="sl0-gm1" min="0.1" max="5" step="0.1" value="1.0" oninput="update0()">
+    </div>
+    <div class="ctrl">
+      <label>gm2/gm1 ratio <span id="lbl0-r">2.0</span></label>
+      <input type="range" id="sl0-r" min="0.5" max="6" step="0.1" value="2.0" oninput="update0()">
+    </div>
+    <div class="ctrl">
+      <label>Cc (pF) <span id="lbl0-cc">3.0</span></label>
+      <input type="range" id="sl0-cc" min="0.2" max="20" step="0.2" value="3.0" oninput="update0()">
+    </div>
+    <div class="ctrl">
+      <label style="align-items:center">Nulling Rs enabled
+        <input type="checkbox" id="chk0-rs" checked onchange="update0()" style="width:auto;margin-left:8px">
+      </label>
+    </div>
+    <div class="section-title" style="margin-top:8px">Target PM</div>
+    <div class="ctrl">
+      <label>Target PM (°) <span id="lbl0-tgt">60</span></label>
+      <input type="range" id="sl0-tgt" min="30" max="80" value="60" oninput="update0()">
+    </div>
+    <div class="section-title" style="margin-top:8px">Sweep Display</div>
+    <div class="ctrl">
+      <label style="align-items:center">Show PM vs Cc curve
+        <input type="checkbox" id="chk0-sweep" checked onchange="update0()" style="width:auto;margin-left:8px">
+      </label>
+    </div>
+    <div class="ctrl">
+      <label style="align-items:center">Show GBW vs Cc curve
+        <input type="checkbox" id="chk0-gbw" checked onchange="update0()" style="width:auto;margin-left:8px">
+      </label>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: Step Response -->
+<div class="tab-content" id="tab1">
+  <div class="panel sim-panel">
+    <canvas id="cv1" height="340"></canvas>
+    <div class="readouts">
+      <div class="readout"><label>Phase Margin</label><span class="val" id="r1-pm">—</span></div>
+      <div class="readout"><label>Damping ζ</label><span class="val" id="r1-zeta">—</span></div>
+      <div class="readout"><label>Overshoot</label><span class="val" id="r1-os">—</span></div>
+      <div class="readout"><label>Settling (1%)</label><span class="val" id="r1-ts">—</span></div>
+    </div>
+    <div class="insight" id="ins1">—</div>
+  </div>
+  <div class="panel ctrl-panel">
+    <div class="section-title">Closed-Loop Parameters</div>
+    <div class="ctrl">
+      <label>Phase Margin (°) <span id="lbl1-pm">60</span></label>
+      <input type="range" id="sl1-pm" min="10" max="89" value="60" oninput="update1()">
+    </div>
+    <div class="ctrl">
+      <label>Closed-loop BW (MHz) <span id="lbl1-bw">100</span></label>
+      <input type="range" id="sl1-bw" min="1" max="500" step="1" value="100" oninput="update1()">
+    </div>
+    <div class="ctrl">
+      <label>Step amplitude (V) <span id="lbl1-step">1.0</span></label>
+      <input type="range" id="sl1-step" min="0.1" max="2" step="0.1" value="1.0" oninput="update1()">
+    </div>
+    <div class="section-title" style="margin-top:8px">Display</div>
+    <div class="ctrl">
+      <label style="align-items:center">Show 1% settling band
+        <input type="checkbox" id="chk1-band" checked onchange="update1()" style="width:auto;margin-left:8px">
+      </label>
+    </div>
+    <div class="ctrl">
+      <label style="align-items:center">Show ideal (PM=90°)
+        <input type="checkbox" id="chk1-ideal" checked onchange="update1()" style="width:auto;margin-left:8px">
+      </label>
+    </div>
+  </div>
+</div>
+
+<script>
+function showTab(n){
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.tab-content').forEach((t,i)=>t.classList.toggle('active',i===n));
+  if(n===0)update0();else update1();
+}
+
+function fmt(f){return f>=1e9?(f/1e9).toFixed(2)+'GHz':f>=1e6?(f/1e6).toFixed(2)+'MHz':f>=1e3?(f/1e3).toFixed(1)+'kHz':f.toFixed(1)+'Hz';}
+
+function pmFromRatio(r,useRs){
+  if(useRs) return 90-Math.atan(1/r)*180/Math.PI;
+  else return 90-2*Math.atan(1/r)*180/Math.PI;
+}
+function gbwFromCc(gm1,cc){return gm1/(2*Math.PI*cc);}
+function overshootFromPM(pm){
+  const zeta=Math.min(0.99,pm/100);
+  if(zeta>=1)return 0;
+  return Math.exp(-Math.PI*zeta/Math.sqrt(1-zeta*zeta))*100;
+}
+
+function update0(){
+  const gm1=parseFloat(document.getElementById('sl0-gm1').value)/1000;
+  const r=parseFloat(document.getElementById('sl0-r').value);
+  const cc=parseFloat(document.getElementById('sl0-cc').value)*1e-12;
+  const tgt=parseFloat(document.getElementById('sl0-tgt').value);
+  const useRs=document.getElementById('chk0-rs').checked;
+  const showSweep=document.getElementById('chk0-sweep').checked;
+  const showGBW=document.getElementById('chk0-gbw').checked;
+
+  document.getElementById('lbl0-gm1').textContent=(gm1*1000).toFixed(1);
+  document.getElementById('lbl0-r').textContent=r.toFixed(1);
+  document.getElementById('lbl0-cc').textContent=(cc*1e12).toFixed(1);
+  document.getElementById('lbl0-tgt').textContent=tgt;
+
+  const GBW=gbwFromCc(gm1,cc);
+  const pm=pmFromRatio(r,useRs);
+  const os=overshootFromPM(pm);
+
+  // Optimal Cc for target PM
+  const need_r=useRs?1/Math.tan((90-tgt)*Math.PI/180):1/Math.tan((90-tgt)*Math.PI/360);
+  const gm2_opt=gm1*need_r; // approximate: r_need for target PM with Rs
+  let r_need=useRs?1/Math.tan((90-tgt)*Math.PI/180):(()=>{let rr=0.5;for(let i=0;i<30;i++){if(90-2*Math.atan(1/rr)*180/Math.PI>tgt)break;rr+=0.1;}return rr;})();
+
+  document.getElementById('r0-gbw').textContent=fmt(GBW);
+  document.getElementById('r0-ratio').textContent=r.toFixed(2)+'×';
+  const pmEl=document.getElementById('r0-pm');pmEl.textContent=pm.toFixed(1)+'°';pmEl.style.color=pm>=60?'var(--green)':pm>=45?'#cc8800':'var(--warn)';
+  const osEl=document.getElementById('r0-os');osEl.textContent=os.toFixed(1)+'%';osEl.style.color=os<=10?'var(--green)':os<=25?'#cc8800':'var(--warn)';
+  document.getElementById('r0-cc-opt').textContent=(gm1/(2*Math.PI*GBW)*1e12).toFixed(2)+'pF (current)';
+  document.getElementById('r0-pwr').textContent=r.toFixed(1)+'× I₁ in stage 2';
+
+  document.getElementById('ins0').textContent=
+    `PM formula: 90° − arctan(gm1/gm2)${useRs?'':', − arctan(gm1/gm2) (RHP zero)'} = ${pm.toFixed(1)}°. ` +
+    `Overshoot ≈ ${os.toFixed(1)}%. GBW = gm1/(2π·Cc) = ${fmt(GBW)}. ` +
+    `For target PM=${tgt}°: need gm2/gm1 ≥ ${r_need.toFixed(2)}. ` +
+    (r>=r_need?`Current ratio ${r.toFixed(2)} meets target.`:`Current ratio ${r.toFixed(2)} < required ${r_need.toFixed(2)}.`);
+
+  draw0(gm1,r,cc,tgt,useRs,pm,GBW,os,showSweep,showGBW,r_need);
+}
+
+function draw0(gm1,r,cc,tgt,useRs,pm_cur,GBW,os,showSweep,showGBW,r_need){
+  const canvas=document.getElementById('cv0');
+  const W=canvas.offsetWidth||520;canvas.width=W;canvas.height=340;
+  const ctx=canvas.getContext('2d');
+  const pad={l:55,r:20,t:30,b:35};
+  const pw=W-pad.l-pad.r,ph=340-pad.t-pad.b;
+  ctx.fillStyle='var(--canvas-bg)';ctx.fillRect(0,0,W,340);
+
+  // Dual y-axes: left = PM (0-90°), right = GBW (log MHz)
+  // x-axis: Cc from 0.2 to 20 pF (log)
+  const ccMin=0.2e-12,ccMax=20e-12;
+  const ccToX=c=>pad.l+(Math.log10(c/ccMin)/Math.log10(ccMax/ccMin))*pw;
+  const pmToY=p=>pad.t+ph-(p/90)*ph;
+  const gbwLogMin=Math.log10(gm1/(2*Math.PI*ccMax)/1e6);
+  const gbwLogMax=Math.log10(gm1/(2*Math.PI*ccMin)/1e6);
+  const gbwToY=g=>pad.t+ph-(Math.log10(Math.max(g/1e6,0.001))-gbwLogMin)/(gbwLogMax-gbwLogMin)*ph;
+
+  // Grid
+  ctx.strokeStyle='var(--border)';ctx.lineWidth=0.7;
+  [0,15,30,45,60,75,90].forEach(p=>{const y=pmToY(p);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='right';ctx.fillText(p+'°',pad.l-3,y+3);});
+
+  // Target PM line
+  const yTgt=pmToY(tgt);
+  ctx.strokeStyle='#cc880066';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,yTgt);ctx.lineTo(pad.l+pw,yTgt);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#cc8800';ctx.font='9px monospace';ctx.textAlign='left';ctx.fillText('Target PM='+tgt+'°',pad.l+2,yTgt-3);
+
+  // PM curve: PM depends on gm2/gm1 ratio (fixed r), not on Cc
+  // PM is constant with Cc — draw horizontal line at current PM
+  if(showSweep){
+    ctx.strokeStyle='#0066cc';ctx.lineWidth=2.5;
+    ctx.beginPath();ctx.moveTo(pad.l,pmToY(pm_cur));ctx.lineTo(pad.l+pw,pmToY(pm_cur));ctx.stroke();
+    ctx.fillStyle='#0066cc';ctx.font='9px monospace';ctx.textAlign='right';ctx.fillText('PM='+pm_cur.toFixed(0)+'° (gm2/gm1='+r.toFixed(1)+')',pad.l+pw-2,pmToY(pm_cur)-4);
+  }
+
+  // Show PM for different r values
+  [1.0,1.73,2.75,4.0].forEach((rv,i)=>{
+    const p=pmFromRatio(rv,useRs);
+    const cols=['#cc4400','#cc8800','#009933','#0044cc'];
+    ctx.strokeStyle=cols[i]+'66';ctx.lineWidth=1;ctx.setLineDash([2,2]);
+    ctx.beginPath();ctx.moveTo(pad.l,pmToY(p));ctx.lineTo(pad.l+pw,pmToY(p));ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=cols[i];ctx.font='8px monospace';ctx.textAlign='left';
+    ctx.fillText('r='+rv.toFixed(2)+' → '+p.toFixed(0)+'°',pad.l+2,pmToY(p)-3);
+  });
+
+  // GBW curve (blue dashed on right scale — shown on same canvas for simplicity)
+  if(showGBW){
+    ctx.strokeStyle='#00994d';ctx.lineWidth=2;ctx.beginPath();let first=true;
+    const npts=100;
+    for(let i=0;i<=npts;i++){
+      const c=ccMin*Math.pow(ccMax/ccMin,i/npts);
+      const g=gm1/(2*Math.PI*c);
+      const x=ccToX(c);
+      // Map GBW to PM axis for display: GBW/GBW_max → 0-90°
+      const y=gbwToY(g);
+      const ypm=pad.t+ph-((Math.log10(Math.max(g/1e6,0.001))-gbwLogMin)/(gbwLogMax-gbwLogMin))*ph;
+      first?ctx.moveTo(x,ypm):ctx.lineTo(x,ypm);first=false;
+    }
+    ctx.stroke();
+    ctx.fillStyle='#00994d';ctx.font='9px monospace';ctx.textAlign='right';ctx.fillText('GBW (log scale, right)',pad.l+pw-2,pad.t+12);
+  }
+
+  // Current Cc marker
+  const xcur=ccToX(cc);
+  ctx.strokeStyle='#cc4400';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(xcur,pad.t);ctx.lineTo(xcur,pad.t+ph);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#cc4400';ctx.font='bold 9px monospace';ctx.textAlign='center';ctx.fillText('Cc='+(cc*1e12).toFixed(1)+'pF',xcur,pad.t+ph+13);
+
+  // x-axis labels
+  ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='center';
+  [0.2,0.5,1,2,5,10,20].forEach(cv=>{ctx.fillText(cv+'pF',ccToX(cv*1e-12),pad.t+ph+25);});
+  ctx.fillStyle='var(--text2)';ctx.fillText('Cc →',pad.l+pw/2,pad.t+ph+35);
+
+  ctx.fillStyle='var(--text2)';ctx.font='9px sans-serif';ctx.textAlign='left';
+  ctx.fillText('PM set by gm2/gm1 ratio (horizontal), GBW set by Cc (green)',pad.l,pad.t-5);
+  ctx.fillStyle='#0066cc';ctx.fillText('blue = current PM',pad.l,pad.t+10);
+}
+
+// TAB 1: Step response
+function update1(){
+  const pm_deg=parseFloat(document.getElementById('sl1-pm').value);
+  const bw_hz=parseFloat(document.getElementById('sl1-bw').value)*1e6;
+  const step_amp=parseFloat(document.getElementById('sl1-step').value);
+  const showBand=document.getElementById('chk1-band').checked;
+  const showIdeal=document.getElementById('chk1-ideal').checked;
+
+  document.getElementById('lbl1-pm').textContent=pm_deg;
+  document.getElementById('lbl1-bw').textContent=(bw_hz/1e6).toFixed(0);
+  document.getElementById('lbl1-step').textContent=step_amp.toFixed(1);
+
+  // Two-pole closed-loop: ωn = 2π×BW, ζ from PM
+  // PM ≈ arctan(2ζ / sqrt(-2ζ²+sqrt(4ζ⁴+1))) — use approximation ζ ≈ PM/100
+  const zeta=Math.max(0.01,Math.min(0.99,pm_deg/100));
+  const os=overshootFromPM(pm_deg);
+  const wn=2*Math.PI*bw_hz;
+  // settling time to 1%: approximately -ln(0.01/step_amp)/(zeta*wn)
+  const ts_1pct=-Math.log(0.01/step_amp)/(zeta*wn);
+
+  document.getElementById('r1-pm').textContent=pm_deg+'°';
+  document.getElementById('r1-zeta').textContent=zeta.toFixed(3);
+  const osEl=document.getElementById('r1-os');osEl.textContent=os.toFixed(1)+'%';osEl.style.color=os<=10?'var(--green)':os<=25?'#cc8800':'var(--warn)';
+  document.getElementById('r1-ts').textContent=(ts_1pct*1e9).toFixed(1)+'ns';
+
+  document.getElementById('ins1').textContent=
+    `PM=${pm_deg}° → ζ≈${zeta.toFixed(2)}, overshoot≈${os.toFixed(1)}%, 1% settling≈${(ts_1pct*1e9).toFixed(1)}ns. ` +
+    `Closed-loop BW=${(bw_hz/1e6).toFixed(0)}MHz (ωn=${(wn/2/Math.PI/1e6).toFixed(0)}MHz). ` +
+    (pm_deg>=60?'PM ≥ 60°: acceptable for most applications.':pm_deg>=45?'PM 45–60°: usable but may ring excessively.':'PM < 45°: marginal or unstable.');
+
+  draw1(pm_deg,zeta,bw_hz,step_amp,os,showBand,showIdeal,ts_1pct,wn);
+}
+
+function stepResponse(t,zeta,wn,amp){
+  if(t<=0)return 0;
+  const wd=wn*Math.sqrt(Math.max(0.001,1-zeta*zeta));
+  return amp*(1-Math.exp(-zeta*wn*t)*(Math.cos(wd*t)+zeta/Math.sqrt(Math.max(0.001,1-zeta*zeta))*Math.sin(wd*t)));
+}
+
+function draw1(pm,zeta,bw_hz,step,os,showBand,showIdeal,ts_1pct,wn){
+  const canvas=document.getElementById('cv1');
+  const W=canvas.offsetWidth||520;canvas.width=W;canvas.height=340;
+  const ctx=canvas.getContext('2d');
+  const pad={l:50,r:20,t:20,b:35};
+  const pw=W-pad.l-pad.r,ph=340-pad.t-pad.b;
+  ctx.fillStyle='var(--canvas-bg)';ctx.fillRect(0,0,W,340);
+
+  const tMax=Math.max(ts_1pct*3,1/(bw_hz)*5);
+  const tToX=t=>pad.l+(t/tMax)*pw;
+  const vToY=v=>pad.t+ph-((v+0.1*step)/(step*1.6))*ph;
+
+  // Grid
+  ctx.strokeStyle='var(--border)';ctx.lineWidth=0.7;
+  [0,0.5,1.0,1.1,1.2].forEach(v=>{
+    const vabs=v*step;const y=vToY(vabs);if(y<pad.t-2||y>pad.t+ph+2)return;
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='right';ctx.fillText(vabs.toFixed(1),pad.l-3,y+3);
+  });
+
+  const y1=vToY(step);
+  ctx.strokeStyle='rgba(0,0,0,0.15)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,y1);ctx.lineTo(pad.l+pw,y1);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='var(--text2)';ctx.font='8px monospace';ctx.textAlign='right';ctx.fillText('Final',pad.l-3,y1+3);
+
+  // 1% band
+  if(showBand){
+    const band=0.01*step;
+    const yhi=vToY(step+band),ylo=vToY(step-band);
+    ctx.fillStyle='rgba(0,153,77,0.1)';ctx.fillRect(pad.l,yhi,pw,ylo-yhi);
+    ctx.strokeStyle='rgba(0,153,77,0.4)';ctx.lineWidth=1;ctx.setLineDash([2,2]);
+    ctx.beginPath();ctx.moveTo(pad.l,yhi);ctx.lineTo(pad.l+pw,yhi);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(pad.l,ylo);ctx.lineTo(pad.l+pw,ylo);ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Ideal (zeta=1, PM=90°)
+  if(showIdeal){
+    const zeta_i=0.99;
+    ctx.strokeStyle='rgba(0,102,204,0.3)';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);ctx.beginPath();let first=true;
+    for(let i=0;i<=300;i++){const t=i/300*tMax;const v=stepResponse(t,zeta_i,wn,step);const x=tToX(t);const y=vToY(v);first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;}ctx.stroke();ctx.setLineDash([]);
+  }
+
+  // Main curve
+  const col_curve=pm>=60?'#0066cc':pm>=45?'#cc8800':'#cc4400';
+  ctx.strokeStyle=col_curve;ctx.lineWidth=2.5;ctx.beginPath();let first=true;
+  for(let i=0;i<=500;i++){const t=i/500*tMax;const v=stepResponse(t,zeta,wn,step);const x=tToX(t);const y=vToY(v);if(y<pad.t-20||y>pad.t+ph+20){first=true;continue;}first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;}ctx.stroke();
+
+  // Settling time marker
+  if(ts_1pct>0&&ts_1pct<tMax){
+    const xts=tToX(ts_1pct);ctx.strokeStyle='#00994d88';ctx.lineWidth=1;ctx.setLineDash([3,2]);
+    ctx.beginPath();ctx.moveTo(xts,pad.t);ctx.lineTo(xts,pad.t+ph);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#00994d';ctx.font='9px monospace';ctx.textAlign='left';ctx.fillText('ts_1%='+(ts_1pct*1e9).toFixed(0)+'ns',xts+3,pad.t+12);
+  }
+
+  // Overshoot annotation
+  if(os>0.5){
+    const t_peak=Math.PI/(wn*Math.sqrt(Math.max(0.001,1-zeta*zeta)));
+    const v_peak=stepResponse(t_peak,zeta,wn,step);
+    if(t_peak<tMax){
+      const xp=tToX(t_peak);const yp=vToY(v_peak);
+      ctx.fillStyle=col_curve;ctx.beginPath();ctx.arc(xp,yp,4,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='var(--text)';ctx.font='bold 9px monospace';ctx.textAlign='left';ctx.fillText(os.toFixed(0)+'% OS',xp+5,yp-3);
+    }
+  }
+
+  // x-axis
+  ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='center';
+  const tStep=tMax/5;
+  for(let i=0;i<=5;i++){
+    const t=i*tStep;const ns=t*1e9;
+    ctx.fillText(ns>=1?(ns.toFixed(0)+'ns'):(t*1e12).toFixed(0)+'ps',tToX(t),pad.t+ph+14);
+  }
+  ctx.fillStyle='var(--text2)';ctx.font='9px sans-serif';ctx.textAlign='left';
+  ctx.fillText('PM='+pm+'°, ζ='+zeta.toFixed(2)+', BW='+(bw_hz/1e6).toFixed(0)+'MHz',pad.l+3,pad.t+8);
+  if(showIdeal){ctx.fillStyle='rgba(0,102,204,0.5)';ctx.fillText('dashed = PM=90° (ideal)',pad.l+3,pad.t+18);}
+}
+
+update0();
+</script>
+</body>
+</html>

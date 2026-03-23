@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-L-2.1.2 — Current and Flux Relationship</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+  h1 { color: #0066cc; font-size: 1.3em; margin-bottom: 4px; }
+  .subtitle { color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }
+  .layout { display: flex; gap: 20px; flex-wrap: wrap; }
+  .panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+  .controls { width: 280px; flex-shrink: 0; }
+  .plot-area { flex: 1; min-width: 360px; }
+  label { display: block; color: #8b949e; font-size: 0.8em; margin-bottom: 4px; margin-top: 12px; }
+  input[type=range] { width: 100%; accent-color: #0066cc; }
+  select { width: 100%; background: #21262d; border: 1px solid #30363d; color: #e6edf3; padding: 6px; border-radius: 4px; margin-top: 4px; }
+  .val { color: #0066cc; font-weight: bold; }
+  canvas { background: #0d1117; border-radius: 6px; display: block; }
+  .readouts { margin-top: 14px; }
+  .readout-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #21262d; font-size: 0.82em; }
+  .readout-label { color: #8b949e; }
+  .readout-val { color: #39d353; font-weight: bold; font-family: monospace; }
+  .eq { background: #21262d; border-left: 3px solid #0066cc; padding: 10px 12px; border-radius: 4px; margin-top: 14px; font-family: monospace; font-size: 0.82em; color: #a5d6ff; }
+</style>
+</head>
+<body>
+<h1>P2-L-2.1.2 — Φ-I Curve and Saturation</h1>
+<div class="subtitle">Flux-current curve · linear region → saturation knee · L_diff drops at high I · core material slider</div>
+<div class="layout">
+  <div class="panel controls">
+    <label>Current I: <span class="val" id="iLabel">1.0 A</span></label>
+    <input type="range" id="iSlider" min="1" max="200" value="30" step="1">
+    <label>Inductance L₀ (at zero current): <span class="val" id="l0Label">10 µH</span></label>
+    <input type="range" id="l0Slider" min="1" max="100" value="10" step="1">
+    <label>Core saturation current I_sat: <span class="val" id="isatLabel">3.0 A</span></label>
+    <input type="range" id="isatSlider" min="10" max="100" value="30" step="5">
+    <label>Core material:</label>
+    <select id="matSelect">
+      <option value="sharp">Hard ferrite (sharp saturation)</option>
+      <option value="soft" selected>MPP powder (soft saturation)</option>
+      <option value="air">Air core (no saturation)</option>
+    </select>
+    <div class="readouts">
+      <div class="readout-row"><span class="readout-label">Current I</span><span class="readout-val" id="Ival">—</span></div>
+      <div class="readout-row"><span class="readout-label">Flux linkage Ψ = L(I)×I</span><span class="readout-val" id="Psi">—</span></div>
+      <div class="readout-row"><span class="readout-label">L_diff = dΨ/dI</span><span class="readout-val" id="Ldiff">—</span></div>
+      <div class="readout-row"><span class="readout-label">L drop from nominal</span><span class="readout-val" id="Ldrop">—</span></div>
+      <div class="readout-row"><span class="readout-label">V = L_diff × dI/dt @ 1A/µs</span><span class="readout-val" id="Vinduced">—</span></div>
+    </div>
+    <div class="eq">Ψ = L(I) × I<br>L_diff(I) = dΨ/dI<br>V = L_diff × dI/dt<br>E = ½L₀I² (linear region)</div>
+  </div>
+  <div class="panel plot-area">
+    <canvas id="cv" width="560" height="420"></canvas>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'); const ctx=cv.getContext('2d');
+const W=560, H=420;
+const PAD={top:36,right:30,bottom:52,left:68};
+const PW=W-PAD.left-PAD.right, PH=H-PAD.top-PAD.bottom;
+
+function getLeff(I, L0, Isat, mode){
+  if(mode==='air') return L0;
+  const x=I/Isat;
+  if(mode==='sharp'){
+    if(x<0.7) return L0;
+    if(x<1.0) return L0*(1-(x-0.7)/0.3*0.85);
+    return L0*0.15*Math.exp(-(x-1)*3);
+  }
+  // soft (MPP-like): smooth tanh rolloff
+  return L0/(1+Math.pow(x,2));
+}
+
+function getPsi(I, L0, Isat, mode){
+  // numerical integration of L(I)*dI from 0 to I
+  const N=500; const dI=I/N;
+  let psi=0;
+  for(let k=0;k<N;k++){
+    const Im=(k+0.5)*dI;
+    psi+=getLeff(Im,L0,Isat,mode)*dI;
+  }
+  return psi;
+}
+
+function fmtL(l){ return l>=1e-3?(l*1e3).toFixed(2)+'mH':l>=1e-6?(l*1e6).toFixed(2)+'µH':(l*1e9).toFixed(1)+'nH'; }
+function fmtPhi(p){ return p>=1e-3?(p*1e3).toFixed(3)+'mWb':p>=1e-6?(p*1e6).toFixed(2)+'µWb':(p*1e9).toFixed(1)+'nWb'; }
+
+function draw(){
+  const I=parseFloat(document.getElementById('iSlider').value)/20;
+  const L0=parseFloat(document.getElementById('l0Slider').value)*1e-6;
+  const Isat=parseFloat(document.getElementById('isatSlider').value)/10;
+  const mode=document.getElementById('matSelect').value;
+
+  document.getElementById('iLabel').textContent=I.toFixed(2)+' A';
+  document.getElementById('l0Label').textContent=fmtL(L0);
+  document.getElementById('isatLabel').textContent=Isat.toFixed(1)+' A';
+
+  const Leff=getLeff(I,L0,Isat,mode);
+  const Psi=getPsi(I,L0,Isat,mode);
+  const dI=0.001;
+  const Ldiff=(getPsi(I+dI,L0,Isat,mode)-getPsi(I,L0,Isat,mode))/dI;
+  const Ldrop=(L0-Ldiff)/L0*100;
+  const Vinduced=Ldiff*1e6; // at 1 A/µs
+
+  document.getElementById('Ival').textContent=I.toFixed(3)+' A';
+  document.getElementById('Psi').textContent=fmtPhi(Psi);
+  document.getElementById('Ldiff').textContent=fmtL(Ldiff);
+  document.getElementById('Ldrop').textContent=Math.max(0,Ldrop).toFixed(1)+'%';
+  document.getElementById('Vinduced').textContent=Vinduced.toFixed(3)+' V';
+
+  ctx.clearRect(0,0,W,H);
+  const Imax=Isat*2.5;
+  const PsiMax=L0*Isat*1.1;
+
+  // Grid
+  ctx.strokeStyle='#21262d'; ctx.lineWidth=1;
+  for(let i=0;i<=5;i++){const x=PAD.left+(i/5)*PW;ctx.beginPath();ctx.moveTo(x,PAD.top);ctx.lineTo(x,PAD.top+PH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=PAD.top+(i/5)*PH;ctx.beginPath();ctx.moveTo(PAD.left,y);ctx.lineTo(PAD.left+PW,y);ctx.stroke();}
+
+  // Axes
+  ctx.strokeStyle='#484f58'; ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(PAD.left,PAD.top);ctx.lineTo(PAD.left,PAD.top+PH);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(PAD.left,PAD.top+PH);ctx.lineTo(PAD.left+PW,PAD.top+PH);ctx.stroke();
+
+  // Labels
+  ctx.fillStyle='#8b949e'; ctx.font='10px sans-serif';
+  ctx.textAlign='center';
+  for(let i=0;i<=5;i++){
+    const iv=(i/5)*Imax; ctx.fillText(iv.toFixed(1)+'A', PAD.left+(i/5)*PW, PAD.top+PH+16);
+  }
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){
+    const pv=(i/5)*PsiMax; const y=PAD.top+PH-(i/5)*PH;
+    ctx.fillText(fmtPhi(pv), PAD.left-5, y+4);
+  }
+  ctx.textAlign='center'; ctx.fillText('Current I (A)', PAD.left+PW/2, H-12);
+  ctx.save(); ctx.translate(14,PAD.top+PH/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('Flux linkage Ψ (Wb)', 0, 0); ctx.restore();
+
+  // Linear reference line (ideal, no saturation)
+  ctx.strokeStyle='#30363d'; ctx.lineWidth=1.5; ctx.setLineDash([6,4]);
+  ctx.beginPath();
+  ctx.moveTo(PAD.left, PAD.top+PH);
+  ctx.lineTo(PAD.left+(Imax/Imax)*PW, PAD.top+PH-(L0*Imax/PsiMax)*PH);
+  ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#484f58'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('Ideal (no saturation)', PAD.left+4, PAD.top+14);
+
+  // Φ-I curve
+  ctx.strokeStyle='#0066cc'; ctx.lineWidth=2.5; ctx.beginPath();
+  const Npts=400;
+  for(let px=0;px<=Npts;px++){
+    const Ic=(px/Npts)*Imax;
+    const psi=getPsi(Ic,L0,Isat,mode);
+    const x=PAD.left+(Ic/Imax)*PW;
+    const y=PAD.top+PH-(Math.min(psi,PsiMax)/PsiMax)*PH;
+    px===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Saturation knee marker
+  const xKnee=PAD.left+(Isat/Imax)*PW;
+  const psiKnee=getPsi(Isat,L0,Isat,mode);
+  const yKnee=PAD.top+PH-(Math.min(psiKnee,PsiMax)/PsiMax)*PH;
+  ctx.strokeStyle='#e3b341'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(xKnee,PAD.top);ctx.lineTo(xKnee,yKnee);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(PAD.left,yKnee);ctx.lineTo(xKnee,yKnee);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#e3b341'; ctx.beginPath();ctx.arc(xKnee,yKnee,5,0,2*Math.PI);ctx.fill();
+  ctx.fillStyle='#e3b341'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('I_sat = '+Isat.toFixed(1)+'A', xKnee+6, yKnee-5);
+
+  // Operating point marker
+  const xOp=PAD.left+(I/Imax)*PW;
+  const yOp=PAD.top+PH-(Math.min(Psi,PsiMax)/PsiMax)*PH;
+  ctx.strokeStyle='#f78166'; ctx.lineWidth=1.5; ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(PAD.left,yOp);ctx.lineTo(xOp,yOp);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(xOp,PAD.top+PH);ctx.lineTo(xOp,yOp);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#f78166'; ctx.beginPath();ctx.arc(xOp,yOp,6,0,2*Math.PI);ctx.fill();
+  ctx.fillStyle='#f78166'; ctx.font='bold 11px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('I = '+I.toFixed(2)+'A', xOp, PAD.top+PH+32);
+  ctx.fillText('Ψ = '+fmtPhi(Psi), xOp, yOp-14);
+
+  // Tangent line (L_diff = slope at operating point)
+  const dPsi=Ldiff*0.5;
+  const dI2=0.5;
+  const x1=xOp-dI2/Imax*PW, x2=xOp+dI2/Imax*PW;
+  const y1=yOp+dPsi/PsiMax*PH, y2=yOp-dPsi/PsiMax*PH;
+  ctx.strokeStyle='#f78166'; ctx.lineWidth=2; ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#f78166'; ctx.font='10px sans-serif'; ctx.textAlign='right';
+  ctx.fillText('L_diff = '+fmtL(Ldiff)+' ('+Math.max(0,100-Ldrop).toFixed(0)+'% of L₀)', PAD.left+PW-4, yOp+20);
+
+  // Energy triangle
+  const E=0.5*L0*I*I;
+  ctx.fillStyle='rgba(0,102,204,0.15)';
+  ctx.beginPath(); ctx.moveTo(PAD.left,PAD.top+PH); ctx.lineTo(xOp,PAD.top+PH); ctx.lineTo(xOp,yOp); ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#0066cc'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('E≈½L₀I²='+( E*1e6).toFixed(1)+'µJ', PAD.left+(xOp-PAD.left)/2, PAD.top+PH-8);
+
+  // Title
+  const matLabel={sharp:'Hard ferrite',soft:'MPP powder',air:'Air core'};
+  ctx.fillStyle='#8b949e'; ctx.font='11px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('Φ-I CURVE  Core: '+matLabel[mode]+'  L₀ = '+fmtL(L0), PAD.left, PAD.top-12);
+
+  // L(I) curve (top right inset)
+  const IX=PAD.left+PW-120, IY=PAD.top+10, IW=115, IH=80;
+  ctx.fillStyle='#161b22'; ctx.strokeStyle='#30363d'; ctx.lineWidth=1;
+  ctx.fillRect(IX,IY,IW,IH); ctx.strokeRect(IX,IY,IW,IH);
+  ctx.strokeStyle='#0066cc'; ctx.lineWidth=1.5; ctx.beginPath();
+  for(let px=0;px<=IW-4;px++){
+    const Ic=(px/(IW-4))*Imax;
+    const Ld=getLeff(Ic,L0,Isat,mode);
+    const x=IX+2+px; const y=IY+IH-4-(Ld/L0)*(IH-8);
+    px===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  const xOpI=IX+2+(I/Imax)*(IW-4);
+  const yOpL=IY+IH-4-(Leff/L0)*(IH-8);
+  ctx.fillStyle='#f78166'; ctx.beginPath();ctx.arc(xOpI,yOpL,3,0,2*Math.PI);ctx.fill();
+  ctx.fillStyle='#8b949e'; ctx.font='9px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('L(I)', IX+IW/2, IY+IH+12);
+}
+
+['iSlider','l0Slider','isatSlider','matSelect'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+draw();
+</script>
+</body>
+</html>

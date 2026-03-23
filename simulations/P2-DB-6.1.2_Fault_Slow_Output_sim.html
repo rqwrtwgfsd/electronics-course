@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-DB-6.1.2 Fault: Slow Output</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:12px;padding:12px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:230px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.warn{color:#ff4444;font-size:11px;margin-top:4px}
+.ok{color:#00ff88;font-size:11px;margin-top:4px}
+.info{color:#aaa;font-size:11px;margin-top:6px;line-height:1.5}
+.formula{color:#ffaa00;font-size:11px;margin-top:8px;line-height:1.6}
+</style>
+</head>
+<body>
+<h1>P2-DB-6.1.2 — Fault: Slow Output (τ Too Large)</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="580" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>Nominal Design</h2>
+<label>R_nominal (kΩ)
+<input type="range" id="rnom" min="1" max="100" step="1" value="10">
+<div class="readout" id="rnom_v">R_nom = 10 kΩ</div>
+</label>
+<label>C_nominal (nF)
+<input type="range" id="cnom" min="10" max="1000" step="10" value="100">
+<div class="readout" id="cnom_v">C_nom = 100 nF</div>
+</label>
+<h2 style="margin-top:10px">Fault Factors</h2>
+<label>R extra factor (series stray)
+<input type="range" id="rfault" min="1" max="5" step="0.1" value="1">
+<div class="readout" id="rfault_v">R_actual = 1.0 × R_nom</div>
+</label>
+<label>C extra factor (wrong value / derating)
+<input type="range" id="cfault" min="0.2" max="5" step="0.05" value="1">
+<div class="readout" id="cfault_v">C_actual = 1.0 × C_nom</div>
+</label>
+<h2 style="margin-top:10px">Diagnosis</h2>
+<div class="readout" id="tau_nom">τ_nom = —</div>
+<div class="readout" id="tau_act">τ_actual = —</div>
+<div id="fault_msg" class="warn"></div>
+<div class="formula">τ = R × C<br>Electrolytic: +80% tolerance<br>MLCC X5R: −50% at V_rated</div>
+<div class="info" id="root_cause"></div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let rnom=10,cnom=100,rfault=1,cfault=1;
+const W=580,H=380,PAD={l:60,r:20,t:30,b:40};
+const CW=W-PAD.l-PAD.r,CH=H-PAD.t-PAD.b;
+const Vin=5;
+
+['rnom','cnom','rfault','cfault'].forEach(id=>{
+  document.getElementById(id).oninput=function(){
+    if(id==='rnom'){rnom=parseFloat(this.value);document.getElementById('rnom_v').textContent='R_nom = '+rnom+' kΩ';}
+    if(id==='cnom'){cnom=parseFloat(this.value);document.getElementById('cnom_v').textContent='C_nom = '+cnom+' nF';}
+    if(id==='rfault'){rfault=parseFloat(this.value);document.getElementById('rfault_v').textContent='R_actual = '+rfault.toFixed(1)+' × R_nom';}
+    if(id==='cfault'){cfault=parseFloat(this.value);document.getElementById('cfault_v').textContent='C_actual = '+cfault.toFixed(1)+' × C_nom';}
+    draw();
+  };
+});
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const tau_nom=rnom*1e3*cnom*1e-9*1000; // ms
+  const tau_act=rnom*rfault*1e3*cnom*cfault*1e-9*1000; // ms
+  const tmax=Math.max(tau_act,tau_nom)*7;
+  function toPx(t,v){return[PAD.l+CW*(t/tmax),PAD.t+CH*(1-v/(Vin*1.1))];}
+  // Grid
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=8;i++){const x=PAD.l+CW*(i/8);ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=PAD.t+CH*(i/5);ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+CH);ctx.moveTo(PAD.l,PAD.t+CH);ctx.lineTo(PAD.l+CW,PAD.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=8;i++){const t=tmax*i/8;const x=PAD.l+CW*(i/8);ctx.fillText(t.toFixed(2)+'ms',x,PAD.t+CH+14);}
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){const v=Vin*1.1*(1-i/5);const y=PAD.t+CH*(i/5);ctx.fillText(v.toFixed(1)+'V',PAD.l-4,y+4);}
+  // V_in ref
+  const[,yvf]=toPx(0,Vin);
+  ctx.strokeStyle='#333';ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(PAD.l,yvf);ctx.lineTo(PAD.l+CW,yvf);ctx.stroke();ctx.setLineDash([]);
+  // Expected waveform (nominal)
+  ctx.strokeStyle='#1a4a1a';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=500;i++){const t=tmax*i/500;const v=Vin*(1-Math.exp(-t/tau_nom));const[x,y]=toPx(t,v);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  ctx.fillStyle='#2a5a2a';ctx.font='11px Courier New';ctx.textAlign='left';
+  ctx.fillText('Expected τ='+tau_nom.toFixed(2)+'ms',PAD.l+4,PAD.t+14);
+  // Actual (fault) waveform
+  ctx.strokeStyle='#ff4444';ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=500;i++){const t=tmax*i/500;const v=Vin*(1-Math.exp(-t/tau_act));const[x,y]=toPx(t,v);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  ctx.fillStyle='#ff4444';ctx.font='11px Courier New';ctx.textAlign='left';
+  ctx.fillText('Actual τ='+tau_act.toFixed(2)+'ms',PAD.l+4,PAD.t+28);
+  // τ markers
+  const[xn,yn]=toPx(tau_nom,0.632*Vin);const[xa,ya]=toPx(tau_act,0.632*Vin);
+  ctx.fillStyle='#2a8a2a';ctx.beginPath();ctx.arc(xn,yn,4,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#ff4444';ctx.beginPath();ctx.arc(xa,ya,4,0,Math.PI*2);ctx.fill();
+  // Update readouts
+  document.getElementById('tau_nom').textContent='τ_nom = '+tau_nom.toFixed(3)+' ms';
+  document.getElementById('tau_act').textContent='τ_actual = '+tau_act.toFixed(3)+' ms';
+  const ratio=tau_act/tau_nom;
+  const msg=document.getElementById('fault_msg');
+  const rc=document.getElementById('root_cause');
+  if(Math.abs(ratio-1)<0.02){msg.className='ok';msg.textContent='τ normal — no fault';rc.textContent='';}
+  else if(ratio>1){msg.className='warn';msg.textContent='FAULT: τ '+((ratio-1)*100).toFixed(0)+'% too large';
+    if(rfault>1.2&&cfault<1.1)rc.textContent='Root cause: excess series R (stray, solder bridge on pad)';
+    else if(cfault>1.2&&rfault<1.1)rc.textContent='Root cause: oversized C (wrong value, parallel stray C)';
+    else rc.textContent='Root cause: both R and C larger than nominal';
+  } else {
+    msg.className='ok';msg.textContent='τ shorter than nominal ('+((1-ratio)*100).toFixed(0)+'% fast)';
+    if(cfault<0.9)rc.textContent='C smaller — MLCC voltage derating or wrong value';
+    else rc.textContent='R smaller — parallel leakage or wrong resistor';
+  }
+}
+draw();
+</script>
+</body>
+</html>

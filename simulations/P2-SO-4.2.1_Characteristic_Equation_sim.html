@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-SO-4.2.1 — Characteristic Equation & S-Plane</title>
+<style>
+  :root { --accent: #0066cc; --bg: #1a1a1a; --panel: #242424; --border: #333; --text: #e0e0e0; --muted: #888; }
+  @media (prefers-color-scheme: light) { :root { --bg: #f4f4f4; --panel: #fff; --border: #ccc; --text: #1a1a1a; --muted: #555; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+  h1 { font-size: 1.1rem; color: var(--accent); padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .subtitle { font-size: 0.8rem; color: var(--muted); padding: 0 16px 8px; }
+  .layout { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; }
+  .controls { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px; min-width: 230px; flex: 0 0 230px; }
+  .ctrl-group { margin-bottom: 14px; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .val { font-weight: bold; color: var(--accent); }
+  .readout { display: grid; grid-template-columns: 1fr; gap: 5px; margin-top: 10px; }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 5px 8px; }
+  .card-label { font-size: 0.68rem; color: var(--muted); }
+  .card-val { font-size: 0.84rem; font-weight: bold; }
+  .canvases { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 300px; }
+  canvas { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: block; }
+</style>
+</head>
+<body>
+<h1>P2-SO-4.2.1 — Characteristic Equation & S-Plane Roots</h1>
+<p class="subtitle">s² + 2αs + ω₀² = 0 &nbsp;|&nbsp; s = −α ± j·ω_d</p>
+<div class="layout">
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>Resistance R (Ω): <span class="val" id="vR">10.0</span></label>
+      <input type="range" id="sR" min="0.1" max="200" step="0.5" value="10">
+    </div>
+    <div class="ctrl-group">
+      <label>Inductance L (µH): <span class="val" id="vL">10.0</span></label>
+      <input type="range" id="sL" min="1" max="100" step="1" value="10">
+    </div>
+    <div class="ctrl-group">
+      <label>Capacitance C (nF): <span class="val" id="vC">10</span></label>
+      <input type="range" id="sC" min="1" max="100" step="1" value="10">
+    </div>
+    <div class="readout">
+      <div class="card"><div class="card-label">ω₀ (Mrad/s)</div><div class="card-val" id="rO0" style="color:#0066cc">10.0</div></div>
+      <div class="card"><div class="card-label">α = R/(2L) (krad/s)</div><div class="card-val" id="rAlpha" style="color:#ff8844">500</div></div>
+      <div class="card"><div class="card-label">ζ = α/ω₀</div><div class="card-val" id="rZeta">0.050</div></div>
+      <div class="card"><div class="card-label">Root type</div><div class="card-val" id="rType" style="color:#44aa44">Complex</div></div>
+      <div class="card"><div class="card-label">s₁ (rad/s)</div><div class="card-val" id="rS1" style="color:#cc44cc;font-size:0.75rem">−500k±j·10M</div></div>
+    </div>
+  </div>
+  <div class="canvases">
+    <canvas id="cvSplane" width="540" height="220"></canvas>
+    <canvas id="cvStep" width="540" height="185"></canvas>
+  </div>
+</div>
+<script>
+function getC(){const d=window.matchMedia('(prefers-color-scheme: dark)').matches;return{bg:d?'#242424':'#fff',grid:d?'#2e2e2e':'#e8e8e8',mut:d?'#888':'#555'};}
+
+function drawSplane(omega0,alpha,zeta) {
+  const cv=document.getElementById('cvSplane'),ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height,c=getC();
+  ctx.fillStyle=c.bg;ctx.fillRect(0,0,W,H);
+
+  const cx=W*0.55,cy=H*0.5,scale=Math.min(W*0.4,H*0.4)/omega0;
+  // Axes
+  ctx.strokeStyle=c.mut;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(W*0.05,cy);ctx.lineTo(W*0.95,cy);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(cx,H*0.05);ctx.lineTo(cx,H*0.95);ctx.stroke();
+  // Labels
+  ctx.fillStyle=c.mut;ctx.font='10px sans-serif';
+  ctx.fillText('Re(s)',W*0.87,cy-6);
+  ctx.fillText('jIm(s)',cx+4,H*0.08);
+
+  // Circle at |s|=ω₀
+  ctx.strokeStyle='rgba(100,150,255,0.3)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.arc(cx,cy,omega0*scale,0,Math.PI*2);ctx.stroke();
+
+  const underdamped=alpha<omega0;
+  const od=underdamped?Math.sqrt(omega0*omega0-alpha*alpha):0;
+  const color=underdamped?'#0066cc':zeta===1?'#ffaa00':'#ee4444';
+  const typeText=underdamped?'Underdamped (complex)':zeta===1?'Critically damped':'Overdamped (real)';
+  document.getElementById('rType').textContent=typeText;
+  document.getElementById('rType').style.color=color;
+
+  if(underdamped){
+    // Complex conjugate poles
+    [1,-1].forEach(sign=>{
+      ctx.fillStyle=color;
+      ctx.beginPath();ctx.arc(cx-alpha*scale,cy-sign*od*scale,7,0,Math.PI*2);ctx.fill();
+      ctx.strokeStyle='rgba(0,102,204,0.3)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+      ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(cx-alpha*scale,cy-sign*od*scale);ctx.stroke();ctx.setLineDash([]);
+    });
+    // Root angle
+    const angle=Math.atan2(od,alpha)*180/Math.PI;
+    ctx.fillStyle=color;ctx.font='10px sans-serif';
+    ctx.fillText(`θ=${angle.toFixed(1)}°`,cx-alpha*scale+8,cy-od*scale-5);
+    const s1txt=`−${(alpha/1000).toFixed(0)}k ± j·${(od/1e6).toFixed(2)}M`;
+    document.getElementById('rS1').textContent=s1txt;
+  } else {
+    // Real poles
+    const s1=-(alpha-Math.sqrt(alpha*alpha-omega0*omega0));
+    const s2=-(alpha+Math.sqrt(alpha*alpha-omega0*omega0));
+    [s1,s2].forEach(s=>{
+      ctx.fillStyle=color;
+      ctx.beginPath();ctx.arc(cx+s*scale,cy,7,0,Math.PI*2);ctx.fill();
+    });
+    document.getElementById('rS1').textContent=`s₁=${(s1/1e3).toFixed(1)}k, s₂=${(s2/1e3).toFixed(1)}k`;
+  }
+
+  ctx.fillStyle=c.mut;ctx.font='10px sans-serif';
+  ctx.fillText('S-Plane',W*0.05,18);
+  ctx.fillStyle=color;ctx.font='bold 10px sans-serif';
+  ctx.fillText(typeText,W*0.05,32);
+}
+
+function drawStep(omega0,alpha,V0) {
+  const cv=document.getElementById('cvStep'),ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height,padL=55,padR=15,padT=22,padB=30,plotW=W-padL-padR,plotH=H-padT-padB;
+  const c=getC();
+  ctx.fillStyle=c.bg;ctx.fillRect(0,0,W,H);
+
+  const underdamped=alpha<omega0;
+  const critical=Math.abs(alpha/omega0-1)<0.01;
+  const T=underdamped?2*Math.PI/Math.sqrt(omega0*omega0-alpha*alpha):2*Math.PI/omega0;
+  const tauD=1/alpha;
+  const tMax=underdamped?Math.max(5*T,5*tauD):7*tauD;
+
+  const tx=t=>padL+(t/tMax)*plotW;
+  const ty=y=>padT+(1-y/1.5)*plotH;
+
+  ctx.strokeStyle=c.grid;ctx.lineWidth=1;
+  for(let i=0;i<=5;i++){ctx.beginPath();ctx.moveTo(tx(i*tMax/5),padT);ctx.lineTo(tx(i*tMax/5),padT+plotH);ctx.stroke();}
+  ctx.setLineDash([4,3]);ctx.strokeStyle='rgba(100,150,255,0.4)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,ty(1));ctx.lineTo(padL+plotW,ty(1));ctx.stroke();ctx.setLineDash([]);
+
+  const color=underdamped?'#0066cc':'#ee4444';
+  ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();
+  for(let i=0;i<=500;i++){
+    const t=i/500*tMax;
+    let y;
+    if(underdamped){
+      const od=Math.sqrt(omega0*omega0-alpha*alpha);
+      y=1-Math.exp(-alpha*t)*(Math.cos(od*t)+(alpha/od)*Math.sin(od*t));
+    } else if(critical){
+      y=1-(1+omega0*t)*Math.exp(-omega0*t);
+    } else {
+      const s1=-alpha+Math.sqrt(alpha*alpha-omega0*omega0);
+      const s2=-alpha-Math.sqrt(alpha*alpha-omega0*omega0);
+      const A=-s2/(s2-s1), B=s1/(s2-s1);
+      y=1+A*Math.exp(s1*t)+B*Math.exp(s2*t);
+    }
+    if(i===0)ctx.moveTo(tx(t),ty(y));else ctx.lineTo(tx(t),ty(y));
+  }
+  ctx.stroke();
+
+  ctx.fillStyle=c.mut;ctx.font='10px sans-serif';ctx.fillText('Step response y(t)',padL+4,padT+12);
+  for(let i=0;i<=5;i++){const t=i*tMax/5;ctx.fillText((t*1e9).toFixed(0)+'ns',tx(t)-15,padT+plotH+16);}
+}
+
+function draw() {
+  const R=parseFloat(document.getElementById('sR').value);
+  const L=parseFloat(document.getElementById('sL').value)*1e-6;
+  const C=parseFloat(document.getElementById('sC').value)*1e-9;
+  document.getElementById('vR').textContent=R.toFixed(1);
+  document.getElementById('vL').textContent=(L*1e6).toFixed(1);
+  document.getElementById('vC').textContent=(C*1e9).toFixed(0);
+
+  const omega0=1/Math.sqrt(L*C);
+  const alpha=R/(2*L);
+  const zeta=alpha/omega0;
+  document.getElementById('rO0').textContent=(omega0/1e6).toFixed(2);
+  document.getElementById('rAlpha').textContent=(alpha/1e3).toFixed(1);
+  document.getElementById('rZeta').textContent=zeta.toFixed(4);
+
+  drawSplane(omega0,alpha,zeta);
+  drawStep(omega0,alpha,1);
+}
+
+['sR','sL','sC'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',draw);
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,1080 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-DBG-6.3.2 — Stability Debugging</title>
+<style>
+:root {
+  --bg: #f5f5f5;
+  --surface: #ffffff;
+  --border: #d0d0d0;
+  --text: #1a1a1a;
+  --text2: #555;
+  --accent: #1a6bbf;
+  --pass: #2a7a2a;
+  --warn: #b87000;
+  --fail: #b82020;
+  --pass-bg: #e8f5e8;
+  --warn-bg: #fff8e0;
+  --fail-bg: #fde8e8;
+  --tab-active: #1a6bbf;
+  --tab-inactive: #888;
+  --plot-bg: #fdfdfd;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a1a;
+    --surface: #252525;
+    --border: #404040;
+    --text: #e8e8e8;
+    --text2: #aaa;
+    --accent: #4a9eff;
+    --pass: #4aaa4a;
+    --warn: #ddaa30;
+    --fail: #ff5555;
+    --pass-bg: #1a2e1a;
+    --warn-bg: #2e2200;
+    --fail-bg: #2e1010;
+    --tab-active: #4a9eff;
+    --tab-inactive: #777;
+    --plot-bg: #1e1e1e;
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 20px; }
+header h1 { font-size: 17px; font-weight: 700; color: var(--accent); }
+header p { font-size: 12px; color: var(--text2); margin-top: 2px; }
+.tab-bar { display: flex; gap: 0; background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 16px; }
+.tab { padding: 10px 18px; cursor: pointer; border-bottom: 3px solid transparent; color: var(--tab-inactive); font-size: 13px; font-weight: 600; transition: color .2s, border-color .2s; }
+.tab.active { color: var(--tab-active); border-bottom-color: var(--tab-active); }
+.tab:hover:not(.active) { color: var(--text); }
+.panel { display: none; padding: 16px; }
+.panel.active { display: block; }
+.layout { display: flex; gap: 14px; flex-wrap: wrap; }
+.sidebar { flex: 0 0 220px; display: flex; flex-direction: column; gap: 10px; }
+.main-area { flex: 1 1 400px; display: flex; flex-direction: column; gap: 10px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
+.card h3 { font-size: 12px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; }
+label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--text2); }
+label span { display: flex; justify-content: space-between; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+select { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 5px 8px; font-size: 12px; width: 100%; }
+canvas { width: 100%; display: block; border: 1px solid var(--border); border-radius: 4px; background: var(--plot-bg); }
+.metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.metric { background: var(--surface); border: 1px solid var(--border); border-radius: 5px; padding: 8px 10px; }
+.metric .val { font-size: 20px; font-weight: 700; color: var(--accent); }
+.metric .lbl { font-size: 11px; color: var(--text2); }
+.badge { display: inline-block; padding: 2px 7px; border-radius: 3px; font-size: 11px; font-weight: 700; }
+.badge.pass { background: var(--pass-bg); color: var(--pass); }
+.badge.warn { background: var(--warn-bg); color: var(--warn); }
+.badge.fail { background: var(--fail-bg); color: var(--fail); }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th { background: var(--bg); color: var(--text2); padding: 5px 8px; text-align: left; border: 1px solid var(--border); font-weight: 600; font-size: 11px; }
+td { padding: 5px 8px; border: 1px solid var(--border); }
+.fault-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.fault-btn { padding: 5px 10px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 11px; background: var(--surface); color: var(--text); transition: background .15s; }
+.fault-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.fault-btn:hover:not(.active) { background: var(--border); }
+.resp-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.resp-row canvas { flex: 1 1 200px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>M4A-DBG-6.3.2 — Stability Debugging</h1>
+  <p>Interactive loop gain analysis, step response ringing, and compensation design</p>
+</header>
+
+<div class="tab-bar">
+  <div class="tab active" onclick="showTab(0)">Loop Gain / PM</div>
+  <div class="tab" onclick="showTab(1)">Step Response</div>
+  <div class="tab" onclick="showTab(2)">Compensation Design</div>
+  <div class="tab" onclick="showTab(3)">Debug Scenarios</div>
+</div>
+
+<!-- TAB 0: Loop Gain / PM -->
+<div class="panel active" id="tab0">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="card">
+        <h3>Op-Amp Parameters</h3>
+        <label><span>GBW (MHz) <b id="v_gbw">10</b></span>
+          <input type="range" id="sl_gbw" min="1" max="100" step="1" value="10" oninput="upd0()"></label>
+        <label><span>DC open-loop gain (dB) <b id="v_aol">100</b></span>
+          <input type="range" id="sl_aol" min="60" max="140" step="5" value="100" oninput="upd0()"></label>
+        <label><span>Phase margin extra lag (°) <b id="v_lag">0</b></span>
+          <input type="range" id="sl_lag" min="0" max="60" step="1" value="0" oninput="upd0()"></label>
+      </div>
+      <div class="card">
+        <h3>Feedback Network</h3>
+        <label><span>Closed-loop gain (V/V) <b id="v_clg">10</b></span>
+          <input type="range" id="sl_clg" min="1" max="100" step="1" value="10" oninput="upd0()"></label>
+        <label><span>Stray cap at sum node (pF) <b id="v_cs">0</b></span>
+          <input type="range" id="sl_cs" min="0" max="20" step="1" value="0" oninput="upd0()"></label>
+        <label><span>R1 (kΩ) <b id="v_r1">1</b></span>
+          <input type="range" id="sl_r1" min="0.5" max="20" step="0.5" value="1" oninput="upd0()"></label>
+        <label><span>Load cap CL (pF) <b id="v_cl">0</b></span>
+          <input type="range" id="sl_cl" min="0" max="500" step="10" value="0" oninput="upd0()"></label>
+        <label><span>Rout (Ω) <b id="v_ro">75</b></span>
+          <input type="range" id="sl_ro" min="10" max="500" step="5" value="75" oninput="upd0()"></label>
+      </div>
+      <div class="card">
+        <h3>Compensation</h3>
+        <label><span>Series R (Ω) <b id="v_rs">0</b></span>
+          <input type="range" id="sl_rs" min="0" max="200" step="5" value="0" oninput="upd0()"></label>
+        <label><span>Cf across Rf (pF) <b id="v_cf">0</b></span>
+          <input type="range" id="sl_cf" min="0" max="50" step="1" value="0" oninput="upd0()"></label>
+      </div>
+      <div class="card metrics">
+        <div class="metric"><div class="val" id="m_pm">--</div><div class="lbl">Phase Margin (°)</div></div>
+        <div class="metric"><div class="val" id="m_gm">--</div><div class="lbl">Gain Margin (dB)</div></div>
+        <div class="metric"><div class="val" id="m_fc">--</div><div class="lbl">f_crossover (MHz)</div></div>
+        <div class="metric"><div class="val" id="m_st">--</div><div class="lbl">Status</div></div>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="card">
+        <h3>Bode Plot — Loop Gain T(f)</h3>
+        <canvas id="c0_bode" height="320"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: Step Response -->
+<div class="panel" id="tab1">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="card">
+        <h3>Circuit Parameters</h3>
+        <label><span>Phase margin (°) <b id="v_pm1">60</b></span>
+          <input type="range" id="sl_pm1" min="5" max="90" step="1" value="60" oninput="upd1()"></label>
+        <label><span>f_crossover (MHz) <b id="v_fc1">1</b></span>
+          <input type="range" id="sl_fc1" min="0.1" max="20" step="0.1" value="1" oninput="upd1()"></label>
+        <label><span>Step amplitude (V) <b id="v_sa">1</b></span>
+          <input type="range" id="sl_sa" min="0.1" max="5" step="0.1" value="1" oninput="upd1()"></label>
+      </div>
+      <div class="card">
+        <h3>Predicted Metrics</h3>
+        <table>
+          <tr><th>Parameter</th><th>Value</th></tr>
+          <tr><td>Overshoot</td><td id="t_os">--</td></tr>
+          <tr><td>Rise time</td><td id="t_rt">--</td></tr>
+          <tr><td>Settling (2%)</td><td id="t_set">--</td></tr>
+          <tr><td>Q factor</td><td id="t_qf">--</td></tr>
+          <tr><td>Behavior</td><td id="t_beh">--</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <h3>PM Guide</h3>
+        <table>
+          <tr><th>PM</th><th>OS</th><th>Peaking</th></tr>
+          <tr><td>90°</td><td>0%</td><td>0 dB</td></tr>
+          <tr><td>65°</td><td>~5%</td><td>0.1 dB</td></tr>
+          <tr><td>45°</td><td>~23%</td><td>0 dB</td></tr>
+          <tr><td>30°</td><td>~37%</td><td>~2 dB</td></tr>
+          <tr><td>20°</td><td>~55%</td><td>~4 dB</td></tr>
+          <tr><td>&lt;10°</td><td>ringing</td><td>&gt;6 dB</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="card">
+        <h3>Step Response</h3>
+        <canvas id="c1_step" height="280"></canvas>
+      </div>
+      <div class="card">
+        <h3>Closed-Loop Frequency Response (Gain Peaking)</h3>
+        <canvas id="c1_freq" height="220"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: Compensation Design -->
+<div class="panel" id="tab2">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="card">
+        <h3>Problem Setup</h3>
+        <label><span>GBW (MHz) <b id="v_gbw2">10</b></span>
+          <input type="range" id="sl_gbw2" min="1" max="100" step="1" value="10" oninput="upd2()"></label>
+        <label><span>Closed-loop gain <b id="v_clg2">10</b></span>
+          <input type="range" id="sl_clg2" min="1" max="100" step="1" value="10" oninput="upd2()"></label>
+        <label><span>CL (pF) <b id="v_cl2">100</b></span>
+          <input type="range" id="sl_cl2" min="0" max="1000" step="10" value="100" oninput="upd2()"></label>
+        <label><span>Rout (Ω) <b id="v_ro2">75</b></span>
+          <input type="range" id="sl_ro2" min="10" max="500" step="5" value="75" oninput="upd2()"></label>
+        <label><span>Stray Cs (pF) <b id="v_cs2">5</b></span>
+          <input type="range" id="sl_cs2" min="0" max="30" step="1" value="5" oninput="upd2()"></label>
+        <label><span>R1 (kΩ) <b id="v_r12">1</b></span>
+          <input type="range" id="sl_r12" min="0.5" max="20" step="0.5" value="1" oninput="upd2()"></label>
+      </div>
+      <div class="card">
+        <h3>Your Compensation</h3>
+        <label><span>Series R (Ω) <b id="v_rs2">0</b></span>
+          <input type="range" id="sl_rs2" min="0" max="500" step="5" value="0" oninput="upd2()"></label>
+        <label><span>Cf (pF) <b id="v_cf2">0</b></span>
+          <input type="range" id="sl_cf2" min="0" max="50" step="1" value="0" oninput="upd2()"></label>
+      </div>
+      <div class="card">
+        <h3>Results</h3>
+        <table>
+          <tr><th>Condition</th><th>PM</th><th>Badge</th></tr>
+          <tr><td>Uncompensated</td><td id="t_pm_u">--</td><td id="b_pm_u">--</td></tr>
+          <tr><td>Compensated</td><td id="t_pm_c">--</td><td id="b_pm_c">--</td></tr>
+          <tr><td>Recommended Cf</td><td id="t_cf_rec">--</td><td></td></tr>
+          <tr><td>Recommended Rs</td><td id="t_rs_rec">--</td><td></td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="card">
+        <h3>Before/After Bode Plot</h3>
+        <canvas id="c2_bode" height="340"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 3: Debug Scenarios -->
+<div class="panel" id="tab3">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="card">
+        <h3>Select Scenario</h3>
+        <div class="fault-btns" id="scenario-btns">
+          <button class="fault-btn active" onclick="setScenario(0,this)">Stable (nominal)</button>
+          <button class="fault-btn" onclick="setScenario(1,this)">Capacitive cable (CL=500pF)</button>
+          <button class="fault-btn" onclick="setScenario(2,this)">Stray Cs at summing node</button>
+          <button class="fault-btn" onclick="setScenario(3,this)">Decompensated op-amp G&lt;min</button>
+          <button class="fault-btn" onclick="setScenario(4,this)">Fixed with series R</button>
+          <button class="fault-btn" onclick="setScenario(5,this)">Fixed with Cf</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Scenario Description</h3>
+        <p id="sc_desc" style="font-size:12px;line-height:1.6;color:var(--text2)">Nominal stable amplifier with GBW=10MHz, G=10, adequate phase margin from design.</p>
+      </div>
+      <div class="card">
+        <h3>Diagnosis</h3>
+        <table>
+          <tr><th>Parameter</th><th>Value</th></tr>
+          <tr><td>f_osc</td><td id="d_fosc">--</td></tr>
+          <tr><td>Phase Margin</td><td id="d_pm">--</td></tr>
+          <tr><td>Root Cause</td><td id="d_cause">--</td></tr>
+          <tr><td>Fix Applied</td><td id="d_fix">--</td></tr>
+          <tr><td>PM after fix</td><td id="d_pmfix">--</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="card">
+        <h3>Bode Plot — Loop Gain</h3>
+        <canvas id="c3_bode" height="300"></canvas>
+      </div>
+      <div class="card">
+        <h3>Step Response Comparison</h3>
+        <canvas id="c3_step" height="220"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ─── Utility ─── */
+const $ = id => document.getElementById(id);
+const sl = (id) => parseFloat($(id).value);
+
+function showTab(n) {
+  document.querySelectorAll('.panel').forEach((p,i) => p.classList.toggle('active', i===n));
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===n));
+  if(n===0) upd0();
+  if(n===1) upd1();
+  if(n===2) upd2();
+  if(n===3) drawScenario();
+}
+
+function dpr(c) {
+  const r = window.devicePixelRatio||1;
+  const rect = c.getBoundingClientRect();
+  c.width = rect.width * r;
+  c.height = rect.height * r;
+  const ctx = c.getContext('2d');
+  ctx.scale(r, r);
+  return {ctx, w: rect.width, h: rect.height};
+}
+
+function getVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+function tc(name) { return getVar(name)||'#888'; }
+
+/* ─── Loop gain calculation ─── */
+function loopGainPhase(f, gbw, aolDC, clgain, cs_pF, r1_k, cl_pF, ro_ohm, rs_ohm, cf_pF, extraLag_deg) {
+  // f in Hz, returns {gain_dB, phase_deg} of loop gain T(f)
+  const fHz = f;
+  // Op-amp single-pole model: Aol(f) = AolDC / (1 + j*f/f1), f1 = gbw*1e6 / 10^(aolDC/20)
+  const AolDC_lin = Math.pow(10, aolDC/20);
+  const f1 = (gbw*1e6) / AolDC_lin;
+
+  // Feedback factor β
+  // Rf = r1_k*1000 * (clgain-1), R1 = r1_k*1000
+  const R1 = r1_k * 1000;
+  const Rf = R1 * (clgain - 1);
+
+  // β_DC = R1/(R1+Rf) = 1/clgain
+  // With stray Cs at summing node: pole at f_cs = 1/(2π*(R1||Rf)*Cs)
+  const Rpar = (R1 * Rf) / (R1 + Rf);
+  const f_cs = cs_pF > 0 ? 1/(2*Math.PI*Rpar*(cs_pF*1e-12)) : Infinity;
+
+  // With Cf across Rf: zero at f_z = 1/(2π*Rf*Cf), pole at f_p = 1/(2π*(Rf||R1)*Cf) (approx f_z/clgain)
+  const f_z_cf = cf_pF > 0 ? 1/(2*Math.PI*Rf*(cf_pF*1e-12)) : Infinity;
+  const f_p_cf = cf_pF > 0 ? 1/(2*Math.PI*(Rpar)*(cf_pF*1e-12)) : Infinity;
+
+  // Load capacitance: CL pole at fL = 1/(2π*Rout*CL), with series Rs creating zero at f_z_rs
+  const f_cl = cl_pF > 0 ? 1/(2*Math.PI*ro_ohm*(cl_pF*1e-12)) : Infinity;
+  const f_z_rs = (cl_pF > 0 && rs_ohm > 0) ? 1/(2*Math.PI*rs_ohm*(cl_pF*1e-12)) : Infinity;
+
+  // Compute magnitudes and phases
+  // Aol magnitude
+  const w = 2*Math.PI*fHz;
+  const w1 = 2*Math.PI*f1;
+  const Aol_mag = AolDC_lin / Math.sqrt(1 + (fHz/f1)*(fHz/f1));
+  const Aol_ph = -Math.atan2(fHz, f1) * 180/Math.PI;
+
+  // β magnitude and phase
+  let b_mag = 1/clgain;
+  let b_ph = 0;
+  // Cs pole in β
+  if(isFinite(f_cs)) {
+    b_mag *= 1/Math.sqrt(1+(fHz/f_cs)*(fHz/f_cs));
+    b_ph -= Math.atan2(fHz, f_cs) * 180/Math.PI;
+  }
+  // Cf zero and pole in β
+  if(isFinite(f_z_cf)) {
+    // zero: β increases at high freq
+    b_mag *= Math.sqrt(1+(fHz/f_z_cf)*(fHz/f_z_cf));
+    b_ph += Math.atan2(fHz, f_z_cf) * 180/Math.PI;
+  }
+  if(isFinite(f_p_cf)) {
+    b_mag *= 1/Math.sqrt(1+(fHz/f_p_cf)*(fHz/f_p_cf));
+    b_ph -= Math.atan2(fHz, f_p_cf) * 180/Math.PI;
+  }
+
+  // Load cap pole
+  let load_mag = 1, load_ph = 0;
+  if(isFinite(f_cl)) {
+    load_mag *= 1/Math.sqrt(1+(fHz/f_cl)*(fHz/f_cl));
+    load_ph -= Math.atan2(fHz, f_cl) * 180/Math.PI;
+  }
+  if(isFinite(f_z_rs)) {
+    load_mag *= Math.sqrt(1+(fHz/f_z_rs)*(fHz/f_z_rs));
+    load_ph += Math.atan2(fHz, f_z_rs) * 180/Math.PI;
+  }
+
+  const T_mag = Aol_mag * b_mag * load_mag;
+  const T_ph = Aol_ph + b_ph + load_ph - extraLag_deg;
+
+  return { gain_dB: 20*Math.log10(T_mag), phase_deg: T_ph };
+}
+
+function findPM(gbw, aolDC, clgain, cs_pF, r1_k, cl_pF, ro_ohm, rs_ohm, cf_pF, extraLag_deg) {
+  // Find f where |T| = 0 dB by bisection
+  let lo = 1, hi = gbw * 1e6 * 10;
+  for(let i=0;i<60;i++) {
+    const mid = Math.sqrt(lo*hi);
+    const {gain_dB} = loopGainPhase(mid, gbw, aolDC, clgain, cs_pF, r1_k, cl_pF, ro_ohm, rs_ohm, cf_pF, extraLag_deg);
+    if(gain_dB > 0) lo = mid; else hi = mid;
+  }
+  const fc = Math.sqrt(lo*hi);
+  const {phase_deg} = loopGainPhase(fc, gbw, aolDC, clgain, cs_pF, r1_k, cl_pF, ro_ohm, rs_ohm, cf_pF, extraLag_deg);
+  return {fc, pm: 180 + phase_deg};
+}
+
+function findGM(gbw, aolDC, clgain, cs_pF, r1_k, cl_pF, ro_ohm, rs_ohm, cf_pF, extraLag_deg) {
+  // Find f where phase = -180° (phase crossover)
+  let lo = 1, hi = gbw * 1e6 * 100;
+  // Check if phase ever reaches -180
+  const phiMax = loopGainPhase(hi, gbw, aolDC, clgain, cs_pF, r1_k, cl_pF, ro_ohm, rs_ohm, cf_pF, extraLag_deg).phase_deg;
+  if(phiMax > -180) return {fg: null, gm: null};
+  for(let i=0;i<60;i++) {
+    const mid = Math.sqrt(lo*hi);
+    const {phase_deg} = loopGainPhase(mid, gbw, aolDC, clgain, cs_pF, r1_k, cl_pF, ro_ohm, rs_ohm, cf_pF, extraLag_deg);
+    if(phase_deg > -180) lo = mid; else hi = mid;
+  }
+  const fg = Math.sqrt(lo*hi);
+  const {gain_dB} = loopGainPhase(fg, gbw, aolDC, clgain, cs_pF, r1_k, cl_pF, ro_ohm, rs_ohm, cf_pF, extraLag_deg);
+  return {fg, gm: -gain_dB};
+}
+
+/* ─── TAB 0: Bode Plot ─── */
+function upd0() {
+  const gbw = sl('sl_gbw');
+  const aol = sl('sl_aol');
+  const lag = sl('sl_lag');
+  const clg = sl('sl_clg');
+  const cs = sl('sl_cs');
+  const r1 = sl('sl_r1');
+  const cl = sl('sl_cl');
+  const ro = sl('sl_ro');
+  const rs = sl('sl_rs');
+  const cf = sl('sl_cf');
+  $('v_gbw').textContent = gbw;
+  $('v_aol').textContent = aol;
+  $('v_lag').textContent = lag;
+  $('v_clg').textContent = clg;
+  $('v_cs').textContent = cs;
+  $('v_r1').textContent = r1;
+  $('v_cl').textContent = cl;
+  $('v_ro').textContent = ro;
+  $('v_rs').textContent = rs;
+  $('v_cf').textContent = cf;
+
+  const {fc, pm} = findPM(gbw, aol, clg, cs, r1, cl, ro, rs, cf, lag);
+  const {gm} = findGM(gbw, aol, clg, cs, r1, cl, ro, rs, cf, lag);
+
+  $('m_pm').textContent = pm.toFixed(1)+'°';
+  $('m_fc').textContent = (fc/1e6).toFixed(2);
+  $('m_gm').textContent = gm !== null ? gm.toFixed(1)+' dB' : '∞';
+  const status = pm >= 45 ? 'STABLE' : pm >= 25 ? 'MARGINAL' : 'UNSTABLE';
+  $('m_st').textContent = status;
+  $('m_st').style.color = pm >= 45 ? 'var(--pass)' : pm >= 25 ? 'var(--warn)' : 'var(--fail)';
+
+  drawBode('c0_bode', gbw, aol, clg, cs, r1, cl, ro, rs, cf, lag, fc, pm);
+}
+
+function drawBode(canvasId, gbw, aol, clg, cs, r1, cl, ro, rs, cf, lag, fc, pm) {
+  const c = $(canvasId);
+  const {ctx, w, h} = dpr(c);
+  const bg = tc('--plot-bg')||'#fff';
+  ctx.fillStyle = bg;
+  ctx.fillRect(0,0,w,h);
+
+  const padL=55, padR=20, padT=20, padB=180;
+  const pw = w-padL-padR, ph = (h-padT-padB)/2;
+
+  // freq axis
+  const fmin = 100, fmax = gbw*1e6*20;
+  const logFmin = Math.log10(fmin), logFmax = Math.log10(fmax);
+
+  function fx(f) { return padL + (Math.log10(f)-logFmin)/(logFmax-logFmin)*pw; }
+
+  // gain panel top, phase panel below
+  const gainTop = padT, gainBot = padT+ph;
+  const phTop = padT+ph+20, phBot = padT+ph+20+ph;
+
+  // gain range: -40 to aol+10
+  const gMax = 80, gMin = -40;
+  function gy(g) { return gainTop + (1-(g-gMin)/(gMax-gMin))*ph; }
+  // phase range: 0 to -270
+  const phMax = 10, phMin = -270;
+  function py_fn(p) { return phTop + (1-(p-phMin)/(phMax-phMin))*ph; }
+
+  const text = tc('--text')||'#222';
+  const text2 = tc('--text2')||'#666';
+  const border = tc('--border')||'#ccc';
+  const accent = tc('--accent')||'#1a6bbf';
+
+  // Draw grids
+  ctx.strokeStyle = border; ctx.lineWidth = .5;
+  // Gain grid
+  for(let g=-40; g<=80; g+=20) {
+    const y = gy(g); ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(padL+pw,y); ctx.stroke();
+    ctx.fillStyle=text2; ctx.font='10px sans-serif'; ctx.textAlign='right';
+    ctx.fillText(g+'dB', padL-4, y+4);
+  }
+  // Phase grid
+  for(let p=-270; p<=10; p+=45) {
+    const y = py_fn(p); ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(padL+pw,y); ctx.stroke();
+    ctx.fillStyle=text2; ctx.font='10px sans-serif'; ctx.textAlign='right';
+    ctx.fillText(p+'°', padL-4, y+4);
+  }
+  // Freq grid
+  for(let e=2; e<=Math.ceil(logFmax); e++) {
+    for(let m=1; m<10; m++) {
+      const f = m*Math.pow(10,e);
+      if(f<fmin||f>fmax) continue;
+      const x = fx(f);
+      ctx.beginPath(); ctx.moveTo(x,gainTop); ctx.lineTo(x,gainBot); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x,phTop); ctx.lineTo(x,phBot); ctx.stroke();
+      if(m===1||m===3||m===5||m===10) {
+        ctx.fillStyle=text2; ctx.font='10px sans-serif'; ctx.textAlign='center';
+        const lbl = f>=1e6 ? (f/1e6).toFixed(0)+'M' : f>=1e3 ? (f/1e3).toFixed(0)+'k' : f+'';
+        ctx.fillText(lbl, x, phBot+14);
+      }
+    }
+  }
+  // 0dB and -180° lines
+  ctx.strokeStyle='#888'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(padL,gy(0)); ctx.lineTo(padL+pw,gy(0)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(padL,py_fn(-180)); ctx.lineTo(padL+pw,py_fn(-180)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Labels
+  ctx.fillStyle=text; ctx.font='bold 11px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('Gain (dB)', padL+4, gainTop+14);
+  ctx.fillText('Phase (°)', padL+4, phTop+14);
+
+  // Plot loop gain
+  const N=300;
+  ctx.lineWidth=2;
+  // Gain curve
+  ctx.beginPath(); ctx.strokeStyle=accent;
+  for(let i=0;i<=N;i++) {
+    const f = Math.pow(10, logFmin + i*(logFmax-logFmin)/N);
+    const {gain_dB} = loopGainPhase(f, gbw, aol, clg, cs, r1, cl, ro, rs, cf, lag);
+    const x = fx(f), y = gy(Math.max(gMin, Math.min(gMax, gain_dB)));
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  // Phase curve
+  ctx.beginPath(); ctx.strokeStyle='#e67e22';
+  for(let i=0;i<=N;i++) {
+    const f = Math.pow(10, logFmin + i*(logFmax-logFmin)/N);
+    const {phase_deg} = loopGainPhase(f, gbw, aol, clg, cs, r1, cl, ro, rs, cf, lag);
+    const x = fx(f), y = py_fn(Math.max(phMin, Math.min(phMax, phase_deg)));
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // PM annotation
+  if(fc >= fmin && fc <= fmax) {
+    const x = fx(fc);
+    ctx.setLineDash([3,3]); ctx.strokeStyle='#2ecc71'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(x, gainTop); ctx.lineTo(x, gainBot); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, phTop); ctx.lineTo(x, phBot); ctx.stroke();
+    ctx.setLineDash([]);
+    // PM arrow in phase panel
+    const phAtFc = loopGainPhase(fc, gbw, aol, clg, cs, r1, cl, ro, rs, cf, lag).phase_deg;
+    const y180 = py_fn(-180), yPh = py_fn(phAtFc);
+    ctx.strokeStyle='#2ecc71'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(x+3, y180); ctx.lineTo(x+3, yPh); ctx.stroke();
+    ctx.fillStyle='#2ecc71'; ctx.font='bold 11px sans-serif'; ctx.textAlign='left';
+    ctx.fillText('PM='+pm.toFixed(0)+'°', x+6, (y180+yPh)/2+4);
+    // fc label
+    ctx.fillStyle='#2ecc71'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('fc='+(fc>=1e6?(fc/1e6).toFixed(2)+'M':fc>=1e3?(fc/1e3).toFixed(0)+'k':fc.toFixed(0))+'Hz', x, gainBot+14);
+  }
+
+  // Panel borders
+  ctx.strokeStyle=border; ctx.lineWidth=1;
+  ctx.strokeRect(padL, gainTop, pw, ph);
+  ctx.strokeRect(padL, phTop, pw, ph);
+
+  // Legend
+  const lx = padL+pw-120, ly = h-padB+30;
+  ctx.fillStyle=accent; ctx.fillRect(lx,ly,18,3); ctx.fillStyle=text; ctx.font='11px sans-serif';
+  ctx.textAlign='left'; ctx.fillText('Loop Gain |T(f)|', lx+22, ly+4);
+  ctx.fillStyle='#e67e22'; ctx.fillRect(lx,ly+14,18,3);
+  ctx.fillStyle=text; ctx.fillText('Phase ∠T(f)', lx+22, ly+18);
+  ctx.fillStyle='#2ecc71'; ctx.fillRect(lx,ly+28,18,3);
+  ctx.fillStyle=text; ctx.fillText('f_crossover / PM', lx+22, ly+32);
+}
+
+/* ─── TAB 1: Step Response ─── */
+function upd1() {
+  const pm = sl('sl_pm1');
+  const fc = sl('sl_fc1')*1e6;
+  const sa = sl('sl_sa');
+  $('v_pm1').textContent = pm;
+  $('v_fc1').textContent = sl('sl_fc1').toFixed(1);
+  $('v_sa').textContent = sa;
+
+  // 2nd-order closed-loop: wn = fc*2π, ζ from PM
+  const wn = 2*Math.PI*fc;
+  // PM → ζ approximation: ζ ≈ PM/100 for PM<70° (rough)
+  // Better: tan(PM) = 2ζ/sqrt(-2ζ²+sqrt(1+4ζ⁴)) (exact)
+  // Simpler: ζ = cos(PM*π/180) roughly
+  const zeta = Math.cos(pm*Math.PI/180); // rough but adequate for demonstration
+  const Q = 1/(2*zeta);
+
+  // Overshoot %
+  const os = pm < 90 ? 100 * Math.exp(-Math.PI*zeta/Math.sqrt(1-zeta*zeta)) : 0;
+
+  // Rise time (10-90%): tr ≈ (1.8)/wn for ζ=1, adjust
+  const tr = 1.8 / wn * (1 + 1.1*(1-zeta));
+  const ts = (4/(zeta*wn));
+
+  $('t_os').textContent = os.toFixed(1)+'%';
+  $('t_rt').textContent = (tr*1e9).toFixed(0)+' ns';
+  $('t_set').textContent = (ts*1e9).toFixed(0)+' ns';
+  $('t_qf').textContent = Q.toFixed(2);
+  $('t_beh').innerHTML = pm>=65?'<span class="badge pass">Well damped</span>':pm>=45?'<span class="badge warn">Underdamped</span>':'<span class="badge fail">Oscillatory</span>';
+
+  drawStep(pm, fc, sa, wn, zeta);
+  drawCLFreq(pm, fc, wn, zeta);
+}
+
+function step2nd(t, A, wn, zeta) {
+  if(zeta >= 1) {
+    const r1 = -zeta*wn + wn*Math.sqrt(zeta*zeta-1);
+    const r2 = -zeta*wn - wn*Math.sqrt(zeta*zeta-1);
+    return A*(1 + (r2/(r1-r2))*Math.exp(r1*t) - (r1/(r1-r2))*Math.exp(r2*t));
+  }
+  const wd = wn*Math.sqrt(1-zeta*zeta);
+  return A*(1 - Math.exp(-zeta*wn*t)*(Math.cos(wd*t) + (zeta/Math.sqrt(1-zeta*zeta))*Math.sin(wd*t)));
+}
+
+function drawStep(pm, fc, A, wn, zeta) {
+  const c = $('c1_step');
+  const {ctx,w,h} = dpr(c);
+  const bg = tc('--plot-bg');
+  ctx.fillStyle=bg; ctx.fillRect(0,0,w,h);
+  const padL=50,padR=20,padT=20,padB=40;
+  const pw=w-padL-padR, ph=h-padT-padB;
+  const text=tc('--text'),text2=tc('--text2'),border=tc('--border'),accent=tc('--accent');
+
+  // time axis: 0 to ~5 time constants
+  const tau = zeta < 1 ? 1/(zeta*wn) : 1/wn;
+  const tmax = Math.min(tau*6, 1);
+  const Amax = Math.max(A*1.4, A+0.2);
+  const Amin = -A*0.2;
+
+  function tx(t){return padL+t/tmax*pw;}
+  function ty(v){return padT+(1-(v-Amin)/(Amax-Amin))*ph;}
+
+  // Grid
+  ctx.strokeStyle=border; ctx.lineWidth=.5;
+  for(let i=0;i<=5;i++){
+    const t=i*tmax/5;
+    const x=tx(t); ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();
+    ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';
+    const lbl=t>=1e-3?(t*1e9).toFixed(0)+'ns':(t*1e9).toFixed(0)+'ns';
+    ctx.fillText((t*1e9).toFixed(0)+'ns',x,padT+ph+16);
+  }
+  for(let i=0;i<=4;i++){
+    const v=Amin+i*(Amax-Amin)/4;
+    const y=ty(v);ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();
+    ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';
+    ctx.fillText(v.toFixed(1)+'V',padL-4,y+4);
+  }
+
+  // Final value line
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,ty(A));ctx.lineTo(padL+pw,ty(A));ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Step response
+  ctx.beginPath();ctx.strokeStyle=accent;ctx.lineWidth=2;
+  const N=400;
+  for(let i=0;i<=N;i++){
+    const t=i*tmax/N;
+    const v=step2nd(t,A,wn,zeta);
+    const x=tx(t),y=ty(v);
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Overshoot annotation
+  if(pm < 90){
+    const os=A*(1+Math.exp(-Math.PI*zeta/Math.sqrt(Math.max(1e-6,1-zeta*zeta))));
+    if(os <= Amax){
+      ctx.fillStyle='#e74c3c';ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+      ctx.fillText('OS='+(100*(os-A)/A).toFixed(0)+'%', padL+pw/2, ty(os)-6);
+    }
+  }
+
+  ctx.strokeStyle=border;ctx.lineWidth=1;ctx.strokeRect(padL,padT,pw,ph);
+  ctx.fillStyle=text;ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+  ctx.fillText('Step Response  (PM='+pm+'°, GBW='+sl('sl_fc1').toFixed(1)+'MHz)', padL+4, padT+14);
+}
+
+function drawCLFreq(pm, fc, wn, zeta) {
+  const c = $('c1_freq');
+  const {ctx,w,h} = dpr(c);
+  const bg = tc('--plot-bg');
+  ctx.fillStyle=bg; ctx.fillRect(0,0,w,h);
+  const padL=50,padR=20,padT=20,padB=40;
+  const pw=w-padL-padR, ph=h-padT-padB;
+  const text=tc('--text'),text2=tc('--text2'),border=tc('--border'),accent=tc('--accent');
+
+  const fmax = fc*5, fmin2 = fc/50;
+  const logMin=Math.log10(fmin2), logMax=Math.log10(fmax);
+  const gMin=-30, gMax=15;
+
+  function fxc(f){return padL+(Math.log10(f)-logMin)/(logMax-logMin)*pw;}
+  function gyc(g){return padT+(1-(g-gMin)/(gMax-gMin))*ph;}
+
+  ctx.strokeStyle=border;ctx.lineWidth=.5;
+  for(let e=Math.floor(logMin);e<=Math.ceil(logMax);e++){
+    for(let m=1;m<10;m++){
+      const f=m*Math.pow(10,e);
+      if(f<fmin2||f>fmax)continue;
+      const x=fxc(f);ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();
+      if(m===1){ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';
+        const lbl=f>=1e6?(f/1e6).toFixed(1)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f.toFixed(0);
+        ctx.fillText(lbl,x,padT+ph+16);}
+    }
+  }
+  for(let g=gMin;g<=gMax;g+=5){
+    const y=gyc(g);ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();
+    ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(g+'',padL-4,y+4);
+  }
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,gyc(0));ctx.lineTo(padL+pw,gyc(0));ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Closed-loop 2nd order: |H(jw)| = wn² / sqrt((wn²-w²)² + (2ζwn·w)²)
+  ctx.beginPath();ctx.strokeStyle=accent;ctx.lineWidth=2;
+  const N=300;
+  for(let i=0;i<=N;i++){
+    const f=Math.pow(10,logMin+i*(logMax-logMin)/N);
+    const ww=2*Math.PI*f;
+    const num=wn*wn;
+    const denom=Math.sqrt((wn*wn-ww*ww)*(wn*wn-ww*ww)+(2*zeta*wn*ww)*(2*zeta*wn*ww));
+    const mag=20*Math.log10(num/denom);
+    const x=fxc(f),y=gyc(Math.max(gMin,Math.min(gMax,mag)));
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle=border;ctx.lineWidth=1;ctx.strokeRect(padL,padT,pw,ph);
+  ctx.fillStyle=text;ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+  ctx.fillText('Closed-Loop Frequency Response (dB)', padL+4, padT+14);
+  ctx.fillStyle=text2;ctx.font='10px sans-serif';
+  ctx.fillText('Frequency (Hz)', padL+pw/2-40, padT+ph+36);
+}
+
+/* ─── TAB 2: Compensation Design ─── */
+function upd2() {
+  const gbw=sl('sl_gbw2'),clg=sl('sl_clg2'),cl=sl('sl_cl2'),ro=sl('sl_ro2'),cs=sl('sl_cs2'),r1=sl('sl_r12');
+  const rs=sl('sl_rs2'),cf=sl('sl_cf2');
+  $('v_gbw2').textContent=gbw;$('v_clg2').textContent=clg;$('v_cl2').textContent=cl;
+  $('v_ro2').textContent=ro;$('v_cs2').textContent=cs;$('v_r12').textContent=r1;
+  $('v_rs2').textContent=rs;$('v_cf2').textContent=cf;
+
+  const aol=100;
+  const {fc:fc_u, pm:pm_u} = findPM(gbw,aol,clg,cs,r1,cl,ro,0,0,0);
+  const {fc:fc_c, pm:pm_c} = findPM(gbw,aol,clg,cs,r1,cl,ro,rs,cf,0);
+
+  $('t_pm_u').textContent=pm_u.toFixed(1)+'°';
+  $('b_pm_u').innerHTML=`<span class="badge ${pm_u>=45?'pass':pm_u>=25?'warn':'fail'}">${pm_u>=45?'OK':pm_u>=25?'MARGINAL':'UNSTABLE'}</span>`;
+  $('t_pm_c').textContent=pm_c.toFixed(1)+'°';
+  $('b_pm_c').innerHTML=`<span class="badge ${pm_c>=45?'pass':pm_c>=25?'warn':'fail'}">${pm_c>=45?'OK':pm_c>=25?'MARGINAL':'UNSTABLE'}</span>`;
+
+  // Recommended Rs: damp CL pole: Rs = 1/sqrt(CL/Rout) type calc → Rs = Rout (simplified)
+  const Rf_k = r1*(clg-1);
+  const f_cl = cl>0?1/(2*Math.PI*ro*(cl*1e-12)):Infinity;
+  const fc_nom = gbw*1e6/clg;
+  // Recommended Cf: place zero at fc/3 to add phase lead
+  const cf_rec = isFinite(f_cl) ? Math.round(1/(2*Math.PI*Rf_k*1000*fc_nom/3)*1e12) : 0;
+  const rs_rec = cl>0 ? Math.round(Math.sqrt(ro/(cl*1e-12))/2) : 0;
+  $('t_cf_rec').textContent=cf_rec>0?cf_rec+' pF':'N/A (CL=0)';
+  $('t_rs_rec').textContent=rs_rec>0?rs_rec+' Ω':'N/A (CL=0)';
+
+  drawBode2(gbw,aol,clg,cs,r1,cl,ro,rs,cf);
+}
+
+function drawBode2(gbw,aol,clg,cs,r1,cl,ro,rs,cf) {
+  const c=$('c2_bode');
+  const {ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');
+  ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=55,padR=20,padT=20,padB=170;
+  const pw=w-padL-padR,ph=(h-padT-padB)/2;
+  const fmin=100,fmax=gbw*1e6*20;
+  const logFmin=Math.log10(fmin),logFmax=Math.log10(fmax);
+  const gMax=80,gMin=-40;
+  const phMax2=10,phMin2=-270;
+  const gainTop=padT,gainBot=padT+ph;
+  const phTop=padT+ph+20,phBot=padT+ph+20+ph;
+  const text=tc('--text'),text2=tc('--text2'),border=tc('--border'),accent=tc('--accent');
+
+  function fxc(f){return padL+(Math.log10(f)-logFmin)/(logFmax-logFmin)*pw;}
+  function gyg(g){return gainTop+(1-(g-gMin)/(gMax-gMin))*ph;}
+  function gyp(p){return phTop+(1-(p-phMin2)/(phMax2-phMin2))*ph;}
+
+  // grid
+  ctx.strokeStyle=border;ctx.lineWidth=.5;
+  for(let g=-40;g<=80;g+=20){const y=gyg(g);ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();
+    ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(g+'dB',padL-4,y+4);}
+  for(let p=-270;p<=10;p+=45){const y=gyp(p);ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();
+    ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(p+'°',padL-4,y+4);}
+  for(let e=2;e<=Math.ceil(logFmax);e++){
+    for(let m=1;m<10;m++){const f=m*Math.pow(10,e);if(f<fmin||f>fmax)continue;
+      const x=fxc(f);ctx.beginPath();ctx.moveTo(x,gainTop);ctx.lineTo(x,gainBot);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(x,phTop);ctx.lineTo(x,phBot);ctx.stroke();
+      if(m===1){ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';
+        const lbl=f>=1e6?(f/1e6).toFixed(0)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f+'';
+        ctx.fillText(lbl,x,phBot+14);}
+    }
+  }
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,gyg(0));ctx.lineTo(padL+pw,gyg(0));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(padL,gyp(-180));ctx.lineTo(padL+pw,gyp(-180));ctx.stroke();
+  ctx.setLineDash([]);
+
+  const N=300;
+  // Uncompensated (red dashed)
+  ctx.setLineDash([5,3]);
+  ctx.strokeStyle='#e74c3c';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){const f=Math.pow(10,logFmin+i*(logFmax-logFmin)/N);
+    const {gain_dB}=loopGainPhase(f,gbw,aol,clg,cs,r1,cl,0,0,0);
+    const x=fxc(f),y=gyg(Math.max(gMin,Math.min(gMax,gain_dB)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){const f=Math.pow(10,logFmin+i*(logFmax-logFmin)/N);
+    const {phase_deg}=loopGainPhase(f,gbw,aol,clg,cs,r1,cl,0,0,0);
+    const x=fxc(f),y=gyp(Math.max(phMin2,Math.min(phMax2,phase_deg)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Compensated (accent solid)
+  ctx.strokeStyle=accent;ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){const f=Math.pow(10,logFmin+i*(logFmax-logFmin)/N);
+    const {gain_dB}=loopGainPhase(f,gbw,aol,clg,cs,r1,cl,ro,rs,cf,0);
+    const x=fxc(f),y=gyg(Math.max(gMin,Math.min(gMax,gain_dB)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  ctx.strokeStyle='#e67e22';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){const f=Math.pow(10,logFmin+i*(logFmax-logFmin)/N);
+    const {phase_deg}=loopGainPhase(f,gbw,aol,clg,cs,r1,cl,ro,rs,cf,0);
+    const x=fxc(f),y=gyp(Math.max(phMin2,Math.min(phMax2,phase_deg)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+
+  ctx.strokeStyle=border;ctx.lineWidth=1;
+  ctx.strokeRect(padL,gainTop,pw,ph);ctx.strokeRect(padL,phTop,pw,ph);
+
+  // Legend
+  const lx=padL+pw-230, ly=h-padB+16;
+  ctx.fillStyle=text;ctx.font='11px sans-serif';ctx.textAlign='left';
+  ctx.fillStyle='#e74c3c';ctx.fillRect(lx,ly,18,2);ctx.setLineDash([5,3]);ctx.strokeStyle='#e74c3c';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(lx,ly+1);ctx.lineTo(lx+18,ly+1);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=text;ctx.fillText('Uncompensated — Gain',lx+22,ly+4);
+  ctx.fillStyle=accent;ctx.beginPath();ctx.moveTo(lx,ly+16);ctx.lineTo(lx+18,ly+16);ctx.lineWidth=2;ctx.strokeStyle=accent;ctx.stroke();
+  ctx.fillStyle=text;ctx.fillText('Compensated — Gain',lx+22,ly+20);
+  ctx.fillStyle='#e74c3c';ctx.fillRect(lx,ly+30,18,2);
+  ctx.fillStyle=text;ctx.fillText('Uncomp — Phase',lx+22,ly+34);
+  ctx.fillStyle='#e67e22';ctx.beginPath();ctx.moveTo(lx,ly+44);ctx.lineTo(lx+18,ly+44);ctx.lineWidth=2;ctx.strokeStyle='#e67e22';ctx.stroke();
+  ctx.fillStyle=text;ctx.fillText('Comp — Phase',lx+22,ly+48);
+}
+
+/* ─── TAB 3: Debug Scenarios ─── */
+const scenarios = [
+  {
+    name:'Stable (nominal)',
+    gbw:10,aol:100,clg:10,cs:0,r1:1,cl:0,ro:75,rs:0,cf:0,lag:0,
+    fixRs:0,fixCf:0,
+    desc:'Nominal stable amplifier: GBW=10 MHz, G=10, no parasitic capacitance, adequate output impedance. This is the baseline healthy circuit.',
+    fosc:'N/A',cause:'None — circuit is stable',fix:'None required'
+  },
+  {
+    name:'Capacitive cable (CL=500pF)',
+    gbw:10,aol:100,clg:10,cs:0,r1:1,cl:500,ro:75,rs:0,cf:0,lag:0,
+    fixRs:47,fixCf:0,
+    desc:'Op-amp driving 500 pF capacitive cable. CL creates a pole at f_CL=1/(2π×75Ω×500pF)=4.2 MHz, eating into phase margin. Symptom: ringing on step edges. Classic: OPA2134 driving shielded cable.',
+    fosc:'~4.2 MHz (CL pole)',cause:'CL=500pF pole near fc degrades PM to ~20°',fix:'47Ω series resistor moves zero inside CL pole, restoring PM'
+  },
+  {
+    name:'Stray Cs at summing node',
+    gbw:10,aol:100,clg:10,cs:10,r1:1,cl:0,ro:75,rs:0,cf:0,lag:0,
+    fixRs:0,fixCf:5,
+    desc:'10 pF stray capacitance at the inverting input (summing node). Creates a pole in β at f_cs = 1/(2π×(R1||Rf)×Cs). For R1=1k, Rf=9k, Rpar=900Ω: f_cs=17.7 MHz — directly subtracting phase at the crossover frequency.',
+    fosc:'oscillation at ~17 MHz',cause:'Stray Cs at summing node adds pole in β, reducing PM to <10°',fix:'Cf across Rf places compensating zero below the stray pole'
+  },
+  {
+    name:'Decompensated op-amp G<min',
+    gbw:10,aol:100,clg:2,cs:0,r1:1,cl:0,ro:75,rs:0,cf:0,lag:30,
+    fixRs:0,fixCf:0,
+    desc:'Decompensated op-amp (e.g., OPA657, AD8065) used at gain G=2, below minimum stable gain G_min=7. The op-amp has reduced internal compensation, so the extra phase lag causes instability at low closed-loop gain.',
+    fosc:'oscillation at ~fc',cause:'Decompensated op-amp requires G≥7; G=2 insufficient PM',fix:'Increase closed-loop gain, or use fully-compensated op-amp'
+  },
+  {
+    name:'Fixed with series R (CL=500pF)',
+    gbw:10,aol:100,clg:10,cs:0,r1:1,cl:500,ro:75,rs:47,cf:0,lag:0,
+    fixRs:47,fixCf:0,
+    desc:'Same 500 pF capacitive cable problem, but with 47Ω series resistor applied at the output. The series R creates a zero that partially cancels the CL pole phase loss. Compare PM before/after in the Bode plot.',
+    fosc:'N/A — fixed',cause:'CL=500pF pole near fc',fix:'47Ω series R applied — zero at f=1/(2π×47×500p)=6.8 MHz'
+  },
+  {
+    name:'Fixed with Cf (stray Cs=10pF)',
+    gbw:10,aol:100,clg:10,cs:10,r1:1,cl:0,ro:75,rs:0,cf:5,lag:0,
+    fixRs:0,fixCf:5,
+    desc:'Same stray Cs=10pF summing-node problem, fixed with Cf=5pF across Rf. The Cf zero at f_z=1/(2π×Rf×Cf) provides phase lead that partially compensates the stray pole phase loss. PM is restored.',
+    fosc:'N/A — fixed',cause:'Stray Cs=10pF at summing node',fix:'Cf=5pF across Rf creates zero near stray pole frequency'
+  }
+];
+
+let currentScenario = 0;
+
+function setScenario(n, btn) {
+  currentScenario = n;
+  document.querySelectorAll('.fault-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  drawScenario();
+}
+
+function drawScenario() {
+  const sc = scenarios[currentScenario];
+  $('sc_desc').textContent = sc.desc;
+  $('d_fosc').textContent = sc.fosc;
+  $('d_cause').textContent = sc.cause;
+  $('d_fix').textContent = sc.fix;
+
+  const {pm:pm_u} = findPM(sc.gbw,sc.aol,sc.clg,sc.cs,sc.r1,sc.cl,sc.ro,0,0,sc.lag);
+  const {pm:pm_c} = findPM(sc.gbw,sc.aol,sc.clg,sc.cs,sc.r1,sc.cl,sc.ro,sc.fixRs,sc.fixCf,sc.lag);
+  $('d_pm').innerHTML=`<span class="badge ${pm_u>=45?'pass':pm_u>=25?'warn':'fail'}">${pm_u.toFixed(0)}°</span>`;
+  $('d_pmfix').innerHTML=`<span class="badge ${pm_c>=45?'pass':pm_c>=25?'warn':'fail'}">${pm_c.toFixed(0)}°</span>`;
+
+  // Draw Bode (uncompensated and with fix)
+  const c3=document.getElementById('c3_bode');
+  drawScenarioBode(c3, sc);
+  // Draw step response
+  const c3s=document.getElementById('c3_step');
+  drawScenarioStep(c3s, pm_u, pm_c, sc.gbw*1e6/sc.clg);
+}
+
+function drawScenarioBode(c, sc) {
+  const {ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=55,padR=20,padT=20,padB=140;
+  const pw=w-padL-padR,ph=(h-padT-padB)/2;
+  const fmin=100,fmax=sc.gbw*1e6*30;
+  const logFmin=Math.log10(fmin),logFmax=Math.log10(fmax);
+  const gMax=80,gMin=-40;
+  const phMax2=10,phMin2=-270;
+  const gainTop=padT,gainBot=padT+ph;
+  const phTop=padT+ph+18,phBot=padT+ph+18+ph;
+  const text=tc('--text'),text2=tc('--text2'),border=tc('--border'),accent=tc('--accent');
+
+  function fxc(f){return padL+(Math.log10(f)-logFmin)/(logFmax-logFmin)*pw;}
+  function gyg(g){return gainTop+(1-(g-gMin)/(gMax-gMin))*ph;}
+  function gyp(p){return phTop+(1-(p-phMin2)/(phMax2-phMin2))*ph;}
+
+  ctx.strokeStyle=border;ctx.lineWidth=.5;
+  for(let g=-40;g<=80;g+=20){const y=gyg(g);ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();
+    ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(g+'dB',padL-4,y+4);}
+  for(let p=-270;p<=10;p+=45){const y=gyp(p);ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();
+    ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(p+'°',padL-4,y+4);}
+  for(let e=2;e<=Math.ceil(logFmax);e++){
+    for(let m=1;m<10;m++){const f=m*Math.pow(10,e);if(f<fmin||f>fmax)continue;
+      const x=fxc(f);ctx.beginPath();ctx.moveTo(x,gainTop);ctx.lineTo(x,gainBot);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(x,phTop);ctx.lineTo(x,phBot);ctx.stroke();
+      if(m===1){ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';
+        const lbl=f>=1e6?(f/1e6).toFixed(0)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f+'';
+        ctx.fillText(lbl,x,phBot+14);}
+    }
+  }
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,gyg(0));ctx.lineTo(padL+pw,gyg(0));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(padL,gyp(-180));ctx.lineTo(padL+pw,gyp(-180));ctx.stroke();
+  ctx.setLineDash([]);
+
+  const N=300;
+  // Faulted (no fix) — red dashed
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#e74c3c';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){const f=Math.pow(10,logFmin+i*(logFmax-logFmin)/N);
+    const {gain_dB}=loopGainPhase(f,sc.gbw,sc.aol,sc.clg,sc.cs,sc.r1,sc.cl,sc.ro,0,0,sc.lag);
+    const x=fxc(f),y=gyg(Math.max(gMin,Math.min(gMax,gain_dB)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#f39c12';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){const f=Math.pow(10,logFmin+i*(logFmax-logFmin)/N);
+    const {phase_deg}=loopGainPhase(f,sc.gbw,sc.aol,sc.clg,sc.cs,sc.r1,sc.cl,sc.ro,0,0,sc.lag);
+    const x=fxc(f),y=gyp(Math.max(phMin2,Math.min(phMax2,phase_deg)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Fixed — accent
+  ctx.strokeStyle=accent;ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){const f=Math.pow(10,logFmin+i*(logFmax-logFmin)/N);
+    const {gain_dB}=loopGainPhase(f,sc.gbw,sc.aol,sc.clg,sc.cs,sc.r1,sc.cl,sc.ro,sc.fixRs,sc.fixCf,sc.lag);
+    const x=fxc(f),y=gyg(Math.max(gMin,Math.min(gMax,gain_dB)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  ctx.strokeStyle='#2ecc71';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){const f=Math.pow(10,logFmin+i*(logFmax-logFmin)/N);
+    const {phase_deg}=loopGainPhase(f,sc.gbw,sc.aol,sc.clg,sc.cs,sc.r1,sc.cl,sc.ro,sc.fixRs,sc.fixCf,sc.lag);
+    const x=fxc(f),y=gyp(Math.max(phMin2,Math.min(phMax2,phase_deg)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+
+  ctx.strokeStyle=border;ctx.lineWidth=1;
+  ctx.strokeRect(padL,gainTop,pw,ph);ctx.strokeRect(padL,phTop,pw,ph);
+
+  const lx=padL+4,ly=h-padB+12;
+  ctx.font='10px sans-serif';ctx.textAlign='left';
+  const items=[['#e74c3c','Faulted Gain (dashed)'],['#f39c12','Faulted Phase (dashed)'],[accent,'Fixed Gain'],['#2ecc71','Fixed Phase']];
+  items.forEach(([col,lbl],i)=>{
+    ctx.fillStyle=col;ctx.fillRect(lx+i*155,ly,14,3);ctx.fillStyle=text;ctx.fillText(lbl,lx+i*155+18,ly+4);
+  });
+}
+
+function drawScenarioStep(c, pm_u, pm_c, fc) {
+  const {ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=50,padR=100,padT=20,padB=35;
+  const pw=w-padL-padR,ph=h-padT-padB;
+  const text=tc('--text'),text2=tc('--text2'),border=tc('--border'),accent=tc('--accent');
+
+  const A=1;
+  const zeta_u=Math.max(0.02,Math.cos(pm_u*Math.PI/180));
+  const zeta_c=Math.max(0.02,Math.cos(pm_c*Math.PI/180));
+  const wn=2*Math.PI*Math.max(1e4,fc);
+  const tau_u=1/(Math.max(0.01,zeta_u)*wn);
+  const tau_c=1/(Math.max(0.01,zeta_c)*wn);
+  const tmax=Math.max(tau_u,tau_c)*6;
+
+  function tx(t){return padL+t/tmax*pw;}
+  function ty(v){return padT+(1-(v+0.3)/1.8)*ph;}
+
+  ctx.strokeStyle=border;ctx.lineWidth=.5;
+  for(let i=0;i<=5;i++){const t=i*tmax/5;const x=tx(t);
+    ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();
+    ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';
+    ctx.fillText((t*1e9).toFixed(0)+'ns',x,padT+ph+16);}
+  for(let i=0;i<=4;i++){const v=-0.3+i*1.8/4;const y=ty(v);
+    ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();
+    ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(v.toFixed(1)+'V',padL-4,y+4);}
+
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,ty(A));ctx.lineTo(padL+pw,ty(A));ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Faulted
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#e74c3c';ctx.lineWidth=2;
+  ctx.beginPath();
+  const N=400;
+  for(let i=0;i<=N;i++){const t=i*tmax/N;const v=step2nd(t,A,wn,zeta_u);const x=tx(t),y=ty(Math.max(-0.3,Math.min(1.6,v)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();ctx.setLineDash([]);
+
+  // Fixed
+  ctx.strokeStyle=accent;ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){const t=i*tmax/N;const v=step2nd(t,A,wn,zeta_c);const x=tx(t),y=ty(Math.max(-0.3,Math.min(1.6,v)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+
+  ctx.strokeStyle=border;ctx.lineWidth=1;ctx.strokeRect(padL,padT,pw,ph);
+  ctx.fillStyle=text;ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+  ctx.fillText('Step Response',padL+4,padT+14);
+
+  // Legend on right
+  const lx=padL+pw+6;
+  ctx.fillStyle='#e74c3c';ctx.fillRect(lx,padT+10,14,2);ctx.setLineDash([5,3]);ctx.strokeStyle='#e74c3c';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(lx,padT+11);ctx.lineTo(lx+14,padT+11);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=text;ctx.font='10px sans-serif';ctx.textAlign='left';ctx.fillText('Faulted',lx,padT+25);
+  ctx.fillText('PM='+pm_u.toFixed(0)+'°',lx,padT+37);
+  ctx.strokeStyle=accent;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(lx,padT+56);ctx.lineTo(lx+14,padT+56);ctx.stroke();
+  ctx.fillStyle=text;ctx.fillText('Fixed',lx,padT+70);
+  ctx.fillText('PM='+pm_c.toFixed(0)+'°',lx,padT+82);
+}
+
+/* ─── Init ─── */
+window.addEventListener('load', () => {
+  upd0();
+  upd1();
+  upd2();
+  drawScenario();
+});
+window.addEventListener('resize', () => {
+  upd0(); upd1(); upd2(); drawScenario();
+});
+</script>
+</body>
+</html>

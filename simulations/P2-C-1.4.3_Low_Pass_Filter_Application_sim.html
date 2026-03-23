@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-C-1.4.3 — RC Low-Pass Filter</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+  h1 { color: #0066cc; font-size: 1.3em; margin-bottom: 4px; }
+  .subtitle { color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }
+  .layout { display: flex; gap: 20px; flex-wrap: wrap; }
+  .panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+  .controls { width: 280px; flex-shrink: 0; }
+  .plots { flex: 1; min-width: 340px; display: flex; flex-direction: column; gap: 10px; }
+  label { display: block; color: #8b949e; font-size: 0.8em; margin-bottom: 4px; margin-top: 12px; }
+  input[type=range] { width: 100%; accent-color: #0066cc; }
+  .val { color: #0066cc; font-weight: bold; }
+  canvas { background: #0d1117; border-radius: 6px; display: block; }
+  .readouts { margin-top: 14px; }
+  .readout-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #21262d; font-size: 0.85em; }
+  .readout-label { color: #8b949e; }
+  .readout-val { color: #39d353; font-weight: bold; font-family: monospace; }
+  .eq { background: #21262d; border-left: 3px solid #0066cc; padding: 10px 12px; border-radius: 4px; margin-top: 14px; font-family: monospace; font-size: 0.82em; color: #a5d6ff; }
+</style>
+</head>
+<body>
+<h1>P2-C-1.4.3 — RC Low-Pass Filter (Bode Plot)</h1>
+<div class="subtitle">Magnitude and phase response · sliders for R and C · −3dB point marked · time-domain preview</div>
+<div class="layout">
+  <div class="panel controls">
+    <label>Resistance R: <span class="val" id="rLabel">1 kΩ</span></label>
+    <input type="range" id="rSlider" min="1" max="1000" value="10" step="1">
+    <label>Capacitance C: <span class="val" id="cLabel">100 nF</span></label>
+    <input type="range" id="cSlider" min="1" max="1000" value="100" step="1">
+    <label>Signal frequency (time domain): <span class="val" id="fsLabel">1 kHz</span></label>
+    <input type="range" id="fsSlider" min="1" max="100" value="10" step="1">
+    <div class="readouts">
+      <div class="readout-row"><span class="readout-label">f_c = 1/(2πRC)</span><span class="readout-val" id="fc">—</span></div>
+      <div class="readout-row"><span class="readout-label">At f_sig: |H|</span><span class="readout-val" id="hmag">—</span></div>
+      <div class="readout-row"><span class="readout-label">Attenuation (dB)</span><span class="readout-val" id="hdb">—</span></div>
+      <div class="readout-row"><span class="readout-label">Phase shift</span><span class="readout-val" id="hphase">—</span></div>
+      <div class="readout-row"><span class="readout-label">f_sig / f_c ratio</span><span class="readout-val" id="fratio">—</span></div>
+    </div>
+    <div class="eq">f_c = 1/(2πRC)<br>|H| = 1/√(1+(f/fc)²)<br>φ = −arctan(f/fc)</div>
+  </div>
+  <div class="panel plots">
+    <canvas id="bode" width="580" height="220"></canvas>
+    <canvas id="phase" width="580" height="140"></canvas>
+    <canvas id="time" width="580" height="120"></canvas>
+  </div>
+</div>
+<script>
+const W=580;
+const PAD={top:28,right:24,bottom:36,left:58};
+const PW=W-PAD.left-PAD.right;
+
+function getP(){
+  const R=parseFloat(document.getElementById('rSlider').value)*100;
+  const C=parseFloat(document.getElementById('cSlider').value)*1e-9;
+  const fs=parseFloat(document.getElementById('fsSlider').value)*100;
+  const fc=1/(2*Math.PI*R*C);
+  return {R,C,fs,fc};
+}
+
+function fmtF(f){ return f>=1e6?(f/1e6).toFixed(2)+'MHz':f>=1e3?(f/1e3).toFixed(1)+'kHz':f.toFixed(0)+'Hz'; }
+
+function updateLabels(p){
+  const R=p.R/100; document.getElementById('rLabel').textContent=R>=1000?(R/1000).toFixed(1)+'MΩ':R>=1?(R).toFixed(0)+'kΩ':(R*1000).toFixed(0)+'Ω';
+  const C=p.C*1e9; document.getElementById('cLabel').textContent=C>=1000?(C/1000).toFixed(2)+'µF':C.toFixed(0)+'nF';
+  const fs=p.fs; document.getElementById('fsLabel').textContent=fmtF(fs);
+  document.getElementById('fc').textContent=fmtF(p.fc);
+  const ratio=p.fs/p.fc;
+  const Hmag=1/Math.sqrt(1+ratio*ratio);
+  const Hdb=20*Math.log10(Hmag);
+  const phase=-Math.atan(ratio)*180/Math.PI;
+  document.getElementById('hmag').textContent=Hmag.toFixed(4);
+  document.getElementById('hdb').textContent=Hdb.toFixed(2)+' dB';
+  document.getElementById('hphase').textContent=phase.toFixed(1)+'°';
+  document.getElementById('fratio').textContent=ratio.toFixed(2);
+}
+
+function drawBode(p){
+  const cv=document.getElementById('bode'); const ctx=cv.getContext('2d');
+  const H=cv.height; const PH=H-PAD.top-PAD.bottom;
+  ctx.clearRect(0,0,W,H);
+  // frequency range: 0.01*fc to 100*fc on log scale
+  const fMin=p.fc*0.02, fMax=p.fc*200;
+  const logMin=Math.log10(fMin), logMax=Math.log10(fMax);
+  const dBmin=-60, dBmax=6;
+  const fx=(f)=>PAD.left+(Math.log10(f)-logMin)/(logMax-logMin)*PW;
+  const fy=(db)=>PAD.top+PH-(db-dBmin)/(dBmax-dBmin)*PH;
+
+  // Grid
+  ctx.strokeStyle='#21262d'; ctx.lineWidth=1;
+  for(let db=-60;db<=6;db+=10){ const y=fy(db); ctx.beginPath();ctx.moveTo(PAD.left,y);ctx.lineTo(PAD.left+PW,y);ctx.stroke(); }
+  // Decade marks
+  let fDec=Math.pow(10,Math.ceil(logMin));
+  while(fDec<=fMax){ const x=fx(fDec); ctx.beginPath();ctx.moveTo(x,PAD.top);ctx.lineTo(x,PAD.top+PH);ctx.stroke(); fDec*=10; }
+
+  // Axes
+  ctx.strokeStyle='#484f58'; ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(PAD.left,PAD.top);ctx.lineTo(PAD.left,PAD.top+PH);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(PAD.left,PAD.top+PH);ctx.lineTo(PAD.left+PW,PAD.top+PH);ctx.stroke();
+
+  // Labels
+  ctx.fillStyle='#8b949e'; ctx.font='10px sans-serif';
+  ctx.textAlign='right';
+  for(let db=-60;db<=6;db+=10){ ctx.fillText(db+'dB',PAD.left-5,fy(db)+4); }
+  ctx.textAlign='center';
+  fDec=Math.pow(10,Math.ceil(logMin));
+  while(fDec<=fMax){ ctx.fillText(fmtF(fDec),fx(fDec),PAD.top+PH+15); fDec*=10; }
+
+  // Asymptote
+  ctx.strokeStyle='#30363d'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+  ctx.beginPath();
+  ctx.moveTo(PAD.left,fy(0));
+  ctx.lineTo(fx(p.fc),fy(0));
+  ctx.lineTo(PAD.left+PW,fy(0-20*Math.log10(fMax/p.fc)));
+  ctx.stroke(); ctx.setLineDash([]);
+
+  // Magnitude curve
+  ctx.strokeStyle='#0066cc'; ctx.lineWidth=2.5; ctx.beginPath();
+  let started=false;
+  for(let px=0;px<=PW;px++){
+    const flog=logMin+(px/PW)*(logMax-logMin);
+    const f=Math.pow(10,flog);
+    const ratio=f/p.fc;
+    const Hmag=1/Math.sqrt(1+ratio*ratio);
+    const db=20*Math.log10(Hmag);
+    const y=fy(Math.max(dBmin,db));
+    const x=PAD.left+px;
+    if(!started){ctx.moveTo(x,y);started=true;}else{ctx.lineTo(x,y);}
+  }
+  ctx.stroke();
+
+  // −3dB point
+  const x3=fx(p.fc); const y3=fy(-3.01);
+  ctx.strokeStyle='#f78166'; ctx.lineWidth=1.5; ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(x3,PAD.top);ctx.lineTo(x3,y3);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(PAD.left,y3);ctx.lineTo(x3,y3);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#f78166'; ctx.beginPath();ctx.arc(x3,y3,5,0,2*Math.PI);ctx.fill();
+  ctx.fillStyle='#f78166'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('−3dB @ '+fmtF(p.fc),x3+7,y3-4);
+
+  // Signal frequency marker
+  if(p.fs>=fMin && p.fs<=fMax){
+    const xfs=fx(p.fs);
+    const ratio2=p.fs/p.fc;
+    const db2=20*Math.log10(1/Math.sqrt(1+ratio2*ratio2));
+    const yfs=fy(Math.max(dBmin,db2));
+    ctx.strokeStyle='#e3b341'; ctx.lineWidth=1.5; ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(xfs,PAD.top);ctx.lineTo(xfs,PAD.top+PH);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#e3b341'; ctx.beginPath();ctx.arc(xfs,yfs,4,0,2*Math.PI);ctx.fill();
+    ctx.fillStyle='#e3b341'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(fmtF(p.fs), xfs, PAD.top+14);
+  }
+
+  ctx.fillStyle='#8b949e'; ctx.font='11px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('MAGNITUDE (Bode)', PAD.left, PAD.top-10);
+}
+
+function drawPhase(p){
+  const cv=document.getElementById('phase'); const ctx=cv.getContext('2d');
+  const H=cv.height; const PH=H-PAD.top-PAD.bottom;
+  ctx.clearRect(0,0,W,H);
+  const fMin=p.fc*0.02, fMax=p.fc*200;
+  const logMin=Math.log10(fMin), logMax=Math.log10(fMax);
+  const phMin=-100, phMax=10;
+  const fx=(f)=>PAD.left+(Math.log10(f)-logMin)/(logMax-logMin)*PW;
+  const fy=(ph)=>PAD.top+PH-(ph-phMin)/(phMax-phMin)*PH;
+
+  ctx.strokeStyle='#21262d'; ctx.lineWidth=1;
+  for(let ph=-90;ph<=0;ph+=30){ const y=fy(ph); ctx.beginPath();ctx.moveTo(PAD.left,y);ctx.lineTo(PAD.left+PW,y);ctx.stroke(); }
+
+  ctx.strokeStyle='#484f58'; ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(PAD.left,PAD.top);ctx.lineTo(PAD.left,PAD.top+PH);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(PAD.left,PAD.top+PH);ctx.lineTo(PAD.left+PW,PAD.top+PH);ctx.stroke();
+
+  ctx.fillStyle='#8b949e'; ctx.font='10px sans-serif';
+  ctx.textAlign='right';
+  for(let ph=-90;ph<=0;ph+=30){ ctx.fillText(ph+'°',PAD.left-5,fy(ph)+4); }
+
+  ctx.strokeStyle='#0066cc'; ctx.lineWidth=2.5; ctx.beginPath();
+  let started=false;
+  for(let px=0;px<=PW;px++){
+    const flog=logMin+(px/PW)*(logMax-logMin);
+    const f=Math.pow(10,flog);
+    const phase=-Math.atan(f/p.fc)*180/Math.PI;
+    const y=fy(phase);
+    const x=PAD.left+px;
+    if(!started){ctx.moveTo(x,y);started=true;}else{ctx.lineTo(x,y);}
+  }
+  ctx.stroke();
+
+  // −45° at fc
+  const x45=fx(p.fc); const y45=fy(-45);
+  ctx.strokeStyle='#f78166'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(x45,PAD.top);ctx.lineTo(x45,y45);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#f78166'; ctx.beginPath();ctx.arc(x45,y45,4,0,2*Math.PI);ctx.fill();
+  ctx.fillStyle='#f78166'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('−45° @ fc',x45+5,y45+4);
+
+  ctx.fillStyle='#8b949e'; ctx.font='11px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('PHASE', PAD.left, PAD.top-10);
+}
+
+function drawTime(p){
+  const cv=document.getElementById('time'); const ctx=cv.getContext('2d');
+  const H=cv.height; const pH=H-PAD.top-PAD.bottom;
+  ctx.clearRect(0,0,W,H);
+  const T=1/p.fs; const tMax=3*T;
+  const ratio=p.fs/p.fc;
+  const Hmag=1/Math.sqrt(1+ratio*ratio);
+  const phaseRad=-Math.atan(ratio);
+  ctx.strokeStyle='#21262d'; ctx.lineWidth=1;
+  for(let i=0;i<=6;i++){const x=PAD.left+(i/6)*PW;ctx.beginPath();ctx.moveTo(x,PAD.top);ctx.lineTo(x,PAD.top+pH);ctx.stroke();}
+  ctx.strokeStyle='#484f58'; ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(PAD.left,PAD.top+pH/2);ctx.lineTo(PAD.left+PW,PAD.top+pH/2);ctx.stroke();
+  // Input
+  ctx.strokeStyle='#3fb950'; ctx.lineWidth=1.5; ctx.beginPath();
+  for(let px=0;px<=PW;px++){
+    const t=(px/PW)*tMax; const v=Math.sin(2*Math.PI*p.fs*t);
+    const y=PAD.top+pH/2-v*(pH/2-8);
+    px===0?ctx.moveTo(PAD.left+px,y):ctx.lineTo(PAD.left+px,y);
+  }
+  ctx.stroke();
+  // Output
+  ctx.strokeStyle='#0066cc'; ctx.lineWidth=2; ctx.beginPath();
+  for(let px=0;px<=PW;px++){
+    const t=(px/PW)*tMax; const v=Hmag*Math.sin(2*Math.PI*p.fs*t+phaseRad);
+    const y=PAD.top+pH/2-v*(pH/2-8);
+    px===0?ctx.moveTo(PAD.left+px,y):ctx.lineTo(PAD.left+px,y);
+  }
+  ctx.stroke();
+  ctx.fillStyle='#3fb950'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('Input (1.0×)', PAD.left+4, PAD.top+14);
+  ctx.fillStyle='#0066cc';
+  ctx.fillText('Output ('+Hmag.toFixed(3)+'×, '+((-Math.atan(ratio)*180/Math.PI).toFixed(1))+'°)', PAD.left+80, PAD.top+14);
+  ctx.fillStyle='#8b949e'; ctx.font='11px sans-serif';
+  ctx.fillText('TIME DOMAIN @ f_sig='+fmtF(p.fs), PAD.left, PAD.top-10);
+}
+
+function draw(){
+  const p=getP();
+  updateLabels(p);
+  drawBode(p);
+  drawPhase(p);
+  drawTime(p);
+}
+
+['rSlider','cSlider','fsSlider'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+draw();
+</script>
+</body>
+</html>

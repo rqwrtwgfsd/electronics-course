@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M3-D-1.1.1 PN Junction Formation Simulator</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --accent: #0066cc; --accent2: #58a6ff; --text: #e6edf3;
+    --subtext: #8b949e; --green: #3fb950; --red: #f85149;
+    --orange: #d29922; --hole: #e05252; --electron: #4a90d9;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+      --accent: #0066cc; --accent2: #0969da; --text: #24292f;
+      --subtext: #57606a; --green: #1a7f37; --red: #d1242f;
+      --orange: #9a6700; --hole: #c0392b; --electron: #2471a3;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; padding: 20px; }
+  h1 { color: var(--accent2); font-size: 1.3rem; margin-bottom: 4px; }
+  .subtitle { color: var(--subtext); font-size: 0.85rem; margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+  .card h2 { font-size: 0.95rem; color: var(--accent2); margin-bottom: 12px; }
+  canvas { display: block; width: 100%; border-radius: 6px; }
+  .controls { display: flex; flex-direction: column; gap: 10px; }
+  label { font-size: 0.82rem; color: var(--subtext); }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .readout { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-family: monospace; font-size: 0.85rem; }
+  .readout-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+  .readout-row span:last-child { color: var(--accent2); font-weight: bold; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; font-size: 0.8rem; }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+</style>
+</head>
+<body>
+<h1>M3-D-1.1.1 — Formation of the PN Junction</h1>
+<p class="subtitle">Animated PN junction showing diffusion, depletion region, and built-in potential</p>
+
+<div class="grid">
+  <div class="card">
+    <h2>PN Junction Diagram</h2>
+    <canvas id="junctionCanvas" height="200"></canvas>
+    <div class="legend">
+      <div class="legend-item"><div class="dot" style="background:var(--hole)"></div> Holes (P-side)</div>
+      <div class="legend-item"><div class="dot" style="background:var(--electron)"></div> Electrons (N-side)</div>
+      <div class="legend-item"><div class="dot" style="background:#888; border:2px solid var(--orange)"></div> Depletion zone</div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Electric Field &amp; Potential Profile</h2>
+    <canvas id="fieldCanvas" height="200"></canvas>
+  </div>
+</div>
+
+<div class="grid" style="margin-top:16px">
+  <div class="card">
+    <h2>Controls</h2>
+    <div class="controls">
+      <div>
+        <label>P-side doping N_A: <strong id="naLabel">1.0 × 10¹⁶ cm⁻³</strong></label>
+        <input type="range" id="naSlider" min="1" max="100" value="10" step="1">
+      </div>
+      <div>
+        <label>N-side doping N_D: <strong id="ndLabel">1.0 × 10¹⁶ cm⁻³</strong></label>
+        <input type="range" id="ndSlider" min="1" max="100" value="10" step="1">
+      </div>
+      <div>
+        <label>Temperature T: <strong id="tempLabel">300 K (27°C)</strong></label>
+        <input type="range" id="tempSlider" min="250" max="450" value="300" step="5">
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Live Readouts</h2>
+    <div class="readout">
+      <div class="readout-row"><span>N_A</span><span id="ro_na">1.0 × 10¹⁶ cm⁻³</span></div>
+      <div class="readout-row"><span>N_D</span><span id="ro_nd">1.0 × 10¹⁶ cm⁻³</span></div>
+      <div class="readout-row"><span>Temperature</span><span id="ro_t">300 K</span></div>
+      <div class="readout-row"><span>V_T (kT/q)</span><span id="ro_vt">25.85 mV</span></div>
+      <div class="readout-row"><span>ni (Si)</span><span id="ro_ni">1.50 × 10¹⁰ cm⁻³</span></div>
+      <div class="readout-row"><span style="color:var(--accent2);font-weight:bold">V_bi</span><span id="ro_vbi" style="color:var(--green);font-weight:bold">0.714 V</span></div>
+      <div class="readout-row"><span>Depletion Width W</span><span id="ro_w">— nm</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const jCanvas = document.getElementById('junctionCanvas');
+const fCanvas = document.getElementById('fieldCanvas');
+const jCtx = jCanvas.getContext('2d');
+const fCtx = fCanvas.getContext('2d');
+
+function resize() {
+  jCanvas.width = jCanvas.offsetWidth * devicePixelRatio;
+  jCanvas.height = 200 * devicePixelRatio;
+  fCanvas.width = fCanvas.offsetWidth * devicePixelRatio;
+  fCanvas.height = 200 * devicePixelRatio;
+  jCtx.scale(devicePixelRatio, devicePixelRatio);
+  fCtx.scale(devicePixelRatio, devicePixelRatio);
+  draw();
+}
+
+function getColor(varName) {
+  return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+}
+
+// Physics
+function calcVbi(NA, ND, T) {
+  const k = 1.381e-23, q = 1.602e-19;
+  const VT = k * T / q;
+  // ni(T) approximation
+  const ni300 = 1.5e10;
+  const Eg = 1.12; // eV silicon
+  const ni = ni300 * Math.pow(T / 300, 1.5) * Math.exp(-Eg / 2 * q / k * (1/T - 1/300));
+  const arg = (NA * ND) / (ni * ni);
+  if (arg <= 1) return { Vbi: 0.01, VT, ni };
+  const Vbi = VT * Math.log(arg);
+  return { Vbi, VT, ni };
+}
+
+function calcW(NA, ND, Vbi) {
+  const eps = 11.7 * 8.854e-12; // F/m
+  const q = 1.602e-19;
+  const NA_m = NA * 1e6, ND_m = ND * 1e6; // cm⁻³ to m⁻³
+  const W = Math.sqrt(2 * eps * Vbi / q * (1/NA_m + 1/ND_m));
+  return W; // meters
+}
+
+let animFrame = 0;
+
+function draw() {
+  const na_exp = parseFloat(document.getElementById('naSlider').value);
+  const nd_exp = parseFloat(document.getElementById('ndSlider').value);
+  const T = parseFloat(document.getElementById('tempSlider').value);
+  const NA = na_exp * 1e15;
+  const ND = nd_exp * 1e15;
+
+  const { Vbi, VT, ni } = calcVbi(NA, ND, T);
+  const W = calcW(NA, ND, Vbi);
+  const W_nm = W * 1e9;
+
+  // Update labels
+  document.getElementById('naLabel').textContent = formatSci(NA, 'cm⁻³');
+  document.getElementById('ndLabel').textContent = formatSci(ND, 'cm⁻³');
+  document.getElementById('tempLabel').textContent = `${T} K (${T-273}°C)`;
+  document.getElementById('ro_na').textContent = formatSci(NA, 'cm⁻³');
+  document.getElementById('ro_nd').textContent = formatSci(ND, 'cm⁻³');
+  document.getElementById('ro_t').textContent = `${T} K`;
+  document.getElementById('ro_vt').textContent = `${(VT*1000).toFixed(2)} mV`;
+  document.getElementById('ro_ni').textContent = formatSci(ni, 'cm⁻³');
+  document.getElementById('ro_vbi').textContent = `${Vbi.toFixed(3)} V`;
+  document.getElementById('ro_w').textContent = `${W_nm.toFixed(1)} nm`;
+
+  drawJunction(jCanvas.width/devicePixelRatio, 200, NA, ND, Vbi, W_nm);
+  drawField(fCanvas.width/devicePixelRatio, 200, NA, ND, Vbi, W_nm);
+}
+
+function formatSci(val, unit) {
+  const exp = Math.floor(Math.log10(val));
+  const mant = (val / Math.pow(10, exp)).toFixed(2);
+  return `${mant} × 10^${exp} ${unit}`;
+}
+
+function drawJunction(W, H, NA, ND, Vbi, W_nm) {
+  jCtx.clearRect(0, 0, W, H);
+  const mid = W / 2;
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+  // Depletion width in pixels (proportional)
+  const maxW_nm = 1000;
+  const depPx = Math.min(W * 0.4, (W_nm / maxW_nm) * W * 0.5 + 20);
+  // Asymmetric: more into lightly doped side
+  const ratio_p = ND / (NA + ND);
+  const ratio_n = NA / (NA + ND);
+  const depP = depPx * ratio_p;
+  const depN = depPx * ratio_n;
+
+  // P-side background
+  jCtx.fillStyle = isDark ? '#2a1a2e' : '#fdeef0';
+  jCtx.fillRect(0, 0, mid - depP, H);
+  // N-side background
+  jCtx.fillStyle = isDark ? '#1a2a2e' : '#eef4fd';
+  jCtx.fillRect(mid + depN, 0, W - mid - depN, H);
+  // Depletion region
+  jCtx.fillStyle = isDark ? '#1e2530' : '#f0f0f0';
+  jCtx.fillRect(mid - depP, 0, depP + depN, H);
+
+  // Hatching for depletion
+  jCtx.strokeStyle = isDark ? '#333' : '#ccc';
+  jCtx.lineWidth = 0.5;
+  for (let x = mid - depP; x < mid + depN; x += 8) {
+    jCtx.beginPath(); jCtx.moveTo(x, 0); jCtx.lineTo(x + 10, H); jCtx.stroke();
+  }
+
+  // Labels P / N
+  jCtx.font = 'bold 16px monospace';
+  jCtx.fillStyle = getColor('--hole');
+  jCtx.textAlign = 'center';
+  jCtx.fillText('P', mid/2, H/2 - 10);
+  jCtx.fillStyle = getColor('--electron');
+  jCtx.fillText('N', mid + (W - mid)/2, H/2 - 10);
+  jCtx.fillStyle = getColor('--subtext');
+  jCtx.font = '11px system-ui';
+  jCtx.fillText('Depletion\nRegion', mid, H - 14);
+
+  // Draw animated carriers
+  animFrame++;
+  const t = animFrame * 0.02;
+  const numHoles = 14;
+  const numElec = 14;
+  for (let i = 0; i < numHoles; i++) {
+    const phase = (i / numHoles) * Math.PI * 2;
+    const x = 30 + ((mid - depP - 30) * ((i + 0.5) / numHoles));
+    const y = 40 + (H - 80) * ((Math.sin(phase + t) + 1) / 2);
+    jCtx.beginPath();
+    jCtx.arc(x, y, 7, 0, Math.PI * 2);
+    jCtx.fillStyle = getColor('--hole');
+    jCtx.globalAlpha = 0.8;
+    jCtx.fill();
+    jCtx.globalAlpha = 1;
+    jCtx.strokeStyle = '#fff';
+    jCtx.lineWidth = 1;
+    jCtx.stroke();
+    jCtx.fillStyle = '#fff';
+    jCtx.font = 'bold 9px monospace';
+    jCtx.textAlign = 'center';
+    jCtx.fillText('+', x, y + 3);
+  }
+  for (let i = 0; i < numElec; i++) {
+    const phase = (i / numElec) * Math.PI * 2;
+    const x = mid + depN + 10 + ((W - mid - depN - 30) * ((i + 0.5) / numElec));
+    const y = 40 + (H - 80) * ((Math.sin(phase + t + 1) + 1) / 2);
+    jCtx.beginPath();
+    jCtx.arc(x, y, 7, 0, Math.PI * 2);
+    jCtx.fillStyle = getColor('--electron');
+    jCtx.globalAlpha = 0.8;
+    jCtx.fill();
+    jCtx.globalAlpha = 1;
+    jCtx.strokeStyle = '#fff';
+    jCtx.lineWidth = 1;
+    jCtx.stroke();
+    jCtx.fillStyle = '#fff';
+    jCtx.font = 'bold 9px monospace';
+    jCtx.textAlign = 'center';
+    jCtx.fillText('−', x, y + 3);
+  }
+
+  // Junction line
+  jCtx.strokeStyle = getColor('--accent');
+  jCtx.lineWidth = 2;
+  jCtx.setLineDash([4, 4]);
+  jCtx.beginPath();
+  jCtx.moveTo(mid, 0); jCtx.lineTo(mid, H);
+  jCtx.stroke();
+  jCtx.setLineDash([]);
+
+  // V_bi label
+  jCtx.fillStyle = getColor('--accent2');
+  jCtx.font = 'bold 12px monospace';
+  jCtx.textAlign = 'center';
+  jCtx.fillText(`V_bi = ${Vbi.toFixed(3)} V`, mid, 18);
+}
+
+function drawField(W, H, NA, ND, Vbi, W_nm) {
+  fCtx.clearRect(0, 0, W, H);
+  const mid = W / 2;
+  const maxW_nm = 1000;
+  const depPx = Math.min(W * 0.4, (W_nm / maxW_nm) * W * 0.5 + 20);
+  const ratio_p = ND / (NA + ND);
+  const ratio_n = NA / (NA + ND);
+  const depP = depPx * ratio_p;
+  const depN = depPx * ratio_n;
+
+  // Draw electric field (triangle shape)
+  const Epeak = Math.min(H * 0.6, Vbi * 80);
+  const midY = H * 0.35;
+
+  fCtx.fillStyle = getColor('--accent');
+  fCtx.globalAlpha = 0.2;
+  fCtx.beginPath();
+  fCtx.moveTo(mid - depP, midY);
+  fCtx.lineTo(mid, midY + Epeak);
+  fCtx.lineTo(mid + depN, midY);
+  fCtx.closePath();
+  fCtx.fill();
+  fCtx.globalAlpha = 1;
+  fCtx.strokeStyle = getColor('--accent');
+  fCtx.lineWidth = 2;
+  fCtx.beginPath();
+  fCtx.moveTo(mid - depP, midY);
+  fCtx.lineTo(mid, midY + Epeak);
+  fCtx.lineTo(mid + depN, midY);
+  fCtx.stroke();
+
+  // Potential profile
+  const potY0 = H * 0.2;
+  const potY1 = H * 0.2 + Math.min(Vbi * 60, H * 0.55);
+  fCtx.strokeStyle = getColor('--green');
+  fCtx.lineWidth = 2;
+  fCtx.beginPath();
+  fCtx.moveTo(0, potY0);
+  fCtx.lineTo(mid - depP, potY0);
+  for (let px = 0; px <= depP + depN; px++) {
+    const x = mid - depP + px;
+    const norm = px / (depP + depN);
+    const y = potY0 + (potY1 - potY0) * (3 * norm * norm - 2 * norm * norm * norm);
+    fCtx.lineTo(x, y);
+  }
+  fCtx.lineTo(W, potY1);
+  fCtx.stroke();
+
+  // Labels
+  fCtx.fillStyle = getColor('--accent');
+  fCtx.font = '11px system-ui';
+  fCtx.textAlign = 'left';
+  fCtx.fillText('E-field', 4, midY + Epeak * 0.5);
+  fCtx.fillStyle = getColor('--green');
+  fCtx.fillText('Potential', 4, potY0 - 5);
+  fCtx.fillStyle = getColor('--text');
+  fCtx.textAlign = 'center';
+  fCtx.fillText('← P-side', mid/2, H - 8);
+  fCtx.fillText('N-side →', mid + (W-mid)/2, H - 8);
+  fCtx.fillStyle = getColor('--accent2');
+  fCtx.font = 'bold 11px monospace';
+  fCtx.fillText(`V_bi = ${Vbi.toFixed(3)} V`, mid, H - 8);
+
+  // Arrow for E field direction
+  fCtx.strokeStyle = getColor('--accent');
+  fCtx.fillStyle = getColor('--accent');
+  fCtx.lineWidth = 1.5;
+  fCtx.beginPath();
+  fCtx.moveTo(mid + 15, midY + Epeak * 0.7);
+  fCtx.lineTo(mid - 15, midY + Epeak * 0.7);
+  fCtx.stroke();
+  fCtx.beginPath();
+  fCtx.moveTo(mid - 15, midY + Epeak * 0.7);
+  fCtx.lineTo(mid - 8, midY + Epeak * 0.7 - 4);
+  fCtx.lineTo(mid - 8, midY + Epeak * 0.7 + 4);
+  fCtx.closePath();
+  fCtx.fill();
+}
+
+document.getElementById('naSlider').addEventListener('input', draw);
+document.getElementById('ndSlider').addEventListener('input', draw);
+document.getElementById('tempSlider').addEventListener('input', draw);
+
+window.addEventListener('resize', resize);
+resize();
+
+function animate() {
+  draw();
+  requestAnimationFrame(animate);
+}
+animate();
+</script>
+</body>
+</html>

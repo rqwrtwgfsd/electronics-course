@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-FC-6.2.1 — Miller Compensation</title>
+<style>
+  :root { --bg:#ffffff; --bg2:#f5f5f5; --text:#1a1a1a; --text2:#555; --border:#ddd; --accent:#0066cc; --green:#00994d; --canvas-bg:#fafafa; --warn:#cc4400; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1a1a1a; --bg2:#242424; --text:#e8e8e8; --text2:#aaa; --border:#444; --canvas-bg:#1f1f1f; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); font-size:14px; }
+  header { background:var(--bg2); border-bottom:2px solid var(--accent); padding:12px 20px; }
+  header .id { font-family:monospace; font-size:12px; color:var(--accent); font-weight:700; }
+  header h1 { font-size:16px; margin-top:2px; }
+  .tabs { display:flex; gap:0; border-bottom:1px solid var(--border); background:var(--bg2); padding:0 16px; }
+  .tab { padding:8px 16px; cursor:pointer; font-size:13px; border-bottom:3px solid transparent; color:var(--text2); }
+  .tab.active { border-bottom-color:var(--accent); color:var(--accent); font-weight:700; }
+  .tab-content { display:none; }
+  .tab-content.active { display:flex; gap:16px; padding:16px; flex-wrap:wrap; }
+  .panel { background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:14px; }
+  .sim-panel { flex:1; min-width:380px; }
+  .ctrl-panel { width:260px; min-width:240px; }
+  canvas { background:var(--canvas-bg); border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .readouts { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+  .readout { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 10px; }
+  .readout label { font-size:11px; color:var(--text2); display:block; }
+  .readout .val { font-family:monospace; font-size:14px; font-weight:700; color:var(--accent); }
+  .ctrl { margin-bottom:12px; }
+  .ctrl label { display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px; }
+  .ctrl label span { font-family:monospace; color:var(--accent); font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .section-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text2); margin-bottom:8px; }
+  .insight { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 12px; margin-top:10px; font-size:12px; color:var(--text2); line-height:1.5; }
+  .legend { display:flex; flex-wrap:wrap; gap:10px; margin-top:6px; font-size:11px; }
+  .legend-item { display:flex; align-items:center; gap:4px; }
+  .legend-dot { width:12px; height:3px; border-radius:2px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4B-FC-6.2.1</div>
+  <h1>Frequency Compensation — Miller Compensation</h1>
+</header>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">Pole Splitting &amp; Bode Plot</div>
+  <div class="tab" onclick="showTab(1)">Miller Capacitance &amp; Pole Map</div>
+</div>
+
+<!-- TAB 0: Bode Plot -->
+<div class="tab-content active" id="tab0">
+  <div class="panel sim-panel">
+    <canvas id="cv0" height="340"></canvas>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#cc4400;height:2px;border-top:2px dashed #cc4400;background:none;width:20px;border-bottom:none;"></div><span style="color:#cc4400">Uncompensated</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#0066cc"></div><span style="color:#0066cc">|T| compensated</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#00994d"></div><span style="color:#00994d">Phase compensated</span></div>
+    </div>
+    <div class="readouts">
+      <div class="readout"><label>fp1 (dominant)</label><span class="val" id="r0-fp1">—</span></div>
+      <div class="readout"><label>fp2 (non-dom)</label><span class="val" id="r0-fp2">—</span></div>
+      <div class="readout"><label>GBW</label><span class="val" id="r0-gbw">—</span></div>
+      <div class="readout"><label>Phase Margin</label><span class="val" id="r0-pm">—</span></div>
+      <div class="readout"><label>RHP Zero fz</label><span class="val" id="r0-fz">—</span></div>
+      <div class="readout"><label>PM w/o Rs</label><span class="val" id="r0-pm-no-rs">—</span></div>
+    </div>
+    <div class="insight" id="ins0">—</div>
+  </div>
+  <div class="panel ctrl-panel">
+    <div class="section-title">Amplifier</div>
+    <div class="ctrl">
+      <label>gm1 (mA/V) <span id="lbl0-gm1">1.0</span></label>
+      <input type="range" id="sl0-gm1" min="0.2" max="5" step="0.1" value="1.0" oninput="update0()">
+    </div>
+    <div class="ctrl">
+      <label>gm2 (mA/V) <span id="lbl0-gm2">5.0</span></label>
+      <input type="range" id="sl0-gm2" min="1" max="20" step="0.5" value="5.0" oninput="update0()">
+    </div>
+    <div class="ctrl">
+      <label>Rout1 (kΩ) <span id="lbl0-ro1">100</span></label>
+      <input type="range" id="sl0-ro1" min="10" max="500" step="10" value="100" oninput="update0()">
+    </div>
+    <div class="ctrl">
+      <label>Rout2 (kΩ) <span id="lbl0-ro2">50</span></label>
+      <input type="range" id="sl0-ro2" min="5" max="200" step="5" value="50" oninput="update0()">
+    </div>
+    <div class="ctrl">
+      <label>CL (pF) <span id="lbl0-cl">20</span></label>
+      <input type="range" id="sl0-cl" min="1" max="100" step="1" value="20" oninput="update0()">
+    </div>
+    <div class="section-title" style="margin-top:8px">Miller Compensation</div>
+    <div class="ctrl">
+      <label>Cc (pF) <span id="lbl0-cc">3</span></label>
+      <input type="range" id="sl0-cc" min="0.5" max="30" step="0.5" value="3" oninput="update0()">
+    </div>
+    <div class="ctrl">
+      <label style="align-items:center">Nulling Rs <span id="lbl0-rs">OFF</span>
+        <input type="checkbox" id="chk0-rs" onchange="update0()" style="width:auto;margin-left:8px">
+      </label>
+    </div>
+    <div class="ctrl">
+      <label style="align-items:center">Show Uncompensated <span id="lbl0-uncomp">ON</span>
+        <input type="checkbox" id="chk0-uncomp" onchange="update0()" checked style="width:auto;margin-left:8px">
+      </label>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: Pole Map -->
+<div class="tab-content" id="tab1">
+  <div class="panel sim-panel">
+    <canvas id="cv1" height="340"></canvas>
+    <div class="readouts">
+      <div class="readout"><label>C_Miller (pF)</label><span class="val" id="r1-cm">—</span></div>
+      <div class="readout"><label>fp1 after split</label><span class="val" id="r1-fp1">—</span></div>
+      <div class="readout"><label>fp2 after split</label><span class="val" id="r1-fp2">—</span></div>
+      <div class="readout"><label>GBW = gm1/2πCc</label><span class="val" id="r1-gbw">—</span></div>
+      <div class="readout"><label>RHP Zero fz</label><span class="val" id="r1-fz">—</span></div>
+      <div class="readout"><label>fp2/GBW ratio</label><span class="val" id="r1-ratio">—</span></div>
+    </div>
+    <div class="insight" id="ins1">—</div>
+  </div>
+  <div class="panel ctrl-panel">
+    <div class="section-title">Amplifier Parameters</div>
+    <div class="ctrl">
+      <label>gm1 (mA/V) <span id="lbl1-gm1">1.0</span></label>
+      <input type="range" id="sl1-gm1" min="0.2" max="5" step="0.1" value="1.0" oninput="update1()">
+    </div>
+    <div class="ctrl">
+      <label>gm2 (mA/V) <span id="lbl1-gm2">5.0</span></label>
+      <input type="range" id="sl1-gm2" min="1" max="20" step="0.5" value="5.0" oninput="update1()">
+    </div>
+    <div class="ctrl">
+      <label>Rout1 (kΩ) <span id="lbl1-ro1">100</span></label>
+      <input type="range" id="sl1-ro1" min="10" max="500" step="10" value="100" oninput="update1()">
+    </div>
+    <div class="ctrl">
+      <label>Rout2 (kΩ) <span id="lbl1-ro2">50</span></label>
+      <input type="range" id="sl1-ro2" min="5" max="200" step="5" value="50" oninput="update1()">
+    </div>
+    <div class="ctrl">
+      <label>CL (pF) <span id="lbl1-cl">20</span></label>
+      <input type="range" id="sl1-cl" min="1" max="100" step="1" value="20" oninput="update1()">
+    </div>
+    <div class="section-title" style="margin-top:8px">Sweep Cc</div>
+    <div class="ctrl">
+      <label>Cc (pF) <span id="lbl1-cc">3</span></label>
+      <input type="range" id="sl1-cc" min="0.5" max="30" step="0.5" value="3" oninput="update1()">
+    </div>
+    <div class="section-title" style="margin-top:8px">Display</div>
+    <div class="ctrl">
+      <label style="align-items:center">Show fp2 trajectory <span></span>
+        <input type="checkbox" id="chk1-traj" onchange="update1()" checked style="width:auto;margin-left:8px">
+      </label>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- Shared math ----
+function fp1_miller(gm2, ro1, ro2, cc) {
+  // fp1 = 1/(2π·ro1·Cc·gm2·ro2)
+  return 1/(2*Math.PI*ro1*cc*gm2*ro2);
+}
+function fp2_miller(gm2, cc, cl) {
+  // fp2 ≈ gm2/(2π·(Cc+CL))
+  return gm2/(2*Math.PI*(cc+cl));
+}
+function fz_rhp(gm2, cc) {
+  return gm2/(2*Math.PI*cc);
+}
+function gbw(gm1, cc) {
+  return gm1/(2*Math.PI*cc);
+}
+function phaseAt(f, fp1, fp2, fz, useRs) {
+  let p = -Math.atan(f/fp1) - Math.atan(f/fp2);
+  if (!useRs && fz > 0) p -= Math.atan(f/fz); // RHP zero: subtracts phase
+  return p*180/Math.PI;
+}
+function magAt(f, a0, fp1, fp2) {
+  return a0/Math.sqrt(1+(f/fp1)**2)/Math.sqrt(1+(f/fp2)**2);
+}
+function findCross(a0, fp1, fp2) {
+  let lo=1e2, hi=1e12;
+  for(let i=0;i<60;i++){const m=Math.sqrt(lo*hi); magAt(m,a0,fp1,fp2)>1?lo=m:hi=m;}
+  return Math.sqrt(lo*hi);
+}
+
+// ---- Tab switching ----
+function showTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.tab-content').forEach((t,i)=>t.classList.toggle('active',i===n));
+  if(n===0) update0(); else update1();
+}
+
+// ---- TAB 0: Bode Plot ----
+function update0() {
+  const gm1 = parseFloat(document.getElementById('sl0-gm1').value)/1000;
+  const gm2 = parseFloat(document.getElementById('sl0-gm2').value)/1000;
+  const ro1  = parseFloat(document.getElementById('sl0-ro1').value)*1e3;
+  const ro2  = parseFloat(document.getElementById('sl0-ro2').value)*1e3;
+  const cl   = parseFloat(document.getElementById('sl0-cl').value)*1e-12;
+  const cc   = parseFloat(document.getElementById('sl0-cc').value)*1e-12;
+  const useRs= document.getElementById('chk0-rs').checked;
+  const showU= document.getElementById('chk0-uncomp').checked;
+
+  document.getElementById('lbl0-gm1').textContent=(gm1*1000).toFixed(1);
+  document.getElementById('lbl0-gm2').textContent=(gm2*1000).toFixed(1);
+  document.getElementById('lbl0-ro1').textContent=(ro1/1e3).toFixed(0);
+  document.getElementById('lbl0-ro2').textContent=(ro2/1e3).toFixed(0);
+  document.getElementById('lbl0-cl').textContent=(cl*1e12).toFixed(0);
+  document.getElementById('lbl0-cc').textContent=(cc*1e12).toFixed(1);
+  document.getElementById('lbl0-rs').textContent=useRs?'ON (Rs='+(1/gm2*1000).toFixed(0)+'Ω)':'OFF';
+  document.getElementById('lbl0-uncomp').textContent=showU?'ON':'OFF';
+
+  const a0 = gm1*ro1*gm2*ro2;
+  const fp1c = fp1_miller(gm2, ro1, ro2, cc);
+  const fp2c = fp2_miller(gm2, cc, cl);
+  const fz   = useRs ? 0 : fz_rhp(gm2, cc);
+  const GBW  = gbw(gm1, cc);
+  const fc   = findCross(a0, fp1c, fp2c);
+  const pm   = 180 + phaseAt(fc, fp1c, fp2c, fz, useRs);
+  // PM without Rs (for comparison)
+  const fz_nr = fz_rhp(gm2, cc);
+  const pm_no_rs = 180 + phaseAt(fc, fp1c, fp2c, fz_nr, false);
+
+  // Uncompensated: fp1_nat = 1/(2π·ro1·CL_nat), CL_nat = CL (no miller)
+  const cl_nat = cl + 0.5e-12; // parasitic
+  const fp1_nat = 1/(2*Math.PI*ro1*cl_nat);
+  const fp2_nat = 1/(2*Math.PI*ro2*cl);
+
+  const fmt = f => f>=1e9?(f/1e9).toFixed(2)+'GHz':f>=1e6?(f/1e6).toFixed(2)+'MHz':f>=1e3?(f/1e3).toFixed(1)+'kHz':f.toFixed(0)+'Hz';
+  document.getElementById('r0-fp1').textContent = fmt(fp1c);
+  document.getElementById('r0-fp2').textContent = fmt(fp2c);
+  document.getElementById('r0-gbw').textContent = fmt(GBW);
+  const pmEl = document.getElementById('r0-pm');
+  pmEl.textContent = pm.toFixed(1)+'°';
+  pmEl.style.color = pm>=60?'var(--green)':pm>=45?'#cc8800':'var(--warn)';
+  document.getElementById('r0-fz').textContent = useRs?'∞ (cancelled)':fmt(fz_nr);
+  const pmNrEl = document.getElementById('r0-pm-no-rs');
+  pmNrEl.textContent = pm_no_rs.toFixed(1)+'°';
+  pmNrEl.style.color = pm_no_rs>=60?'var(--green)':pm_no_rs>=45?'#cc8800':'var(--warn)';
+
+  const rsStr = useRs ? ` Nulling Rs=${( 1/gm2*1000).toFixed(0)}Ω eliminates RHP zero.` : ` RHP zero at ${fmt(fz_nr)} costs ${(Math.atan(fc/fz_nr)*180/Math.PI).toFixed(1)}° phase.`;
+  document.getElementById('ins0').textContent =
+    `Miller effect multiplies Cc by (1+gm2·ro2)=${((1+gm2*ro2)).toFixed(0)}×. ` +
+    `Dominant pole fp1=${fmt(fp1c)}, second pole fp2=${fmt(fp2c)}. ` +
+    `GBW=gm1/(2π·Cc)=${fmt(GBW)}.` + rsStr;
+
+  draw0(a0, fp1c, fp2c, fp1_nat, fp2_nat, fz, fc, pm, GBW, showU);
+}
+
+function draw0(a0, fp1, fp2, fp1n, fp2n, fz, fc, pm, gbw_val, showUncomp) {
+  const canvas = document.getElementById('cv0');
+  const W = canvas.offsetWidth||520; canvas.width=W; canvas.height=340;
+  const ctx = canvas.getContext('2d');
+  const pad = {l:52,r:15,t:20,b:35};
+  const pw = W-pad.l-pad.r, ph=340-pad.t-pad.b;
+  ctx.fillStyle='var(--canvas-bg)'; ctx.fillRect(0,0,W,340);
+
+  const magH=ph*0.5, phH=ph*0.5;
+  const magTop=pad.t, phTop=pad.t+magH+4;
+  const fMin=1e3,fMax=1e10;
+  const lMin=Math.log10(fMin),lMax=Math.log10(fMax);
+  const fToX=f=>pad.l+(Math.log10(Math.max(f,fMin))-lMin)/(lMax-lMin)*pw;
+  const mToY=(m,top,h)=>top+h-((m+20)/140)*h;
+  const pToY=(p,top,h)=>top+h-((p+270)/270)*h;
+
+  // Grid
+  ctx.strokeStyle='var(--border)'; ctx.lineWidth=0.7;
+  for(let m=-20;m<=120;m+=40){const y=mToY(m,magTop,magH);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='right';ctx.fillText(m+'dB',pad.l-3,y+3);}
+  for(let p=-270;p<=0;p+=90){const y=pToY(p,phTop,phH);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='right';ctx.fillText(p+'°',pad.l-3,y+3);}
+
+  const y0=mToY(0,magTop,magH);
+  ctx.strokeStyle='rgba(0,0,0,0.15)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,y0);ctx.lineTo(pad.l+pw,y0);ctx.stroke();
+  const y180=pToY(-180,phTop,phH);
+  ctx.strokeStyle='rgba(204,68,0,0.35)';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(pad.l,y180);ctx.lineTo(pad.l+pw,y180);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Uncompensated
+  if(showUncomp){
+    ctx.strokeStyle='rgba(204,68,0,0.55)';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+    ctx.beginPath();let first=true;
+    for(let i=0;i<=300;i++){const f=Math.pow(10,lMin+i/300*(lMax-lMin));const m=20*Math.log10(Math.max(magAt(f,a0,fp1n,fp2n),1e-9));const x=fToX(f);const y=mToY(m,magTop,magH);if(y<magTop-10||y>magTop+magH+10){first=true;continue;}first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;}
+    ctx.stroke();
+    ctx.strokeStyle='rgba(204,68,0,0.45)';
+    ctx.beginPath();first=true;
+    for(let i=0;i<=300;i++){const f=Math.pow(10,lMin+i/300*(lMax-lMin));const p=phaseAt(f,fp1n,fp2n,0,true);const x=fToX(f);const y=pToY(Math.max(-270,p),phTop,phH);first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;}
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Compensated magnitude
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2;ctx.beginPath();let first=true;
+  for(let i=0;i<=400;i++){const f=Math.pow(10,lMin+i/400*(lMax-lMin));const m=20*Math.log10(Math.max(magAt(f,a0,fp1,fp2),1e-9));const x=fToX(f);const y=mToY(m,magTop,magH);if(y<magTop-10||y>magTop+magH+10){first=true;continue;}first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;}
+  ctx.stroke();
+
+  // Compensated phase
+  ctx.strokeStyle='#00994d';ctx.lineWidth=2;ctx.beginPath();first=true;
+  for(let i=0;i<=400;i++){const f=Math.pow(10,lMin+i/400*(lMax-lMin));const p=phaseAt(f,fp1,fp2,fz,fz===0);const x=fToX(f);const y=pToY(Math.max(-270,p),phTop,phH);first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;}
+  ctx.stroke();
+
+  // Pole markers
+  const drawPole=(f,label,col,yRow)=>{if(f<fMin||f>fMax)return;const x=fToX(f);ctx.strokeStyle=col;ctx.lineWidth=1;ctx.setLineDash([2,2]);ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle=col;ctx.font='8px monospace';ctx.textAlign='center';ctx.fillText(label,x,yRow);};
+  drawPole(fp1,'fp1',  '#0066cc', magTop+10);
+  drawPole(fp2,'fp2',  '#0044aa', magTop+20);
+  if(fz>0&&fz<fMax) drawPole(fz,'fz_RHP','#cc4400',phTop+10);
+
+  // fc marker
+  if(fc>=fMin&&fc<=fMax){
+    const xcf=fToX(fc);
+    ctx.strokeStyle='#cc4400';ctx.lineWidth=1.5;ctx.setLineDash([3,2]);
+    ctx.beginPath();ctx.moveTo(xcf,magTop);ctx.lineTo(xcf,phTop+phH);ctx.stroke();ctx.setLineDash([]);
+    const ycf=pToY(phaseAt(fc,fp1,fp2,fz,fz===0),phTop,phH);
+    ctx.fillStyle=pm>=60?'#00994d':pm>=45?'#cc8800':'#cc4400';
+    ctx.beginPath();ctx.arc(xcf,ycf,4,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='var(--text)';ctx.font='bold 9px monospace';ctx.textAlign='left';
+    ctx.fillText('PM='+pm.toFixed(0)+'°',xcf+5,ycf-3);
+  }
+
+  ctx.fillStyle='#0066cc';ctx.font='bold 9px sans-serif';ctx.textAlign='left';ctx.fillText('|T|',pad.l+3,magTop+11);
+  ctx.fillStyle='#00994d';ctx.fillText('∠T',pad.l+3,phTop+11);
+  ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='center';
+  ['1k','10k','100k','1M','10M','100M','1G'].forEach((l,i)=>ctx.fillText(l,fToX(Math.pow(10,3+i)),phTop+phH+14));
+}
+
+// ---- TAB 1: Pole Map ----
+function update1() {
+  const gm1 = parseFloat(document.getElementById('sl1-gm1').value)/1000;
+  const gm2 = parseFloat(document.getElementById('sl1-gm2').value)/1000;
+  const ro1  = parseFloat(document.getElementById('sl1-ro1').value)*1e3;
+  const ro2  = parseFloat(document.getElementById('sl1-ro2').value)*1e3;
+  const cl   = parseFloat(document.getElementById('sl1-cl').value)*1e-12;
+  const cc   = parseFloat(document.getElementById('sl1-cc').value)*1e-12;
+  const showTraj = document.getElementById('chk1-traj').checked;
+
+  document.getElementById('lbl1-gm1').textContent=(gm1*1000).toFixed(1);
+  document.getElementById('lbl1-gm2').textContent=(gm2*1000).toFixed(1);
+  document.getElementById('lbl1-ro1').textContent=(ro1/1e3).toFixed(0);
+  document.getElementById('lbl1-ro2').textContent=(ro2/1e3).toFixed(0);
+  document.getElementById('lbl1-cl').textContent=(cl*1e12).toFixed(0);
+  document.getElementById('lbl1-cc').textContent=(cc*1e12).toFixed(1);
+
+  const C_miller = cc*(1 + gm2*ro2);
+  const fp1c = fp1_miller(gm2, ro1, ro2, cc);
+  const fp2c = fp2_miller(gm2, cc, cl);
+  const fz   = fz_rhp(gm2, cc);
+  const GBW  = gbw(gm1, cc);
+  const ratio = fp2c/GBW;
+
+  const fmt = f => f>=1e9?(f/1e9).toFixed(2)+'GHz':f>=1e6?(f/1e6).toFixed(2)+'MHz':f>=1e3?(f/1e3).toFixed(1)+'kHz':f.toFixed(0)+'Hz';
+  document.getElementById('r1-cm').textContent=(C_miller*1e12).toFixed(0)+'pF';
+  document.getElementById('r1-fp1').textContent=fmt(fp1c);
+  document.getElementById('r1-fp2').textContent=fmt(fp2c);
+  document.getElementById('r1-gbw').textContent=fmt(GBW);
+  document.getElementById('r1-fz').textContent=fmt(fz);
+  const ratEl = document.getElementById('r1-ratio');
+  ratEl.textContent=ratio.toFixed(2)+'×';
+  ratEl.style.color=ratio>=2.2?'var(--green)':ratio>=1.5?'#cc8800':'var(--warn)';
+
+  document.getElementById('ins1').textContent=
+    `C_Miller = Cc×(1+gm2·ro2) = ${(cc*1e12).toFixed(1)}pF×${((1+gm2*ro2)).toFixed(0)} = ${(C_miller*1e12).toFixed(0)}pF. ` +
+    `This pulls fp1 from ~${fmt(1/(2*Math.PI*ro1*cl))} down to ${fmt(fp1c)}. ` +
+    `fp2/GBW = ${ratio.toFixed(2)} — rule of thumb: need fp2 > 2.2×GBW for PM ≥ 60°. ` +
+    `${ratio>=2.2?'PASSES':'FAILS — increase Cc or reduce gm1.'}`
+
+  draw1(ro1, ro2, cl, cc, gm1, gm2, fp1c, fp2c, fz, GBW, C_miller, showTraj);
+}
+
+function draw1(ro1, ro2, cl, cc, gm1, gm2, fp1c, fp2c, fz, gbw_val, C_miller, showTraj) {
+  const canvas = document.getElementById('cv1');
+  const W = canvas.offsetWidth||520; canvas.width=W; canvas.height=340;
+  const ctx = canvas.getContext('2d');
+  const pad = {l:55,r:20,t:30,b:40};
+  const pw = W-pad.l-pad.r, ph=340-pad.t-pad.b;
+  ctx.fillStyle='var(--canvas-bg)'; ctx.fillRect(0,0,W,340);
+
+  // Two sub-plots: top = pole positions, bottom = trajectory as Cc sweeps
+  const topH = ph*0.38, botH = ph*0.55;
+  const topY = pad.t, botY = pad.t+topH+12;
+
+  const fMin=1e1, fMax=1e12;
+  const lMin=Math.log10(fMin), lMax=Math.log10(fMax);
+  const fToX=f=>pad.l+(Math.log10(Math.max(f,fMin))-lMin)/(lMax-lMin)*pw;
+
+  // Top panel: frequency axis
+  ctx.fillStyle='var(--text2)';ctx.font='10px sans-serif';ctx.textAlign='left';
+  ctx.fillText('Pole & Zero Positions on Frequency Axis',pad.l,topY-4);
+  ctx.strokeStyle='var(--border)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad.l,topY+topH/2);ctx.lineTo(pad.l+pw,topY+topH/2);ctx.stroke();
+  // Arrow
+  ctx.beginPath();ctx.moveTo(pad.l+pw-4,topY+topH/2-4);ctx.lineTo(pad.l+pw,topY+topH/2);ctx.lineTo(pad.l+pw-4,topY+topH/2+4);ctx.stroke();
+  ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='center';
+  ['100','1k','10k','100k','1M','10M','100M','1G','10G'].forEach((l,i)=>ctx.fillText(l,fToX(Math.pow(10,2+i)),topY+topH/2+14));
+
+  const drawMarker=(f,label,col,yOff,shape)=>{
+    if(f<fMin||f>fMax)return;
+    const x=fToX(f);
+    const y=topY+topH/2+yOff;
+    ctx.fillStyle=col;
+    if(shape==='x'){ctx.font='bold 14px monospace';ctx.textAlign='center';ctx.fillText('×',x,y+5);}
+    else{ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);ctx.fill();}
+    ctx.font='9px monospace';ctx.textAlign='center';ctx.fillStyle=col;
+    ctx.fillText(label,x,y+(yOff<0?-8:16));
+  };
+
+  // Natural poles (before Miller)
+  const fp1_nat = 1/(2*Math.PI*ro1*cl);
+  const fp2_nat = 1/(2*Math.PI*ro2*cl);
+  drawMarker(fp1_nat,'fp1₀','rgba(150,150,150,0.7)',-18,'x');
+  drawMarker(fp2_nat,'fp2₀','rgba(150,150,150,0.7)',-18,'x');
+
+  // Compensated poles
+  drawMarker(fp1c,'fp1','#0066cc',-22,'x');
+  drawMarker(fp2c,'fp2','#0044aa',22,'x');
+  drawMarker(gbw_val,'GBW','#00994d',-14,'circle');
+  drawMarker(fz,'fz_RHP','#cc4400',14,'circle');
+
+  // Legend for top
+  ctx.font='9px monospace';ctx.textAlign='left';
+  ctx.fillStyle='rgba(150,150,150,0.8)';ctx.fillText('× = natural poles (no Cc)',pad.l+2,topY+4);
+  ctx.fillStyle='#0066cc';ctx.fillText('× = compensated fp1',pad.l+160,topY+4);
+  ctx.fillStyle='#0044aa';ctx.fillText('× = fp2 after split',pad.l+160,topY+13);
+
+  // Bottom panel: fp2 trajectory as Cc sweeps
+  ctx.fillStyle='var(--text2)';ctx.font='10px sans-serif';ctx.textAlign='left';
+  ctx.fillText('fp1, fp2, GBW vs. Cc sweep',pad.l,botY-4);
+
+  const ccMin=0.5e-12, ccMax=30e-12;
+  const nPts=100;
+  const ccToX=c=>pad.l+(c-ccMin)/(ccMax-ccMin)*pw;
+  const fToYbot=f=>{
+    const lf=Math.log10(Math.max(f,1e3));
+    return botY+botH-(lf-3)/(9-3)*botH;
+  };
+
+  // Grid lines
+  ctx.strokeStyle='var(--border)';ctx.lineWidth=0.7;
+  [1e3,1e4,1e5,1e6,1e7,1e8,1e9].forEach(f=>{
+    const y=fToYbot(f);if(y<botY||y>botY+botH)return;
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='right';
+    const lbl=f>=1e9?'1G':f>=1e6?(f/1e6).toFixed(0)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':'';
+    ctx.fillText(lbl,pad.l-3,y+3);
+  });
+  // x-axis labels
+  ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='center';
+  [1,5,10,15,20,25,30].forEach(cv=>{
+    const x=ccToX(cv*1e-12);
+    ctx.fillText(cv+'p',x,botY+botH+13);
+  });
+  ctx.fillStyle='var(--text2)';ctx.font='9px monospace';ctx.textAlign='center';
+  ctx.fillText('Cc (pF)',pad.l+pw/2,botY+botH+25);
+
+  const plotLine=(fn,col,lw)=>{
+    ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.beginPath();let first=true;
+    for(let i=0;i<=nPts;i++){
+      const c=ccMin+i/nPts*(ccMax-ccMin);
+      const fval=fn(c);
+      const x=ccToX(c);const y=fToYbot(fval);
+      if(y<botY-5||y>botY+botH+5){first=true;continue;}
+      first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;
+    }
+    ctx.stroke();
+  };
+
+  plotLine(c=>fp1_miller(gm2,ro1,ro2,c),'#0066cc',2);
+  if(showTraj) plotLine(c=>fp2_miller(gm2,c,cl),'#0044aa',2);
+  plotLine(c=>gbw(gm1,c),'#00994d',1.5);
+  plotLine(c=>fz_rhp(gm2,c),'#cc4400',1.5);
+
+  // Current Cc marker
+  const xcur=ccToX(cc);
+  ctx.strokeStyle='#cc8800';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(xcur,botY);ctx.lineTo(xcur,botY+botH);ctx.stroke();ctx.setLineDash([]);
+
+  // Legend bot
+  ctx.font='9px monospace';ctx.textAlign='left';
+  ctx.fillStyle='#0066cc';ctx.fillText('fp1',pad.l+3,botY+10);
+  ctx.fillStyle='#0044aa';ctx.fillText('fp2',pad.l+3,botY+21);
+  ctx.fillStyle='#00994d';ctx.fillText('GBW',pad.l+3,botY+32);
+  ctx.fillStyle='#cc4400';ctx.fillText('fz_RHP',pad.l+3,botY+43);
+  ctx.fillStyle='#cc8800';ctx.fillText('← current Cc',xcur+3,botY+10);
+}
+
+update0();
+</script>
+</body>
+</html>

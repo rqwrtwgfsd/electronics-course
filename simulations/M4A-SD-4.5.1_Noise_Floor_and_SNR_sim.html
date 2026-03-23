@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-SD-4.5.1 — Noise Floor and SNR</title>
+<style>
+:root{--bg:#f5f5f5;--panel:#fff;--border:#d0d0d0;--text:#1a1a1a;--text2:#555;--accent:#1a6fc4;--green:#2a9d2a;--orange:#e07b00;--red:#c42a2a;--grid:#e0e0e0;}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--panel:#252525;--border:#404040;--text:#e8e8e8;--text2:#aaa;--accent:#4a9fe8;--green:#4acd4a;--orange:#f0a030;--red:#e85050;--grid:#333;}}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px;}
+h1{font-size:1.1rem;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--border);}
+h1 span{color:var(--text2);font-weight:normal;font-size:.85rem;}
+.layout{display:grid;grid-template-columns:270px 1fr;gap:0;height:calc(100vh - 44px);}
+.controls{background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:12px;}
+.plots{display:grid;grid-template-rows:1fr 1fr;overflow:hidden;}
+.plot-wrap{position:relative;background:var(--bg);border-bottom:1px solid var(--border);}
+.plot-wrap:last-child{border-bottom:none;}
+canvas{display:block;width:100%;height:100%;}
+.section{margin-bottom:14px;}
+.section-title{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:4px;}
+.ctrl{margin-bottom:8px;}
+.ctrl label{display:flex;justify-content:space-between;font-size:.8rem;margin-bottom:3px;}
+.ctrl label span{color:var(--accent);font-weight:600;font-family:monospace;}
+input[type=range]{width:100%;accent-color:var(--accent);}
+.preset-row{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;}
+.preset-btn{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px 7px;font-size:.75rem;cursor:pointer;}
+.preset-btn.active,.preset-btn:hover{background:var(--accent);color:#fff;border-color:var(--accent);}
+.readout-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
+.readout{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 7px;}
+.readout .label{font-size:.7rem;color:var(--text2);}
+.readout .value{font-size:.85rem;font-weight:700;font-family:monospace;}
+.ok{color:var(--green);}.warn{color:var(--orange);}.bad{color:var(--red);}
+.plot-label{position:absolute;top:6px;left:10px;font-size:.75rem;color:var(--text2);pointer-events:none;}
+.legend{display:flex;flex-wrap:wrap;gap:6px;font-size:.72rem;margin-top:4px;}
+.leg-item{display:flex;align-items:center;gap:4px;}
+.leg-dot{width:12px;height:3px;border-radius:2px;}
+</style>
+</head>
+<body>
+<h1>M4A-SD-4.5.1 — Noise Floor and SNR <span>| Noise Budget &amp; SNR Analysis</span></h1>
+<div class="layout">
+  <div class="controls">
+
+    <div class="section">
+      <div class="section-title">Presets</div>
+      <div class="preset-row">
+        <button class="preset-btn active" data-preset="audio">Audio Preamp</button>
+        <button class="preset-btn" data-preset="precision">Precision Meas.</button>
+        <button class="preset-btn" data-preset="rf">RF Receiver</button>
+        <button class="preset-btn" data-preset="sensor">High-Z Sensor</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Source</div>
+      <div class="ctrl">
+        <label>Source Impedance Rs <span id="val-rs">600 Ω</span></label>
+        <input type="range" id="sl-rs" min="1" max="10000000" step="100" value="600">
+      </div>
+      <div class="ctrl">
+        <label>Signal Amplitude <span id="val-sig">100 mV</span></label>
+        <input type="range" id="sl-sig" min="0.001" max="10" step="0.001" value="0.1">
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Amplifier</div>
+      <div class="ctrl">
+        <label>Voltage Noise en <span id="val-en">5 nV/√Hz</span></label>
+        <input type="range" id="sl-en" min="0.5" max="100" step="0.5" value="5">
+      </div>
+      <div class="ctrl">
+        <label>Current Noise in <span id="val-in">1 pA/√Hz</span></label>
+        <input type="range" id="sl-in" min="0.001" max="100" step="0.001" value="1">
+      </div>
+      <div class="ctrl">
+        <label>1/f Corner Freq <span id="val-fc">100 Hz</span></label>
+        <input type="range" id="sl-fc" min="1" max="100000" step="10" value="100">
+      </div>
+      <div class="ctrl">
+        <label>Gain <span id="val-gain">100×</span></label>
+        <input type="range" id="sl-gain" min="1" max="10000" step="1" value="100">
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Bandwidth</div>
+      <div class="ctrl">
+        <label>Low Cutoff fL <span id="val-fl">10 Hz</span></label>
+        <input type="range" id="sl-fl" min="0.01" max="10000" step="1" value="10">
+      </div>
+      <div class="ctrl">
+        <label>High Cutoff fH <span id="val-fh">20 kHz</span></label>
+        <input type="range" id="sl-fh" min="100" max="10000000" step="100" value="20000">
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Noise Budget</div>
+      <div class="readout-grid">
+        <div class="readout"><div class="label">Source noise</div><div class="value" id="ro-src">—</div></div>
+        <div class="readout"><div class="label">Voltage noise</div><div class="value" id="ro-en">—</div></div>
+        <div class="readout"><div class="label">Current noise</div><div class="value" id="ro-in">—</div></div>
+        <div class="readout"><div class="label">Total noise</div><div class="value" id="ro-tot">—</div></div>
+        <div class="readout"><div class="label">SNR</div><div class="value" id="ro-snr">—</div></div>
+        <div class="readout"><div class="label">NF</div><div class="value" id="ro-nf">—</div></div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="leg-item"><div class="leg-dot" style="background:var(--green)"></div><span>Source noise</span></div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--accent)"></div><span>Voltage noise</span></div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--orange)"></div><span>Current noise</span></div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--red)"></div><span>Total</span></div>
+    </div>
+
+  </div>
+
+  <div class="plots">
+    <div class="plot-wrap">
+      <div class="plot-label">Input-Referred Noise Spectral Density</div>
+      <canvas id="nsd-canvas"></canvas>
+    </div>
+    <div class="plot-wrap">
+      <div class="plot-label">SNR vs. Source Impedance — Optimal Rs</div>
+      <canvas id="snr-canvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+const kT = 1.38e-23 * 290; // kT at room temperature
+
+function getParams(){
+  return{
+    rs:   +document.getElementById('sl-rs').value,
+    sig:  +document.getElementById('sl-sig').value,
+    en:   +document.getElementById('sl-en').value * 1e-9,
+    in_:  +document.getElementById('sl-in').value * 1e-12,
+    fc:   +document.getElementById('sl-fc').value,
+    gain: +document.getElementById('sl-gain').value,
+    fl:   +document.getElementById('sl-fl').value,
+    fh:   +document.getElementById('sl-fh').value,
+  };
+}
+
+// Noise spectral density at frequency f (input-referred)
+function noisePSD(f, p) {
+  const src  = Math.sqrt(4*kT*p.rs);                          // source thermal
+  const envn = p.en * Math.sqrt(1 + p.fc/f);                 // voltage noise + 1/f
+  const invn = p.in_ * p.rs * Math.sqrt(1 + p.fc/f);         // current noise × Rs + 1/f
+  const total = Math.sqrt(src*src + envn*envn + invn*invn);
+  return {src, envn, invn, total};
+}
+
+// Integrate noise over bandwidth
+function integrateNoise(p) {
+  const N = 500;
+  const logFl = Math.log10(Math.max(p.fl, 0.01));
+  const logFh = Math.log10(p.fh);
+  let sum_src=0, sum_en=0, sum_in=0, sum_tot=0;
+  for(let i=0;i<N;i++){
+    const f = Math.pow(10, logFl + (logFh-logFl)*(i+0.5)/N);
+    const df = Math.pow(10, logFl + (logFh-logFl)*(i+1)/N) - Math.pow(10, logFl + (logFh-logFl)*i/N);
+    const {src,envn,invn,total} = noisePSD(f, p);
+    sum_src += src*src*df;
+    sum_en  += envn*envn*df;
+    sum_in  += invn*invn*df;
+    sum_tot += total*total*df;
+  }
+  return {
+    src: Math.sqrt(sum_src),
+    en:  Math.sqrt(sum_en),
+    in_: Math.sqrt(sum_in),
+    tot: Math.sqrt(sum_tot),
+  };
+}
+
+function fmtV(v){
+  if(v>=1e-3) return (v*1e3).toFixed(3)+'mV';
+  if(v>=1e-6) return (v*1e6).toFixed(3)+'µV';
+  return (v*1e9).toFixed(1)+'nV';
+}
+
+function getColors(){
+  const s=getComputedStyle(document.documentElement);
+  return['--bg','--text','--text2','--grid','--accent','--green','--orange','--red']
+    .reduce((o,k)=>{o[k.slice(2)]=s.getPropertyValue(k).trim();return o;},{});
+}
+
+function drawNSD(canvas){
+  const W=canvas.offsetWidth*devicePixelRatio,H=canvas.offsetHeight*devicePixelRatio;
+  canvas.width=W;canvas.height=H;
+  const ctx=canvas.getContext('2d');
+  const C=getColors();
+  const p=getParams();
+  const PAD={l:60*devicePixelRatio,r:20*devicePixelRatio,t:20*devicePixelRatio,b:30*devicePixelRatio};
+  const pW=W-PAD.l-PAD.r,pH=H-PAD.t-PAD.b;
+  ctx.fillStyle=C.bg;ctx.fillRect(0,0,W,H);
+
+  const fLo=0.1, fHi=p.fh*5;
+  function freqX(f){return PAD.l+pW*(Math.log10(f)-Math.log10(fLo))/(Math.log10(fHi)-Math.log10(fLo));}
+
+  // Find noise range
+  const {total: nTot} = noisePSD(p.fh, p);
+  const {total: nLow} = noisePSD(Math.max(p.fl, 0.1), p);
+  const nMax = nLow * 10, nMin = nTot * 0.1;
+  function nY(n){return PAD.t+pH*(1-(Math.log10(n/nMin))/(Math.log10(nMax/nMin)));}
+
+  // Grid freq
+  [0.1,1,10,100,1e3,10e3,100e3,1e6].forEach(f=>{
+    if(f<fLo||f>fHi)return;
+    const x=freqX(f);
+    ctx.strokeStyle=C.grid;ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,H-PAD.b);ctx.stroke();
+    const lbl=f>=1e6?(f/1e6).toFixed(0)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f>=1?f.toFixed(0):'0.'+f.toFixed(0);
+    ctx.fillStyle=C.text2;ctx.font=`${8*devicePixelRatio}px monospace`;ctx.textAlign='center';
+    ctx.fillText(lbl+'Hz',x,H-PAD.b+12*devicePixelRatio);
+  });
+
+  // Grid noise
+  for(let e=-12;e<=-7;e++){
+    const n=Math.pow(10,e);
+    const y=nY(n);
+    if(y<PAD.t||y>H-PAD.b)continue;
+    ctx.strokeStyle=C.grid;ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(W-PAD.r,y);ctx.stroke();
+    ctx.fillStyle=C.text2;ctx.font=`${9*devicePixelRatio}px monospace`;ctx.textAlign='right';
+    const label=e===-12?'1pV':e===-11?'10pV':e===-10?'100pV':e===-9?'1nV':e===-8?'10nV':'100nV';
+    ctx.fillText(label+'/√Hz',PAD.l-4,y+3);
+  }
+
+  // BW shading
+  const xL=freqX(p.fl), xH=freqX(p.fh);
+  if(xL<xH){
+    ctx.fillStyle=C.accent+'18';
+    ctx.fillRect(xL,PAD.t,xH-xL,pH);
+  }
+
+  // Draw curves
+  const curves=[
+    {key:'src', color:C.green, label:'Source'},
+    {key:'en',  color:C.accent, label:'V-noise'},
+    {key:'in_', color:C.orange, label:'I-noise'},
+    {key:'tot', color:C.red,   label:'Total', lw:2.5},
+  ];
+
+  curves.forEach(({key,color,label,lw})=>{
+    ctx.strokeStyle=color;ctx.lineWidth=(lw||1.5)*devicePixelRatio;ctx.beginPath();
+    let first=true;
+    for(let i=0;i<=500;i++){
+      const f=Math.pow(10,Math.log10(fLo)+(Math.log10(fHi)-Math.log10(fLo))*i/500);
+      const vals=noisePSD(f,p);
+      const n=key==='src'?vals.src:key==='en'?vals.envn:key==='in_'?vals.invn:vals.total;
+      const x=freqX(f),y=nY(n);
+      if(y<PAD.t-4||y>H-PAD.b+4){first=true;continue;}
+      if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    // End label
+    const fEnd=fHi*0.5;
+    const vals=noisePSD(fEnd,p);
+    const nEnd=key==='src'?vals.src:key==='en'?vals.envn:key==='in_'?vals.invn:vals.total;
+    const yEnd=nY(nEnd);
+    if(yEnd>=PAD.t&&yEnd<=H-PAD.b){
+      ctx.fillStyle=color;ctx.font=`${8*devicePixelRatio}px sans-serif`;ctx.textAlign='right';
+      ctx.fillText(label,W-PAD.r-2,yEnd-3);
+    }
+  });
+
+  // fc marker
+  const xcfc=freqX(p.fc);
+  if(xcfc>=PAD.l&&xcfc<=W-PAD.r){
+    ctx.strokeStyle=C.text2;ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(xcfc,PAD.t);ctx.lineTo(xcfc,H-PAD.b);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=C.text2;ctx.font=`${8*devicePixelRatio}px sans-serif`;ctx.textAlign='left';
+    ctx.fillText('fc',xcfc+2,PAD.t+12*devicePixelRatio);
+  }
+}
+
+function drawSNR(canvas){
+  const W=canvas.offsetWidth*devicePixelRatio,H=canvas.offsetHeight*devicePixelRatio;
+  canvas.width=W;canvas.height=H;
+  const ctx=canvas.getContext('2d');
+  const C=getColors();
+  const p=getParams();
+  const PAD={l:55*devicePixelRatio,r:25*devicePixelRatio,t:20*devicePixelRatio,b:30*devicePixelRatio};
+  const pW=W-PAD.l-PAD.r,pH=H-PAD.t-PAD.b;
+  ctx.fillStyle=C.bg;ctx.fillRect(0,0,W,H);
+
+  // SNR vs Rs
+  const rsMin=1, rsMax=1e7;
+  function rsX(rs){return PAD.l+pW*(Math.log10(rs)-Math.log10(rsMin))/(Math.log10(rsMax)-Math.log10(rsMin));}
+  const snrMin=20, snrMax=140;
+  function snrY(snr){return PAD.t+pH*(1-(snr-snrMin)/(snrMax-snrMin));}
+
+  // Grid
+  [20,40,60,80,100,120,140].forEach(snr=>{
+    const y=snrY(snr);
+    if(y<PAD.t||y>H-PAD.b)return;
+    ctx.strokeStyle=C.grid;ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(W-PAD.r,y);ctx.stroke();
+    ctx.fillStyle=C.text2;ctx.font=`${9*devicePixelRatio}px monospace`;ctx.textAlign='right';
+    ctx.fillText(snr+'dB',PAD.l-4,y+3);
+  });
+  [1,10,100,1e3,10e3,100e3,1e6,1e7].forEach(rs=>{
+    const x=rsX(rs);
+    ctx.strokeStyle=C.grid;ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,H-PAD.b);ctx.stroke();
+    const lbl=rs>=1e6?(rs/1e6).toFixed(0)+'M':rs>=1e3?(rs/1e3).toFixed(0)+'k':rs.toFixed(0);
+    ctx.fillStyle=C.text2;ctx.font=`${8*devicePixelRatio}px monospace`;ctx.textAlign='center';
+    ctx.fillText(lbl+'Ω',x,H-PAD.b+12*devicePixelRatio);
+  });
+
+  // SNR curve
+  ctx.strokeStyle=C.accent;ctx.lineWidth=2.5*devicePixelRatio;ctx.beginPath();
+  let first=true, maxSNR=-Infinity, maxRs=p.rs;
+  for(let i=0;i<=500;i++){
+    const rs=Math.pow(10,Math.log10(rsMin)+(Math.log10(rsMax)-Math.log10(rsMin))*i/500);
+    const pp={...p, rs};
+    const {tot}=integrateNoise(pp);
+    const snr=20*Math.log10(Math.max(p.sig/tot,1e-5));
+    const x=rsX(rs),y=snrY(snr);
+    if(snr>maxSNR){maxSNR=snr;maxRs=rs;}
+    if(y<PAD.t-4||y>H-PAD.b+4){first=true;continue;}
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Optimal Rs marker
+  const xOpt=rsX(maxRs), yOpt=snrY(maxSNR);
+  ctx.fillStyle=C.green;ctx.beginPath();ctx.arc(xOpt,yOpt,5*devicePixelRatio,0,2*Math.PI);ctx.fill();
+  ctx.strokeStyle=C.green;ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(xOpt,PAD.t);ctx.lineTo(xOpt,H-PAD.b);ctx.stroke();ctx.setLineDash([]);
+  const rsOptLabel=maxRs>=1e6?(maxRs/1e6).toFixed(1)+'MΩ':maxRs>=1e3?(maxRs/1e3).toFixed(0)+'kΩ':maxRs.toFixed(0)+'Ω';
+  ctx.fillStyle=C.green;ctx.font=`${8*devicePixelRatio}px sans-serif`;ctx.textAlign='left';
+  ctx.fillText(`Opt: Rs=${rsOptLabel}`,xOpt+4,yOpt-5*devicePixelRatio);
+  ctx.fillText(`SNR=${maxSNR.toFixed(1)}dB`,xOpt+4,yOpt+8*devicePixelRatio);
+
+  // Current Rs marker
+  const {tot}=integrateNoise(p);
+  const curSNR=20*Math.log10(Math.max(p.sig/tot,1e-5));
+  const xCur=rsX(p.rs), yCur=snrY(curSNR);
+  ctx.fillStyle=C.red;ctx.beginPath();ctx.arc(xCur,yCur,6*devicePixelRatio,0,2*Math.PI);ctx.fill();
+  ctx.fillStyle=C.red;ctx.font=`${8*devicePixelRatio}px sans-serif`;ctx.textAlign='right';
+  ctx.fillText(`Rs=${p.rs>=1e6?(p.rs/1e6).toFixed(1)+'MΩ':p.rs>=1e3?(p.rs/1e3).toFixed(0)+'kΩ':p.rs+'Ω'}`,xCur-4,yCur-5);
+
+  // en/in line
+  const rsEnIn=p.en/p.in_;
+  if(rsEnIn>=rsMin&&rsEnIn<=rsMax){
+    const xEI=rsX(rsEnIn);
+    ctx.strokeStyle=C.orange;ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(xEI,PAD.t);ctx.lineTo(xEI,H-PAD.b);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=C.orange;ctx.font=`${8*devicePixelRatio}px sans-serif`;ctx.textAlign='center';
+    const eiLabel=rsEnIn>=1e6?(rsEnIn/1e6).toFixed(1)+'MΩ':rsEnIn>=1e3?(rsEnIn/1e3).toFixed(0)+'kΩ':rsEnIn.toFixed(0)+'Ω';
+    ctx.fillText('en/in='+eiLabel,xEI,PAD.t+12*devicePixelRatio);
+  }
+
+  // Axes labels
+  ctx.fillStyle=C.text2;ctx.font=`${8*devicePixelRatio}px sans-serif`;ctx.textAlign='center';
+  ctx.fillText('Source Impedance Rs',PAD.l+pW/2,H-2*devicePixelRatio);
+  ctx.save();ctx.translate(11*devicePixelRatio,PAD.t+pH/2);ctx.rotate(-Math.PI/2);
+  ctx.fillText('SNR (dB)',0,0);ctx.restore();
+}
+
+function updateLabels(){
+  const p=getParams();
+  function fmtOhm(r){return r>=1e6?(r/1e6).toFixed(1)+'MΩ':r>=1e3?(r/1e3).toFixed(0)+'kΩ':r+'Ω';}
+  function fmtHz(f){return f>=1e6?(f/1e6).toFixed(1)+'MHz':f>=1e3?(f/1e3).toFixed(0)+'kHz':f.toFixed(0)+'Hz';}
+  document.getElementById('val-rs').textContent=fmtOhm(p.rs);
+  document.getElementById('val-sig').textContent=p.sig>=1?p.sig.toFixed(1)+'V':p.sig>=1e-3?(p.sig*1e3).toFixed(1)+'mV':(p.sig*1e6).toFixed(0)+'µV';
+  document.getElementById('val-en').textContent=(p.en/1e-9).toFixed(1)+' nV/√Hz';
+  document.getElementById('val-in').textContent=(p.in_/1e-12).toFixed(3)+' pA/√Hz';
+  document.getElementById('val-fc').textContent=fmtHz(p.fc);
+  document.getElementById('val-gain').textContent=p.gain+'×';
+  document.getElementById('val-fl').textContent=fmtHz(p.fl);
+  document.getElementById('val-fh').textContent=fmtHz(p.fh);
+}
+
+function updateReadouts(){
+  const p=getParams();
+  const {src,en,in_,tot}=integrateNoise(p);
+  const snr=20*Math.log10(Math.max(p.sig/tot,1e-10));
+  // Noise figure: SNR_in / SNR_out, where SNR_in = sig / src
+  const srcOnly=Math.sqrt(4*kT*p.rs*(p.fh-p.fl));
+  const snrIn=20*Math.log10(Math.max(p.sig/Math.max(srcOnly,1e-20),1e-5));
+  const nf=snrIn-snr;
+
+  document.getElementById('ro-src').textContent=fmtV(src);
+  document.getElementById('ro-en').textContent=fmtV(en);
+  document.getElementById('ro-in').textContent=fmtV(in_);
+  document.getElementById('ro-tot').textContent=fmtV(tot);
+  document.getElementById('ro-snr').textContent=snr.toFixed(1)+'dB';
+  document.getElementById('ro-snr').className='value '+(snr>90?'ok':snr>70?'warn':'bad');
+  document.getElementById('ro-nf').textContent=nf.toFixed(2)+'dB';
+  document.getElementById('ro-nf').className='value '+(nf<3?'ok':nf<10?'warn':'bad');
+}
+
+function redraw(){
+  updateLabels();
+  updateReadouts();
+  drawNSD(document.getElementById('nsd-canvas'));
+  drawSNR(document.getElementById('snr-canvas'));
+}
+
+const PRESETS={
+  audio:    {rs:600,  sig:0.1,  en:5,   in_:1,    fc:100,  gain:100, fl:20,  fh:20000},
+  precision:{rs:1000, sig:0.001,en:1,   in_:0.01, fc:10,   gain:1000,fl:0.1, fh:100},
+  rf:       {rs:50,   sig:0.001,en:0.5, in_:5,    fc:1000, gain:20,  fl:1e6, fh:21e6},
+  sensor:   {rs:1e7,  sig:0.001,en:6.5, in_:0.003,fc:10,   gain:100, fl:0.01,fh:100},
+};
+
+document.querySelectorAll('[data-preset]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('[data-preset]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const pr=PRESETS[btn.dataset.preset];
+    document.getElementById('sl-rs').value=pr.rs;
+    document.getElementById('sl-sig').value=pr.sig;
+    document.getElementById('sl-en').value=pr.en;
+    document.getElementById('sl-in').value=pr.in_;
+    document.getElementById('sl-fc').value=pr.fc;
+    document.getElementById('sl-gain').value=pr.gain;
+    document.getElementById('sl-fl').value=pr.fl;
+    document.getElementById('sl-fh').value=pr.fh;
+    redraw();
+  });
+});
+
+['sl-rs','sl-sig','sl-en','sl-in','sl-fc','sl-gain','sl-fl','sl-fh'].forEach(id=>{
+  document.getElementById(id).addEventListener('input',()=>{
+    document.querySelectorAll('[data-preset]').forEach(b=>b.classList.remove('active'));
+    redraw();
+  });
+});
+
+const ro=new ResizeObserver(redraw);
+ro.observe(document.getElementById('nsd-canvas').parentElement);
+ro.observe(document.getElementById('snr-canvas').parentElement);
+redraw();
+</script>
+</body>
+</html>

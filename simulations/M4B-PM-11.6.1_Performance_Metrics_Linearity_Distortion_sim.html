@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-PM-11.6.1 — Linearity and Distortion Simulator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; font-size: 14px; }
+  h1 { text-align: center; padding: 18px; font-size: 18px; color: #58a6ff; border-bottom: 1px solid #21262d; }
+  .tabs { display: flex; background: #161b22; border-bottom: 1px solid #21262d; }
+  .tab { padding: 10px 22px; cursor: pointer; color: #8b949e; border-bottom: 2px solid transparent; font-size: 13px; }
+  .tab.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+  .panel { display: none; padding: 18px; }
+  .panel.active { display: block; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .card { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 14px; flex: 1; min-width: 260px; }
+  .card h3 { font-size: 13px; color: #58a6ff; margin-bottom: 10px; }
+  label { display: block; font-size: 12px; color: #8b949e; margin: 6px 0 2px; }
+  input[type=range] { width: 100%; accent-color: #58a6ff; }
+  .val { display: inline-block; min-width: 54px; color: #f0883e; font-weight: bold; font-size: 12px; }
+  canvas { display: block; width: 100%; border-radius: 6px; background: #0d1117; }
+  .info-box { background: #1c2128; border: 1px solid #30363d; border-radius: 6px; padding: 10px 14px; margin-top: 10px; font-size: 12px; line-height: 1.8; }
+  .info-box span.g { color: #3fb950; font-weight: bold; }
+  .info-box span.r { color: #f85149; font-weight: bold; }
+  .info-box span.y { color: #d29922; font-weight: bold; }
+  .info-box span.b { color: #58a6ff; font-weight: bold; }
+  .legend-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 6px; font-size: 11px; }
+  .ld { display: flex; align-items: center; gap: 5px; }
+  .lbox { width: 14px; height: 4px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<h1>M4B-PM-11.6.1 — Linearity and Distortion Simulator</h1>
+<div class="tabs">
+  <div class="tab active" onclick="switchTab(0)">THD vs Frequency</div>
+  <div class="tab" onclick="switchTab(1)">IMD / IP3 Analyzer</div>
+  <div class="tab" onclick="switchTab(2)">SFDR / SINAD / ENOB</div>
+</div>
+
+<!-- TAB 0: Closed-loop THD vs Frequency -->
+<div class="panel active" id="p0">
+  <div class="row">
+    <div class="card" style="max-width:320px;">
+      <h3>Op-Amp Parameters</h3>
+      <label>Open-loop DC gain Av0 (dB): <span class="val" id="t0_av0_v">80</span></label>
+      <input type="range" id="t0_av0" min="60" max="120" step="1" value="80" oninput="updateT0()">
+      <label>GBW (MHz): <span class="val" id="t0_gbw_v">500</span></label>
+      <input type="range" id="t0_gbw" min="10" max="2000" step="10" value="500" oninput="updateT0()">
+      <label>Closed-loop gain Acl: <span class="val" id="t0_acl_v">10</span></label>
+      <input type="range" id="t0_acl" min="1" max="100" step="1" value="10" oninput="updateT0()">
+      <label>Open-loop THD at 1 MHz (dBc): <span class="val" id="t0_thd_ol_v">-20</span></label>
+      <input type="range" id="t0_thd_ol" min="-60" max="-5" step="1" value="-20" oninput="updateT0()">
+      <label>Signal frequency f (MHz): <span class="val" id="t0_f_v">1</span></label>
+      <input type="range" id="t0_f" min="0.01" max="200" step="0.1" value="1" oninput="updateT0()">
+      <div class="info-box" id="t0_info"></div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Closed-Loop THD vs Frequency</h3>
+      <canvas id="c0" height="320"></canvas>
+      <div class="legend-row">
+        <div class="ld"><div class="lbox" style="background:#58a6ff"></div>THD_cl (β=1/Acl)</div>
+        <div class="ld"><div class="lbox" style="background:#f0883e;"></div>Target −80 dBc</div>
+        <div class="ld"><div class="lbox" style="background:#3fb950;"></div>Target −100 dBc</div>
+        <div class="ld"><div class="lbox" style="background:#f85149; border: 1px dashed #f85149;"></div>Operating point</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: IMD / IP3 -->
+<div class="panel" id="p1">
+  <div class="row">
+    <div class="card" style="max-width:320px;">
+      <h3>Two-Tone Test Setup</h3>
+      <label>Tone amplitude V (mVpeak): <span class="val" id="t1_v_v">100</span></label>
+      <input type="range" id="t1_v" min="10" max="1000" step="5" value="100" oninput="updateT1()">
+      <label>f1 (MHz): <span class="val" id="t1_f1_v">9.9</span></label>
+      <input type="range" id="t1_f1" min="0.1" max="50" step="0.1" value="9.9" oninput="updateT1()">
+      <label>f2 (MHz): <span class="val" id="t1_f2_v">10.1</span></label>
+      <input type="range" id="t1_f2" min="0.1" max="50" step="0.1" value="10.1" oninput="updateT1()">
+      <label>a3/a1 (nonlinearity coeff): <span class="val" id="t1_a3_v">0.010</span></label>
+      <input type="range" id="t1_a3" min="0.001" max="0.2" step="0.001" value="0.010" oninput="updateT1()">
+      <label>Closed-loop gain Acl: <span class="val" id="t1_acl_v">1</span></label>
+      <input type="range" id="t1_acl" min="1" max="20" step="1" value="1" oninput="updateT1()">
+      <div class="info-box" id="t1_info"></div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Output Spectrum — Two-Tone IMD</h3>
+      <canvas id="c1" height="320"></canvas>
+      <div class="legend-row">
+        <div class="ld"><div class="lbox" style="background:#58a6ff"></div>Fundamentals (f1, f2)</div>
+        <div class="ld"><div class="lbox" style="background:#f85149"></div>IM3 products (2f1−f2, 2f2−f1)</div>
+        <div class="ld"><div class="lbox" style="background:#f0883e"></div>IM2 products (f2−f1, f1+f2)</div>
+        <div class="ld"><div class="lbox" style="background:#a371f7"></div>OIP3 intercept point</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: SFDR / SINAD / ENOB -->
+<div class="panel" id="p2">
+  <div class="row">
+    <div class="card" style="max-width:320px;">
+      <h3>System Parameters</h3>
+      <label>ADC resolution N (bits): <span class="val" id="t2_n_v">12</span></label>
+      <input type="range" id="t2_n" min="8" max="20" step="1" value="12" oninput="updateT2()">
+      <label>Full-scale signal Vfs (V): <span class="val" id="t2_vfs_v">1.0</span></label>
+      <input type="range" id="t2_vfs" min="0.1" max="3.0" step="0.05" value="1.0" oninput="updateT2()">
+      <label>Op-amp noise Vn_rms (μV): <span class="val" id="t2_vn_v">100</span></label>
+      <input type="range" id="t2_vn" min="1" max="500" step="1" value="100" oninput="updateT2()">
+      <label>Op-amp THD (dBc): <span class="val" id="t2_thd_v">-90</span></label>
+      <input type="range" id="t2_thd" min="-130" max="-40" step="1" value="-90" oninput="updateT2()">
+      <label>Worst harmonic HD3 (dBc): <span class="val" id="t2_hd3_v">-92</span></label>
+      <input type="range" id="t2_hd3" min="-130" max="-40" step="1" value="-92" oninput="updateT2()">
+      <div class="info-box" id="t2_info"></div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>ENOB vs Op-Amp THD — System Limit Chart</h3>
+      <canvas id="c2" height="320"></canvas>
+      <div class="legend-row">
+        <div class="ld"><div class="lbox" style="background:#58a6ff"></div>ENOB limited by distortion</div>
+        <div class="ld"><div class="lbox" style="background:#3fb950"></div>ENOB limited by noise</div>
+        <div class="ld"><div class="lbox" style="background:#f0883e"></div>Combined ENOB</div>
+        <div class="ld"><div class="lbox" style="background:#f85149; height:4px; border-top: 2px dashed #f85149;"></div>ADC ideal N bits</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DPR = window.devicePixelRatio || 1;
+function setupCanvas(id) {
+  const c = document.getElementById(id);
+  const w = c.parentElement.clientWidth - 28;
+  const h = parseInt(c.getAttribute('height'));
+  c.width = w * DPR; c.height = h * DPR;
+  c.style.width = w + 'px'; c.style.height = h + 'px';
+  const ctx = c.getContext('2d'); ctx.scale(DPR, DPR);
+  return { ctx, W: w, H: h };
+}
+
+function switchTab(i) {
+  document.querySelectorAll('.tab').forEach((t,j) => t.classList.toggle('active', i===j));
+  document.querySelectorAll('.panel').forEach((p,j) => p.classList.toggle('active', i===j));
+  if(i===0) updateT0();
+  if(i===1) updateT1();
+  if(i===2) updateT2();
+}
+
+// ── TAB 0: THD vs Frequency ────────────────────────────────────────────────
+function updateT0() {
+  const av0_dB = +document.getElementById('t0_av0').value;
+  const gbw = +document.getElementById('t0_gbw').value; // MHz
+  const acl = +document.getElementById('t0_acl').value;
+  const thd_ol_dBc = +document.getElementById('t0_thd_ol').value; // at 1 MHz
+  const f_op = +document.getElementById('t0_f').value; // MHz
+
+  document.getElementById('t0_av0_v').textContent = av0_dB;
+  document.getElementById('t0_gbw_v').textContent = gbw;
+  document.getElementById('t0_acl_v').textContent = acl;
+  document.getElementById('t0_thd_ol_v').textContent = thd_ol_dBc;
+  document.getElementById('t0_f_v').textContent = f_op.toFixed(2);
+
+  const beta = 1 / acl;
+  const av0_lin = Math.pow(10, av0_dB / 20);
+  const fp1 = gbw / av0_lin * 1e6; // in Hz: fp1 = GBW/Av0 (linear) — actually fp1 = GBW/(Av0_lin)
+  // Loop gain at frequency f: T(f) ≈ Av0 * beta / sqrt(1 + (f/fp1)^2)
+  // THD_ol is given at 1 MHz. Assume open-loop THD is constant (not frequency dependent for this model).
+  // THD_cl(f) = THD_ol / (1 + T(f))
+  const thd_ol_lin = Math.pow(10, thd_ol_dBc / 20);
+
+  const { ctx, W, H } = setupCanvas('c0');
+  const PAD = { l: 62, r: 20, t: 20, b: 44 };
+  const PW = W - PAD.l - PAD.r;
+  const PH = H - PAD.t - PAD.b;
+
+  // x-axis: frequency 0.01 to GBW MHz (log)
+  const fMin = 0.01, fMax = gbw;
+  const yMin = -160, yMax = 0; // THD_cl in dBc
+
+  function xP(f) { return PAD.l + (Math.log10(f/fMin)/Math.log10(fMax/fMin)) * PW; }
+  function yP(db) { return PAD.t + (1 - (db - yMin)/(yMax - yMin)) * PH; }
+
+  ctx.fillStyle = '#0d1117'; ctx.fillRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 0.5;
+  for(let db = -160; db <= 0; db += 20) {
+    ctx.beginPath(); ctx.moveTo(PAD.l, yP(db)); ctx.lineTo(PAD.l+PW, yP(db)); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace';
+    ctx.fillText(db.toString(), PAD.l - 38, yP(db) + 3);
+  }
+  const fDecades = [0.01,0.1,1,10,100,1000,2000];
+  fDecades.forEach(f => {
+    if(f < fMin || f > fMax*1.1) return;
+    ctx.beginPath(); ctx.moveTo(xP(f), PAD.t); ctx.lineTo(xP(f), PAD.t+PH); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace';
+    const label = f >= 1000 ? (f/1000)+'k' : f < 1 ? f.toString() : f.toString();
+    ctx.fillText(label, xP(f)-8, PAD.t+PH+14);
+  });
+
+  // Target lines
+  const targets = [{db: -80, color: '#f0883e', label: '-80 dBc (12-bit)'},{db: -100, color: '#3fb950', label: '-100 dBc (16-bit)'}];
+  targets.forEach(t => {
+    ctx.strokeStyle = t.color; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(PAD.l, yP(t.db)); ctx.lineTo(PAD.l+PW, yP(t.db)); ctx.stroke();
+    ctx.fillStyle = t.color; ctx.font = '10px monospace';
+    ctx.fillText(t.label, PAD.l+4, yP(t.db)-4);
+  });
+  ctx.setLineDash([]);
+
+  // THD_cl curve
+  ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  let first = true;
+  const N_pts = 400;
+  for(let i = 0; i <= N_pts; i++) {
+    const f = fMin * Math.pow(fMax/fMin, i/N_pts);
+    // Loop gain at f: T(f) = Av0_lin * beta / sqrt(1+(f/(gbw/av0_lin))^2)
+    // Note fp1 in MHz = gbw_MHz / av0_lin
+    const fp1_MHz = gbw / av0_lin;
+    const T = av0_lin * beta / Math.sqrt(1 + Math.pow(f/fp1_MHz, 2));
+    const thd_cl_lin = thd_ol_lin / (1 + T);
+    const thd_cl_dBc = 20 * Math.log10(Math.max(thd_cl_lin, 1e-15));
+    const x = xP(f); const y = yP(Math.max(yMin, Math.min(yMax, thd_cl_dBc)));
+    if(first) { ctx.moveTo(x,y); first=false; } else { ctx.lineTo(x,y); }
+  }
+  ctx.stroke();
+
+  // Operating point marker
+  const fp1_MHz = gbw / av0_lin;
+  const T_op = av0_lin * beta / Math.sqrt(1 + Math.pow(f_op/fp1_MHz, 2));
+  const thd_cl_op = thd_ol_lin / (1 + T_op);
+  const thd_cl_op_dBc = 20 * Math.log10(Math.max(thd_cl_op, 1e-15));
+  const xOp = xP(f_op);
+  const yOp = yP(Math.max(yMin, Math.min(yMax, thd_cl_op_dBc)));
+  ctx.strokeStyle = '#f85149'; ctx.lineWidth = 1.5; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(xOp, PAD.t); ctx.lineTo(xOp, yOp); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#f85149';
+  ctx.beginPath(); ctx.arc(xOp, yOp, 5, 0, 2*Math.PI); ctx.fill();
+
+  // Axes labels
+  ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif';
+  ctx.fillText('THD_cl (dBc)', 4, PAD.t + PH/2);
+  ctx.fillText('Frequency (MHz)', PAD.l + PW/2 - 40, H - 4);
+
+  // Update info
+  const improve = 20 * Math.log10(1 + T_op);
+  const f_3dB_cl = gbw / acl;
+  document.getElementById('t0_info').innerHTML =
+    `<span class="b">f = ${f_op.toFixed(2)} MHz</span><br>` +
+    `Loop gain T(f) = <span class="g">${T_op.toFixed(0)}</span> (${(20*Math.log10(T_op+1)).toFixed(1)} dB)<br>` +
+    `THD_ol = <span class="y">${thd_ol_dBc} dBc</span><br>` +
+    `THD_cl = <span class="${thd_cl_op_dBc < -80 ? 'g':'r'}">${thd_cl_op_dBc.toFixed(1)} dBc</span><br>` +
+    `Improvement = <span class="b">${improve.toFixed(1)} dB</span><br>` +
+    `f_−3dB_cl ≈ <span class="b">${f_3dB_cl.toFixed(1)} MHz</span><br>` +
+    `β = <span class="b">1/${acl} = ${beta.toFixed(3)}</span>`;
+}
+
+// ── TAB 1: IMD / IP3 ───────────────────────────────────────────────────────
+function updateT1() {
+  const V_mV = +document.getElementById('t1_v').value;
+  const f1 = +document.getElementById('t1_f1').value;
+  const f2 = +document.getElementById('t1_f2').value;
+  const a3_over_a1 = +document.getElementById('t1_a3').value;
+  const acl = +document.getElementById('t1_acl').value;
+
+  document.getElementById('t1_v_v').textContent = V_mV;
+  document.getElementById('t1_f1_v').textContent = f1.toFixed(1);
+  document.getElementById('t1_f2_v').textContent = f2.toFixed(1);
+  document.getElementById('t1_a3_v').textContent = a3_over_a1.toFixed(3);
+  document.getElementById('t1_acl_v').textContent = acl;
+
+  const V = V_mV / 1000; // V
+  // IM3 amplitude = (3/4) * a3/a1 * V^2 * V_fund (for equal amplitude tones)
+  // IM3_rel = (3/4) * (a3/a1) * V^2
+  const IM3_rel = (3/4) * a3_over_a1 * V * V;
+  const IM3_dBc = 20 * Math.log10(Math.max(IM3_rel, 1e-15));
+  // IM2: |f2-f1| amplitude = a2/a1 * V^2, but we'll model a2 = a3*V (rough)
+  // For simplicity, assume a2 = 0.5*a3 (typical for weakly nonlinear)
+  const IM2_rel = 0.5 * a3_over_a1 * V * V;
+  const IM2_dBc = 20 * Math.log10(Math.max(IM2_rel, 1e-15));
+  // OIP3: output level where extrapolated fundamental and IM3 lines cross
+  // IIP3 = V * sqrt(4/(3*a3_over_a1))
+  const IIP3_V = V * Math.sqrt(4/(3*a3_over_a1));
+  const IIP3_dBm_50 = 20*Math.log10(IIP3_V/1e-3) + 10*Math.log10(1/(50*2)); // rough
+  // OIP3 in V: OIP3 = IIP3 * Acl (for output level)
+  const OIP3_V = IIP3_V * acl;
+
+  const { ctx, W, H } = setupCanvas('c1');
+  const PAD = { l: 62, r: 20, t: 20, b: 44 };
+  const PW = W - PAD.l - PAD.r;
+  const PH = H - PAD.t - PAD.b;
+
+  // Frequency axis: show 0 to max(f1,f2)*2.2
+  const fMax = Math.max(f1,f2) * 2.5;
+  const fMin2 = 0;
+  // dBc axis: -160 to 0
+  const yMinDB = -160, yMaxDB = 10;
+
+  function xP2(f) { return PAD.l + (f/fMax) * PW; }
+  function yP2(db) { return PAD.t + (1-(db-yMinDB)/(yMaxDB-yMinDB))*PH; }
+
+  ctx.fillStyle = '#0d1117'; ctx.fillRect(0,0,W,H);
+
+  // Grid
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 0.5;
+  for(let db = yMinDB; db <= yMaxDB; db += 20) {
+    ctx.beginPath(); ctx.moveTo(PAD.l, yP2(db)); ctx.lineTo(PAD.l+PW, yP2(db)); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.fillText(db.toString(), 2, yP2(db)+3);
+  }
+
+  // Spectral lines helper
+  function drawLine(freq, dBc, color, label, dashed=false) {
+    if(freq < 0 || freq > fMax) return;
+    const x = xP2(freq);
+    const yBot = yP2(Math.max(yMinDB, -150));
+    const yTop = yP2(Math.min(yMaxDB, dBc));
+    ctx.strokeStyle = color; ctx.lineWidth = dashed ? 1.5 : 2.5;
+    if(dashed) ctx.setLineDash([3,3]); else ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(x, yBot); ctx.lineTo(x, yTop); ctx.stroke();
+    ctx.setLineDash([]);
+    // cap
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x-5, yTop); ctx.lineTo(x+5, yTop); ctx.stroke();
+    ctx.fillStyle = color; ctx.font = '10px sans-serif';
+    ctx.fillText(label, x+4, yTop-2);
+  }
+
+  // Fundamentals at 0 dBc
+  drawLine(f1, 0, '#58a6ff', 'f1');
+  drawLine(f2, 0, '#58a6ff', 'f2');
+  // IM3
+  const im3a = 2*f1 - f2; const im3b = 2*f2 - f1;
+  drawLine(im3a > 0 ? im3a : 0.01, IM3_dBc, '#f85149', 'IM3');
+  drawLine(im3b, IM3_dBc, '#f85149', 'IM3');
+  // IM2
+  drawLine(Math.abs(f2-f1), IM2_dBc, '#f0883e', 'IM2(Δf)');
+  drawLine(f1+f2, IM2_dBc, '#f0883e', 'IM2(Σ)');
+
+  // Intercept lines
+  // Fundamental extrapolation: P_fund(V) = 0 dBc always
+  // IM3 extrapolation slope = 3:1 vs fundamental in dB vs input level
+  // At current V: fundamental = 0 dBc, IM3 = IM3_dBc
+  // The lines cross at V = IIP3_V: fundamental = 0, IM3 = 0
+  // Draw extrapolated IM3 line upward to OIP3 level in phantom
+  ctx.strokeStyle = '#a371f7'; ctx.lineWidth = 1; ctx.setLineDash([5,3]);
+  // show OIP3 level as horizontal line at 0 dBc at OIP3 frequency (conceptual)
+  const yOIP3 = yP2(0);
+  ctx.beginPath(); ctx.moveTo(PAD.l, yOIP3); ctx.lineTo(PAD.l+PW, yOIP3); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#a371f7'; ctx.font = '10px sans-serif';
+  ctx.fillText(`OIP3 = V_tone × √(4/3a3) = ${(OIP3_V*1000).toFixed(0)} mV`, PAD.l+4, yOIP3-4);
+
+  // Axis labels
+  ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif';
+  ctx.fillText('dBc', 4, PAD.t+PH/2);
+  ctx.fillText('Frequency (MHz)', PAD.l+PW/2-50, H-4);
+
+  const sfdr = Math.abs(IM3_dBc);
+  document.getElementById('t1_info').innerHTML =
+    `<span class="b">Two-tone: ${f1.toFixed(1)} + ${f2.toFixed(1)} MHz</span><br>` +
+    `V_tone = <span class="y">${V_mV} mV</span><br>` +
+    `IM3 = <span class="${IM3_dBc < -80 ? 'g':'r'}">${IM3_dBc.toFixed(1)} dBc</span><br>` +
+    `IM2 = <span class="y">${IM2_dBc.toFixed(1)} dBc</span><br>` +
+    `IIP3 = <span class="b">${(IIP3_V*1000).toFixed(1)} mV</span><br>` +
+    `OIP3 = <span class="b">${(OIP3_V*1000).toFixed(1)} mV</span><br>` +
+    `SFDR ≈ <span class="${sfdr > 80 ? 'g':'r'}">${sfdr.toFixed(1)} dBc</span>`;
+}
+
+// ── TAB 2: SFDR / SINAD / ENOB ────────────────────────────────────────────
+function updateT2() {
+  const N = +document.getElementById('t2_n').value;
+  const Vfs = +document.getElementById('t2_vfs').value;
+  const Vn_uV = +document.getElementById('t2_vn').value;
+  const thd_dBc = +document.getElementById('t2_thd').value;
+  const hd3_dBc = +document.getElementById('t2_hd3').value;
+
+  document.getElementById('t2_n_v').textContent = N;
+  document.getElementById('t2_vfs_v').textContent = Vfs.toFixed(2);
+  document.getElementById('t2_vn_v').textContent = Vn_uV;
+  document.getElementById('t2_thd_v').textContent = thd_dBc;
+  document.getElementById('t2_hd3_v').textContent = hd3_dBc;
+
+  const Vn = Vn_uV * 1e-6;
+  const Vsig = Vfs / Math.sqrt(2); // RMS
+
+  // Distortion voltage from THD
+  const thd_lin = Math.pow(10, thd_dBc/20);
+  const Vdist = thd_lin * Vsig;
+  const Vnoise_dist = Math.sqrt(Vn*Vn + Vdist*Vdist);
+  const SINAD_dB = 20 * Math.log10(Vsig / Vnoise_dist);
+  const ENOB = (SINAD_dB - 1.76) / 6.02;
+  const SFDR_dBc = Math.abs(hd3_dBc);
+  const ideal_SINAD = 6.02*N + 1.76;
+  const ideal_ENOB = N;
+
+  const { ctx, W, H } = setupCanvas('c2');
+  const PAD = { l: 54, r: 20, t: 30, b: 44 };
+  const PW = W - PAD.l - PAD.r;
+  const PH = H - PAD.t - PAD.b;
+
+  // x-axis: THD from -130 to -40 dBc
+  const xMin = -130, xMax = -40;
+  // y-axis: ENOB 0 to N+2
+  const yMinE = 0, yMaxE = N + 2;
+
+  function xP3(thd) { return PAD.l + ((thd - xMin)/(xMax - xMin))*PW; }
+  function yP3(enob) { return PAD.t + (1-(enob-yMinE)/(yMaxE-yMinE))*PH; }
+
+  ctx.fillStyle = '#0d1117'; ctx.fillRect(0,0,W,H);
+
+  // Grid
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 0.5;
+  for(let e = 0; e <= yMaxE; e += 2) {
+    ctx.beginPath(); ctx.moveTo(PAD.l, yP3(e)); ctx.lineTo(PAD.l+PW, yP3(e)); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.fillText(e.toString(), 4, yP3(e)+3);
+  }
+  for(let thd = xMin; thd <= xMax; thd += 10) {
+    ctx.beginPath(); ctx.moveTo(xP3(thd), PAD.t); ctx.lineTo(xP3(thd), PAD.t+PH); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace';
+    ctx.fillText(thd.toString(), xP3(thd)-8, PAD.t+PH+14);
+  }
+
+  // Ideal N bits horizontal line
+  ctx.strokeStyle = '#f85149'; ctx.lineWidth = 1.5; ctx.setLineDash([5,4]);
+  ctx.beginPath(); ctx.moveTo(PAD.l, yP3(ideal_ENOB)); ctx.lineTo(PAD.l+PW, yP3(ideal_ENOB)); ctx.stroke();
+  ctx.fillStyle = '#f85149'; ctx.font = '10px sans-serif';
+  ctx.fillText(`Ideal ${N}-bit (${ideal_ENOB} ENOB)`, PAD.l+4, yP3(ideal_ENOB)-4);
+  ctx.setLineDash([]);
+
+  // Noise-limited ENOB (flat — depends only on Vn, not THD)
+  const Vn_SINAD = 20*Math.log10(Vsig/Vn);
+  const ENOB_noise_lim = (Vn_SINAD - 1.76) / 6.02;
+  ctx.strokeStyle = '#3fb950'; ctx.lineWidth = 2; ctx.setLineDash([4,3]);
+  const y_noise = yP3(Math.min(yMaxE, Math.max(yMinE, ENOB_noise_lim)));
+  ctx.beginPath(); ctx.moveTo(PAD.l, y_noise); ctx.lineTo(PAD.l+PW, y_noise); ctx.stroke();
+  ctx.fillStyle = '#3fb950'; ctx.font = '10px sans-serif';
+  ctx.fillText(`Noise floor: ${ENOB_noise_lim.toFixed(1)} bits`, PAD.l+4, y_noise+12);
+  ctx.setLineDash([]);
+
+  // ENOB_distortion curve
+  ctx.strokeStyle = '#58a6ff'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  let firstD = true;
+  for(let thd = xMin; thd <= xMax; thd += 0.5) {
+    const tl = Math.pow(10, thd/20);
+    const vd = tl * Vsig;
+    const sinad = 20*Math.log10(Vsig / vd); // distortion only
+    const enob_d = (sinad - 1.76) / 6.02;
+    const x = xP3(thd); const y = yP3(Math.min(yMaxE, Math.max(yMinE, enob_d)));
+    if(firstD) { ctx.moveTo(x,y); firstD=false; } else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Combined ENOB curve
+  ctx.strokeStyle = '#f0883e'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  let firstC = true;
+  for(let thd = xMin; thd <= xMax; thd += 0.5) {
+    const tl = Math.pow(10, thd/20);
+    const vd = tl * Vsig;
+    const vnTotal = Math.sqrt(Vn*Vn + vd*vd);
+    const sinad = 20*Math.log10(Vsig / vnTotal);
+    const enob = (sinad - 1.76) / 6.02;
+    const x = xP3(thd); const y = yP3(Math.min(yMaxE, Math.max(yMinE, enob)));
+    if(firstC) { ctx.moveTo(x,y); firstC=false; } else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Operating point
+  const xOp3 = xP3(thd_dBc);
+  const yOp3 = yP3(Math.min(yMaxE, Math.max(yMinE, ENOB)));
+  ctx.fillStyle = '#f0883e';
+  ctx.beginPath(); ctx.arc(xOp3, yOp3, 6, 0, 2*Math.PI); ctx.fill();
+  ctx.strokeStyle = '#f0883e'; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(xOp3, PAD.t); ctx.lineTo(xOp3, yOp3); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Labels
+  ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif';
+  ctx.fillText('ENOB (bits)', 4, PAD.t + PH/2);
+  ctx.fillText('Op-Amp THD (dBc)', PAD.l + PW/2 - 55, H-4);
+
+  const enob_loss = ideal_ENOB - ENOB;
+  document.getElementById('t2_info').innerHTML =
+    `<span class="b">ADC: ${N}-bit, Vfs = ${Vfs.toFixed(2)} V</span><br>` +
+    `Op-amp Vn_rms = <span class="y">${Vn_uV} μV</span><br>` +
+    `Op-amp THD = <span class="y">${thd_dBc} dBc</span><br>` +
+    `SFDR ≈ <span class="${SFDR_dBc > 80 ? 'g':'r'}">${SFDR_dBc.toFixed(0)} dBc</span><br>` +
+    `SINAD = <span class="${SINAD_dB > ideal_SINAD-3 ? 'g':'r'}">${SINAD_dB.toFixed(1)} dB</span><br>` +
+    `ENOB = <span class="${ENOB >= N-0.5 ? 'g':'r'}">${ENOB.toFixed(2)} bits</span><br>` +
+    `ENOB loss = <span class="${enob_loss < 0.5 ? 'g':'r'}">${enob_loss.toFixed(2)} bits</span>`;
+}
+
+// Init
+updateT0();
+window.addEventListener('resize', () => { updateT0(); updateT1(); updateT2(); });
+</script>
+</body>
+</html>

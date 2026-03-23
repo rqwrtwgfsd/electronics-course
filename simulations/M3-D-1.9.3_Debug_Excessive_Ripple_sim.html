@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M3-D-1.9.3 — Debug: Excessive Ripple</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--text2:#8b949e;--accent:#0066cc;--accent2:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922}
+@media(prefers-color-scheme:light){:root{--bg:#ffffff;--surface:#f6f8fa;--border:#d0d7de;--text:#24292f;--text2:#656d76;--accent:#0066cc;--accent2:#0969da;--green:#2da44e;--red:#cf222e;--yellow:#9a6700}}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;font-size:14px;padding:16px}
+h2{color:var(--accent2);font-size:16px;margin-bottom:12px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px}
+canvas{width:100%;border-radius:6px;background:var(--bg);display:block}
+.controls{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px}
+.ctrl{flex:1;min-width:180px}
+label{display:block;color:var(--text2);font-size:12px;margin-bottom:4px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.readout{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.ro{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;font-size:12px;font-family:monospace}
+.ro span{color:var(--accent2);font-weight:bold}
+.note{color:var(--text2);font-size:12px;margin-top:8px;line-height:1.5}
+</style></head>
+<body>
+<h2>M3-D-1.9.3 — Debug: Excessive Ripple</h2>
+<div class="panel">
+<canvas id="cv" height="260"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>I_load (mA): <b id="lIL">500</b></label>
+    <input type="range" id="IL" min="10" max="3000" step="10" value="500"></div>
+  <div class="ctrl"><label>C (µF): <b id="lC">2200</b></label>
+    <input type="range" id="C" min="100" max="20000" step="100" value="2200"></div>
+  <div class="ctrl"><label>ESR (mΩ): <b id="lESR">100</b></label>
+    <input type="range" id="ESR" min="1" max="500" step="1" value="100"></div>
+  <div class="ctrl"><label>Topology (ripple freq Hz): <b id="lFreq">120</b></label>
+    <input type="range" id="Freq" min="60" max="120" step="60" value="120"></div>
+</div>
+<div class="readout">
+  <div class="ro">Bulk ripple: <span id="r1">0.00</span> V</div>
+  <div class="ro">ESR ripple: <span id="r2">0.00</span> V</div>
+  <div class="ro">Total ripple: <span id="r3">0.00</span> V</div>
+  <div class="ro">Req. C (for 1V): <span id="r4">0</span> µF</div>
+</div>
+<p class="note">Total ripple = bulk discharge + ESR spike. Adding more C fixes bulk ripple but NOT ESR ripple. ESR requires lower-ESR capacitor technology.</p>
+</div>
+<script>
+
+const isDark=()=>window.matchMedia('(prefers-color-scheme:dark)').matches;
+function gs(id){return parseFloat(document.getElementById(id).value);}
+function sv(id,val){document.getElementById(id).textContent=val;}
+function resize(cv,draw){cv.width=cv.offsetWidth*devicePixelRatio;cv.height=260*devicePixelRatio;cv.getContext('2d').scale(devicePixelRatio,devicePixelRatio);draw();}
+function drawAxes(ctx,W,H,pad,xl,yl,color){
+  ctx.strokeStyle=color;ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  ctx.fillStyle=color;ctx.font='11px system-ui';
+  ctx.fillText(yl,pad+4,pad+12);ctx.fillText(xl,W-pad-2,H-pad-4);
+}
+
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+function draw(){
+  const il=gs('IL')*1e-3,C=gs('C')*1e-6,esr=gs('ESR')*1e-3,freq=gs('Freq');
+  document.getElementById('lIL').textContent=(il*1000).toFixed(0);
+  document.getElementById('lC').textContent=(C*1e6).toFixed(0);
+  document.getElementById('lESR').textContent=(esr*1000).toFixed(0);
+  document.getElementById('lFreq').textContent=freq.toFixed(0)+' Hz ('+(freq===60?'Half-wave':'Full-wave')+')';
+  const bulkRip=il/(freq*C);
+  const Ipeak=Math.PI*il;
+  const esrRip=Ipeak*esr;
+  const totalRip=bulkRip+esrRip;
+  const reqC=il/(freq*1);
+  sv('r1',bulkRip.toFixed(2));sv('r2',esrRip.toFixed(2));sv('r3',totalRip.toFixed(2));
+  sv('r4',Math.round(reqC*1e6));
+
+  const W=cv.offsetWidth,H=260,pad=40;
+  const bg=isDark()?'#0d1117':'#fff',fg=isDark()?'#8b949e':'#656d76';
+  ctx.clearRect(0,0,W,H);ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  const maxR=Math.max(totalRip,0.1)*1.5;
+  const ysc=(H-2*pad)/maxR;
+  const vals=[['Bulk discharge',bulkRip,'#58a6ff'],['ESR spike',esrRip,'#f85149'],['Total ripple',totalRip,'#d29922']];
+  const bw=(W-2*pad)/vals.length-15;
+  vals.forEach(([name,val,color],i)=>{
+    const bh=val*ysc;const bx=pad+i*(bw+15);
+    ctx.fillStyle=color;ctx.fillRect(bx,H-pad-bh,bw,bh);
+    ctx.fillStyle=fg;ctx.font='11px system-ui';
+    ctx.fillText(name,bx+2,H-pad+14);ctx.fillText(val.toFixed(2)+'V',bx+2,H-pad-bh-4);
+  });
+  ctx.fillStyle=fg;ctx.font='12px system-ui';
+  ctx.fillText('Ripple analysis: I='+Math.round(il*1000)+'mA, C='+(C*1e6).toFixed(0)+'µF, ESR='+Math.round(esr*1000)+'mΩ',pad,pad-5);
+}
+document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',draw));
+window.addEventListener('resize',()=>resize(cv,draw));
+resize(cv,draw);
+</script>
+</body></html>

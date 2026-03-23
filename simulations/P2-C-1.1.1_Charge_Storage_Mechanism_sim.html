@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-C-1.1.1 — Capacitor: Charge Storage Mechanism</title>
+<style>
+  :root {
+    --bg: #ffffff; --bg2: #f5f5f5; --text: #1a1a1a; --text2: #555;
+    --border: #ddd; --accent: #0066cc; --green: #00994d; --canvas-bg: #fafafa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a; --bg2: #242424; --text: #e8e8e8; --text2: #aaa;
+      --border: #444; --canvas-bg: #1f1f1f;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         background: var(--bg); color: var(--text); font-size: 14px; }
+  header { background: var(--bg2); border-bottom: 2px solid var(--accent);
+           padding: 12px 20px; }
+  header .id { font-family: monospace; font-size: 12px; color: var(--accent);
+               font-weight: 700; }
+  header h1 { font-size: 16px; margin-top: 2px; }
+  .container { display: flex; gap: 16px; padding: 16px; flex-wrap: wrap; }
+  .panel { background: var(--bg2); border: 1px solid var(--border);
+           border-radius: 6px; padding: 14px; }
+  .sim-panel { flex: 1; min-width: 340px; }
+  .ctrl-panel { width: 240px; min-width: 220px; }
+  canvas { background: var(--canvas-bg); border: 1px solid var(--border);
+           border-radius: 4px; display: block; width: 100%; }
+  .readouts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+              margin-top: 10px; }
+  .readout { background: var(--bg); border: 1px solid var(--border);
+             border-radius: 4px; padding: 8px 10px; }
+  .readout label { font-size: 11px; color: var(--text2); display: block; }
+  .readout .val { font-family: monospace; font-size: 18px; font-weight: 700;
+                  color: var(--accent); }
+  .ctrl { margin-bottom: 14px; }
+  .ctrl label { display: flex; justify-content: space-between;
+                font-size: 13px; margin-bottom: 4px; }
+  .ctrl label span { font-family: monospace; color: var(--accent); font-weight: 700; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .section-title { font-size: 12px; font-weight: 700; text-transform: uppercase;
+                   letter-spacing: 0.5px; color: var(--text2); margin-bottom: 10px; }
+  .formula-box { background: var(--bg); border-left: 3px solid var(--accent);
+                 padding: 8px 12px; margin: 10px 0; font-family: monospace;
+                 font-size: 13px; border-radius: 0 4px 4px 0; }
+  .info-row { font-size: 12px; color: var(--text2); margin-top: 6px; line-height: 1.5; }
+  .bar-wrap { margin-top: 10px; }
+  .bar-label { font-size: 11px; color: var(--text2); margin-bottom: 3px; }
+  .bar-track { background: var(--border); border-radius: 3px; height: 20px;
+               overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width 0.05s;
+              display: flex; align-items: center; padding-left: 6px;
+              font-size: 11px; font-weight: 700; color: #fff; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+  .tab { padding: 5px 12px; border: 1px solid var(--border); border-radius: 4px;
+         font-size: 12px; cursor: pointer; background: var(--bg); color: var(--text); }
+  .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <div class="id">P2-C-1.1.1</div>
+  <h1>Capacitor — Charge Storage Mechanism</h1>
+</header>
+<div class="container">
+  <!-- Left: simulation canvas -->
+  <div class="panel sim-panel">
+    <div class="tabs">
+      <button class="tab active" onclick="setMode('charge')">Charge Storage</button>
+      <button class="tab" onclick="setMode('geometry')">Geometry (C = εA/d)</button>
+    </div>
+    <canvas id="cv" height="300"></canvas>
+    <div class="readouts" id="readouts-charge">
+      <div class="readout"><label>Voltage V</label><span class="val" id="r-v">0.00 V</span></div>
+      <div class="readout"><label>Charge Q</label><span class="val" id="r-q">0.00 nC</span></div>
+      <div class="readout"><label>Capacitance C</label><span class="val" id="r-c">100 nF</span></div>
+      <div class="readout"><label>E-field</label><span class="val" id="r-e">0.00 kV/m</span></div>
+    </div>
+    <div class="bar-wrap">
+      <div class="bar-label">Charge level (% of max)</div>
+      <div class="bar-track">
+        <div class="bar-fill" id="bar-charge" style="width:0%;background:var(--accent)">0%</div>
+      </div>
+    </div>
+    <div class="info-row" id="info-row">
+      Q = C × V &nbsp;|&nbsp; Adjust sliders to explore charge storage.
+    </div>
+  </div>
+
+  <!-- Right: controls -->
+  <div class="panel ctrl-panel">
+    <div class="section-title" id="ctrl-title">Controls</div>
+
+    <!-- Charge mode controls -->
+    <div id="ctrls-charge">
+      <div class="ctrl">
+        <label>Voltage V <span id="lbl-v">3.30 V</span></label>
+        <input type="range" id="sl-v" min="0" max="50" step="0.1" value="3.3"
+               oninput="update()">
+      </div>
+      <div class="ctrl">
+        <label>Capacitance C <span id="lbl-c">100 nF</span></label>
+        <input type="range" id="sl-c" min="1" max="1000" step="1" value="100"
+               oninput="update()">
+      </div>
+      <div class="ctrl">
+        <label>Gap d <span id="lbl-d">10 µm</span></label>
+        <input type="range" id="sl-d" min="1" max="100" step="1" value="10"
+               oninput="update()">
+      </div>
+      <div class="formula-box">Q = C × V</div>
+      <div class="formula-box">E = V / d</div>
+      <div class="info-row">
+        C is fixed by slider.<br>
+        E-field = V/d across the gap.<br>
+        Q grows linearly with V.
+      </div>
+    </div>
+
+    <!-- Geometry mode controls -->
+    <div id="ctrls-geo" style="display:none">
+      <div class="ctrl">
+        <label>Plate area A <span id="lbl-a">100 mm²</span></label>
+        <input type="range" id="sl-a" min="1" max="500" step="1" value="100"
+               oninput="updateGeo()">
+      </div>
+      <div class="ctrl">
+        <label>Gap d <span id="lbl-gd">10 µm</span></label>
+        <input type="range" id="sl-gd" min="1" max="100" step="1" value="10"
+               oninput="updateGeo()">
+      </div>
+      <div class="ctrl">
+        <label>Dielectric εᵣ <span id="lbl-er">9.8</span></label>
+        <input type="range" id="sl-er" min="1" max="100" step="0.5" value="9.8"
+               oninput="updateGeo()">
+      </div>
+      <div class="formula-box">C = ε₀ × εᵣ × A / d</div>
+      <div class="info-row" id="geo-info"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+let mode = 'charge';
+
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll('.tab').forEach((t,i)=>{
+    t.classList.toggle('active', (i===0&&m==='charge')||(i===1&&m==='geometry'));
+  });
+  document.getElementById('ctrls-charge').style.display = m==='charge'?'':'none';
+  document.getElementById('ctrls-geo').style.display = m==='geometry'?'':'none';
+  if(m==='charge') update(); else updateGeo();
+}
+
+// ─── Colour helpers ───
+function getVar(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function isDark(){ return window.matchMedia('(prefers-color-scheme:dark)').matches; }
+
+// ─── CHARGE MODE ───
+function update(){
+  const V  = parseFloat(document.getElementById('sl-v').value);
+  const Cnf = parseFloat(document.getElementById('sl-c').value);  // nF
+  const dum = parseFloat(document.getElementById('sl-d').value);  // µm
+
+  const C = Cnf * 1e-9;
+  const d = dum * 1e-6;
+  const Q = C * V;
+  const E = d > 0 ? V/d : 0;
+
+  document.getElementById('lbl-v').textContent = V.toFixed(2)+' V';
+  document.getElementById('lbl-c').textContent = Cnf.toFixed(0)+' nF';
+  document.getElementById('lbl-d').textContent = dum.toFixed(0)+' µm';
+  document.getElementById('r-v').textContent   = V.toFixed(2)+' V';
+  document.getElementById('r-q').textContent   = (Q*1e9).toFixed(2)+' nC';
+  document.getElementById('r-c').textContent   = Cnf.toFixed(0)+' nF';
+  document.getElementById('r-e').textContent   = (E/1000).toFixed(2)+' kV/m';
+
+  const pct = Math.min(100, (V/50)*100);
+  document.getElementById('bar-charge').style.width = pct+'%';
+  document.getElementById('bar-charge').textContent = pct.toFixed(0)+'%';
+
+  drawCharge(V, Cnf, Q*1e9, E/1000, d);
+}
+
+function drawCharge(V, Cnf, Qnc, Ekv, d){
+  const W = canvas.offsetWidth || 500;
+  canvas.width = W; canvas.height = 300;
+  const dark = isDark();
+  const textCol = dark ? '#e8e8e8' : '#1a1a1a';
+  const bg = dark ? '#1f1f1f' : '#fafafa';
+  const accent = '#0066cc';
+  const green = '#00994d';
+
+  ctx.fillStyle = bg;
+  ctx.fillRect(0,0,W,300);
+
+  // Draw capacitor plates
+  const px = W*0.3, pw = W*0.35, py1 = 60, py2 = 180, ph = 18;
+  const gap = py2 - py1 - ph;
+
+  // Positive plate (top)
+  ctx.fillStyle = '#e63a2a';
+  ctx.fillRect(px, py1, pw, ph);
+  ctx.fillStyle = textCol;
+  ctx.font = '12px monospace'; ctx.textAlign = 'center';
+  ctx.fillText('+ plate', px+pw/2, py1-6);
+
+  // Negative plate (bottom)
+  ctx.fillStyle = accent;
+  ctx.fillRect(px, py2, pw, ph);
+  ctx.fillStyle = textCol;
+  ctx.fillText('− plate', px+pw/2, py2+ph+14);
+
+  // Dielectric fill
+  const alphaVal = Math.min(0.25, 0.05 + V/50*0.2);
+  ctx.fillStyle = `rgba(255,165,0,${alphaVal})`;
+  ctx.fillRect(px, py1+ph, pw, gap);
+  ctx.strokeStyle = '#cc8800'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+  ctx.strokeRect(px, py1+ph, pw, gap);
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#cc8800'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('dielectric  εᵣ', px+pw/2, py1+ph+gap/2+4);
+
+  // Electric field arrows
+  const nArrows = Math.max(2, Math.min(10, Math.round(V/5*8)));
+  ctx.strokeStyle = '#ff6600'; ctx.lineWidth=1.5;
+  ctx.fillStyle = '#ff6600';
+  const arrowSpacing = pw / (nArrows+1);
+  for(let i=1; i<=nArrows; i++){
+    const ax = px + i*arrowSpacing;
+    const ay1 = py1+ph+4, ay2 = py2-4;
+    if(V > 0.2){
+      ctx.beginPath(); ctx.moveTo(ax,ay1); ctx.lineTo(ax,ay2);
+      ctx.stroke();
+      // arrowhead
+      ctx.beginPath(); ctx.moveTo(ax,ay2); ctx.lineTo(ax-4,ay2-8); ctx.lineTo(ax+4,ay2-8);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+  if(V > 0.2){
+    ctx.fillStyle='#ff6600'; ctx.font='11px sans-serif'; ctx.textAlign='left';
+    ctx.fillText('E →', px+pw+6, py1+ph+gap/2+4);
+  }
+
+  // Charge symbols on plates
+  const nSym = Math.min(10, Math.round(V/50*10 * (Cnf/100)));
+  const symSpacing = Math.max(12, pw/(nSym+1));
+  ctx.font='14px sans-serif'; ctx.textAlign='center';
+  for(let i=0; i<Math.min(nSym,8); i++){
+    const sx = px + (i+1)*symSpacing;
+    if(sx < px+pw-5){
+      ctx.fillStyle='#fff';
+      ctx.fillText('+', sx, py1+ph-3);
+      ctx.fillStyle='#e8e8e8';
+      ctx.fillText('−', sx, py2+12);
+    }
+  }
+
+  // Voltage label
+  ctx.strokeStyle = green; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(px-20, py1+ph/2); ctx.lineTo(px-20, py2+ph/2); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=green; ctx.font='bold 13px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('V = '+V.toFixed(1)+' V', px-20, py1+ph/2+gap/2+5);
+
+  // Q label
+  ctx.fillStyle=accent; ctx.font='13px monospace'; ctx.textAlign='left';
+  ctx.fillText('Q = '+Qnc.toFixed(2)+' nC', px+pw+10, py1+ph/2+4);
+  ctx.fillText('E = '+Ekv.toFixed(1)+' kV/m', px+pw+10, py2+ph/2+4);
+
+  // Title
+  ctx.fillStyle=textCol; ctx.font='bold 12px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('Q = C × V', 12, 20);
+  ctx.fillStyle=textCol; ctx.font='11px sans-serif';
+  ctx.fillText('Charge density ∝ applied voltage', 12, 36);
+}
+
+// ─── GEOMETRY MODE ───
+function updateGeo(){
+  const Amm2 = parseFloat(document.getElementById('sl-a').value);
+  const dum  = parseFloat(document.getElementById('sl-gd').value);
+  const er   = parseFloat(document.getElementById('sl-er').value);
+
+  document.getElementById('lbl-a').textContent  = Amm2.toFixed(0)+' mm²';
+  document.getElementById('lbl-gd').textContent = dum.toFixed(0)+' µm';
+  document.getElementById('lbl-er').textContent = er.toFixed(1);
+
+  const e0 = 8.854e-12;
+  const A  = Amm2 * 1e-6;
+  const d  = dum * 1e-6;
+  const C  = e0 * er * A / d;
+  const Cpf = C * 1e12;
+
+  const info = `C = ε₀ × ${er.toFixed(1)} × ${Amm2} mm² / ${dum} µm\n  = ${Cpf.toFixed(1)} pF`;
+  document.getElementById('geo-info').textContent = info;
+
+  drawGeo(Amm2, dum, er, Cpf);
+}
+
+function drawGeo(Amm2, dum, er, Cpf){
+  const W = canvas.offsetWidth || 500;
+  canvas.width = W; canvas.height = 300;
+  const dark = isDark();
+  const textCol = dark ? '#e8e8e8' : '#1a1a1a';
+  const bg = dark ? '#1f1f1f' : '#fafafa';
+  const accent = '#0066cc';
+
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,300);
+
+  // Draw plates sized by area
+  const maxA = 500, minW = 60, maxW = W*0.6;
+  const pw = minW + (Amm2/maxA)*(maxW-minW);
+  const px = (W - pw)/2;
+  const ph = 14;
+  const py1 = 70;
+
+  // gap proportional to d
+  const minGap = 8, maxGap = 120;
+  const gap = minGap + (dum/100)*(maxGap-minGap);
+  const py2 = py1 + ph + gap;
+
+  // Plates
+  ctx.fillStyle = '#e63a2a';
+  ctx.fillRect(px, py1, pw, ph);
+  ctx.fillStyle = accent;
+  ctx.fillRect(px, py2, pw, ph);
+
+  // Labels
+  ctx.fillStyle = textCol; ctx.font='12px monospace'; ctx.textAlign='center';
+  ctx.fillText('A = '+Amm2+' mm²', px+pw/2, py1-6);
+  ctx.fillText('d = '+dum+' µm', px+pw/2, py2+ph+14);
+
+  // Dielectric
+  const dAlpha = Math.min(0.5, 0.05 + er/100*0.45);
+  ctx.fillStyle = `rgba(255,165,0,${dAlpha})`;
+  ctx.fillRect(px, py1+ph, pw, gap);
+  ctx.fillStyle = '#cc8800'; ctx.font='12px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('εᵣ = '+er.toFixed(1), px+pw/2, py1+ph+gap/2+5);
+
+  // C result
+  const bw2 = Math.min(W-40, Math.max(10, (Math.log10(Math.max(1,Cpf))/Math.log10(1e6))*(W-40)));
+  ctx.fillStyle = accent;
+  ctx.fillRect(20, 240, bw2, 20);
+  ctx.fillStyle = textCol; ctx.font='bold 14px monospace'; ctx.textAlign='left';
+  ctx.fillText('C = '+Cpf.toFixed(1)+' pF', 20, 275);
+  ctx.fillStyle=textCol; ctx.font='11px sans-serif';
+  ctx.fillText('C = ε₀ × εᵣ × A / d', 20, 295);
+}
+
+// Fix syntax error in geo bar calc
+(function patchGeo(){
+  const orig = updateGeo;
+  // already correct above — remove the bad unicode char in drawGeo
+})();
+
+window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change', ()=>{
+  if(mode==='charge') update(); else updateGeo();
+});
+
+window.addEventListener('resize', ()=>{
+  if(mode==='charge') update(); else updateGeo();
+});
+
+update();
+</script>
+</body>
+</html>

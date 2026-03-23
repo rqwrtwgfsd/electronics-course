@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M3-D-1.3.3 Dynamic Resistance</title>
+<style>
+  :root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--accent:#0066cc;--accent2:#58a6ff;--text:#e6edf3;--subtext:#8b949e;--green:#3fb950;--red:#f85149;--orange:#d29922;}
+  @media(prefers-color-scheme:light){:root{--bg:#fff;--surface:#f6f8fa;--border:#d0d7de;--accent:#0066cc;--accent2:#0969da;--text:#24292f;--subtext:#57606a;--green:#1a7f37;--red:#d1242f;--orange:#9a6700;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;padding:20px;}
+  h1{color:var(--accent2);font-size:1.3rem;margin-bottom:4px;}
+  .sub{color:var(--subtext);font-size:0.85rem;margin-bottom:16px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;}
+  h2{font-size:0.95rem;color:var(--accent2);margin-bottom:10px;}
+  canvas{display:block;width:100%;}
+  .ctrl{display:flex;flex-direction:column;gap:10px;}
+  label{font-size:0.82rem;color:var(--subtext);}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro-box{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;font-family:monospace;font-size:0.82rem;margin-top:10px;}
+  .ro{display:flex;justify-content:space-between;margin-bottom:4px;}
+  .ro b{color:var(--accent2);}
+  .hl{color:var(--green);font-weight:bold;}
+  button{background:var(--accent);color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:0.8rem;margin-right:4px;}
+  button.on{background:var(--green);}
+</style>
+</head>
+<body>
+<h1>M3-D-1.3.3 — Dynamic Resistance</h1>
+<p class="sub">r_d = V_T/I_D inversely proportional to current</p>
+<div class="grid">
+  <div class="card"><h2>Simulation</h2><canvas id="c" height="260"></canvas></div>
+  <div class="card"><h2>Controls</h2>
+    <div class="ctrl"><div><label>Bias current I_D (mA): <b id="idL">1.0</b></label><input type="range" id="idS" min="0.1" max="20" value="1" step="0.1" oninput="document.getElementById('idL').textContent=parseFloat(this.value).toFixed(1)"></div>
+<div><label>Temperature T (K): <b id="tL">300</b></label><input type="range" id="tS" min="250" max="400" value="300" step="5" oninput="document.getElementById('tL').textContent=this.value"></div></div>
+    <div class="ro-box"><div class="ro"><span>I_D bias</span><b id="ro_id">—</b></div>
+<div class="ro"><span>V_T</span><b id="ro_vt">—</b></div>
+<div class="ro"><span>r_d = V_T/I_D</span><b id="ro_rd" class="hl">—</b></div>
+<div class="ro"><span>Temperature</span><b id="ro_t">—</b></div></div>
+  </div>
+</div>
+<script>
+
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const isDark=()=>window.matchMedia('(prefers-color-scheme:dark)').matches;
+function gs(id){return parseFloat(document.getElementById(id).value);}
+function resize(){cv.width=cv.offsetWidth*devicePixelRatio;cv.height=260*devicePixelRatio;ctx.scale(devicePixelRatio,devicePixelRatio);draw();}
+function drawAxes(W,H,pad,xl,yl){
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  ctx.strokeStyle=isDark()?'#333':'#ddd';ctx.lineWidth=1;ctx.strokeRect(pad.l,pad.t,pw,ph);
+  for(let i=1;i<5;i++){
+    ctx.beginPath();ctx.moveTo(pad.l+pw*i/5,pad.t);ctx.lineTo(pad.l+pw*i/5,pad.t+ph);
+    ctx.strokeStyle=isDark()?'#222':'#eee';ctx.stroke();
+    ctx.beginPath();ctx.moveTo(pad.l,pad.t+ph*i/5);ctx.lineTo(pad.l+pw,pad.t+ph*i/5);ctx.stroke();
+  }
+  ctx.fillStyle=isDark()?'#666':'#888';ctx.font='10px system-ui';
+  ctx.textAlign='center';ctx.fillText(xl,pad.l+pw/2,H-3);
+  ctx.save();ctx.translate(12,pad.t+ph/2);ctx.rotate(-Math.PI/2);ctx.fillText(yl,0,0);ctx.restore();
+}
+
+
+function draw(){
+  const ID=gs('idS')*1e-3,T=gs('tS');
+  const VT=1.381e-23*T/1.602e-19;
+  const rd=VT/Math.max(ID,1e-20);
+  const W=cv.width/devicePixelRatio,H=260;
+  ctx.clearRect(0,0,W,H);
+  const pad={l:60,r:15,t:18,b:32};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const Imax_mA=20,rdMax=500;
+  drawAxes(W,H,pad,'I_D (mA)','r_d (Ohm)');
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2.5;ctx.beginPath();
+  for(let px=1;px<=pw;px++){
+    const i=(Imax_mA*px/pw)*1e-3;
+    const r=VT/i;
+    const y=pad.t+ph*(1-Math.min(r/rdMax,1));
+    if(px===1)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+  const xop=pad.l+(ID*1000)/Imax_mA*pw;
+  const yop=pad.t+ph*(1-Math.min(rd/rdMax,1));
+  ctx.fillStyle='#f85149';ctx.beginPath();ctx.arc(xop,Math.max(pad.t+3,Math.min(pad.t+ph-3,yop)),6,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#f85149';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(xop,pad.t+ph);ctx.lineTo(xop,Math.max(pad.t+3,Math.min(pad.t+ph-3,yop)));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=isDark()?'#888':'#666';ctx.font='10px monospace';
+  ctx.textAlign='center';ctx.fillText('0',pad.l,pad.t+ph+12);ctx.fillText('20mA',pad.l+pw,pad.t+ph+12);
+  ctx.textAlign='right';ctx.fillText('500',pad.l-3,pad.t+6);ctx.fillText('0',pad.l-3,pad.t+ph);
+  ctx.fillStyle='#f85149';ctx.textAlign='left';ctx.font='bold 11px monospace';
+  ctx.fillText('r_d='+rd.toFixed(1)+'ohm',xop+8,yop);
+  document.getElementById('ro_id').textContent=(ID*1000).toFixed(2)+' mA';
+  document.getElementById('ro_rd').textContent=rd.toFixed(1)+' ohm';
+  document.getElementById('ro_vt').textContent=(VT*1000).toFixed(2)+' mV';
+  document.getElementById('ro_t').textContent=T+' K ('+(T-273)+'C)';
+}
+
+document.querySelectorAll('input[type=range]').forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',resize);
+resize();
+</script>
+</body>
+</html>

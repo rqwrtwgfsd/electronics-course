@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.4.4 — Op-Amp Practical: Finite Open-Loop Gain</title>
+<style>
+  :root {
+    --bg: #f5f5f5; --card: #ffffff; --text: #1a1a1a; --subtext: #555;
+    --accent: #0066cc; --accent2: #cc3300; --accent3: #007744; --accent4: #aa5500;
+    --border: #cccccc; --grid: #dddddd;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a; --card: #242424; --text: #e8e8e8; --subtext: #aaaaaa;
+      --accent: #4da6ff; --accent2: #ff6644; --accent3: #44cc88; --accent4: #ffaa44;
+      --border: #444; --grid: #333;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 15px; line-height: 1.6; }
+  header { background: var(--card); border-bottom: 2px solid var(--accent); padding: 18px 28px; }
+  header h1 { font-size: 1.2rem; font-weight: 700; color: var(--accent); }
+  header p { font-size: 0.85rem; color: var(--subtext); margin-top: 3px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 20px; padding: 20px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 18px; }
+  .card h2 { font-size: 0.95rem; font-weight: 600; margin-bottom: 4px; }
+  .card p.desc { font-size: 0.80rem; color: var(--subtext); margin-bottom: 10px; line-height: 1.4; }
+  canvas { display: block; width: 100%; border-radius: 4px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+  .ctrl { display: flex; flex-direction: column; font-size: 0.78rem; color: var(--subtext); min-width: 140px; }
+  .ctrl label { margin-bottom: 3px; }
+  input[type=range] { accent-color: var(--accent); width: 100%; }
+  .readout { font-size: 0.82rem; color: var(--accent); font-weight: 600; margin-top: 2px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 0.78rem; }
+  .leg { display: flex; align-items: center; gap: 5px; }
+  .leg-dot { width: 20px; height: 3px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>M4A-AMP-1.4.4 — Op-Amp Practical: Finite Open-Loop Gain</h1>
+  <p>Gain error, loop gain budget, and distortion suppression as functions of Avol and frequency</p>
+</header>
+<div class="grid">
+
+  <!-- Plot 1: Open-loop gain vs frequency + loop gain region -->
+  <div class="card">
+    <h2>Open-Loop Gain and Loop Gain vs Frequency</h2>
+    <p class="desc">Avol rolls off at –20 dB/dec from the dominant pole. The shaded region is the available loop gain T = Avol/Acl. When T reaches 0 dB, closed-loop gain equals open-loop gain — feedback collapses.</p>
+    <canvas id="c1" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>GBW (MHz): <span id="v1a" class="readout">10</span></label>
+        <input type="range" id="s1a" min="1" max="200" value="10" step="1">
+      </div>
+      <div class="ctrl">
+        <label>Avol DC (dB): <span id="v1b" class="readout">100</span></label>
+        <input type="range" id="s1b" min="60" max="140" value="100" step="1">
+      </div>
+      <div class="ctrl">
+        <label>Closed-loop gain: <span id="v1c" class="readout">10</span></label>
+        <input type="range" id="s1c" min="1" max="100" value="10" step="1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Avol(f) (dB)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> Acl_ideal (dB)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3); opacity:0.4"></div> Loop gain region</div>
+    </div>
+  </div>
+
+  <!-- Plot 2: Gain error vs Avol DC for different Acl values -->
+  <div class="card">
+    <h2>Gain Error vs Open-Loop Gain</h2>
+    <p class="desc">Fractional gain error ε = 1/(1+T) = Acl_ideal / (Avol_dc + Acl_ideal). Each curve is a different closed-loop gain. Higher Acl demands more Avol for the same error floor.</p>
+    <canvas id="c2" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>Target error (%): <span id="v2a" class="readout">0.10</span></label>
+        <input type="range" id="s2a" min="1" max="100" value="10" step="1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Acl = 1 (buffer)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> Acl = 10</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3)"></div> Acl = 100</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent4)"></div> Acl = 1000</div>
+    </div>
+  </div>
+
+  <!-- Plot 3: Distortion reduction vs loop gain T -->
+  <div class="card">
+    <h2>Closed-Loop THD vs Loop Gain T</h2>
+    <p class="desc">THD_cl = THD_ol / (1+T). The open-loop distortion is a fixed property of the op-amp internals. High T makes it irrelevant — until T decreases with frequency. Drag the frequency to see T shrink.</p>
+    <canvas id="c3" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>THD_ol (%): <span id="v3a" class="readout">1.0</span></label>
+        <input type="range" id="s3a" min="1" max="100" value="10" step="1">
+      </div>
+      <div class="ctrl">
+        <label>GBW (MHz): <span id="v3b" class="readout">10</span></label>
+        <input type="range" id="s3b" min="1" max="100" value="10" step="1">
+      </div>
+      <div class="ctrl">
+        <label>Acl (gain): <span id="v3c" class="readout">10</span></label>
+        <input type="range" id="s3c" min="1" max="100" value="10" step="1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> THD_cl vs frequency</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2); opacity:0.5"></div> THD_ol (open-loop)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3); opacity:0.7"></div> BW limit</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+function setupCanvas(id) {
+  const canvas = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  function resize() {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    const ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr);
+    return { ctx, w, h };
+  }
+  return { canvas, resize };
+}
+
+function toX(v, vMin, vMax, xMin, xMax, log) {
+  if (log) return xMin + Math.log10(v / vMin) / Math.log10(vMax / vMin) * (xMax - xMin);
+  return xMin + (v - vMin) / (vMax - vMin) * (xMax - xMin);
+}
+function toY(v, vMin, vMax, yMin, yMax, log) {
+  if (log) return yMax - Math.log10(Math.max(v,vMin) / vMin) / Math.log10(vMax / vMin) * (yMax - yMin);
+  return yMax - (v - vMin) / (vMax - vMin) * (yMax - yMin);
+}
+
+function drawAxes(ctx, w, h, pad, xLabel, yLabel, xTicks, yTicks) {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = css('--card'); ctx.fillRect(0, 0, w, h);
+  const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
+  ctx.strokeStyle = css('--grid'); ctx.lineWidth = 0.7;
+  xTicks.forEach(t => {
+    const x = pad.l + t.px * pw;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
+  });
+  yTicks.forEach(t => {
+    const y = pad.t + ph - t.py * ph;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+  });
+  ctx.strokeStyle = css('--text'); ctx.lineWidth = 1.5;
+  ctx.strokeRect(pad.l, pad.t, pw, ph);
+  ctx.fillStyle = css('--subtext'); ctx.font = '10px system-ui';
+  ctx.textAlign = 'center';
+  xTicks.forEach(t => ctx.fillText(t.label, pad.l + t.px * pw, pad.t + ph + 13));
+  ctx.textAlign = 'right';
+  yTicks.forEach(t => ctx.fillText(t.label, pad.l - 4, pad.t + ph - t.py * ph + 3.5));
+  ctx.fillStyle = css('--text'); ctx.font = '11px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(xLabel, pad.l + pw / 2, h - 2);
+  ctx.save(); ctx.translate(11, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText(yLabel, 0, 0); ctx.restore();
+  return { pw, ph };
+}
+
+// ─── Plot 1: Avol(f) and loop gain region ─────────────────────────────────────
+const p1 = setupCanvas('c1');
+function draw1() {
+  const { ctx, w, h } = p1.resize();
+  const GBW = parseFloat(document.getElementById('s1a').value) * 1e6;
+  const Avol_dB = parseFloat(document.getElementById('s1b').value);
+  const Acl = parseFloat(document.getElementById('s1c').value);
+  document.getElementById('v1a').textContent = document.getElementById('s1a').value;
+  document.getElementById('v1b').textContent = Avol_dB;
+  document.getElementById('v1c').textContent = Acl;
+
+  const Avol_dc = Math.pow(10, Avol_dB / 20);
+  const fp = GBW / Avol_dc;
+  const Acl_dB = 20 * Math.log10(Acl);
+
+  const pad = { l: 48, r: 16, t: 18, b: 36 };
+  const fMin = 0.1, fMax = GBW * 20;
+  const yMin = 0, yMax = Avol_dB + 10;
+
+  // Generate tick lists
+  const fDec = [];
+  let f = 0.1;
+  while (f <= fMax * 1.1) { fDec.push(f); f *= 10; }
+  const xTicks = fDec.filter(f => f >= fMin && f <= fMax).map(fv => {
+    const e = Math.round(Math.log10(fv));
+    const labs = {'-1':'0.1','0':'1','1':'10','2':'100','3':'1k','4':'10k','5':'100k','6':'1M','7':'10M','8':'100M','9':'1G'};
+    return { px: Math.log10(fv/fMin)/Math.log10(fMax/fMin), label: labs[e] || fv };
+  });
+  const yStep = 20;
+  const yTicks = [];
+  for (let y = 0; y <= yMax; y += yStep) yTicks.push({ py: (y - yMin)/(yMax - yMin), label: y + 'dB' });
+
+  const { pw, ph } = drawAxes(ctx, w, h, pad, 'Frequency (Hz)', 'Gain (dB)', xTicks, yTicks);
+
+  const xp = fv => pad.l + Math.log10(fv/fMin)/Math.log10(fMax/fMin) * pw;
+  const yp = dB => pad.t + ph - (dB - yMin)/(yMax - yMin) * ph;
+
+  // Shade loop gain region
+  ctx.fillStyle = css('--accent3');
+  ctx.globalAlpha = 0.10;
+  ctx.beginPath();
+  ctx.moveTo(xp(fMin), yp(Avol_dB));
+  // walk Avol down
+  for (let i = 0; i <= 200; i++) {
+    const fv = fMin * Math.pow(fMax/fMin, i/200);
+    const avdB = 20*Math.log10(Avol_dc / Math.sqrt(1 + (fv/fp)**2));
+    ctx.lineTo(xp(fv), yp(avdB));
+  }
+  // bottom at Acl_dB line back
+  ctx.lineTo(xp(fMax), yp(Acl_dB));
+  ctx.lineTo(xp(fMin), yp(Acl_dB));
+  ctx.closePath(); ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // Acl line
+  ctx.strokeStyle = css('--accent2');
+  ctx.lineWidth = 1.8; ctx.setLineDash([5,4]);
+  ctx.beginPath();
+  ctx.moveTo(xp(fMin), yp(Acl_dB));
+  ctx.lineTo(xp(fMax), yp(Acl_dB));
+  ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = css('--accent2'); ctx.font = '9px system-ui'; ctx.textAlign = 'left';
+  ctx.fillText('Acl = ' + Acl_dB.toFixed(1) + ' dB', pad.l + 4, yp(Acl_dB) - 4);
+
+  // Avol curve
+  ctx.strokeStyle = css('--accent'); ctx.lineWidth = 2.3;
+  ctx.beginPath();
+  let first = true;
+  for (let i = 0; i <= 400; i++) {
+    const fv = fMin * Math.pow(fMax/fMin, i/400);
+    const avdB = 20*Math.log10(Avol_dc / Math.sqrt(1 + (fv/fp)**2));
+    const x = xp(fv), y = yp(avdB);
+    if (first) { ctx.moveTo(x,y); first=false; } else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // GBW marker
+  ctx.strokeStyle = css('--accent'); ctx.globalAlpha = 0.5; ctx.lineWidth = 1;
+  ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(xp(GBW), pad.t); ctx.lineTo(xp(GBW), pad.t+ph); ctx.stroke();
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+  const GBWstr = GBW >= 1e6 ? (GBW/1e6).toFixed(0)+'M' : (GBW/1e3).toFixed(0)+'k';
+  ctx.fillStyle = css('--accent'); ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('GBW='+GBWstr, xp(GBW), pad.t+10);
+
+  // CL BW
+  const fcl = GBW / Acl;
+  ctx.strokeStyle = css('--accent3'); ctx.globalAlpha = 0.6; ctx.lineWidth = 1;
+  ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(xp(fcl), pad.t); ctx.lineTo(xp(fcl), pad.t+ph); ctx.stroke();
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+}
+
+// ─── Plot 2: Gain error vs Avol_DC ───────────────────────────────────────────
+const p2 = setupCanvas('c2');
+function draw2() {
+  const { ctx, w, h } = p2.resize();
+  const targetErr = parseFloat(document.getElementById('s2a').value) / 1000; // slider 1-100 → 0.001 to 0.1%
+  const targetPct = parseFloat(document.getElementById('s2a').value) / 10;
+  document.getElementById('v2a').textContent = targetPct.toFixed(2);
+
+  const pad = { l: 56, r: 16, t: 18, b: 36 };
+  const AvMin = 100, AvMax = 1e7; // 40 dB to 140 dB
+  const errMin = 1e-7, errMax = 1;
+
+  const xDec = [100,1e3,1e4,1e5,1e6,1e7];
+  const xTicks = xDec.map(v => ({ px: Math.log10(v/AvMin)/Math.log10(AvMax/AvMin), label: v>=1e6?'1M':v>=1e3?(v/1e3).toFixed(0)+'k':v }));
+  const yDec = [1e-7,1e-6,1e-5,1e-4,1e-3,1e-2,0.1,1];
+  const yTicks = yDec.map(v => ({ py: Math.log10(v/errMin)/Math.log10(errMax/errMin), label: v>=0.1?v*100+'%':v>=1e-3?(v*100).toFixed(2)+'%':v>=1e-5?(v*100).toFixed(4)+'%':(v*1e6).toFixed(0)+'µ%' }));
+
+  const { pw, ph } = drawAxes(ctx, w, h, pad, 'Avol DC (V/V)', 'Gain Error', xTicks, yTicks);
+
+  const xp = av => pad.l + Math.log10(av/AvMin)/Math.log10(AvMax/AvMin) * pw;
+  const yp = err => pad.t + ph - Math.log10(Math.max(err,errMin)/errMin)/Math.log10(errMax/errMin) * ph;
+
+  // Target error line
+  const targetErrAbs = parseFloat(document.getElementById('s2a').value) / 10000;
+  ctx.strokeStyle = css('--accent3'); ctx.lineWidth = 1.2; ctx.globalAlpha = 0.6; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(pad.l, yp(targetErrAbs)); ctx.lineTo(pad.l+pw, yp(targetErrAbs)); ctx.stroke();
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+  ctx.fillStyle = css('--accent3'); ctx.font = '9px system-ui'; ctx.textAlign = 'left';
+  ctx.fillText(targetPct.toFixed(2)+'% target', pad.l+4, yp(targetErrAbs)-4);
+
+  const curves = [
+    { Acl: 1,    color: '--accent'  },
+    { Acl: 10,   color: '--accent2' },
+    { Acl: 100,  color: '--accent3' },
+    { Acl: 1000, color: '--accent4' },
+  ];
+  curves.forEach(c => {
+    ctx.strokeStyle = css(c.color); ctx.lineWidth = 2;
+    ctx.beginPath(); let first = true;
+    for (let i = 0; i <= 300; i++) {
+      const Av = AvMin * Math.pow(AvMax/AvMin, i/300);
+      const T = Av / c.Acl;
+      const err = 1 / (1 + T);
+      const x = xp(Av), y = yp(err);
+      if (first) { ctx.moveTo(x,y); first=false; } else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    // label
+    const labelAv = AvMax * 0.7;
+    const T = labelAv / c.Acl;
+    const err = 1/(1+T);
+    ctx.fillStyle = css(c.color); ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'right';
+    ctx.fillText('Acl='+c.Acl, xp(AvMax)-2, yp(err)-3);
+  });
+}
+
+// ─── Plot 3: THD vs frequency ────────────────────────────────────────────────
+const p3 = setupCanvas('c3');
+function draw3() {
+  const { ctx, w, h } = p3.resize();
+  const THDol = parseFloat(document.getElementById('s3a').value) / 10;
+  const GBW = parseFloat(document.getElementById('s3b').value) * 1e6;
+  const Acl = parseFloat(document.getElementById('s3c').value);
+  document.getElementById('v3a').textContent = THDol.toFixed(1);
+  document.getElementById('v3b').textContent = document.getElementById('s3b').value;
+  document.getElementById('v3c').textContent = Acl;
+
+  const pad = { l: 56, r: 16, t: 18, b: 36 };
+  const fMin = 10, fMax = GBW * 2;
+  const fcl = GBW / Acl;
+  const THDmin = THDol * 1e-6, THDmax = THDol * 2;
+
+  const xDec = [10,100,1e3,1e4,1e5,1e6,1e7,1e8];
+  const xTicks = xDec.filter(f=>f>=fMin&&f<=fMax).map(f => {
+    const e = Math.round(Math.log10(f));
+    const labs = {1:'10',2:'100',3:'1k',4:'10k',5:'100k',6:'1M',7:'10M',8:'100M'};
+    return { px: Math.log10(f/fMin)/Math.log10(fMax/fMin), label: labs[e] || f };
+  });
+  const yDec = [1e-6,1e-5,1e-4,1e-3,1e-2,0.1,1,10,100];
+  const yTicks = yDec.filter(v=>v>=THDmin/10&&v<=THDmax*10).map(v => ({
+    py: Math.log10(v/THDmin)/Math.log10(THDmax/THDmin),
+    label: v>=1?(v.toFixed(0)+'%'):v>=0.01?(v*100).toFixed(0)+'%':(v*100).toFixed(3)+'%'
+  }));
+
+  const { pw, ph } = drawAxes(ctx, w, h, pad, 'Signal Frequency (Hz)', 'THD (%)', xTicks, yTicks);
+
+  const xp = fv => pad.l + Math.log10(fv/fMin)/Math.log10(fMax/fMin) * pw;
+  const yp = v => pad.t + ph - Math.log10(Math.max(v,THDmin)/THDmin)/Math.log10(THDmax/THDmin) * ph;
+
+  // Open-loop reference
+  ctx.strokeStyle = css('--accent2'); ctx.lineWidth = 1.5; ctx.globalAlpha = 0.5; ctx.setLineDash([5,4]);
+  ctx.beginPath(); ctx.moveTo(xp(fMin), yp(THDol)); ctx.lineTo(xp(fMax), yp(THDol)); ctx.stroke();
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+  ctx.fillStyle = css('--accent2'); ctx.font = '9px system-ui'; ctx.textAlign = 'left';
+  ctx.fillText('THD_ol = '+THDol.toFixed(1)+'%', pad.l+4, yp(THDol)-4);
+
+  // CL BW marker
+  ctx.strokeStyle = css('--accent3'); ctx.lineWidth = 1; ctx.globalAlpha = 0.6; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(xp(fcl), pad.t); ctx.lineTo(xp(fcl), pad.t+ph); ctx.stroke();
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+  ctx.fillStyle = css('--accent3'); ctx.font = '9px system-ui'; ctx.textAlign = 'left';
+  const fclStr = fcl>=1e6?(fcl/1e6).toFixed(1)+'M':fcl>=1e3?(fcl/1e3).toFixed(1)+'k':fcl.toFixed(0);
+  ctx.fillText('f_cl='+fclStr, xp(fcl)+3, pad.t+12);
+
+  // THD_cl curve: T(f) = GBW/(f*Acl), THD_cl = THDol/(1+T)
+  ctx.strokeStyle = css('--accent'); ctx.lineWidth = 2.5;
+  ctx.beginPath(); let first = true;
+  for (let i = 0; i <= 400; i++) {
+    const fv = fMin * Math.pow(fMax/fMin, i/400);
+    const T = GBW / (fv * Acl);
+    const thd = THDol / (1 + T);
+    const x = xp(fv), y = yp(thd);
+    if (first) { ctx.moveTo(x,y); first=false; } else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Annotation
+  const T_1kHz = GBW / (1e3 * Acl);
+  const THD_1kHz = THDol / (1 + T_1kHz);
+  ctx.fillStyle = css('--accent'); ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'left';
+  ctx.fillText(`THD @ 1kHz: ${(THD_1kHz).toExponential(2)}%  (T=${T_1kHz.toFixed(0)})`, pad.l+4, pad.t+14);
+}
+
+['s1a','s1b','s1c'].forEach(id => document.getElementById(id).addEventListener('input', draw1));
+['s2a'].forEach(id => document.getElementById(id).addEventListener('input', draw2));
+['s3a','s3b','s3c'].forEach(id => document.getElementById(id).addEventListener('input', draw3));
+
+window.addEventListener('resize', () => { draw1(); draw2(); draw3(); });
+draw1(); draw2(); draw3();
+</script>
+</body>
+</html>

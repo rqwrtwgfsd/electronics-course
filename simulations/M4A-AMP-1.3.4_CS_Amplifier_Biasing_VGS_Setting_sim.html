@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.3.4 — CS Biasing VGS Setting</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;gap:16px;align-items:baseline;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .warn{color:#cc4400;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:14px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.3.4</div>
+  <div class="topic">CS Biasing — VGS Setting, RS Stability, Vth Sensitivity</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>MOSFET & Supply</h3>
+      <label>VDD (V): <b id="vdd_lbl">12</b></label>
+      <input type="range" id="vdd" min="1.8" max="24" value="12" step="0.1">
+      <label>K (mA/V²): <b id="k_lbl">2.0</b></label>
+      <input type="range" id="k" min="0.1" max="20" value="2" step="0.1">
+      <label>Vth nominal (V): <b id="vth_lbl">1.5</b></label>
+      <input type="range" id="vth" min="0.3" max="5" value="1.5" step="0.05">
+      <label>Vth spread ±(V): <b id="dvth_lbl">0.30</b></label>
+      <input type="range" id="dvth" min="0" max="1" value="0.3" step="0.05">
+    </div>
+    <div class="cg">
+      <h3>Bias Network</h3>
+      <label>VG (V): <b id="vg_lbl">4.0</b></label>
+      <input type="range" id="vg" min="0" max="24" value="4" step="0.1">
+      <label>RS (Ω): <b id="rs_lbl">500</b></label>
+      <input type="range" id="rs" min="0" max="5000" value="500" step="50">
+      <label>RD (kΩ): <b id="rd_lbl">3.0</b></label>
+      <input type="range" id="rd" min="0.1" max="20" value="3" step="0.1">
+    </div>
+    <div class="cg">
+      <h3>DC Operating Point</h3>
+      <div class="rd">ID (nominal): <span id="r_id">—</span> mA</div>
+      <div class="rd">VGS: <span id="r_vgs">—</span> V</div>
+      <div class="rd">VDS: <span id="r_vds">—</span> V</div>
+      <div class="rd">Region: <span id="r_reg">—</span></div>
+      <div class="rd">gm: <span id="r_gm">—</span> mA/V</div>
+      <div class="rd">ID range (Vth spread): <span id="r_range">—</span> mA</div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_id">—</div><div class="l">ID (mA)</div></div>
+      <div class="met"><div class="v" id="m_vds">—</div><div class="l">VDS (V)</div></div>
+      <div class="met"><div class="v" id="m_gm">—</div><div class="l">gm (mA/V)</div></div>
+      <div class="met"><div class="v" id="m_spread">—</div><div class="l">ID spread (%)</div></div>
+    </div>
+    <div>
+      <div class="pl">ID vs VG — parametric over RS (shows bias stability)</div>
+      <canvas id="biasCanvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">Q-point on load line with Vth ± spread bands</div>
+      <canvas id="loadCanvas" height="180"></canvas>
+    </div>
+    <div>
+      <div class="pl">ID spread vs RS — showing feedback stabilization</div>
+      <canvas id="spreadCanvas" height="140"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+function solveBiasQ(vg,k,vth,rs){
+  // Quadratic: K*RS^2*ID^2 - (2K*RS*(vg-vth)+1)*ID + K*(vg-vth)^2 = 0
+  const A=k*rs*rs;
+  const B=-(2*k*rs*(vg-vth)+1);
+  const C=k*(vg-vth)*(vg-vth);
+  if(vg<=vth) return 0;
+  if(Math.abs(A)<1e-15) return Math.max(0,k*(vg-vth)*(vg-vth));
+  const disc=B*B-4*A*C;
+  if(disc<0) return 0;
+  const id1=(-B-Math.sqrt(disc))/(2*A);
+  const id2=(-B+Math.sqrt(disc))/(2*A);
+  const candidates=[id1,id2].filter(x=>x>=0);
+  if(candidates.length===0) return 0;
+  return Math.min(...candidates);
+}
+
+function update(){
+  const vdd=parseFloat(document.getElementById('vdd').value);
+  const k=parseFloat(document.getElementById('k').value)*1e-3;
+  const vth=parseFloat(document.getElementById('vth').value);
+  const dvth=parseFloat(document.getElementById('dvth').value);
+  const vg=parseFloat(document.getElementById('vg').value);
+  const rs=parseFloat(document.getElementById('rs').value);
+  const rd=parseFloat(document.getElementById('rd').value)*1e3;
+
+  document.getElementById('vdd_lbl').textContent=vdd.toFixed(1);
+  document.getElementById('k_lbl').textContent=(k*1e3).toFixed(1);
+  document.getElementById('vth_lbl').textContent=vth.toFixed(2);
+  document.getElementById('dvth_lbl').textContent=dvth.toFixed(2);
+  document.getElementById('vg_lbl').textContent=vg.toFixed(1);
+  document.getElementById('rs_lbl').textContent=rs.toFixed(0);
+  document.getElementById('rd_lbl').textContent=(rd/1e3).toFixed(1);
+
+  const id=solveBiasQ(vg,k,vth,rs);
+  const vs=id*rs;
+  const vgs=vg-vs;
+  const vds=vdd-id*(rd+rs);
+  const vov=vgs-vth;
+  const gm=vov>0?2*k*vov:0;
+  const region=id<=0?'Cutoff':(vds<vov?'⚠ TRIODE':'Saturation');
+
+  const id_lo=solveBiasQ(vg,k,vth+dvth,rs);
+  const id_hi=solveBiasQ(vg,k,vth-dvth,rs);
+  const spread=id>0?(id_hi-id_lo)/id*100:0;
+
+  document.getElementById('r_id').textContent=(id*1e3).toFixed(2);
+  document.getElementById('r_vgs').textContent=vgs.toFixed(2);
+  const reg_el=document.getElementById('r_reg');
+  reg_el.textContent=region;
+  reg_el.className=region.includes('TRIODE')?'warn':'';
+  document.getElementById('r_vds').textContent=vds.toFixed(2);
+  document.getElementById('r_gm').textContent=(gm*1e3).toFixed(2);
+  document.getElementById('r_range').textContent=(id_lo*1e3).toFixed(2)+' – '+(id_hi*1e3).toFixed(2);
+
+  document.getElementById('m_id').textContent=(id*1e3).toFixed(2);
+  document.getElementById('m_vds').textContent=vds.toFixed(2);
+  document.getElementById('m_gm').textContent=(gm*1e3).toFixed(2);
+  document.getElementById('m_spread').textContent=spread.toFixed(0)+'%';
+
+  drawBias(k,vth,rs,vg,vdd,rd);
+  drawLoad(vdd,k,vth,rs,rd,dvth,id,vgs,vds);
+  drawSpread(vg,k,vth,dvth,vdd,rd);
+}
+
+function drawBias(k,vth,rs,vg_cur,vdd,rd){
+  const canvas=document.getElementById('biasCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:42,r:15,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const VG_MAX=vdd;
+  const ID_MAX=solveBiasQ(VG_MAX,k,vth,0)*1e3*1.2||5;
+  function xOf(v){return pad.l+v/VG_MAX*pw;}
+  function yOf(id_mA){return pad.t+ph-Math.min(id_mA,ID_MAX)/ID_MAX*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const id=ID_MAX*i/4;
+    const y=yOf(id);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(id.toFixed(1),0,y+3);
+  }
+
+  const rsArr=[0,200,500,1000,2000];
+  const colors=['#cc0000','#cc6600',cs.getPropertyValue('--accent').trim(),'#006633','#888'];
+  rsArr.forEach((rs_i,idx)=>{
+    ctx.strokeStyle=colors[idx];ctx.lineWidth=1.5;
+    ctx.beginPath();
+    for(let px=0;px<=pw;px++){
+      const vg_i=px/pw*VG_MAX;
+      const id_i=solveBiasQ(vg_i,k,vth,rs_i)*1e3;
+      const y=yOf(id_i);
+      if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+    }
+    ctx.stroke();
+    ctx.fillStyle=colors[idx];ctx.font='8px Courier New';
+    ctx.fillText('RS='+(rs_i>=1000?(rs_i/1000).toFixed(0)+'kΩ':rs_i+'Ω'),W-70,14+idx*12);
+  });
+
+  // VG marker
+  ctx.strokeStyle='#ff8800';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(xOf(vg_cur),pad.t);ctx.lineTo(xOf(vg_cur),pad.t+ph);ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+  ctx.fillText('VG (V) →',W/2-20,H-1);
+  ctx.save();ctx.translate(10,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('ID (mA)',0,0);ctx.restore();
+}
+
+function drawLoad(vdd,k,vth,rs,rd,dvth,id_q,vgs_q,vds_q){
+  const canvas=document.getElementById('loadCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:42,r:15,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const VDS_MAX=vdd;
+  const ID_MAX=vdd/(rd+rs)*1e3*1.1||5;
+  function xOf(vds){return pad.l+vds/VDS_MAX*pw;}
+  function yOf(id_mA){return pad.t+ph-Math.min(id_mA,ID_MAX)/ID_MAX*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const id=ID_MAX*i/4;
+    const y=yOf(id);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(id.toFixed(1),0,y+3);
+  }
+
+  // MOSFET output curves for VGS ± spread
+  const vov_q=vgs_q-vth;
+  const vgsArr=[vgs_q-0.5,vgs_q-0.25,vgs_q,vgs_q+0.25,vgs_q+0.5].filter(v=>v>vth);
+  const colC=[cs.getPropertyValue('--accent').trim(),'#006633','#cc6600','#cc0000','#888'];
+  vgsArr.forEach((vgs_i,idx)=>{
+    const vov_i=vgs_i-vth;
+    ctx.strokeStyle=idx===Math.floor(vgsArr.length/2)?'#ff8800':colC[idx];
+    ctx.lineWidth=idx===Math.floor(vgsArr.length/2)?2:1;
+    ctx.beginPath();
+    for(let px=0;px<=pw;px++){
+      const vds=px/pw*VDS_MAX;
+      let id_mA=0;
+      if(vov_i>0){
+        if(vds<vov_i) id_mA=k*(2*vov_i*vds-vds*vds)*1e3;
+        else id_mA=k*vov_i*vov_i*1e3;
+      }
+      const y=yOf(id_mA);
+      if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+    }
+    ctx.stroke();
+  });
+
+  // Load line
+  ctx.strokeStyle='#cc0000';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(xOf(vdd),yOf(0));ctx.lineTo(xOf(0),yOf(vdd/(rd+rs)*1e3));ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Q-point
+  ctx.fillStyle='#ff8800';
+  ctx.beginPath();ctx.arc(xOf(vds_q),yOf(id_q*1e3),6,0,2*Math.PI);ctx.fill();
+
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+  ctx.fillText('VDS (V) →',W/2-20,H-1);
+  ctx.save();ctx.translate(10,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('ID (mA)',0,0);ctx.restore();
+  ctx.fillStyle='#ff8800';ctx.fillText('● Q',pad.l+5,pad.t+12);
+  ctx.fillStyle='#cc0000';ctx.fillText('-- Load',pad.l+35,pad.t+12);
+}
+
+function drawSpread(vg,k,vth,dvth,vdd,rd){
+  const canvas=document.getElementById('spreadCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:42,r:15,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const RS_MAX=3000;
+  const SPREAD_MAX=200;
+  function xOf(rs){return pad.l+rs/RS_MAX*pw;}
+  function yOf(s){return pad.t+ph-Math.min(s,SPREAD_MAX)/SPREAD_MAX*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [0,50,100,150,200].forEach(s=>{
+    const y=yOf(s);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(s,0,y+3);
+  });
+
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const rs=px/pw*RS_MAX;
+    const id_nom=solveBiasQ(vg,k,vth,rs);
+    const id_lo=solveBiasQ(vg,k,vth+dvth,rs);
+    const id_hi=solveBiasQ(vg,k,vth-dvth,rs);
+    const spread=id_nom>1e-9?(id_hi-id_lo)/id_nom*100:200;
+    const y=yOf(spread);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle='#888';ctx.lineWidth=0.8;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(pad.l,yOf(20));ctx.lineTo(pad.l+pw,yOf(20));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#888';ctx.font='9px Courier New';
+  ctx.fillText('20% target',pad.l+5,yOf(20)-3);
+
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+  ctx.fillText('RS (Ω) →',W/2-20,H-1);
+  ctx.save();ctx.translate(10,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('ID spread (%)',0,0);ctx.restore();
+}
+
+['vdd','k','vth','dvth','vg','rs','rd'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

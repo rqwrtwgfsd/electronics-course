@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.1.1 — What is Amplification</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #111111;
+    --panel: #f4f4f4;
+    --border: #cccccc;
+    --accent: #0066cc;
+    --red: #cc2200;
+    --green: #007700;
+    --grid: #dddddd;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a;
+      --fg: #eeeeee;
+      --panel: #2a2a2a;
+      --border: #444444;
+      --accent: #3399ff;
+      --red: #ff5533;
+      --green: #44cc44;
+      --grid: #333333;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--fg); font-family: 'Courier New', monospace; font-size: 13px; }
+  header { background: var(--accent); color: #fff; padding: 10px 16px; display: flex; align-items: baseline; gap: 16px; }
+  header .id { font-weight: bold; font-size: 14px; }
+  header .topic { font-size: 12px; opacity: 0.9; }
+  .main { display: grid; grid-template-columns: 260px 1fr; gap: 0; height: calc(100vh - 42px); }
+  .controls { background: var(--panel); border-right: 1px solid var(--border); padding: 14px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+  .ctrl-group { border: 1px solid var(--border); border-radius: 4px; padding: 10px; }
+  .ctrl-group h3 { font-size: 11px; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; letter-spacing: 0.05em; }
+  label { display: block; font-size: 11px; margin-bottom: 3px; color: var(--fg); }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .readout { background: var(--bg); border: 1px solid var(--border); border-radius: 3px; padding: 6px 8px; margin-top: 6px; font-size: 12px; }
+  .readout span { color: var(--accent); font-weight: bold; }
+  .clip-indicator { padding: 6px 10px; border-radius: 3px; text-align: center; font-size: 12px; font-weight: bold; margin-top: 6px; transition: background 0.2s; }
+  .clip-ok { background: #006600; color: #fff; }
+  .clip-warn { background: #cc6600; color: #fff; }
+  .clip-clip { background: #cc0000; color: #fff; }
+  .plots { padding: 14px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+  canvas { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; display: block; width: 100%; }
+  .plot-label { font-size: 11px; color: var(--accent); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .metrics-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .metric { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 8px; text-align: center; }
+  .metric .val { font-size: 18px; font-weight: bold; color: var(--accent); }
+  .metric .lbl { font-size: 10px; color: var(--fg); opacity: 0.7; margin-top: 2px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.1.1</div>
+  <div class="topic">What is Amplification — Interactive Gain Simulator</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="ctrl-group">
+      <h3>Input Signal</h3>
+      <label>Amplitude: <b id="vin_lbl">50 mV</b></label>
+      <input type="range" id="vin" min="5" max="300" value="50" step="5">
+      <label>Frequency: <b id="freq_lbl">1 kHz</b></label>
+      <input type="range" id="freq" min="100" max="20000" value="1000" step="100">
+    </div>
+    <div class="ctrl-group">
+      <h3>Amplifier</h3>
+      <label>Voltage Gain Av: <b id="av_lbl">20 V/V</b></label>
+      <input type="range" id="av" min="1" max="200" value="20" step="1">
+      <label>Q-Point VCE: <b id="qpt_lbl">6.0 V</b></label>
+      <input type="range" id="qpt" min="1" max="11" value="6" step="0.5">
+      <label>Supply VCC: <b>12 V</b></label>
+      <label>Output Impedance Zout: <b id="zout_lbl">2 kΩ</b></label>
+      <input type="range" id="zout" min="100" max="20000" value="2000" step="100">
+      <label>Load RL: <b id="rl_lbl">10 kΩ</b></label>
+      <input type="range" id="rl" min="100" max="100000" value="10000" step="100">
+    </div>
+    <div class="ctrl-group">
+      <h3>Status</h3>
+      <div class="readout">Av open-circuit: <span id="av_oc">20.0</span> V/V</div>
+      <div class="readout">Av loaded: <span id="av_loaded">18.2</span> V/V</div>
+      <div class="readout">Av: <span id="av_db">26.2</span> dB</div>
+      <div class="readout">Vout peak: <span id="vout_pk">0.91</span> V</div>
+      <div class="readout">Headroom +: <span id="hr_pos">6.0</span> V</div>
+      <div class="readout">Headroom −: <span id="hr_neg">5.8</span> V</div>
+      <div id="clip_ind" class="clip-indicator clip-ok">NO CLIPPING</div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="metrics-row">
+      <div class="metric"><div class="val" id="m_av">20</div><div class="lbl">Av (V/V)</div></div>
+      <div class="metric"><div class="val" id="m_db">26.0</div><div class="lbl">Gain (dB)</div></div>
+      <div class="metric"><div class="val" id="m_vout">0.91</div><div class="lbl">Vout pk (V)</div></div>
+      <div class="metric"><div class="val" id="m_clip">OK</div><div class="lbl">Clip Status</div></div>
+    </div>
+    <div>
+      <div class="plot-label">Input Signal (blue) vs Output Signal (orange) — time domain</div>
+      <canvas id="waveCanvas" height="220"></canvas>
+    </div>
+    <div>
+      <div class="plot-label">Gain vs Load Resistance — output impedance effect</div>
+      <canvas id="gainCanvas" height="180"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+const VCC = 12;
+const VSAT = 0.2;
+
+function getParams() {
+  return {
+    vin: parseFloat(document.getElementById('vin').value) / 1000,
+    freq: parseFloat(document.getElementById('freq').value),
+    av: parseFloat(document.getElementById('av').value),
+    qpt: parseFloat(document.getElementById('qpt').value),
+    zout: parseFloat(document.getElementById('zout').value),
+    rl: parseFloat(document.getElementById('rl').value)
+  };
+}
+
+function updateLabels(p) {
+  document.getElementById('vin_lbl').textContent = p.vin >= 0.1 ? (p.vin*1000).toFixed(0)+' mV' : (p.vin*1000).toFixed(1)+' mV';
+  document.getElementById('freq_lbl').textContent = p.freq >= 1000 ? (p.freq/1000).toFixed(1)+' kHz' : p.freq+' Hz';
+  document.getElementById('av_lbl').textContent = p.av.toFixed(0)+' V/V';
+  document.getElementById('qpt_lbl').textContent = p.qpt.toFixed(1)+' V';
+  document.getElementById('zout_lbl').textContent = p.zout >= 1000 ? (p.zout/1000).toFixed(1)+' kΩ' : p.zout+' Ω';
+  document.getElementById('rl_lbl').textContent = p.rl >= 1000 ? (p.rl/1000).toFixed(1)+' kΩ' : p.rl+' Ω';
+}
+
+function computeGains(p) {
+  const av_oc = p.av;
+  const av_loaded = av_oc * p.rl / (p.rl + p.zout);
+  const vout_pk = av_loaded * p.vin;
+  const hr_pos = VCC - p.qpt;
+  const hr_neg = p.qpt - VSAT;
+  const clipping = vout_pk > hr_pos || vout_pk > hr_neg;
+  const severe = vout_pk > Math.max(hr_pos, hr_neg) * 1.5;
+  return { av_oc, av_loaded, vout_pk, hr_pos, hr_neg, clipping, severe };
+}
+
+function drawWaveform(p, g) {
+  const canvas = document.getElementById('waveCanvas');
+  const W = canvas.clientWidth || 700;
+  canvas.width = W;
+  const H = canvas.height;
+  const ctx = canvas.getContext('2d');
+  const style = getComputedStyle(document.documentElement);
+  const bg = style.getPropertyValue('--bg').trim() || '#fff';
+  const grid = style.getPropertyValue('--grid').trim() || '#ddd';
+  const fg = style.getPropertyValue('--fg').trim() || '#111';
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = grid;
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 8; i++) {
+    const y = (i / 8) * H;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  for (let i = 0; i <= 10; i++) {
+    const x = (i / 10) * W;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+
+  // Center line
+  ctx.strokeStyle = fg; ctx.lineWidth = 0.5; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Scale: show 2 cycles, max voltage = VCC
+  const cycles = 2;
+  const scaleV = VCC / (H / 2 - 10);
+
+  function yOf(v) { return H/2 - v / scaleV; }
+
+  // Clipping lines
+  const hr_pos = VCC - p.qpt;
+  const hr_neg = p.qpt - VSAT;
+  ctx.strokeStyle = '#cc4400'; ctx.lineWidth = 1; ctx.setLineDash([6,3]);
+  ctx.beginPath(); ctx.moveTo(0, yOf(hr_pos)); ctx.lineTo(W, yOf(hr_pos)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, yOf(-hr_neg)); ctx.lineTo(W, yOf(-hr_neg)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Label clip lines
+  ctx.fillStyle = '#cc4400'; ctx.font = '10px Courier New';
+  ctx.fillText('+clip '+hr_pos.toFixed(1)+'V', 4, yOf(hr_pos) - 3);
+  ctx.fillText('-clip '+hr_neg.toFixed(1)+'V', 4, yOf(-hr_neg) + 12);
+
+  // Input waveform
+  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let px = 0; px < W; px++) {
+    const t = (px / W) * cycles;
+    const v = p.vin * Math.sin(2 * Math.PI * t);
+    const y = yOf(v);
+    if (px === 0) ctx.moveTo(px, y); else ctx.lineTo(px, y);
+  }
+  ctx.stroke();
+
+  // Output waveform (with clipping)
+  ctx.strokeStyle = '#ff8800'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let px = 0; px < W; px++) {
+    const t = (px / W) * cycles;
+    let v = g.av_loaded * p.vin * Math.sin(2 * Math.PI * t);
+    // CE amplifier: output is 180° phase inverted, apply inversion
+    v = -v;
+    // Apply clipping
+    v = Math.min(v, hr_pos);
+    v = Math.max(v, -hr_neg);
+    const y = yOf(v);
+    if (px === 0) ctx.moveTo(px, y); else ctx.lineTo(px, y);
+  }
+  ctx.stroke();
+
+  // Legend
+  ctx.font = '11px Courier New';
+  ctx.fillStyle = '#0066cc';
+  ctx.fillText('── Input ×1', W - 150, 18);
+  ctx.fillStyle = '#ff8800';
+  ctx.fillText('── Output (inv)', W - 150, 32);
+}
+
+function drawGainVsLoad(p) {
+  const canvas = document.getElementById('gainCanvas');
+  const W = canvas.clientWidth || 700;
+  canvas.width = W;
+  const H = canvas.height;
+  const ctx = canvas.getContext('2d');
+  const style = getComputedStyle(document.documentElement);
+  const bg = style.getPropertyValue('--bg').trim() || '#fff';
+  const grid = style.getPropertyValue('--grid').trim() || '#ddd';
+  const fg = style.getPropertyValue('--fg').trim() || '#111';
+  const accent = style.getPropertyValue('--accent').trim() || '#0066cc';
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  // Log scale: RL from 100 Ω to 1 MΩ
+  const RL_MIN = 100, RL_MAX = 1e6;
+  const AV_MAX = p.av;
+
+  function xOf(rl) { return (Math.log10(rl) - Math.log10(RL_MIN)) / (Math.log10(RL_MAX) - Math.log10(RL_MIN)) * (W - 60) + 30; }
+  function yOf(av) { return H - 20 - (av / AV_MAX) * (H - 40); }
+
+  // Grid
+  ctx.strokeStyle = grid; ctx.lineWidth = 0.5;
+  [100, 1000, 10000, 100000, 1000000].forEach(rl => {
+    const x = xOf(rl);
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H - 20); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '9px Courier New';
+    const lbl = rl >= 1000 ? (rl/1000)+'k' : rl;
+    ctx.fillText(lbl+'Ω', x - 12, H - 6);
+  });
+  [0, 0.25, 0.5, 0.75, 1.0].forEach(frac => {
+    const av = frac * AV_MAX;
+    const y = yOf(av);
+    ctx.beginPath(); ctx.moveTo(30, y); ctx.lineTo(W, y); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '9px Courier New';
+    ctx.fillText(av.toFixed(0), 2, y + 3);
+  });
+
+  // Curve
+  ctx.strokeStyle = accent; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let px = 30; px < W; px++) {
+    const frac = (px - 30) / (W - 60);
+    const logrl = Math.log10(RL_MIN) + frac * (Math.log10(RL_MAX) - Math.log10(RL_MIN));
+    const rl = Math.pow(10, logrl);
+    const av = p.av * rl / (rl + p.zout);
+    const y = yOf(av);
+    if (px === 30) ctx.moveTo(px, y); else ctx.lineTo(px, y);
+  }
+  ctx.stroke();
+
+  // Current RL marker
+  const xCur = xOf(p.rl);
+  const avCur = p.av * p.rl / (p.rl + p.zout);
+  const yCur = yOf(avCur);
+  ctx.fillStyle = '#ff8800';
+  ctx.beginPath(); ctx.arc(xCur, yCur, 5, 0, 2*Math.PI); ctx.fill();
+  ctx.fillStyle = fg; ctx.font = '10px Courier New';
+  ctx.fillText('Av='+avCur.toFixed(1), xCur + 7, yCur - 4);
+
+  // Zout marker line
+  const xZout = xOf(p.zout);
+  ctx.strokeStyle = '#cc2200'; ctx.lineWidth = 1; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(xZout, 0); ctx.lineTo(xZout, H-20); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#cc2200'; ctx.font = '10px Courier New';
+  ctx.fillText('Zout', xZout + 3, 14);
+
+  // Axis labels
+  ctx.fillStyle = fg; ctx.font = '10px Courier New';
+  ctx.fillText('Load Resistance →', W/2 - 50, H - 1);
+  ctx.save(); ctx.translate(12, H/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('Av (V/V)', -25, 0); ctx.restore();
+}
+
+function update() {
+  const p = getParams();
+  updateLabels(p);
+  const g = computeGains(p);
+
+  document.getElementById('av_oc').textContent = g.av_oc.toFixed(1);
+  document.getElementById('av_loaded').textContent = g.av_loaded.toFixed(2);
+  document.getElementById('av_db').textContent = (20 * Math.log10(g.av_loaded)).toFixed(1);
+  document.getElementById('vout_pk').textContent = g.vout_pk.toFixed(3);
+  document.getElementById('hr_pos').textContent = g.hr_pos.toFixed(1);
+  document.getElementById('hr_neg').textContent = g.hr_neg.toFixed(1);
+
+  const clip_ind = document.getElementById('clip_ind');
+  const m_clip = document.getElementById('m_clip');
+  if (g.severe) {
+    clip_ind.textContent = 'SEVERE CLIPPING'; clip_ind.className = 'clip-indicator clip-clip';
+    m_clip.textContent = 'CLIP';
+  } else if (g.clipping) {
+    clip_ind.textContent = 'CLIPPING'; clip_ind.className = 'clip-indicator clip-warn';
+    m_clip.textContent = 'CLIP';
+  } else {
+    clip_ind.textContent = 'NO CLIPPING'; clip_ind.className = 'clip-indicator clip-ok';
+    m_clip.textContent = 'OK';
+  }
+
+  document.getElementById('m_av').textContent = g.av_loaded.toFixed(1);
+  document.getElementById('m_db').textContent = (20 * Math.log10(g.av_loaded)).toFixed(1);
+  document.getElementById('m_vout').textContent = g.vout_pk.toFixed(3);
+
+  drawWaveform(p, g);
+  drawGainVsLoad(p);
+}
+
+['vin','freq','av','qpt','zout','rl'].forEach(id => {
+  document.getElementById(id).addEventListener('input', update);
+});
+
+window.addEventListener('resize', update);
+update();
+</script>
+</body>
+</html>

@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-L-2.5.3 — Optimize: Switching Optimization</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+h1 { color: #0066cc; font-size: 1.3em; margin-bottom: 4px; }
+.subtitle { color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }
+.layout { display: flex; gap: 20px; flex-wrap: wrap; }
+.panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+.controls { width: 280px; flex-shrink: 0; }
+.viz { flex: 1; min-width: 360px; }
+label { display: block; color: #8b949e; font-size: 0.8em; margin-bottom: 4px; margin-top: 12px; }
+input[type=range] { width: 100%; accent-color: #0066cc; }
+.val { color: #0066cc; font-weight: bold; }
+canvas { background: #0d1117; border-radius: 6px; display: block; }
+.readouts { margin-top: 14px; }
+.readout-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #21262d; font-size: 0.82em; }
+.readout-label { color: #8b949e; }
+.readout-val { color: #39d353; font-weight: bold; font-family: monospace; }
+.readout-val.warn { color: #f85149; }
+.eq { background: #21262d; border-left: 3px solid #0066cc; padding: 10px 12px; border-radius: 4px; margin-top: 14px; font-family: monospace; font-size: 0.82em; color: #a5d6ff; }
+@media (prefers-color-scheme: light) {
+  body { background: #f6f8fa; color: #24292f; }
+  .panel { background: #fff; border-color: #d0d7de; }
+  canvas { background: #f6f8fa; }
+  .eq { background: #eef2ff; }
+}
+</style>
+</head>
+<body>
+<h1>P2-L-2.5.3 — Optimize: Switching Optimization</h1>
+<div class="subtitle">ΔI vs L · L×f = constant for fixed ripple · CCM/DCM boundary · ripple % vs inductor size trade-off</div>
+<div class="layout">
+  <div class="panel controls">
+    <label>Output Voltage V_out (V): <span class="val" id="voutLbl">5 V</span></label>
+    <input type="range" id="voutSlider" min="1" max="48" value="5" step="1">
+    <label>Input Voltage V_in (V): <span class="val" id="vinLbl">12 V</span></label>
+    <input type="range" id="vinSlider" min="3" max="60" value="12" step="1">
+    <label>Load Current I_out (A): <span class="val" id="ioutLbl">1.0 A</span></label>
+    <input type="range" id="ioutSlider" min="1" max="100" value="10" step="1">
+    <label>Inductance L (µH): <span class="val" id="lLbl">22 µH</span></label>
+    <input type="range" id="lSlider" min="1" max="500" value="22" step="1">
+    <label>Switching Frequency f_sw (kHz): <span class="val" id="fLbl">200 kHz</span></label>
+    <input type="range" id="fSlider" min="20" max="2000" value="200" step="20">
+    <div class="readouts">
+      <div class="readout-row"><span class="readout-label">Duty Cycle D</span><span class="readout-val" id="duty">—</span></div>
+      <div class="readout-row"><span class="readout-label">Ripple ΔI</span><span class="readout-val" id="dI">—</span></div>
+      <div class="readout-row"><span class="readout-label">Ripple %</span><span class="readout-val" id="ripplePct">—</span></div>
+      <div class="readout-row"><span class="readout-label">L_crit for CCM</span><span class="readout-val" id="lcrit">—</span></div>
+      <div class="readout-row"><span class="readout-label">Mode</span><span class="readout-val" id="mode">—</span></div>
+      <div class="readout-row"><span class="readout-label">L×f product</span><span class="readout-val" id="lf">—</span></div>
+    </div>
+    <div class="eq">ΔI = V_out×(1−D) / (L×f)<br>L_crit = V_out×(1−D) / (2×I_out×f)<br>L×f = const → same ΔI<br>2× f → ½ L for same ripple</div>
+  </div>
+  <div class="panel viz">
+    <canvas id="cv" width="580" height="420"></canvas>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const W = 580, H = 420;
+
+function getP() {
+  const Vout = parseFloat(document.getElementById('voutSlider').value);
+  const Vin = Math.max(parseFloat(document.getElementById('vinSlider').value), Vout + 0.5);
+  const Iout = parseFloat(document.getElementById('ioutSlider').value) / 10;
+  const L = parseFloat(document.getElementById('lSlider').value) * 1e-6;
+  const f = parseFloat(document.getElementById('fSlider').value) * 1e3;
+  return { Vout, Vin, Iout, L, f };
+}
+
+function fmtA(a) {
+  if (Math.abs(a) >= 1) return a.toFixed(3) + ' A';
+  return (a * 1000).toFixed(1) + ' mA';
+}
+function fmtL(l) {
+  if (l >= 1e-3) return (l * 1000).toFixed(1) + ' mH';
+  if (l >= 1e-6) return (l * 1e6).toFixed(1) + ' µH';
+  return (l * 1e9).toFixed(0) + ' nH';
+}
+
+function draw() {
+  const p = getP();
+  const D = p.Vout / p.Vin;
+  const dI = p.Vout * (1 - D) / (p.L * p.f);
+  const Lcrit = p.Vout * (1 - D) / (2 * p.Iout * p.f);
+  const inCCM = p.L >= Lcrit;
+  const ripplePct = (dI / p.Iout) * 100;
+  const LF = p.L * p.f;
+
+  document.getElementById('voutLbl').textContent = p.Vout.toFixed(0) + ' V';
+  document.getElementById('vinLbl').textContent = p.Vin.toFixed(0) + ' V';
+  document.getElementById('ioutLbl').textContent = p.Iout.toFixed(1) + ' A';
+  document.getElementById('lLbl').textContent = fmtL(p.L);
+  document.getElementById('fLbl').textContent = (p.f / 1e3).toFixed(0) + ' kHz';
+  document.getElementById('duty').textContent = (D * 100).toFixed(1) + '%';
+  document.getElementById('dI').textContent = fmtA(dI);
+  const rippleEl = document.getElementById('ripplePct');
+  rippleEl.textContent = ripplePct.toFixed(1) + '%';
+  rippleEl.className = 'readout-val' + (ripplePct > 40 ? ' warn' : '');
+  document.getElementById('lcrit').textContent = fmtL(Lcrit);
+  const modeEl = document.getElementById('mode');
+  modeEl.textContent = inCCM ? 'CCM' : 'DCM';
+  modeEl.style.color = inCCM ? '#39d353' : '#f85149';
+  document.getElementById('lf').textContent = (LF * 1e6).toFixed(0) + ' µH·Hz';
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Two plots: Left = ΔI vs L (sweep L), Right = ΔI vs f (sweep f)
+  const pad = { l: 60, r: 20, t: 40, b: 45 };
+  const pw = W - pad.l - pad.r;
+  const midX = pad.l + pw / 2 + 15;
+
+  const leftW = midX - pad.l - 20;
+  const rightW = pad.l + pw - midX - 10;
+  const ph = H - pad.t - pad.b;
+
+  // === LEFT: ΔI vs L ===
+  const Lmin = 1e-6, Lmax = 500e-6;
+  const dI_at_Lmin = p.Vout * (1 - D) / (Lmin * p.f);
+  const dI_at_Lmax = p.Vout * (1 - D) / (Lmax * p.f);
+  const dImax_L = Math.min(dI_at_Lmin * 1.1, p.Iout * 4);
+
+  function lx(L_val) { return pad.l + (Math.log10(L_val / Lmin) / Math.log10(Lmax / Lmin)) * leftW; }
+  function lty(dIv) { return pad.t + ph - (Math.min(dIv, dImax_L) / dImax_L) * ph; }
+
+  // Grid
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let g = 0; g <= 4; g++) {
+    const dIv = dImax_L * g / 4;
+    const yi = lty(dIv);
+    ctx.beginPath(); ctx.moveTo(pad.l, yi); ctx.lineTo(pad.l + leftW, yi); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(fmtA(dIv), pad.l - 3, yi + 4);
+  }
+  // X labels
+  [1e-6, 10e-6, 100e-6, 500e-6].forEach(Lv => {
+    const xi = lx(Lv);
+    ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(xi, pad.t); ctx.lineTo(xi, pad.t + ph); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(fmtL(Lv), xi, pad.t + ph + 16);
+  });
+
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t + ph); ctx.lineTo(pad.l + leftW, pad.t + ph); ctx.stroke();
+
+  // 30% ripple guideline
+  const dI_30pct = p.Iout * 0.3;
+  if (dI_30pct < dImax_L) {
+    ctx.strokeStyle = '#e3b341'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(pad.l, lty(dI_30pct)); ctx.lineTo(pad.l + leftW, lty(dI_30pct)); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#e3b341'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('30% target', pad.l + 3, lty(dI_30pct) - 4);
+  }
+
+  // Curve
+  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let px = 0; px <= leftW; px++) {
+    const Lv = Lmin * Math.pow(Lmax / Lmin, px / leftW);
+    const dIv = p.Vout * (1 - D) / (Lv * p.f);
+    const yi = lty(dIv);
+    if (px === 0) ctx.moveTo(pad.l + px, yi); else ctx.lineTo(pad.l + px, yi);
+  }
+  ctx.stroke();
+
+  // L_crit line
+  if (Lcrit >= Lmin && Lcrit <= Lmax) {
+    ctx.strokeStyle = '#ff7b72'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(lx(Lcrit), pad.t); ctx.lineTo(lx(Lcrit), pad.t + ph); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#ff7b72'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('L_crit', lx(Lcrit), pad.t + 14);
+    ctx.fillText(fmtL(Lcrit), lx(Lcrit), pad.t + 24);
+  }
+
+  // Current operating point
+  ctx.fillStyle = '#ff7b72';
+  ctx.beginPath(); ctx.arc(lx(p.L), lty(dI), 6, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ff7b72'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('▼ ' + fmtL(p.L) + ', ΔI=' + fmtA(dI), lx(p.L) - 6, lty(dI) - 8);
+
+  ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('ΔI vs Inductance', pad.l + leftW / 2, 18);
+  ctx.fillStyle = '#8b949e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Inductance L (log)', pad.l + leftW / 2, H - 10);
+  ctx.save(); ctx.translate(12, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = '#8b949e'; ctx.fillText('Ripple ΔI', 0, 0); ctx.restore();
+
+  // === RIGHT: ΔI vs f (sweep frequency) ===
+  const fMin = 20e3, fMax = 2000e3;
+  const dI_at_fmin = p.Vout * (1 - D) / (p.L * fMin);
+  const dImax_f = Math.min(dI_at_fmin * 1.1, p.Iout * 4);
+
+  function fx(fv) { return midX + (Math.log10(fv / fMin) / Math.log10(fMax / fMin)) * rightW; }
+  function fty(dIv) { return pad.t + ph - (Math.min(dIv, dImax_f) / dImax_f) * ph; }
+
+  // Grid right
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let g = 0; g <= 4; g++) {
+    const dIv = dImax_f * g / 4;
+    const yi = fty(dIv);
+    ctx.beginPath(); ctx.moveTo(midX, yi); ctx.lineTo(midX + rightW, yi); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(fmtA(dIv), midX - 3, yi + 4);
+  }
+  [20e3, 100e3, 500e3, 2000e3].forEach(fv => {
+    const xi = fx(fv);
+    ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(xi, pad.t); ctx.lineTo(xi, pad.t + ph); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
+    const fLabel = fv >= 1e6 ? (fv / 1e6).toFixed(1) + 'M' : (fv / 1e3).toFixed(0) + 'k';
+    ctx.fillText(fLabel, xi, pad.t + ph + 16);
+  });
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(midX, pad.t); ctx.lineTo(midX, pad.t + ph); ctx.lineTo(midX + rightW, pad.t + ph); ctx.stroke();
+
+  // 30% guideline
+  const dI_30pct_f = p.Iout * 0.3;
+  if (dI_30pct_f < dImax_f) {
+    ctx.strokeStyle = '#e3b341'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(midX, fty(dI_30pct_f)); ctx.lineTo(midX + rightW, fty(dI_30pct_f)); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Curve: ΔI = Vout*(1-D) / (L*f) — decreases with f
+  ctx.strokeStyle = '#39d353'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let px = 0; px <= rightW; px++) {
+    const fv = fMin * Math.pow(fMax / fMin, px / rightW);
+    const dIv = p.Vout * (1 - D) / (p.L * fv);
+    const yi = fty(dIv);
+    if (px === 0) ctx.moveTo(midX + px, yi); else ctx.lineTo(midX + px, yi);
+  }
+  ctx.stroke();
+
+  // Current operating point
+  ctx.fillStyle = '#ff7b72';
+  ctx.beginPath(); ctx.arc(fx(p.f), fty(dI), 6, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ff7b72'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText((p.f / 1e3).toFixed(0) + ' kHz', fx(p.f) + 8, fty(dI) - 4);
+
+  // L×f constant curve — same ΔI at different L/f combos
+  ctx.strokeStyle = '#a5d6ff'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 3]);
+  const LF_target = p.L * p.f;
+  ctx.beginPath();
+  let lf_started = false;
+  for (let px = 0; px <= rightW; px++) {
+    const fv2 = fMin * Math.pow(fMax / fMin, px / rightW);
+    const L_needed = LF_target / fv2;
+    if (L_needed >= Lmin && L_needed <= Lmax) {
+      const dIv2 = p.Vout * (1 - D) / (L_needed * fv2);
+      const yi2 = fty(dIv2);
+      if (!lf_started) { ctx.moveTo(midX + px, yi2); lf_started = true; }
+      else ctx.lineTo(midX + px, yi2);
+    }
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#a5d6ff'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('L×f = const (same ΔI)', midX + rightW - 4, fty(dImax_f * 0.5));
+
+  ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('ΔI vs Frequency', midX + rightW / 2, 18);
+  ctx.fillStyle = '#8b949e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Frequency f_sw (log)', midX + rightW / 2, H - 10);
+
+  // Mode indicator on canvas
+  ctx.fillStyle = inCCM ? '#39d353' : '#f85149';
+  ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText(inCCM ? 'CCM — ' + ripplePct.toFixed(0) + '% ripple' : 'DCM — reduce L or increase f', W / 2, H - pad.b + 20);
+}
+
+['voutSlider', 'vinSlider', 'ioutSlider', 'lSlider', 'fSlider'].forEach(id =>
+  document.getElementById(id).addEventListener('input', draw));
+draw();
+</script>
+</body>
+</html>

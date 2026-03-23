@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-WI-5.2.2 Estimate Time Constant</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:12px;padding:12px}
+canvas{background:#0a0a1a;border:1px solid #333;cursor:crosshair}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:220px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.btn{display:block;width:100%;margin-top:5px;padding:6px;background:#1a1a3a;border:1px solid #0066cc;color:#0066cc;cursor:pointer;font-family:inherit;font-size:11px;border-radius:3px;text-align:left}
+.btn.active{background:#0066cc;color:#fff}
+.accuracy{font-size:11px;margin-top:4px}
+.good{color:#00ff88}.bad{color:#ff4444}.ok{color:#ffaa00}
+.formula{color:#ffaa00;font-size:11px;margin-top:8px;line-height:1.6}
+</style>
+</head>
+<body>
+<h1>P2-WI-5.2.2 — τ Estimation: Three Methods</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="620" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>True Circuit</h2>
+<label>True τ (ms)
+<input type="range" id="tau" min="0.3" max="5" step="0.1" value="2">
+<div class="readout" id="tau_true">τ_true = 2.0 ms</div>
+</label>
+<label>V_final (V)
+<input type="range" id="vf" min="2" max="10" step="0.5" value="5">
+<div class="readout" id="vf_v">V_final = 5.0 V</div>
+</label>
+<h2 style="margin-top:10px">Method Overlays</h2>
+<button class="btn active" id="btn_632" onclick="toggleM('m632')">63.2% Crossing</button>
+<button class="btn" id="btn_tan" onclick="toggleM('mtan')">t=0 Tangent</button>
+<button class="btn" id="btn_5tau" onclick="toggleM('m5tau')">5τ Settling</button>
+<h2 style="margin-top:10px">Your Estimate</h2>
+<label>Drag cursor or type τ estimate (ms)
+<input type="range" id="est" min="0.1" max="8" step="0.05" value="2">
+<div class="readout" id="est_v">τ_est = 2.00 ms</div>
+</label>
+<div id="acc_msg" class="accuracy"></div>
+<h2 style="margin-top:10px">Measured Values</h2>
+<div class="readout" id="r_v63">63.2% level: —</div>
+<div class="readout" id="r_slope">Tangent slope: —</div>
+<div class="readout" id="r_settle">5τ time: —</div>
+<div class="formula">Method 1: read t at 0.632×V_f<br>Method 2: tangent hits V_f at t=τ<br>Method 3: settled at t=5τ</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let tau=2,vf=5,est=2,methods={m632:true,mtan:false,m5tau:false};
+const W=620,H=380,PAD={l:60,r:20,t:20,b:40};
+const CW=W-PAD.l-PAD.r,CH=H-PAD.t-PAD.b;
+
+function toggleM(m){methods[m]=!methods[m];const ids={m632:'btn_632',mtan:'btn_tan',m5tau:'btn_5tau'};document.getElementById(ids[m]).classList.toggle('active',methods[m]);draw();}
+document.getElementById('tau').oninput=function(){tau=parseFloat(this.value);document.getElementById('tau_true').textContent='τ_true = '+tau.toFixed(1)+' ms';updateR();draw();};
+document.getElementById('vf').oninput=function(){vf=parseFloat(this.value);document.getElementById('vf_v').textContent='V_final = '+vf.toFixed(1)+' V';updateR();draw();};
+document.getElementById('est').oninput=function(){est=parseFloat(this.value);document.getElementById('est_v').textContent='τ_est = '+est.toFixed(2)+' ms';updateAcc();draw();};
+
+function updateAcc(){
+  const err=(est-tau)/tau*100;
+  const d=document.getElementById('acc_msg');
+  if(Math.abs(err)<2){d.className='accuracy good';d.textContent='Excellent! Error: '+err.toFixed(1)+'%';}
+  else if(Math.abs(err)<10){d.className='accuracy ok';d.textContent='Close. Error: '+err.toFixed(1)+'%';}
+  else{d.className='accuracy bad';d.textContent='Off. Error: '+err.toFixed(1)+'%';}
+}
+function updateR(){
+  document.getElementById('r_v63').textContent='63.2% level: '+(0.632*vf).toFixed(3)+' V';
+  document.getElementById('r_slope').textContent='Slope at t=0: '+(vf/tau).toFixed(1)+' V/ms';
+  document.getElementById('r_settle').textContent='5τ = '+(5*tau).toFixed(1)+' ms';
+  updateAcc();
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const tmax=8*tau;
+  function toPx(t,v){return[PAD.l+CW*(t/tmax),PAD.t+CH*(1-v/(vf*1.1))];}
+  // Grid
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=8;i++){const x=PAD.l+CW*(i/8);ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=PAD.t+CH*(i/5);ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+CH);ctx.moveTo(PAD.l,PAD.t+CH);ctx.lineTo(PAD.l+CW,PAD.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=8;i++){const t=tmax*i/8;const x=PAD.l+CW*(i/8);ctx.fillText(t.toFixed(1)+'ms',x,PAD.t+CH+14);}
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){const v=vf*1.1*(1-i/5);const y=PAD.t+CH*(i/5);ctx.fillText(v.toFixed(2)+'V',PAD.l-4,y+4);}
+  // V_final line
+  const[,yvf]=toPx(0,vf);
+  ctx.strokeStyle='#333';ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(PAD.l,yvf);ctx.lineTo(PAD.l+CW,yvf);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#555';ctx.font='10px Courier New';ctx.textAlign='left';ctx.fillText('V_final='+vf+'V',PAD.l+4,yvf-4);
+
+  // True waveform (unlabeled — student must measure)
+  ctx.strokeStyle='#00ff88';ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=800;i++){
+    const t=tmax*i/800;
+    const v=vf*(1-Math.exp(-t/tau));
+    const[x,y]=toPx(t,v);
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Method 1: 63.2%
+  if(methods.m632){
+    const v63=0.632*vf;
+    const[xt,yt]=toPx(tau,v63);
+    ctx.strokeStyle='#ff6600';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+    ctx.beginPath();ctx.moveTo(PAD.l,yt);ctx.lineTo(xt,yt);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(xt,yt);ctx.lineTo(xt,PAD.t+CH);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#ff6600';ctx.beginPath();ctx.arc(xt,yt,5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#ff6600';ctx.font='10px Courier New';ctx.textAlign='left';
+    ctx.fillText('63.2%: τ='+tau.toFixed(1)+'ms',xt+6,yt-4);
+  }
+  // Method 2: tangent
+  if(methods.mtan){
+    const slope=vf/tau;
+    const[x0,y0]=toPx(0,0);
+    const[xt,yt]=toPx(tau*1.3,slope*tau*1.3);
+    ctx.strokeStyle='#ffaa00';ctx.lineWidth=1.5;ctx.setLineDash([6,3]);
+    ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(xt,yt);ctx.stroke();ctx.setLineDash([]);
+    const[xm,ym]=toPx(tau,vf);
+    ctx.fillStyle='#ffaa00';ctx.beginPath();ctx.arc(xm,ym,5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#ffaa00';ctx.font='10px Courier New';ctx.textAlign='left';
+    ctx.fillText('Tangent→τ='+tau.toFixed(1)+'ms',xm+6,ym+14);
+  }
+  // Method 3: 5τ
+  if(methods.m5tau){
+    const[xt,yt]=toPx(5*tau,vf*(1-Math.exp(-5)));
+    ctx.strokeStyle='#aa44ff';ctx.lineWidth=1.5;ctx.setLineDash([4,2]);
+    ctx.beginPath();ctx.moveTo(xt,PAD.t);ctx.lineTo(xt,PAD.t+CH);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#aa44ff';ctx.beginPath();ctx.arc(xt,yt,5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#aa44ff';ctx.font='10px Courier New';ctx.textAlign='left';
+    ctx.fillText('5τ='+(5*tau).toFixed(1)+'ms',xt+4,PAD.t+14);
+  }
+  // Estimate line
+  const[xest,yest]=toPx(est,0.632*vf);
+  ctx.strokeStyle='#0088ff';ctx.lineWidth=1;ctx.setLineDash([2,2]);
+  ctx.beginPath();ctx.moveTo(xest,PAD.t);ctx.lineTo(xest,PAD.t+CH);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#0088ff';ctx.font='10px Courier New';ctx.textAlign='left';
+  ctx.fillText('Your est: '+est.toFixed(1)+'ms',xest+4,PAD.t+28);
+  updateR();
+}
+updateR();draw();
+</script>
+</body>
+</html>

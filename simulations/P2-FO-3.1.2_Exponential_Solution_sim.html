@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-FO-3.1.2 — Exponential Solution Explorer</title>
+<style>
+  :root { --accent: #0066cc; --bg: #1a1a1a; --panel: #242424; --border: #333; --text: #e0e0e0; --muted: #888; }
+  @media (prefers-color-scheme: light) { :root { --bg: #f4f4f4; --panel: #fff; --border: #ccc; --text: #1a1a1a; --muted: #555; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+  h1 { font-size: 1.1rem; color: var(--accent); padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .subtitle { font-size: 0.8rem; color: var(--muted); padding: 0 16px 8px; }
+  .layout { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; }
+  .controls { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px; min-width: 230px; flex: 0 0 230px; }
+  canvas { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: block; }
+  .ctrl-group { margin-bottom: 14px; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .val { font-size: 1rem; font-weight: bold; color: var(--accent); }
+  .eq-box { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 8px; margin-top: 12px; font-family: monospace; font-size: 0.8rem; line-height: 1.7; }
+  .readout { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; }
+  .card-label { font-size: 0.7rem; color: var(--muted); }
+  .card-val { font-size: 0.88rem; font-weight: bold; color: var(--accent); }
+  .canvas-wrap { flex: 1; min-width: 320px; }
+</style>
+</head>
+<body>
+<h1>P2-FO-3.1.2 — Universal Exponential Solution</h1>
+<p class="subtitle">y(t) = y(∞) + [y(0) − y(∞)] · e^(−t/τ)</p>
+<div class="layout">
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>Initial value y(0): <span class="val" id="vY0">0.0</span></label>
+      <input type="range" id="sY0" min="-2" max="3" step="0.1" value="0">
+    </div>
+    <div class="ctrl-group">
+      <label>Final value y(∞): <span class="val" id="vYinf">2.0</span></label>
+      <input type="range" id="sYinf" min="-1" max="4" step="0.1" value="2">
+    </div>
+    <div class="ctrl-group">
+      <label>Time constant τ (ms): <span class="val" id="vTau">10.0</span></label>
+      <input type="range" id="sTau" min="1" max="40" step="0.5" value="10">
+    </div>
+    <div class="eq-box" id="eqBox">y(t) = 2.000 + (0.000−2.000)·e^(−t/τ)</div>
+    <div class="readout">
+      <div class="card"><div class="card-label">y(τ) — 63.2% point</div><div class="card-val" id="r63">1.264</div></div>
+      <div class="card"><div class="card-label">Total swing |Δy|</div><div class="card-val" id="rSwing">2.000</div></div>
+      <div class="card"><div class="card-label">5τ value (99.3%)</div><div class="card-val" id="r5tau">1.987</div></div>
+      <div class="card"><div class="card-label">Rise time 2.2τ (ms)</div><div class="card-val" id="rTr">22.0</div></div>
+    </div>
+  </div>
+  <div class="canvas-wrap">
+    <canvas id="cv" width="560" height="420"></canvas>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function draw() {
+  const y0 = parseFloat(document.getElementById('sY0').value);
+  const yinf = parseFloat(document.getElementById('sYinf').value);
+  const tau = parseFloat(document.getElementById('sTau').value);
+
+  document.getElementById('vY0').textContent = y0.toFixed(1);
+  document.getElementById('vYinf').textContent = yinf.toFixed(1);
+  document.getElementById('vTau').textContent = tau.toFixed(1);
+
+  const deltaY = yinf - y0;
+  const y63 = yinf + (y0 - yinf) * Math.exp(-1); // = y0 + deltaY*(1-1/e)
+  const y5tau = yinf + (y0 - yinf) * Math.exp(-5);
+
+  document.getElementById('eqBox').textContent =
+    `y(t) = ${yinf.toFixed(2)} + (${y0.toFixed(2)}−${yinf.toFixed(2)})·e^(−t/τ)`;
+  document.getElementById('r63').textContent = y63.toFixed(3);
+  document.getElementById('rSwing').textContent = Math.abs(deltaY).toFixed(3);
+  document.getElementById('r5tau').textContent = y5tau.toFixed(3);
+  document.getElementById('rTr').textContent = (2.197 * tau).toFixed(1);
+
+  const W = cv.width, H = cv.height;
+  const padL = 60, padR = 20, padT = 30, padB = 50;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const tMax = 6 * tau;
+  const allY = [y0, yinf, y63, yinf * 1.05, Math.min(y0, yinf) - Math.abs(deltaY) * 0.08];
+  const yMin = Math.min(...allY) - Math.abs(deltaY) * 0.1;
+  const yMax = Math.max(...allY) + Math.abs(deltaY) * 0.1;
+  const yRange = yMax - yMin || 1;
+
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  ctx.fillStyle = isDark ? '#242424' : '#fff'; ctx.fillRect(0, 0, W, H);
+  const gridC = isDark ? '#2e2e2e' : '#e8e8e8';
+  const textC = isDark ? '#e0e0e0' : '#1a1a1a';
+  const mutC = isDark ? '#888' : '#555';
+
+  function tx(t) { return padL + (t / tMax) * plotW; }
+  function ty(y) { return padT + (1 - (y - yMin) / yRange) * plotH; }
+
+  ctx.strokeStyle = gridC; ctx.lineWidth = 1;
+  for (let i = 0; i <= 6; i++) { ctx.beginPath(); ctx.moveTo(tx(i * tMax / 6), padT); ctx.lineTo(tx(i * tMax / 6), padT + plotH); ctx.stroke(); }
+  for (let i = 0; i <= 5; i++) { ctx.beginPath(); ctx.moveTo(padL, padT + i * plotH / 5); ctx.lineTo(padL + plotW, padT + i * plotH / 5); ctx.stroke(); }
+
+  ctx.strokeStyle = mutC; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, padT + plotH); ctx.lineTo(padL + plotW, padT + plotH); ctx.stroke();
+
+  // y(∞) dashed
+  ctx.setLineDash([5, 4]); ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(padL, ty(yinf)); ctx.lineTo(padL + plotW, ty(yinf)); ctx.stroke();
+
+  // y(0) dashed
+  ctx.strokeStyle = '#ff8844';
+  ctx.beginPath(); ctx.moveTo(padL, ty(y0)); ctx.lineTo(padL + plotW, ty(y0)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // τ vertical
+  ctx.strokeStyle = '#44aa44'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(tx(tau), padT); ctx.lineTo(tx(tau), padT + plotH); ctx.stroke();
+
+  // Main curve
+  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let i = 0; i <= 500; i++) {
+    const t = i / 500 * tMax;
+    const y = yinf + (y0 - yinf) * Math.exp(-t / tau);
+    if (i === 0) ctx.moveTo(tx(t), ty(y)); else ctx.lineTo(tx(t), ty(y));
+  }
+  ctx.stroke();
+
+  // 63.2% dot
+  ctx.fillStyle = '#44aa44';
+  ctx.beginPath(); ctx.arc(tx(tau), ty(y63), 6, 0, Math.PI * 2); ctx.fill();
+
+  // Labels
+  ctx.fillStyle = '#0066cc'; ctx.font = '11px monospace';
+  ctx.fillText(`y(∞)=${yinf.toFixed(2)}`, padL + plotW - 90, ty(yinf) - 6);
+  ctx.fillStyle = '#ff8844';
+  ctx.fillText(`y(0)=${y0.toFixed(2)}`, padL + plotW - 90, ty(y0) + 14);
+  ctx.fillStyle = '#44aa44';
+  ctx.fillText(`τ=${tau}ms  y(τ)=${y63.toFixed(3)}`, tx(tau) + 6, ty(y63) - 8);
+
+  ctx.fillStyle = mutC; ctx.font = '10px sans-serif';
+  for (let i = 0; i <= 6; i++) ctx.fillText((i * tMax / 6).toFixed(0), tx(i * tMax / 6) - 8, padT + plotH + 18);
+  ctx.fillText('t (ms)', padL + plotW / 2 - 15, padT + plotH + 36);
+  for (let i = 0; i <= 5; i++) {
+    const yv = yMin + i * yRange / 5;
+    ctx.fillText(yv.toFixed(1), 4, ty(yv) + 4);
+  }
+}
+
+['sY0','sYinf','sTau'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+draw();
+</script>
+</body>
+</html>

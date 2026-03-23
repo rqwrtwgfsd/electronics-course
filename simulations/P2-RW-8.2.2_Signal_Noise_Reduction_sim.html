@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-RW-8.2.2 Signal Noise Reduction</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:10px;padding:10px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:230px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.formula{color:#ffaa00;font-size:11px;margin-top:8px;line-height:1.6}
+</style>
+</head>
+<body>
+<h1>P2-RW-8.2.2 — Signal Noise Reduction: SNR Improvement from Filtering</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="580" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>Signal & Noise</h2>
+<label>Signal Frequency f_sig (Hz)
+<input type="range" id="fsig" min="1" max="1000" step="1" value="100">
+<div class="readout" id="fsig_v">f_sig = 100 Hz</div>
+</label>
+<label>Noise Amplitude (mV peak)
+<input type="range" id="noise_amp" min="1" max="500" step="1" value="100">
+<div class="readout" id="noise_v">Noise = 100 mV</div>
+</label>
+<label>Signal Amplitude (mV peak)
+<input type="range" id="sig_amp" min="1" max="1000" step="1" value="200">
+<div class="readout" id="sig_v">Signal = 200 mV</div>
+</label>
+<h2 style="margin-top:10px">Filter</h2>
+<label>Filter τ (ms)
+<input type="range" id="tau" min="0.1" max="50" step="0.1" value="2">
+<div class="readout" id="tau_v">τ = 2.0 ms</div>
+</label>
+<h2 style="margin-top:10px">SNR Analysis</h2>
+<div class="readout" id="bw_before">BW_before: —</div>
+<div class="readout" id="bw_after">BW_after: —</div>
+<div class="readout" id="snr_in">SNR_in: —</div>
+<div class="readout" id="snr_out">SNR_out: —</div>
+<div class="readout" id="snr_imp">Improvement: —</div>
+<div class="formula">SNR_imp = 10log(BW_in/BW_out)<br>BW_noise = 1/(4τ)</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let fsig=100,noise_amp=100,sig_amp=200,tau=2;
+const W=580,H=380,pad={l:65,r:20,t:30,b:40};
+const CW=W-pad.l-pad.r,CH=H-pad.t-pad.b;
+
+['fsig','noise_amp','sig_amp','tau'].forEach(id=>{
+  document.getElementById(id).oninput=function(){
+    const v=parseFloat(this.value);
+    if(id==='fsig'){fsig=v;document.getElementById('fsig_v').textContent='f_sig = '+v+' Hz';}
+    if(id==='noise_amp'){noise_amp=v;document.getElementById('noise_v').textContent='Noise = '+v+' mV';}
+    if(id==='sig_amp'){sig_amp=v;document.getElementById('sig_v').textContent='Signal = '+v+' mV';}
+    if(id==='tau'){tau=v;document.getElementById('tau_v').textContent='τ = '+v.toFixed(1)+' ms';}
+    draw();
+  };
+});
+
+// Simple RC LP filter simulation on discrete samples
+function filterSamples(xs,tau_s,dt){
+  const out=[];let y=xs[0];
+  const alpha=dt/(tau_s+dt);
+  xs.forEach(x=>{y=y+(x-y)*alpha;out.push(y);});
+  return out;
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const tmax=5/fsig*1000; // ms, 5 signal cycles
+  const N=600;
+  const dt=tmax/N; // ms
+  const tau_s=tau; // ms
+  // Generate noisy signal
+  const rng=()=>(Math.random()+Math.random()+Math.random()-1.5)*0.667;
+  const raw=Array.from({length:N},(_,i)=>{
+    const t=tmax*i/N;
+    const sig=sig_amp*Math.sin(2*Math.PI*fsig*t/1000);
+    const n=noise_amp*rng()*1.5;
+    return sig+n;
+  });
+  const filtered=filterSamples(raw,tau_s,dt);
+  const vmax=Math.max(...raw.map(Math.abs),sig_amp)*1.2;
+  function toPx(i,v){return[pad.l+CW*(i/N),pad.t+CH*(1-(v+vmax)/(2*vmax))];}
+  // Grid
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=8;i++){const x=pad.l+CW*(i/8);ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=pad.t+CH*(i/5);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,pad.t+CH);ctx.moveTo(pad.l,pad.t+CH);ctx.lineTo(pad.l+CW,pad.t+CH);ctx.stroke();
+  // Zero line
+  const[,y0]=toPx(0,0);ctx.strokeStyle='#2a2a2a';ctx.beginPath();ctx.moveTo(pad.l,y0);ctx.lineTo(pad.l+CW,y0);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=5;i++){const t=tmax*i/5;ctx.fillText(t.toFixed(1)+'ms',pad.l+CW*(i/5),pad.t+CH+14);}
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){const v=vmax*(1-2*i/5);ctx.fillText(v.toFixed(0)+'mV',pad.l-4,pad.t+CH*(i/5)+4);}
+  // Noisy input
+  ctx.strokeStyle='#ff444066';ctx.lineWidth=1;
+  ctx.beginPath();raw.forEach((v,i)=>{const[x,y]=toPx(i,v);if(y>pad.t-5&&y<pad.t+CH+5){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}});ctx.stroke();
+  // Clean signal reference
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=1.5;ctx.setLineDash([3,2]);
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){const t=tmax*i/N;const v=sig_amp*Math.sin(2*Math.PI*fsig*t/1000);const[x,y]=toPx(i,v);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();ctx.setLineDash([]);
+  // Filtered output
+  ctx.strokeStyle='#00ff88';ctx.lineWidth=2.5;
+  ctx.beginPath();filtered.forEach((v,i)=>{const[x,y]=toPx(i,v);if(y>pad.t-5&&y<pad.t+CH+5){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}});ctx.stroke();
+  ctx.fillStyle='#ff4444';ctx.font='10px Courier New';ctx.textAlign='left';ctx.fillText('Noisy input',pad.l+4,pad.t+14);
+  ctx.fillStyle='#00ff88';ctx.fillText('Filtered (τ='+tau+'ms)',pad.l+4,pad.t+28);
+  ctx.fillStyle='#0066cc';ctx.fillText('Clean signal',pad.l+4,pad.t+42);
+  // SNR calculation
+  const BW_before=1e4; // 10kHz assumed input bandwidth
+  const BW_after=250/tau; // Hz (= 1/(4τ))
+  const snr_in=20*Math.log10(sig_amp/(noise_amp/Math.sqrt(2)));
+  const noise_out=noise_amp*Math.sqrt(BW_after/BW_before);
+  const snr_out=20*Math.log10(sig_amp*Math.abs(1/Math.sqrt(1+Math.pow(fsig/(1000/(2*Math.PI*tau)),2)))/(noise_out/Math.sqrt(2)));
+  const imp=snr_out-snr_in;
+  document.getElementById('bw_before').textContent='BW_before: '+BW_before+' Hz';
+  document.getElementById('bw_after').textContent='BW_after: '+BW_after.toFixed(1)+' Hz';
+  document.getElementById('snr_in').textContent='SNR_in: '+snr_in.toFixed(1)+' dB';
+  document.getElementById('snr_out').textContent='SNR_out: '+snr_out.toFixed(1)+' dB';
+  document.getElementById('snr_imp').textContent='Improvement: +'+imp.toFixed(1)+' dB';
+}
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-DT-5.2.2 Component Selection</title>
+<style>
+  :root {
+    --bg: #f5f5f5; --panel: #ffffff; --border: #d0d0d0;
+    --text: #1a1a1a; --muted: #666; --accent: #1a6eb5;
+    --pass: #2d7a2d; --fail: #b52a2a; --warn: #b57a00;
+    --pass-bg: #e8f5e8; --fail-bg: #fde8e8; --warn-bg: #fff3cd;
+    --canvas-bg: #fafafa;
+    --c1: #1a6eb5; --c2: #e07b00; --c3: #2d7a2d; --c4: #8b1a8b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a; --panel: #242424; --border: #3a3a3a;
+      --text: #e8e8e8; --muted: #999; --accent: #4da3f5;
+      --pass: #4caf50; --fail: #ef5350; --warn: #ffb300;
+      --pass-bg: #1a2e1a; --fail-bg: #2e1a1a; --warn-bg: #2e2200;
+      --canvas-bg: #1e1e1e;
+      --c1: #4da3f5; --c2: #ffb300; --c3: #4caf50; --c4: #ce93d8;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; padding: 16px; }
+  h1 { font-size: 1.2em; color: var(--accent); margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 0.85em; margin-bottom: 16px; }
+  .layout { display: grid; grid-template-columns: 300px 1fr; gap: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .panel h3 { font-size: 0.9em; color: var(--accent); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .slider-row { margin-bottom: 10px; }
+  .slider-row label { display: flex; justify-content: space-between; font-size: 0.82em; color: var(--muted); margin-bottom: 3px; }
+  .slider-row label span { color: var(--text); font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .right-col { display: flex; flex-direction: column; gap: 14px; }
+  canvas { width: 100%; display: block; background: var(--canvas-bg); border-radius: 6px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.78em; font-weight: 700; }
+  .badge.pass { background: var(--pass-bg); color: var(--pass); }
+  .badge.fail { background: var(--fail-bg); color: var(--fail); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  .tab-row { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .tab-btn { padding: 5px 10px; border-radius: 5px; border: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer; font-size: 0.82em; }
+  .tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .info-table { width: 100%; border-collapse: collapse; font-size: 0.82em; }
+  .info-table th { background: var(--border); padding: 5px 8px; text-align: left; }
+  .info-table td { padding: 4px 8px; border-bottom: 1px solid var(--border); }
+  .readout-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .readout { flex: 1; min-width: 100px; background: var(--canvas-bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; text-align: center; }
+  .readout .val { font-size: 1.2em; font-weight: 700; color: var(--accent); }
+  .readout .lbl { font-size: 0.72em; color: var(--muted); margin-top: 2px; }
+  .section-divider { font-size: 0.75em; color: var(--muted); margin: 8px 0 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+  @media (max-width: 720px) { .layout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<h1>M4A-DT-5.2.2 — Component Selection</h1>
+<p class="subtitle">Capacitor derating, resistor TC, op-amp noise optimum — interactive component selection guidance</p>
+
+<div class="layout">
+<div>
+  <div class="panel" style="margin-bottom:12px">
+    <h3>View Mode</h3>
+    <div class="tab-row">
+      <button class="tab-btn active" id="tab-cap" onclick="setMode('cap')">Capacitor Derating</button>
+      <button class="tab-btn" id="tab-res" onclick="setMode('res')">Resistor TC</button>
+      <button class="tab-btn" id="tab-amp" onclick="setMode('amp')">Op-Amp Noise</button>
+    </div>
+  </div>
+
+  <!-- Capacitor panel -->
+  <div class="panel" id="panel-cap">
+    <h3>Capacitor Parameters</h3>
+    <div class="slider-row">
+      <label>Nominal capacitance (µF) <span id="lbl-cnom">10</span></label>
+      <input type="range" id="sl-cnom" min="0.001" max="100" step="0.1" value="10" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Rated voltage (V) <span id="lbl-cvr">10</span></label>
+      <input type="range" id="sl-cvr" min="4" max="100" step="2" value="10" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Applied voltage (V) <span id="lbl-cvapp">5</span></label>
+      <input type="range" id="sl-cvapp" min="0" max="100" step="0.5" value="5" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Temperature (°C) <span id="lbl-ctemp">25</span></label>
+      <input type="range" id="sl-ctemp" min="-55" max="125" step="5" value="25" oninput="update()">
+    </div>
+    <div class="section-divider">Design Parameters</div>
+    <div class="slider-row">
+      <label>Design R (kΩ) <span id="lbl-cr">10</span></label>
+      <input type="range" id="sl-cr" min="0.1" max="1000" step="0.1" value="10" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Designed fc (Hz) <span id="lbl-cfc">1591</span></label>
+      <input type="range" id="sl-cfc" min="10" max="100000" step="10" value="1591" oninput="update()">
+    </div>
+  </div>
+
+  <!-- Resistor panel -->
+  <div class="panel" id="panel-res" style="display:none">
+    <h3>Resistor Parameters</h3>
+    <div class="slider-row">
+      <label>Resistance (kΩ) <span id="lbl-rval">10</span></label>
+      <input type="range" id="sl-rval" min="0.1" max="1000" step="0.1" value="10" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>TC (ppm/°C) <span id="lbl-rtc2">100</span></label>
+      <input type="range" id="sl-rtc2" min="0.2" max="500" step="0.2" value="100" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Initial tolerance (%) <span id="lbl-ritol">1</span></label>
+      <input type="range" id="sl-ritol" min="0.005" max="5" step="0.005" value="1" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>DC bias (V) <span id="lbl-rvbias">0</span></label>
+      <input type="range" id="sl-rvbias" min="0" max="100" step="1" value="0" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Excess noise index (dBV) <span id="lbl-reni">-120</span></label>
+      <input type="range" id="sl-reni" min="-140" max="-80" step="1" value="-120" oninput="update()">
+    </div>
+    <div class="section-divider">Temperature Range</div>
+    <div class="slider-row">
+      <label>Tmin (°C) <span id="lbl-rtmin">-40</span></label>
+      <input type="range" id="sl-rtmin" min="-55" max="0" step="5" value="-40" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Tmax (°C) <span id="lbl-rtmax">85</span></label>
+      <input type="range" id="sl-rtmax" min="25" max="150" step="5" value="85" oninput="update()">
+    </div>
+  </div>
+
+  <!-- Op-amp noise panel -->
+  <div class="panel" id="panel-amp" style="display:none">
+    <h3>Op-Amp Noise Parameters</h3>
+    <div class="slider-row">
+      <label>en (nV/√Hz) <span id="lbl-aen">3</span></label>
+      <input type="range" id="sl-aen" min="0.3" max="50" step="0.1" value="3" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>in (fA/√Hz) <span id="lbl-ain">800</span></label>
+      <input type="range" id="sl-ain" min="1" max="10000" step="1" value="800" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>1/f corner (Hz) <span id="lbl-afc">100</span></label>
+      <input type="range" id="sl-afc" min="1" max="10000" step="1" value="100" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Source impedance Rs (kΩ) <span id="lbl-ars">1</span></label>
+      <input type="range" id="sl-ars" min="0.001" max="10000" step="1" value="1" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Bandwidth (kHz) <span id="lbl-abw">10</span></label>
+      <input type="range" id="sl-abw" min="0.1" max="1000" step="0.1" value="10" oninput="update()">
+    </div>
+    <div class="section-divider">Presets</div>
+    <div class="tab-row">
+      <button class="tab-btn" onclick="setAmpPreset('bjt')">BJT (LT1028)</button>
+      <button class="tab-btn" onclick="setAmpPreset('jfet')">JFET (OPA657)</button>
+      <button class="tab-btn" onclick="setAmpPreset('cmos')">CMOS (OPA350)</button>
+    </div>
+  </div>
+</div>
+
+<div class="right-col">
+  <!-- Cap mode outputs -->
+  <div id="out-cap">
+    <div class="panel" style="margin-bottom:14px">
+      <h3>Dielectric Comparison Table</h3>
+      <table class="info-table" id="cap-table"></table>
+    </div>
+    <div class="readout-row" id="cap-readouts" style="margin-bottom:14px"></div>
+    <div class="panel">
+      <h3>Effective Capacitance vs. Applied Voltage (by Dielectric)</h3>
+      <canvas id="c-cap" height="200"></canvas>
+    </div>
+  </div>
+
+  <!-- Res mode outputs -->
+  <div id="out-res" style="display:none">
+    <div class="panel" style="margin-bottom:14px">
+      <h3>Resistor Grade Comparison</h3>
+      <table class="info-table" id="res-table"></table>
+    </div>
+    <div class="readout-row" id="res-readouts" style="margin-bottom:14px"></div>
+    <div class="panel">
+      <h3>Resistance vs. Temperature (all grades, relative to 25°C)</h3>
+      <canvas id="c-res" height="200"></canvas>
+    </div>
+  </div>
+
+  <!-- Amp mode outputs -->
+  <div id="out-amp" style="display:none">
+    <div class="panel" style="margin-bottom:14px">
+      <h3>Noise Budget</h3>
+      <table class="info-table" id="amp-table"></table>
+    </div>
+    <div class="readout-row" id="amp-readouts" style="margin-bottom:14px"></div>
+    <div class="panel">
+      <h3>Total Input-Referred Noise vs. Source Impedance</h3>
+      <canvas id="c-amp" height="200"></canvas>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+let MODE = 'cap';
+
+function setMode(m) {
+  MODE = m;
+  ['cap','res','amp'].forEach(x => {
+    document.getElementById('panel-' + x).style.display = m === x ? '' : 'none';
+    document.getElementById('out-' + x).style.display = m === x ? '' : 'none';
+    document.getElementById('tab-' + x).classList.toggle('active', m === x);
+  });
+  update();
+}
+
+function setAmpPreset(p) {
+  const presets = {
+    bjt:  { en: 0.9, in: 1000, fc: 3 },
+    jfet: { en: 4.8, in: 2.5, fc: 500 },
+    cmos: { en: 7, in: 0.6, fc: 200 },
+  };
+  const pr = presets[p];
+  document.getElementById('sl-aen').value = pr.en;
+  document.getElementById('sl-ain').value = pr.in;
+  document.getElementById('sl-afc').value = pr.fc;
+  update();
+}
+
+function v(id) { return parseFloat(document.getElementById(id).value); }
+function lbl(id, val, dec) { const el = document.getElementById(id); if(el) el.textContent = typeof val === 'number' ? val.toFixed(dec !== undefined ? dec : 1) : val; }
+
+function getColors() {
+  const s = getComputedStyle(document.documentElement);
+  return ['--text','--muted','--accent','--pass','--fail','--warn','--border','--canvas-bg','--c1','--c2','--c3','--c4'].reduce((o,k) => { o[k.slice(2)] = s.getPropertyValue(k).trim(); return o; }, {});
+}
+
+function getCtx(id) {
+  const c = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  const rect = c.getBoundingClientRect();
+  if (c._lw !== rect.width || c._lh !== rect.height) {
+    c.width = rect.width * dpr; c.height = rect.height * dpr;
+    c._lw = rect.width; c._lh = rect.height;
+  }
+  const ctx = c.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return [ctx, rect.width, rect.height];
+}
+
+// Capacitor DC bias derating models (fraction of nominal remaining)
+function capDerate(dielectric, vRatio, tempC) {
+  // vRatio = Vapplied/Vrated (0 to 1)
+  switch(dielectric) {
+    case 'C0G': {
+      // Minimal bias derating, TC = ±30 ppm/°C
+      const tcFactor = 1 + 30e-6 * (tempC - 25);
+      return Math.max(0.95, 1 - 0.03 * vRatio) * Math.min(1.03, tcFactor);
+    }
+    case 'X7R': {
+      // Heavy bias derating: ~50% at 50% Vrated, worsens with temp
+      const biasDerating = 1 - 0.8 * Math.pow(vRatio, 1.5);
+      const tempRange = Math.max(0.85, 1 - 0.0012 * Math.abs(tempC - 25));
+      return Math.max(0.1, biasDerating * tempRange);
+    }
+    case 'X5R': {
+      // Moderate derating
+      const biasDerating = 1 - 0.6 * Math.pow(vRatio, 1.5);
+      const tempRange = Math.max(0.88, 1 - 0.001 * Math.abs(tempC - 25));
+      return Math.max(0.15, biasDerating * tempRange);
+    }
+    case 'Y5V': {
+      // Severe derating
+      const biasDerating = 1 - 0.95 * Math.pow(vRatio, 1.2);
+      const tempRange = Math.max(0.2, 1 - 0.006 * Math.abs(tempC - 25));
+      return Math.max(0.05, biasDerating * tempRange);
+    }
+    case 'Film': {
+      // No bias derating, very stable TC
+      return Math.max(0.97, 1 - 100e-6 * Math.abs(tempC - 25));
+    }
+    default: return 1;
+  }
+}
+
+function update() {
+  if (MODE === 'cap') updateCap();
+  else if (MODE === 'res') updateRes();
+  else updateAmp();
+}
+
+function updateCap() {
+  const cnom = v('sl-cnom');
+  const cvr = v('sl-cvr');
+  let cvapp = v('sl-cvapp');
+  if (cvapp > cvr) { document.getElementById('sl-cvapp').value = cvr; cvapp = cvr; }
+  const ctemp = v('sl-ctemp');
+  const cr = v('sl-cr');
+  const cfc_des = v('sl-cfc');
+
+  lbl('lbl-cnom', cnom, 3);
+  lbl('lbl-cvr', cvr, 0);
+  lbl('lbl-cvapp', cvapp, 1);
+  lbl('lbl-ctemp', ctemp, 0);
+  lbl('lbl-cr', cr, 1);
+  lbl('lbl-cfc', cfc_des, 0);
+
+  const vRatio = cvapp / cvr;
+  const dielectrics = ['C0G', 'X5R', 'X7R', 'Y5V', 'Film'];
+  const rows = dielectrics.map(d => {
+    const derate = capDerate(d, vRatio, ctemp);
+    const ceff = cnom * derate;
+    const fc_actual = 1 / (2 * Math.PI * cr * 1e3 * ceff * 1e-6);
+    const fc_shift = (fc_actual - cfc_des) / cfc_des * 100;
+    const ok = Math.abs(fc_shift) < 5 ? 'pass' : Math.abs(fc_shift) < 20 ? 'warn' : 'fail';
+    return { d, derate, ceff, fc_actual, fc_shift, ok };
+  });
+
+  document.getElementById('cap-table').innerHTML =
+    '<thead><tr><th>Dielectric</th><th>Derate Factor</th><th>Effective C (µF)</th><th>Actual fc</th><th>fc Shift</th><th>Status</th></tr></thead>' +
+    '<tbody>' + rows.map(r =>
+      `<tr><td>${r.d}</td><td>${(r.derate*100).toFixed(1)}%</td><td>${r.ceff.toFixed(3)}</td>` +
+      `<td>${r.fc_actual.toFixed(1)} Hz</td><td>${r.fc_shift > 0 ? '+' : ''}${r.fc_shift.toFixed(1)}%</td>` +
+      `<td><span class="badge ${r.ok}">${r.ok.toUpperCase()}</span></td></tr>`
+    ).join('') + '</tbody>';
+
+  const sel = rows[2]; // X7R as the "interesting" one
+  document.getElementById('cap-readouts').innerHTML = [
+    { val: (sel.derate*100).toFixed(0)+'%', lbl: 'X7R Derate Factor', cls: sel.ok },
+    { val: sel.ceff.toFixed(2)+'µF', lbl: 'X7R Effective C', cls: sel.ok },
+    { val: sel.fc_actual.toFixed(0)+'Hz', lbl: 'X7R Actual fc', cls: sel.ok },
+    { val: (sel.fc_shift > 0 ? '+' : '') + sel.fc_shift.toFixed(1)+'%', lbl: 'fc Shift', cls: sel.ok },
+  ].map(r => `<div class="readout"><div class="val" style="color:var(--${r.cls})">${r.val}</div><div class="lbl">${r.lbl}</div></div>`).join('');
+
+  drawCapChart(cnom, cvr, ctemp, cr, cfc_des);
+}
+
+function drawCapChart(cnom, cvr, ctemp, cr, cfc_des) {
+  const [ctx, W, H] = getCtx('c-cap');
+  const C = getColors();
+  ctx.clearRect(0, 0, W, H);
+
+  const PAD = { l: 60, r: 20, t: 20, b: 45 };
+  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+  ctx.fillStyle = C['canvas-bg'];
+  ctx.fillRect(PAD.l, PAD.t, cW, cH);
+
+  const dielectrics = ['C0G', 'X5R', 'X7R', 'Y5V', 'Film'];
+  const colors = [C.c3, C.c1, C.c2, C.fail, C.c4];
+  const N = 80;
+
+  let minY = 0, maxY = cnom * 1.05;
+
+  function xp(vv) { return PAD.l + (vv / cvr) * cW; }
+  function yp(cv) { return PAD.t + (1 - cv / maxY) * cH; }
+
+  // Grid
+  ctx.strokeStyle = C.border; ctx.lineWidth = 0.5; ctx.setLineDash([3,3]);
+  for (let i = 0; i <= 4; i++) {
+    const yv = (i / 4) * maxY;
+    const yy = yp(yv);
+    ctx.beginPath(); ctx.moveTo(PAD.l, yy); ctx.lineTo(PAD.l + cW, yy); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  dielectrics.forEach((d, di) => {
+    ctx.strokeStyle = colors[di];
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i <= N; i++) {
+      const vapp = (i / N) * cvr;
+      const vr = vapp / cvr;
+      const derate = capDerate(d, vr, ctemp);
+      const ceff = cnom * derate;
+      const x = xp(vapp), y = yp(ceff);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    // Label at right
+    const vapp = cvr;
+    const derate = capDerate(d, 1, ctemp);
+    const ceff = cnom * derate;
+    const ly = yp(ceff);
+    ctx.fillStyle = colors[di];
+    ctx.font = '10px system-ui';
+    ctx.textAlign = 'left';
+    ctx.fillText(d, PAD.l + cW + 4, ly + 4);
+  });
+
+  // Operating point
+  const vapp0 = parseFloat(document.getElementById('sl-cvapp').value);
+  const x0 = xp(vapp0);
+  ctx.strokeStyle = C.text;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(x0, PAD.t); ctx.lineTo(x0, PAD.t + cH); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Axes
+  ctx.strokeStyle = C.border; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t); ctx.lineTo(PAD.l, PAD.t + cH); ctx.lineTo(PAD.l + cW, PAD.t + cH); ctx.stroke();
+  ctx.fillStyle = C.muted; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+  for (let i = 0; i <= 5; i++) {
+    const vv = (i/5) * cvr;
+    ctx.fillText(vv.toFixed(0)+'V', xp(vv), PAD.t + cH + 14);
+  }
+  ctx.textAlign = 'right';
+  for (let i = 0; i <= 4; i++) {
+    const yv = (i/4) * maxY;
+    ctx.fillText(yv.toFixed(2), PAD.l - 5, yp(yv) + 4);
+  }
+  ctx.save(); ctx.translate(14, PAD.t + cH/2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle = C.text; ctx.font = '11px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Effective C (µF)', 0, 0); ctx.restore();
+  ctx.fillStyle = C.muted; ctx.textAlign = 'center';
+  ctx.fillText('Applied Voltage (V)', PAD.l + cW/2, H - 4);
+}
+
+function updateRes() {
+  const rval = v('sl-rval');
+  const rtc = v('sl-rtc2');
+  const ritol = v('sl-ritol');
+  const rvbias = v('sl-rvbias');
+  const reni = v('sl-reni');
+  const rtmin = v('sl-rtmin');
+  const rtmax = v('sl-rtmax');
+  const dT = rtmax - rtmin;
+
+  lbl('lbl-rval', rval, 1);
+  lbl('lbl-rtc2', rtc, 1);
+  lbl('lbl-ritol', ritol, 3);
+  lbl('lbl-rvbias', rvbias, 0);
+  lbl('lbl-reni', reni, 0);
+  lbl('lbl-rtmin', rtmin, 0);
+  lbl('lbl-rtmax', rtmax, 0);
+
+  // Resistor grades
+  const grades = [
+    { name: 'Thick Film', tol: 5.0, tc: 200, eni: -105, price: '0.01' },
+    { name: 'Metal Film', tol: 1.0, tc: 100, eni: -125, price: '0.05' },
+    { name: 'Thin Film', tol: 0.1, tc: 25, eni: -135, price: '0.40' },
+    { name: 'Thin Film HP', tol: 0.01, tc: 10, eni: -140, price: '1.50' },
+    { name: 'Bulk Metal', tol: 0.005, tc: 0.5, eni: -145, price: '15.0' },
+  ];
+
+  const driftPerGrade = grades.map(g => ({
+    ...g,
+    tcDrift: g.tc * 1e-6 * dT * 100,  // % over temp range
+    totalEVA: g.tol + g.tc * 1e-6 * dT * 100,
+    excessNoise: Math.pow(10, g.eni/20) * rvbias * Math.sqrt(3),  // 3 decades approx
+  }));
+
+  const userTcDrift = rtc * 1e-6 * dT * 100;
+  const userEVA = ritol + userTcDrift;
+
+  document.getElementById('res-table').innerHTML =
+    '<thead><tr><th>Grade</th><th>Tolerance</th><th>TC</th><th>TC Drift ('+dT.toFixed(0)+'°C)</th><th>EVA Total</th><th>Price/ea</th></tr></thead>' +
+    '<tbody>' + driftPerGrade.map(g => {
+      const better = g.totalEVA <= userEVA * 1.05;
+      return `<tr><td>${g.name}</td><td>±${g.tol}%</td><td>${g.tc} ppm/°C</td>` +
+        `<td>${g.tcDrift.toFixed(3)}%</td><td>±${g.totalEVA.toFixed(3)}%</td>` +
+        `<td>$${g.price}</td></tr>`;
+    }).join('') + '</tbody>';
+
+  document.getElementById('res-readouts').innerHTML = [
+    { val: '±'+userEVA.toFixed(3)+'%', lbl: 'User EVA Total', cls: 'accent' },
+    { val: userTcDrift.toFixed(3)+'%', lbl: 'TC Drift ('+dT.toFixed(0)+'°C)', cls: 'accent' },
+    { val: dT.toFixed(0)+'°C', lbl: 'Temp Range', cls: 'accent' },
+    { val: rtc.toFixed(1)+' ppm/°C', lbl: 'User TC', cls: 'accent' },
+  ].map(r => `<div class="readout"><div class="val" style="color:var(--${r.cls})">${r.val}</div><div class="lbl">${r.lbl}</div></div>`).join('');
+
+  drawResChart(rtc, ritol, rtmin, rtmax);
+}
+
+function drawResChart(rtc, ritol, rtmin, rtmax) {
+  const [ctx, W, H] = getCtx('c-res');
+  const C = getColors();
+  ctx.clearRect(0, 0, W, H);
+
+  const PAD = { l: 60, r: 20, t: 20, b: 45 };
+  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+  ctx.fillStyle = C['canvas-bg'];
+  ctx.fillRect(PAD.l, PAD.t, cW, cH);
+
+  const grades = [
+    { name: 'Thick Film', tc: 200, color: C.fail },
+    { name: 'Metal Film', tc: 100, color: C.c2 },
+    { name: 'Thin Film', tc: 25, color: C.c1 },
+    { name: 'Bulk Metal', tc: 0.5, color: C.c3 },
+    { name: 'User', tc: rtc, color: C.text },
+  ];
+
+  const T0 = 25;
+  const Trange = [-55, 150];
+  const maxDrift = 0.02; // 2%
+
+  function xp(t) { return PAD.l + (t - Trange[0]) / (Trange[1] - Trange[0]) * cW; }
+  function yp(drift) { return PAD.t + cH/2 - drift / maxDrift * (cH/2); }
+
+  // Zero line
+  ctx.strokeStyle = C.border; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t + cH/2); ctx.lineTo(PAD.l + cW, PAD.t + cH/2); ctx.stroke();
+
+  // Grid
+  ctx.setLineDash([3,3]);
+  for (let i = 1; i <= 4; i++) {
+    const d = (i/4) * maxDrift;
+    [yp(d), yp(-d)].forEach(yy => {
+      ctx.beginPath(); ctx.moveTo(PAD.l, yy); ctx.lineTo(PAD.l+cW, yy); ctx.stroke();
+    });
+  }
+  ctx.setLineDash([]);
+
+  // Tolerance band for user grade
+  const initBandY1 = yp(ritol/100);
+  const initBandY2 = yp(-ritol/100);
+  ctx.fillStyle = C.accent + '22';
+  ctx.fillRect(PAD.l, initBandY1, cW, initBandY2 - initBandY1);
+
+  grades.forEach(g => {
+    ctx.strokeStyle = g.name === 'User' ? C.accent : g.color;
+    ctx.lineWidth = g.name === 'User' ? 2.5 : 1.5;
+    if (g.name !== 'User') ctx.setLineDash([4,3]);
+    ctx.beginPath();
+    for (let i = 0; i <= 80; i++) {
+      const t = Trange[0] + (i/80) * (Trange[1] - Trange[0]);
+      const drift = g.tc * 1e-6 * (t - T0);
+      const x = xp(t), y = yp(drift);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Label at right
+    const tEnd = Trange[1];
+    const dEnd = g.tc * 1e-6 * (tEnd - T0);
+    ctx.fillStyle = g.name === 'User' ? C.accent : g.color;
+    ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+    ctx.fillText(g.name, PAD.l + cW - 2, yp(dEnd) - 3);
+  });
+
+  // Operating temp markers
+  [rtmin, rtmax].forEach(t => {
+    ctx.strokeStyle = C.warn; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(xp(t), PAD.t); ctx.lineTo(xp(t), PAD.t + cH); ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  // Axes
+  ctx.strokeStyle = C.border; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t); ctx.lineTo(PAD.l, PAD.t + cH); ctx.lineTo(PAD.l + cW, PAD.t + cH); ctx.stroke();
+  ctx.fillStyle = C.muted; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+  [-55, -25, 0, 25, 50, 75, 100, 125, 150].forEach(t => {
+    ctx.fillText(t+'°', xp(t), PAD.t + cH + 14);
+  });
+  ctx.textAlign = 'right';
+  for (let i = -4; i <= 4; i++) {
+    const d = i * maxDrift/4;
+    ctx.fillText((d*100).toFixed(2)+'%', PAD.l - 4, yp(d) + 4);
+  }
+  ctx.save(); ctx.translate(14, PAD.t + cH/2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle = C.text; ctx.font = '11px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('ΔR/R (rel to 25°C)', 0, 0); ctx.restore();
+  ctx.fillStyle = C.muted; ctx.textAlign = 'center';
+  ctx.fillText('Temperature (°C)', PAD.l + cW/2, H - 4);
+}
+
+function updateAmp() {
+  const en = v('sl-aen') * 1e-9;
+  const inn = v('sl-ain') * 1e-15;
+  const fc = v('sl-afc');
+  const rs = v('sl-ars') * 1e3;
+  const bw = v('sl-abw') * 1e3;
+  const k = 1.38e-23, T = 298;
+
+  lbl('lbl-aen', v('sl-aen'), 1);
+  lbl('lbl-ain', v('sl-ain'), 0);
+  lbl('lbl-afc', v('sl-afc'), 0);
+  lbl('lbl-ars', v('sl-ars'), 1);
+  lbl('lbl-abw', v('sl-abw'), 1);
+
+  const rsOpt = en / inn;
+  const enRs = en;
+  const inRs = inn * rs;
+  const thermRs = Math.sqrt(4 * k * T * rs);
+  const total = Math.sqrt(enRs**2 + inRs**2 + thermRs**2);
+  const totalRms = total * Math.sqrt(bw);
+  const rsOptNoise = Math.sqrt(2 * en * inn) * Math.sqrt(bw);
+
+  const nf = 20 * Math.log10(total / thermRs);
+
+  document.getElementById('amp-table').innerHTML =
+    '<thead><tr><th>Noise Source</th><th>Density</th><th>Total (√BW)</th></tr></thead>' +
+    '<tbody>' + [
+      ['Source thermal (√4kTRs)', (thermRs*1e9).toFixed(2)+' nV/√Hz', (thermRs*Math.sqrt(bw)*1e6).toFixed(3)+' µV'],
+      ['Voltage noise (en)', (en*1e9).toFixed(2)+' nV/√Hz', (en*Math.sqrt(bw)*1e6).toFixed(3)+' µV'],
+      ['Current noise (in×Rs)', (inRs*1e9).toFixed(2)+' nV/√Hz', (inRs*Math.sqrt(bw)*1e6).toFixed(3)+' µV'],
+      ['TOTAL (RSS)', (total*1e9).toFixed(2)+' nV/√Hz', (totalRms*1e6).toFixed(3)+' µV'],
+    ].map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td></tr>`).join('') + '</tbody>';
+
+  document.getElementById('amp-readouts').innerHTML = [
+    { val: (rsOpt/1e3).toFixed(1)+'kΩ', lbl: 'Optimal Rs (en/in)', cls: 'accent' },
+    { val: nf.toFixed(1)+' dB', lbl: 'Noise Figure', cls: nf < 3 ? 'pass' : nf < 10 ? 'warn' : 'fail' },
+    { val: (total*1e9).toFixed(2)+' nV/√Hz', lbl: 'Total Noise Density', cls: 'accent' },
+    { val: (totalRms*1e6).toFixed(2)+' µV', lbl: 'Integrated Noise', cls: 'accent' },
+  ].map(r => `<div class="readout"><div class="val" style="color:var(--${r.cls})">${r.val}</div><div class="lbl">${r.lbl}</div></div>`).join('');
+
+  drawAmpChart(en, inn, fc, bw);
+}
+
+function drawAmpChart(en, inn, fc, bw) {
+  const [ctx, W, H] = getCtx('c-amp');
+  const C = getColors();
+  ctx.clearRect(0, 0, W, H);
+
+  const PAD = { l: 60, r: 20, t: 20, b: 45 };
+  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+  ctx.fillStyle = C['canvas-bg'];
+  ctx.fillRect(PAD.l, PAD.t, cW, cH);
+
+  const k = 1.38e-23, T = 298;
+  const rsOpt = en / inn;
+
+  // Log scale for Rs
+  const logRsMin = 0, logRsMax = 8; // 1 Ω to 100 MΩ
+  const noiseMin = 0.1e-9, noiseMax = 1e-6;
+  const logNMin = Math.log10(noiseMin), logNMax = Math.log10(noiseMax);
+
+  function xp(rs) { return PAD.l + (Math.log10(rs) - logRsMin) / (logRsMax - logRsMin) * cW; }
+  function yp(noise) { const lv = Math.log10(Math.max(noiseMin, noise)); return PAD.t + (1 - (lv - logNMin) / (logNMax - logNMin)) * cH; }
+
+  // Grid
+  ctx.strokeStyle = C.border; ctx.lineWidth = 0.5; ctx.setLineDash([3,3]);
+  for (let i = logRsMin; i <= logRsMax; i++) {
+    const x = xp(Math.pow(10, i));
+    ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, PAD.t + cH); ctx.stroke();
+  }
+  for (let i = logNMin; i <= logNMax; i += 0.5) {
+    const y = PAD.t + (1 - (i - logNMin) / (logNMax - logNMin)) * cH;
+    ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l + cW, y); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  const N = 100;
+  // Source thermal noise
+  ctx.strokeStyle = C.c3; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i <= N; i++) {
+    const rs = Math.pow(10, logRsMin + (i/N) * (logRsMax - logRsMin));
+    const noise = Math.sqrt(4 * k * T * rs);
+    const x = xp(rs), y = yp(noise);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Voltage noise only
+  ctx.strokeStyle = C.c1; ctx.lineWidth = 1.5;
+  const yEN = yp(en);
+  ctx.beginPath(); ctx.moveTo(PAD.l, yEN); ctx.lineTo(PAD.l + cW, yEN); ctx.stroke();
+
+  // Current noise × Rs
+  ctx.strokeStyle = C.c2; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i <= N; i++) {
+    const rs = Math.pow(10, logRsMin + (i/N) * (logRsMax - logRsMin));
+    const noise = inn * rs;
+    const x = xp(rs), y = yp(noise);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Total noise
+  ctx.strokeStyle = C.text; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let i = 0; i <= N; i++) {
+    const rs = Math.pow(10, logRsMin + (i/N) * (logRsMax - logRsMin));
+    const noise = Math.sqrt(en**2 + (inn*rs)**2 + 4*k*T*rs);
+    const x = xp(rs), y = yp(noise);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Optimal Rs marker
+  const xOpt = xp(rsOpt);
+  ctx.strokeStyle = C.accent; ctx.lineWidth = 2; ctx.setLineDash([5,3]);
+  ctx.beginPath(); ctx.moveTo(xOpt, PAD.t); ctx.lineTo(xOpt, PAD.t + cH); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = C.accent; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Rs_opt', xOpt, PAD.t + 12);
+
+  // Current Rs marker
+  const rs0 = parseFloat(document.getElementById('sl-ars').value) * 1e3;
+  const xRs0 = xp(rs0);
+  ctx.strokeStyle = C.warn; ctx.lineWidth = 1.5; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(xRs0, PAD.t); ctx.lineTo(xRs0, PAD.t + cH); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Labels
+  ctx.font = '10px system-ui';
+  [{ label: '√4kTRs', color: C.c3, rs: 1e5 },
+   { label: 'en', color: C.c1, rs: 1e1 },
+   { label: 'in×Rs', color: C.c2, rs: 1e5 },
+   { label: 'Total', color: C.text, rs: 1e2 }].forEach(l => {
+    const rs = l.rs;
+    let noise;
+    if (l.label === '√4kTRs') noise = Math.sqrt(4*k*T*rs);
+    else if (l.label === 'en') noise = en;
+    else if (l.label === 'in×Rs') noise = inn * rs;
+    else noise = Math.sqrt(en**2 + (inn*rs)**2 + 4*k*T*rs);
+    ctx.fillStyle = l.color; ctx.textAlign = 'left';
+    ctx.fillText(l.label, xp(rs) + 3, yp(noise) - 3);
+  });
+
+  // Axes
+  ctx.strokeStyle = C.border; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t); ctx.lineTo(PAD.l, PAD.t + cH); ctx.lineTo(PAD.l + cW, PAD.t + cH); ctx.stroke();
+  ctx.fillStyle = C.muted; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+  ['1Ω','10Ω','100Ω','1kΩ','10kΩ','100kΩ','1MΩ','10MΩ','100MΩ'].forEach((lbl, i) => {
+    ctx.fillText(lbl, xp(Math.pow(10, i)), PAD.t + cH + 14);
+  });
+  ctx.textAlign = 'right';
+  const noiseLabels = ['0.1n','0.2n','0.5n','1n','2n','5n','10n','20n','50n','100n','200n','500n','1µ'];
+  const noiseVals = [0.1,0.2,0.5,1,2,5,10,20,50,100,200,500,1000].map(x => x*1e-9);
+  noiseVals.forEach((nv, i) => {
+    if (nv >= noiseMin && nv <= noiseMax) {
+      ctx.fillText(noiseLabels[i], PAD.l - 4, yp(nv) + 4);
+    }
+  });
+  ctx.save(); ctx.translate(14, PAD.t + cH/2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle = C.text; ctx.font = '11px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Noise Density (V/√Hz)', 0, 0); ctx.restore();
+  ctx.fillStyle = C.muted; ctx.textAlign = 'center';
+  ctx.fillText('Source Impedance Rs', PAD.l + cW/2, H - 4);
+}
+
+window.addEventListener('resize', update);
+update();
+</script>
+</body>
+</html>

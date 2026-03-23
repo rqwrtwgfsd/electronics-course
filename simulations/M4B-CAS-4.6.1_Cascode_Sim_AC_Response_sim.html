@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CAS-4.6.1 — Cascode AC Response</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#4d9fff;--green:#00cc66;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  select{background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 8px;font-size:13px;width:100%;}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  .ro.warn span{color:#cc4400;}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CAS-4.6.1</div>
+  <h1>Cascode — Sim: AC Response</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>OTA Parameters</h2>
+      <label>Topology: <select id="topo"><option value="cs">CS only (no cascode)</option><option value="cas" selected>Cascode</option><option value="rgc">Regulated cascode (A=20)</option></select></label>
+      <label>g_m,M1 (mA/V): <b id="gm1_l">2.0</b> <input type="range" id="gm1" min="0.5" max="10" value="2.0" step="0.1"></label>
+      <label>r_o per device (kΩ): <b id="ro_l">300</b> <input type="range" id="ro" min="10" max="2000" value="300" step="10"></label>
+      <label>C_L (pF): <b id="cl_l">2.0</b> <input type="range" id="cl" min="0.1" max="20" value="2.0" step="0.1"></label>
+      <label>C_mirror (fF): <b id="cm_l">300</b> <input type="range" id="cm" min="50" max="2000" value="300" step="10"></label>
+      <label>C_int,cascode (fF): <b id="ci_l">50</b> <input type="range" id="ci" min="5" max="500" value="50" step="5"></label>
+
+      <div class="ro">A_v0: <span id="av0">--</span> dB</div>
+      <div class="ro g">GBW: <span id="gbw">--</span> MHz</div>
+      <div class="ro">f_p1: <span id="fp1">--</span> Hz</div>
+      <div class="ro">f_mirror: <span id="fmirror">--</span> MHz</div>
+      <div class="ro">f_p,int: <span id="fpint">--</span> GHz</div>
+      <div class="ro" id="pm_ro">Phase Margin: <span id="pm">--</span>°</div>
+
+      <div class="insight" id="insight_box">Select topology and adjust parameters.</div>
+    </div>
+
+    <div class="card">
+      <h2>Bode Plot (Gain + Phase)</h2>
+      <canvas id="cv" height="320"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const topo = document.getElementById('topo').value;
+    const gm1  = +document.getElementById('gm1').value * 1e-3;
+    const ro   = +document.getElementById('ro').value  * 1e3;
+    const CL   = +document.getElementById('cl').value  * 1e-12;
+    const Cm   = +document.getElementById('cm').value  * 1e-15;
+    const Ci   = +document.getElementById('ci').value  * 1e-15;
+
+    document.getElementById('gm1_l').textContent = (gm1*1e3).toFixed(1);
+    document.getElementById('ro_l').textContent  = (ro/1e3).toFixed(0);
+    document.getElementById('cl_l').textContent  = (CL/1e-12).toFixed(1);
+    document.getElementById('cm_l').textContent  = (Cm/1e-15).toFixed(0);
+    document.getElementById('ci_l').textContent  = (Ci/1e-15).toFixed(0);
+
+    let rout, Aamp = 1;
+    if(topo === 'cs')  rout = ro / 2;  // N || P
+    else if(topo === 'cas') rout = (gm1 * ro * ro) / 2;
+    else { Aamp = 21; rout = Aamp * gm1 * ro * ro / 2; }
+
+    const Av0   = gm1 * rout;
+    const GBW   = gm1 / (2 * Math.PI * CL);
+    const fp1   = GBW / Av0;
+    const fm    = gm1 / (2 * Math.PI * Cm);  // mirror pole
+    const fp_int = (topo !== 'cs') ? gm1 / (2 * Math.PI * Ci) : 1e12; // internal cascode pole
+
+    // PM: 90 - arctan(GBW/fm) - arctan(GBW/fp_int)
+    const PM = 90 - Math.atan(GBW/fm)*180/Math.PI - Math.atan(GBW/fp_int)*180/Math.PI;
+
+    document.getElementById('av0').textContent    = (20*Math.log10(Av0)).toFixed(1);
+    document.getElementById('gbw').textContent    = (GBW/1e6).toFixed(2);
+    document.getElementById('fp1').textContent    = fp1 < 1000 ? fp1.toFixed(2) : (fp1/1e3).toFixed(2)+'k';
+    document.getElementById('fmirror').textContent = (fm/1e6).toFixed(1);
+    document.getElementById('fpint').textContent  = (fp_int/1e9).toFixed(2);
+
+    const pmRo = document.getElementById('pm_ro');
+    pmRo.className = PM > 60 ? 'ro g' : PM > 45 ? 'ro' : 'ro warn';
+    document.getElementById('pm').textContent = PM.toFixed(1);
+
+    document.getElementById('insight_box').textContent =
+      'A_v0 = ' + (20*Math.log10(Av0)).toFixed(0) + ' dB. GBW = ' + (GBW/1e6).toFixed(1) + ' MHz (invariant). ' +
+      'f_p1 = ' + (fp1 < 1 ? (fp1*1000).toFixed(0)+'mHz' : fp1 < 1000 ? fp1.toFixed(0)+'Hz' : (fp1/1e3).toFixed(1)+'kHz') +
+      '. Mirror pole at ' + (fm/1e6).toFixed(0) + ' MHz adds ' + (Math.atan(GBW/fm)*180/Math.PI).toFixed(0) + '° lag. PM = ' + PM.toFixed(1) + '°.';
+
+    draw(gm1, rout, GBW, fp1, fm, fp_int, CL, topo, PM);
+  }
+
+  function draw(gm1, rout, GBW, fp1, fm, fp_int, CL, topo, PM){
+    const cv  = document.getElementById('cv');
+    const W   = cv.parentElement.clientWidth - 36;
+    cv.width = W; cv.height = 320;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, W, 320);
+
+    const isDark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+    const axCol  = isDark ? '#8899bb' : '#8888aa';
+
+    const pL=52, pT=14, pBH=160, pBP=160; // gain upper half, phase lower half
+    const pH_gain = pBH - pT - 4;
+    const pH_phase = pBP - 14;
+    const pW = W - pL - 10;
+
+    // ===== GAIN panel (top) =====
+    const fMin_log = 0, fMax_log = 11; // 1 Hz to 100 GHz
+    const Av0_dB = 20*Math.log10(gm1 * rout);
+    const gMin = -30, gMax = Math.max(Av0_dB + 10, 30);
+
+    function xPos(f){ return pL + ((Math.log10(f)-fMin_log)/(fMax_log-fMin_log))*pW; }
+    function yGain(dB){ return pT + pH_gain - ((dB-gMin)/(gMax-gMin))*pH_gain; }
+    function yPhase(deg){ return pBH + 4 + pH_phase - ((deg+200)/180)*pH_phase; }
+
+    // Gain axis
+    ctx.strokeStyle=axCol; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+pH_gain); ctx.lineTo(pL+pW,pT+pH_gain); ctx.stroke();
+
+    // Gain grid
+    for(let dB=Math.ceil(gMin/20)*20; dB<=Math.floor(gMax/20)*20; dB+=20){
+      const y=yGain(dB); if(y<pT||y>pT+pH_gain) continue;
+      ctx.fillStyle=axCol; ctx.font='8px system-ui'; ctx.textAlign='right';
+      ctx.fillText(dB, pL-3, y+3);
+      ctx.strokeStyle=axCol+'22'; ctx.lineWidth=0.5;
+      ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pW,y); ctx.stroke();
+    }
+
+    // Transfer function: two poles (mirror + internal cascode)
+    function H_dB(f){
+      const H = (gm1*rout) / Math.sqrt(1+(f/fp1)**2) / Math.sqrt(1+(f/fm)**2) / Math.sqrt(1+(f/fp_int)**2);
+      return 20*Math.log10(Math.max(1e-10, H));
+    }
+    function phase_deg(f){
+      return -Math.atan(f/fp1)*180/Math.PI - Math.atan(f/fm)*180/Math.PI - Math.atan(f/fp_int)*180/Math.PI;
+    }
+
+    const colors = {cs:'#cc4400', cas:'#0066cc', rgc:'#00994d'};
+    const col = colors[topo] || '#0066cc';
+
+    ctx.strokeStyle = col; ctx.lineWidth=2; ctx.setLineDash([]);
+    ctx.beginPath(); let first=true;
+    for(let px=0; px<=pW; px++){
+      const f = Math.pow(10, fMin_log+(px/pW)*(fMax_log-fMin_log));
+      const dB = H_dB(f);
+      const y = yGain(dB);
+      if(y<pT-8||y>pT+pH_gain+8){first=true;continue;}
+      first?ctx.moveTo(pL+px,y):ctx.lineTo(pL+px,y); first=false;
+    }
+    ctx.stroke();
+
+    // 0 dB line
+    const y0 = yGain(0);
+    if(y0>=pT&&y0<=pT+pH_gain){
+      ctx.strokeStyle=axCol+'55'; ctx.lineWidth=0.5; ctx.setLineDash([4,4]);
+      ctx.beginPath(); ctx.moveTo(pL,y0); ctx.lineTo(pL+pW,y0); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // GBW marker
+    const xGBW = xPos(GBW);
+    if(xGBW>=pL&&xGBW<=pL+pW){
+      ctx.strokeStyle='#ff880088'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(xGBW,pT); ctx.lineTo(xGBW,pBH); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle='#ff8800'; ctx.font='9px system-ui'; ctx.textAlign='center';
+      ctx.fillText('GBW', xGBW, pT+pH_gain+14);
+    }
+
+    // Labels
+    ctx.textAlign='right'; ctx.fillStyle=axCol; ctx.font='8px system-ui';
+    ctx.save(); ctx.translate(10,pT+pH_gain/2); ctx.rotate(-Math.PI/2); ctx.fillText('Gain (dB)',0,0); ctx.restore();
+    ctx.fillStyle=axCol; ctx.font='bold 10px system-ui'; ctx.textAlign='center';
+    ctx.fillText(['CS only','Cascode','Regulated cascode'][['cs','cas','rgc'].indexOf(topo)]+' — Bode Plot', pL+pW/2, pT-2);
+
+    // ===== PHASE panel (bottom) =====
+    ctx.strokeStyle=axCol; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pBH+4); ctx.lineTo(pL,pBH+4+pH_phase); ctx.lineTo(pL+pW,pBH+4+pH_phase); ctx.stroke();
+
+    // Phase grid lines at -45, -90, -135, -180
+    [-45,-90,-135,-180].forEach(deg=>{
+      const y=yPhase(deg);
+      if(y<pBH+4||y>pBH+4+pH_phase) return;
+      ctx.fillStyle=axCol; ctx.font='8px system-ui'; ctx.textAlign='right';
+      ctx.fillText(deg+'°', pL-3, y+3);
+      ctx.strokeStyle=axCol+'22'; ctx.lineWidth=0.5;
+      ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pW,y); ctx.stroke();
+    });
+
+    // Phase curve
+    ctx.strokeStyle=col+'cc'; ctx.lineWidth=1.5; ctx.setLineDash([]);
+    ctx.beginPath(); first=true;
+    for(let px=0; px<=pW; px++){
+      const f = Math.pow(10, fMin_log+(px/pW)*(fMax_log-fMin_log));
+      const ph = phase_deg(f);
+      const y = yPhase(ph);
+      if(y<pBH||y>pBH+4+pH_phase+8){first=true;continue;}
+      first?ctx.moveTo(pL+px,y):ctx.lineTo(pL+px,y); first=false;
+    }
+    ctx.stroke();
+
+    // PM marker at GBW
+    const pm_at_GBW = phase_deg(GBW);
+    const xgbw2 = xPos(GBW);
+    const ygbw  = yPhase(pm_at_GBW);
+    if(xgbw2>=pL&&xgbw2<=pL+pW&&ygbw>=pBH+4&&ygbw<=pBH+4+pH_phase){
+      const pmColor = PM > 60 ? '#00994d' : PM > 45 ? '#ff8800' : '#cc0000';
+      ctx.fillStyle = pmColor;
+      ctx.beginPath(); ctx.arc(xgbw2, ygbw, 5, 0, 2*Math.PI); ctx.fill();
+      ctx.font='9px system-ui'; ctx.textAlign='left';
+      ctx.fillText('PM='+PM.toFixed(0)+'°', xgbw2+7, ygbw+4);
+    }
+
+    ctx.textAlign='right'; ctx.fillStyle=axCol; ctx.font='8px system-ui';
+    ctx.save(); ctx.translate(10,pBH+4+pH_phase/2); ctx.rotate(-Math.PI/2); ctx.fillText('Phase (°)',0,0); ctx.restore();
+
+    // x axis labels (shared)
+    [1,100,1e4,1e6,1e8,1e10].forEach(f=>{
+      const x=xPos(f);
+      const lbl=f>=1e9?(f/1e9).toFixed(0)+'G':f>=1e6?(f/1e6).toFixed(0)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f.toFixed(0);
+      ctx.fillStyle=axCol; ctx.font='8px system-ui'; ctx.textAlign='center';
+      ctx.fillText(lbl+'Hz', x, pBH+4+pH_phase+14);
+      ctx.strokeStyle=axCol+'22'; ctx.lineWidth=0.5;
+      ctx.beginPath(); ctx.moveTo(x,pBH+4); ctx.lineTo(x,pBH+4+pH_phase); ctx.stroke();
+    });
+  }
+
+  document.querySelectorAll('input[type=range],select').forEach(e => e.addEventListener('input', compute));
+  compute();
+  window.addEventListener('resize', compute);
+</script>
+</body>
+</html>

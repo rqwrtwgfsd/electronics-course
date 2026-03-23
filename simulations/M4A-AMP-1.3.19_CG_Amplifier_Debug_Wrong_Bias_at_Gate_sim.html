@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.3.19 — CG Wrong Gate Bias Debug</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;gap:16px;align-items:baseline;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .ok{color:#009900!important;font-weight:bold;}
+  .warn{color:#cc6600!important;font-weight:bold;}
+  .err{color:#cc0000!important;font-weight:bold;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:6px;text-align:center;}
+  .met .v{font-size:12px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.3.19</div>
+  <div class="topic">CG Wrong Gate Bias Debug — Operating Region, gm vs VG, Failure Mode Identification</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>MOSFET</h3>
+      <label>K (mA/V²): <b id="K_lbl">5</b></label>
+      <input type="range" id="K" min="0.5" max="30" value="5" step="0.5">
+      <label>Vth (V): <b id="vth_lbl">0.6</b></label>
+      <input type="range" id="vth" min="0.3" max="1.5" value="0.6" step="0.05">
+    </div>
+    <div class="cg">
+      <h3>Circuit</h3>
+      <label>VDD (V): <b id="vdd_lbl">3.3</b></label>
+      <input type="range" id="vdd" min="1.8" max="12" value="3.3" step="0.1">
+      <label>RD (kΩ): <b id="rd_lbl">1.0</b></label>
+      <input type="range" id="rd" min="0.1" max="10" value="1" step="0.1">
+      <label>VG (V): <b id="vg_lbl">1.2</b></label>
+      <input type="range" id="vg" min="0" max="5" value="1.2" step="0.02">
+    </div>
+    <div class="cg">
+      <h3>Diagnosis</h3>
+      <div class="rd">VGS: <span id="r_vgs">—</span></div>
+      <div class="rd">Vov: <span id="r_vov">—</span></div>
+      <div class="rd">ID: <span id="r_id">—</span></div>
+      <div class="rd">VD: <span id="r_vd">—</span></div>
+      <div class="rd">VDS: <span id="r_vds">—</span></div>
+      <div class="rd">Region: <span id="r_region">—</span></div>
+      <div class="rd">gm: <span id="r_gm">—</span></div>
+      <div class="rd">Av: <span id="r_av">—</span></div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_id">—</div><div class="l">ID (mA)</div></div>
+      <div class="met"><div class="v" id="m_gm">—</div><div class="l">gm (mA/V)</div></div>
+      <div class="met"><div class="v" id="m_vd">—</div><div class="l">VD (V)</div></div>
+      <div class="met"><div class="v" id="m_region">—</div><div class="l">Region</div></div>
+    </div>
+    <div>
+      <div class="pl">Operating region map: VG vs resulting VDS and Vov</div>
+      <canvas id="regionCanvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">gm and Av vs VG (showing off / sat / triode regions)</div>
+      <canvas id="gmCanvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">Gate bypass impact: effective Zin vs bypass capacitance at 1 GHz</div>
+      <canvas id="bypassCanvas" height="170"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+function calcOP(K_mA,vth,vdd,vg,rd_k){
+  const K=K_mA*1e-3,rd=rd_k*1e3;
+  const vs=0; // No RS in this debug sim
+  const vgs=vg-vs;
+  if(vgs<=vth)return{id:0,vs,vd:vdd,vgs,vov:0,vds:vdd-vs,gm:0,region:'OFF'};
+  const vov=vgs-vth;
+  let id=K*vov*vov;
+  const vd_sat=vdd-id*rd;
+  const vds=vd_sat-vs;
+  let region;
+  if(vds>=vov){region='SAT';}
+  else{
+    // triode: ID_triode = K*(2*Vov*VDS - VDS^2)
+    // VD = VDD - ID*RD. ID = K*(2*(VG-VS-Vth)*VDS - VDS^2) where VDS = VD-VS
+    // Iterative: VD = VDD - K*(2*vov*(VD)-VD^2)*RD... complex, approximate
+    // Linear region: approximate VD from: VDD = VD + K*(2*vov*VDS-VDS^2)*RD
+    // Solve numerically
+    let vd_t=vov*0.9; // start below saturation
+    for(let iter=0;iter<50;iter++){
+      const vds_t=vd_t-vs;
+      const id_t=K*(2*vov*vds_t-vds_t*vds_t);
+      const vd_new=vdd-id_t*rd;
+      if(Math.abs(vd_new-vd_t)<1e-6)break;
+      vd_t=vd_t*0.5+vd_new*0.5;
+    }
+    const vds_t=vd_t-vs;
+    id=K*(2*vov*vds_t-vds_t*vds_t);
+    region='TRIODE';
+    const vd_final=vdd-id*rd;
+    return{id,vs,vd:vd_final,vgs,vov,vds:vd_final-vs,gm:K*2*(vov-vds_t),region};
+  }
+  const gm=2*K*vov;
+  return{id,vs,vd:vd_sat,vgs,vov,vds,gm,region};
+}
+
+function update(){
+  const K_mA=parseFloat(document.getElementById('K').value);
+  const vth=parseFloat(document.getElementById('vth').value);
+  const vdd=parseFloat(document.getElementById('vdd').value);
+  const vg=Math.min(parseFloat(document.getElementById('vg').value),vdd*1.1);
+  const rd_k=parseFloat(document.getElementById('rd').value);
+
+  document.getElementById('K_lbl').textContent=K_mA.toFixed(1);
+  document.getElementById('vth_lbl').textContent=vth.toFixed(2);
+  document.getElementById('vdd_lbl').textContent=vdd.toFixed(1);
+  document.getElementById('vg_lbl').textContent=vg.toFixed(2);
+  document.getElementById('rd_lbl').textContent=rd_k.toFixed(1);
+
+  const op=calcOP(K_mA,vth,vdd,vg,rd_k);
+  const rd=rd_k*1e3;
+  const av_approx=op.region==='SAT'?op.gm*rd:op.region==='TRIODE'?op.gm*rd*0.1:0;
+
+  document.getElementById('r_vgs').textContent=op.vgs.toFixed(3)+' V';
+  document.getElementById('r_vov').textContent=op.vov.toFixed(3)+' V';
+  document.getElementById('r_id').textContent=(op.id*1e3).toFixed(3)+' mA';
+  document.getElementById('r_vd').textContent=op.vd.toFixed(3)+' V';
+  document.getElementById('r_vds').textContent=op.vds.toFixed(3)+' V';
+  const regEl=document.getElementById('r_region');
+  regEl.textContent=op.region;
+  regEl.className=op.region==='SAT'?'ok':op.region==='TRIODE'?'err':'warn';
+  document.getElementById('r_gm').textContent=(op.gm*1e3).toFixed(2)+' mA/V';
+  document.getElementById('r_av').textContent=op.region==='SAT'?'+'+(op.gm*rd).toFixed(1):'~0 ('+op.region+')';
+
+  document.getElementById('m_id').textContent=(op.id*1e3).toFixed(2);
+  document.getElementById('m_gm').textContent=(op.gm*1e3).toFixed(1);
+  document.getElementById('m_vd').textContent=op.vd.toFixed(2);
+  const mrEl=document.getElementById('m_region');
+  mrEl.textContent=op.region;
+  mrEl.style.color=op.region==='SAT'?'#009900':op.region==='TRIODE'?'#cc0000':'#cc6600';
+
+  drawRegion(K_mA,vth,vdd,rd_k,vg);
+  drawGm(K_mA,vth,vdd,rd_k,vg);
+  drawBypass(op.gm);
+}
+
+function drawRegion(K_mA,vth,vdd,rd_k,vg0){
+  const canvas=document.getElementById('regionCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:55,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+  const vg_max=vdd;
+  const toX=vg=>pad.l+(vg/(vg_max))*pw;
+  const vd_scale=vdd;
+  const toY=v=>pad.t+(1-v/vd_scale)*ph;
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [0,0.25,0.5,0.75,1.0].forEach(frac=>{
+    const y=pad.t+frac*ph;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText((vdd*(1-frac)).toFixed(1),pad.l-22,y+3);
+  });
+
+  // VD line (VDD - ID*RD)
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=200;i++){
+    const vg=i/200*vg_max;
+    const op=calcOP(K_mA,vth,vdd,vg,rd_k);
+    const x=toX(vg),y=toY(op.vd);
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Vov line (= VGS - Vth)
+  ctx.strokeStyle='#006633';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=200;i++){
+    const vg=i/200*vg_max;
+    const vov=Math.max(0,vg-vth);
+    const x=toX(vg),y=toY(vov);
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Region shading
+  for(let i=0;i<200;i++){
+    const vg=i/200*vg_max;
+    const op=calcOP(K_mA,vth,vdd,vg,rd_k);
+    const x=toX(vg);
+    const bw=pw/200;
+    if(op.region==='SAT'){ctx.fillStyle='rgba(0,160,0,0.10)';ctx.fillRect(x,pad.t,bw+1,ph);}
+    else if(op.region==='TRIODE'){ctx.fillStyle='rgba(200,0,0,0.10)';ctx.fillRect(x,pad.t,bw+1,ph);}
+  }
+
+  // Current VG marker
+  const opv=calcOP(K_mA,vth,vdd,vg0,rd_k);
+  ctx.fillStyle=opv.region==='SAT'?'#009900':opv.region==='TRIODE'?'#cc0000':'#cc6600';
+  ctx.beginPath();ctx.arc(toX(vg0),toY(opv.vd),5,0,2*Math.PI);ctx.fill();
+  ctx.strokeStyle='#cc0000';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(toX(vg0),pad.t);ctx.lineTo(toX(vg0),pad.t+ph);ctx.stroke();ctx.setLineDash([]);
+
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='8px Courier New';ctx.fillText('VD',pad.l+pw-20,toY(opv.vd)-4);
+  ctx.fillStyle='#006633';ctx.fillText('Vov=VGS–Vth',pad.l+5,pad.t+14);
+  ctx.fillStyle='#009900';ctx.fillText('SAT',pad.l+pw*0.5,pad.t+ph*0.3);
+  ctx.fillStyle='#cc0000';if(opv.region==='TRIODE'||opv.vd<opv.vov)ctx.fillText('TRIODE',pad.l+pw*0.75,pad.t+ph*0.7);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('VG →',W/2-15,H-3);
+  ctx.save();ctx.translate(10,H/2+10);ctx.rotate(-Math.PI/2);ctx.fillText('Voltage (V)',0,0);ctx.restore();
+  [0,0.5,1.0,1.5,2.0,2.5,3.0].filter(v=>v<=vg_max).forEach(v=>{ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(v,toX(v)-5,pad.t+ph+12);});
+}
+
+function drawGm(K_mA,vth,vdd,rd_k,vg0){
+  const canvas=document.getElementById('gmCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:55,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const vg_max=vdd;
+  const toX=vg=>pad.l+(vg/vg_max)*pw;
+
+  // find max gm
+  const op_max=calcOP(K_mA,vth,vdd,vg_max,rd_k);
+  const gm_max=Math.max(op_max.gm,1e-3);
+  const toY=gm=>pad.t+(1-gm/gm_max)*ph;
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [0.25,0.5,0.75,1.0].forEach(frac=>{
+    const y=pad.t+frac*ph;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText((gm_max*(1-frac)*1e3).toFixed(1)+'m',pad.l-32,y+3);
+  });
+
+  // region colors
+  for(let i=0;i<200;i++){
+    const vg=i/200*vg_max;
+    const op=calcOP(K_mA,vth,vdd,vg,rd_k);
+    const x=toX(vg);const bw=pw/200;
+    if(op.region==='SAT'){ctx.fillStyle='rgba(0,160,0,0.08)';ctx.fillRect(x,pad.t,bw+1,ph);}
+    else if(op.region==='TRIODE'){ctx.fillStyle='rgba(200,0,0,0.08)';ctx.fillRect(x,pad.t,bw+1,ph);}
+  }
+
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=200;i++){
+    const vg=i/200*vg_max;
+    const op=calcOP(K_mA,vth,vdd,vg,rd_k);
+    const gm_plot=op.region==='SAT'?op.gm:0;
+    const x=pad.l+i/200*pw,y=toY(gm_plot);
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // current point
+  const op0=calcOP(K_mA,vth,vdd,vg0,rd_k);
+  const gm0=op0.region==='SAT'?op0.gm:0;
+  ctx.fillStyle=op0.region==='SAT'?'#009900':'#cc0000';
+  ctx.beginPath();ctx.arc(toX(vg0),toY(gm0),5,0,2*Math.PI);ctx.fill();
+
+  // OFF / SAT / TRIODE labels
+  ctx.fillStyle='#cc6600';ctx.font='9px Courier New';ctx.fillText('OFF',toX(vth/2)-10,pad.t+ph*0.5);
+  ctx.fillStyle='#009900';
+  const vg_sat_start=vth+0.2;
+  if(vg_sat_start<vg_max)ctx.fillText('SAT',toX(vg_sat_start+0.2),pad.t+30);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('VG →',W/2-15,H-3);
+  ctx.save();ctx.translate(10,H/2+15);ctx.rotate(-Math.PI/2);ctx.fillText('gm (mA/V)',0,0);ctx.restore();
+  [0,0.5,1.0,1.5,2.0,2.5,3.0].filter(v=>v<=vg_max).forEach(v=>{ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(v,toX(v)-5,pad.t+ph+12);});
+}
+
+function drawBypass(gm0){
+  const canvas=document.getElementById('bypassCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:65,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+  // x: Cbyp log 0.01 to 1000 pF
+  const cmin=1e-14,cmax=1e-9;
+  const toX=c=>pad.l+(Math.log10(c)-Math.log10(cmin))/(Math.log10(cmax)-Math.log10(cmin))*pw;
+  const f=1e9; // 1 GHz
+  const zin_ideal=gm0>0?1/gm0:100;
+  // Effective gate impedance = 1/(j*2pi*f*Cbyp)
+  // Effective Zin_input = 1/gm + Zgate effect... simplified: for perfect bypass Zin = 1/gm, for no bypass Zin >> 1/gm
+  // Ratio: Zin_eff / Zin_ideal = 1 + (1/gm) / Zbyp (approximate, series model)
+  // Actually: if gate is not grounded, effective Zin at source increases. Approx: Zin_eff ≈ 1/gm × (1 + 1/(gm×Zbyp))
+  const toY=v=>pad.t+(1-v/10)*ph; // ratio 1..10
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [1,2,5,10].forEach(v=>{
+    const y=toY(v);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(v+'×',pad.l-18,y+3);
+  });
+
+  const colors=[cs.getPropertyValue('--accent').trim(),'#006633'];
+  [1e9,3e9].forEach((freq,fi)=>{
+    ctx.strokeStyle=colors[fi];ctx.lineWidth=2;
+    ctx.beginPath();
+    for(let i=0;i<=300;i++){
+      const c=Math.pow(10,Math.log10(cmin)+i/300*Math.log10(cmax/cmin));
+      const zbyp=1/(2*Math.PI*freq*c);
+      const ratio=1+(zin_ideal*gm0)/(gm0*zbyp); // approx: 1 + Zin/Zbyp
+      const x=toX(c),y=toY(Math.min(ratio,10));
+      if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    ctx.fillStyle=colors[fi];ctx.font='8px Courier New';ctx.fillText((freq/1e9).toFixed(0)+' GHz',pad.l+5+(fi*65),pad.t+12+fi*0);
+  });
+
+  // spec line: ratio = 1 (perfect bypass)
+  ctx.strokeStyle='#cc0000';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,toY(1.1));ctx.lineTo(pad.l+pw,toY(1.1));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#cc0000';ctx.font='8px Courier New';ctx.fillText('effective bypass threshold',pad.l+5,toY(1.1)-3);
+
+  [0.01,0.1,1,10,100,1000].forEach(v=>{
+    const c=v*1e-12;
+    const x=toX(c);ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(v+'pF',x-10,pad.t+ph+12);
+  });
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('Cbyp →',W/2-15,H-3);
+  ctx.save();ctx.translate(10,H/2+15);ctx.rotate(-Math.PI/2);ctx.fillText('Zin_eff / Zin_ideal',0,0);ctx.restore();
+}
+
+['K','vth','vdd','vg','rd'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

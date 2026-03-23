@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-RW-8.2.1 Signal Filtering / Anti-Aliasing</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:10px;padding:10px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:230px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.warn{color:#ff4444;font-size:11px;margin-top:4px}
+.ok{color:#00ff88;font-size:11px;margin-top:4px}
+.formula{color:#ffaa00;font-size:11px;margin-top:8px;line-height:1.6}
+</style>
+</head>
+<body>
+<h1>P2-RW-8.2.1 — Anti-Aliasing Filter: f_s, f_signal, f_c Design</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="580" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>ADC Parameters</h2>
+<label>Sample Rate f_s (kHz)
+<input type="range" id="fs" min="1" max="200" step="1" value="10">
+<div class="readout" id="fs_v">f_s = 10 kHz</div>
+</label>
+<label>Signal Bandwidth f_sig (kHz)
+<input type="range" id="fsig" min="0.1" max="50" step="0.1" value="1">
+<div class="readout" id="fsig_v">f_sig = 1.0 kHz</div>
+</label>
+<label>Filter Cutoff f_c (kHz)
+<input type="range" id="fc" min="0.1" max="100" step="0.1" value="3">
+<div class="readout" id="fc_v">f_c = 3.0 kHz</div>
+</label>
+<h2 style="margin-top:10px">Nyquist Check</h2>
+<div class="readout" id="nyquist">Nyquist = f_s/2: —</div>
+<div id="alias_warn" class="warn"></div>
+<div id="fc_check" class="ok"></div>
+<h2 style="margin-top:10px">Attenuation</h2>
+<div class="readout" id="atten_fc">At f_c: −3.0 dB</div>
+<div class="readout" id="atten_nyq">At f_s/2: —</div>
+<div class="readout" id="atten_sig">At f_sig: —</div>
+<div class="formula">f_c < f_s/2 − f_sig<br>|H(f)|=1/√(1+(f/f_c)²)</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let fs=10,fsig=1,fc=3;
+const W=580,H=380,pad={l:65,r:20,t:20,b:40};
+const CW=W-pad.l-pad.r,CH=H-pad.t-pad.b;
+
+['fs','fsig','fc'].forEach(id=>{
+  document.getElementById(id).oninput=function(){
+    const v=parseFloat(this.value);
+    if(id==='fs'){fs=v;document.getElementById('fs_v').textContent='f_s = '+v+' kHz';}
+    if(id==='fsig'){fsig=v;document.getElementById('fsig_v').textContent='f_sig = '+v.toFixed(1)+' kHz';}
+    if(id==='fc'){fc=v;document.getElementById('fc_v').textContent='f_c = '+v.toFixed(1)+' kHz';}
+    draw();
+  };
+});
+
+function H(f){return 1/Math.sqrt(1+Math.pow(f/fc,2));}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const fmax=Math.max(fs,fc)*3;const fmin=0.1;
+  const dBmin=-60,dBmax=5;
+  function toPx(f,dB){
+    const x=pad.l+CW*(Math.log10(f/fmin))/(Math.log10(fmax/fmin));
+    const y=pad.t+CH*(1-(dB-dBmin)/(dBmax-dBmin));
+    return[x,y];
+  }
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let dec=0;dec<4;dec++){for(let i=1;i<=9;i++){const f=fmin*Math.pow(10,dec)*i;const x=pad.l+CW*(Math.log10(f/fmin))/(Math.log10(fmax/fmin));if(x>pad.l&&x<pad.l+CW){ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+CH);ctx.stroke();}}}
+  for(let dB=dBmin;dB<=dBmax;dB+=10){const y=pad.t+CH*(1-(dB-dBmin)/(dBmax-dBmin));ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,pad.t+CH);ctx.moveTo(pad.l,pad.t+CH);ctx.lineTo(pad.l+CW,pad.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  [0.1,1,10,100].filter(f=>f<=fmax).forEach(f=>{const x=pad.l+CW*(Math.log10(f/fmin))/(Math.log10(fmax/fmin));if(x>pad.l&&x<pad.l+CW)ctx.fillText(f+'kHz',x,pad.t+CH+14);});
+  ctx.textAlign='right';
+  for(let dB=-60;dB<=0;dB+=10){const y=pad.t+CH*(1-(dB-dBmin)/(dBmax-dBmin));ctx.fillText(dB+'dB',pad.l-4,y+4);}
+  // Signal band
+  const[xs_l,_]=toPx(fsig,-60);const[xs_r,__]=toPx(fsig,5);
+  ctx.fillStyle='rgba(0,100,0,0.2)';ctx.fillRect(pad.l,pad.t,xs_l-pad.l,CH);
+  ctx.strokeStyle='#00ff8844';ctx.setLineDash([3,2]);ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(xs_l,pad.t);ctx.lineTo(xs_l,pad.t+CH);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#00ff88';ctx.font='10px Courier New';ctx.textAlign='left';ctx.fillText('f_sig='+fsig+'kHz',xs_l+3,pad.t+14);
+  // Nyquist
+  const nyq=fs/2;
+  const[xn,_xn]=toPx(nyq,0);
+  ctx.strokeStyle='#ff444488';ctx.lineWidth=1;ctx.setLineDash([4,2]);
+  ctx.beginPath();ctx.moveTo(xn,pad.t);ctx.lineTo(xn,pad.t+CH);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#ff4444';ctx.fillText('f_s/2='+nyq+'kHz',xn+3,pad.t+28);
+  // Filter curve
+  ctx.strokeStyle='#00aaff';ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=500;i++){
+    const f=fmin*Math.pow(fmax/fmin,i/500);
+    const dB=20*Math.log10(H(f));
+    const[x,y]=toPx(f,dB);
+    if(y>pad.t-5&&y<pad.t+CH+5){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  }
+  ctx.stroke();
+  // f_c marker
+  const[xfc,yfc]=toPx(fc,-3);
+  ctx.fillStyle='#ffaa00';ctx.beginPath();ctx.arc(xfc,yfc,5,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#ffaa00';ctx.fillText('f_c='+fc+'kHz (−3dB)',xfc+6,yfc-4);
+  // Readouts
+  const nyquist_f=fs/2;
+  document.getElementById('nyquist').textContent='Nyquist = f_s/2: '+nyquist_f+' kHz';
+  const alias=document.getElementById('alias_warn');
+  const fcc=document.getElementById('fc_check');
+  if(fsig>=nyquist_f){alias.textContent='ALIAS: f_sig >= f_s/2! Signal will alias. Increase f_s or decrease f_sig.';}
+  else{alias.textContent='';}
+  if(fc<nyquist_f-fsig){fcc.textContent='f_c OK: filter placed below Nyquist−f_sig zone.';}
+  else{fcc.className='warn';fcc.textContent='WARNING: f_c too high! Aliased components not sufficiently attenuated.';}
+  const dB_fc=20*Math.log10(H(fc));
+  const dB_nyq=20*Math.log10(H(nyquist_f));
+  const dB_sig=20*Math.log10(H(fsig));
+  document.getElementById('atten_fc').textContent='At f_c: '+dB_fc.toFixed(1)+' dB';
+  document.getElementById('atten_nyq').textContent='At f_s/2: '+dB_nyq.toFixed(1)+' dB (alias rejection)';
+  document.getElementById('atten_sig').textContent='At f_sig: '+dB_sig.toFixed(2)+' dB';
+}
+draw();
+</script>
+</body>
+</html>

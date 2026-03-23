@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-DA-2.7.1 — Debug: Low Gain</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  select{width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text);font-size:13px;margin-bottom:10px;}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  .ro.bad span{color:#cc4400;}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+  .diag{background:var(--bg2);border-left:4px solid #cc4400;border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.5;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-DA-2.7.1</div>
+  <h1>Differential Amplifier — Debug: Low Gain</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Fault Injection</h2>
+      <label>Fault Mode:
+        <select id="fault">
+          <option value="0">Ideal — all in saturation</option>
+          <option value="1">NMOS pair in triode (V_CM too high)</option>
+          <option value="2">PMOS load in triode (V_out near V_DD)</option>
+          <option value="3">Cascode bias miscalibration</option>
+          <option value="4">Wrong W/L on load (10× too small)</option>
+          <option value="5">Resistive load (50 kΩ external)</option>
+          <option value="6">SS corner (λ × 2)</option>
+        </select>
+      </label>
+      <label>g_m,pair (mA/V): <b id="gm_l">1.65</b> <input type="range" id="gm" min="0.1" max="10" value="1.65" step="0.05"></label>
+      <label>λ_n (V⁻¹): <b id="lamn_l">0.08</b> <input type="range" id="lamn" min="0.01" max="0.5" value="0.08" step="0.01"></label>
+      <label>λ_p (V⁻¹): <b id="lamp_l">0.10</b> <input type="range" id="lamp" min="0.01" max="0.5" value="0.10" step="0.01"></label>
+      <label>I_D (μA): <b id="id_l">100</b> μA <input type="range" id="id" min="5" max="500" value="100" step="5"></label>
+
+      <div class="ro">r_o,n (kΩ): <span id="ron_d">--</span></div>
+      <div class="ro" style="margin-top:4px">r_o,p (kΩ): <span id="rop_d">--</span></div>
+      <div class="ro" id="av_ro" style="margin-top:4px">A_v (dB): <span id="av_d">--</span></div>
+      <div class="ro" style="margin-top:4px">Ideal A_v (dB): <span id="av_ideal">--</span></div>
+      <div class="diag" id="diag_box">Select a fault to see diagnosis.</div>
+    </div>
+
+    <div class="card">
+      <h2>Gain vs Fault Mode</h2>
+      <canvas id="cv" height="300"></canvas>
+      <div class="insight">
+        Each bar shows the gain under different fault conditions. Triode drops gain by 40+ dB. Wrong load impedance similarly collapses gain. The ideal (green) bar is the design target.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  const faultNames=['Ideal','Pair triode','Load triode','Cas. bias off','W/L error','Resistive load','SS corner'];
+  const faultDiag=[
+    'All transistors in saturation. Gain = g_m × (r_o,n ∥ r_o,p). Operating as designed.',
+    'NMOS pair in triode: V_DS < V_ov. r_o,n collapses to ~V_DS/(I_D × λ_eff) × 0.01. Fix: reduce V_CM or increase V_DD headroom.',
+    'PMOS load in triode: V_out near V_DD. V_SD,p < V_ov,p. r_o,p collapses. Fix: lower output DC level or increase PMOS W/L.',
+    'Cascode bias too low: cascode transistor in subthreshold. R_out = g_m_cas × r_o² collapses to r_o. Gain drops by g_m_cas × r_o factor (≈ 40 dB).',
+    'PMOS W/L = 1/10 of intended. g_m,p = 10× too small, r_o,p = 10× too large. Net R_out dominated by r_o,n only. Gain falls 6 dB.',
+    'External 50 kΩ load (probe). R_out || 50kΩ ≈ 50kΩ. Gain = g_m × 50kΩ — limited by probe, not circuit.',
+    'SS corner: λ × 2. r_o halved. Gain drops by ~6 dB. All parameters at slow-slow corner.'
+  ];
+
+  function getGain(fault, gm, lamn, lamp, ID){
+    const ron_ideal = 1/(lamn*ID);
+    const rop_ideal = 1/(lamp*ID);
+    const Av_ideal = gm*(ron_ideal*rop_ideal/(ron_ideal+rop_ideal));
+    let ron=ron_ideal, rop=rop_ideal;
+
+    if(fault===1){ ron=ron_ideal*0.01; } // pair in triode
+    if(fault===2){ rop=rop_ideal*0.01; } // pmos load in triode
+    if(fault===3){ // cascode bias off — no cascode gain boost
+      // Ideal was already simple active load; just collapse to g_m * ron_only
+      rop = rop_ideal;
+      // Simulate cascode collapse: R_out becomes just r_o without cascode multiplication
+      return gm*(ron*rop/(ron+rop)) * 0.01; // 40 dB drop
+    }
+    if(fault===4){ rop=rop_ideal*10; } // higher rop but same structure — gain dominated by ron
+    if(fault===5){ const Rext=50e3; return gm*(ron_ideal*rop_ideal/(ron_ideal+rop_ideal)*Rext/(ron_ideal*rop_ideal/(ron_ideal+rop_ideal)+Rext)); }
+    if(fault===6){ ron=1/((lamn*2)*ID); rop=1/((lamp*2)*ID); }
+
+    return gm*(ron*rop/(ron+rop));
+  }
+
+  function compute(){
+    const fault=+document.getElementById('fault').value;
+    const gm=+document.getElementById('gm').value*1e-3;
+    const lamn=+document.getElementById('lamn').value;
+    const lamp=+document.getElementById('lamp').value;
+    const ID=+document.getElementById('id').value*1e-6;
+
+    document.getElementById('gm_l').textContent=(gm*1e3).toFixed(2);
+    document.getElementById('lamn_l').textContent=lamn.toFixed(2);
+    document.getElementById('lamp_l').textContent=lamp.toFixed(2);
+    document.getElementById('id_l').textContent=(ID*1e6).toFixed(0);
+
+    const ron=1/(lamn*ID);
+    const rop=1/(lamp*ID);
+    const Av_ideal=gm*(ron*rop/(ron+rop));
+    const Av_fault=getGain(fault,gm,lamn,lamp,ID);
+
+    document.getElementById('ron_d').textContent=(ron/1e3).toFixed(0);
+    document.getElementById('rop_d').textContent=(rop/1e3).toFixed(0);
+    document.getElementById('av_d').textContent=(20*Math.log10(Math.max(Av_fault,1e-6))).toFixed(1);
+    document.getElementById('av_ideal').textContent=(20*Math.log10(Av_ideal)).toFixed(1);
+    document.getElementById('diag_box').textContent=faultDiag[fault];
+
+    const avRo=document.getElementById('av_ro');
+    const avDiff=20*Math.log10(Av_ideal)-20*Math.log10(Math.max(Av_fault,1e-6));
+    avRo.className = avDiff<3?'ro g':'ro bad';
+
+    draw(gm, lamn, lamp, ID, fault);
+  }
+
+  function draw(gm, lamn, lamp, ID, activeFault){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=300;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,300);
+    const pL=55,pR=16,pT=14,pB=50,pw=W-pL-pR,ph=300-pT-pB;
+
+    const avMax=100, avMin=0;
+    const N=faultNames.length;
+    const barW=Math.floor(pw/N)-4;
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText('A_v (dB)', 2, pT+ph/2);
+
+    for(let db=0;db<=avMax;db+=20){
+      const y=pT+ph-((db-avMin)/(avMax-avMin))*ph;
+      ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText(db, 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+
+    for(let i=0;i<N;i++){
+      const Av=getGain(i,gm,lamn,lamp,ID);
+      const dB=Math.max(0, Math.min(avMax, 20*Math.log10(Math.max(Av,1e-6))));
+      const barH=((dB-avMin)/(avMax-avMin))*ph;
+      const x=pL+i*(pw/N)+2;
+      const y=pT+ph-barH;
+      ctx.fillStyle = i===0?'#00994d': i===activeFault?'#cc4400':'#0066cc88';
+      ctx.fillRect(x, y, barW, barH);
+
+      // Label
+      ctx.save();
+      ctx.translate(x+barW/2, pT+ph+8);
+      ctx.rotate(-Math.PI/4);
+      ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.textAlign='right';
+      ctx.fillText(faultNames[i], 0, 0);
+      ctx.restore();
+
+      // dB value
+      ctx.fillStyle='#fff'; ctx.font='9px system-ui'; ctx.textAlign='center';
+      if(barH>14) ctx.fillText(dB.toFixed(0), x+barW/2, y+12);
+      ctx.textAlign='left';
+    }
+  }
+
+  document.querySelectorAll('input[type=range],select').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CAS-4.7.2 — Regulated Cascode Stability</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#4d9fff;--green:#00cc66;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  .ro.warn span{color:#cc4400;}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CAS-4.7.2</div>
+  <h1>Cascode — Optimize: Regulated Cascode Stability</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Stability Parameters</h2>
+      <label>g_m,M2 (mA/V): <b id="gm2_l">1.5</b> <input type="range" id="gm2" min="0.5" max="10" value="1.5" step="0.1"></label>
+      <label>C_source (fF): <b id="cs_l">50</b> <input type="range" id="cs" min="5" max="500" value="50" step="5"></label>
+      <label>C_gate,M2 (fF): <b id="cg_l">300</b> <input type="range" id="cg" min="50" max="2000" value="300" step="10"></label>
+      <label>g_m,inner (mA/V): <b id="gmi_l">0.5</b> <input type="range" id="gmi" min="0.1" max="5" value="0.5" step="0.05"></label>
+      <label>A_amp: <b id="aamp_l">20</b>× <input type="range" id="aamp" min="1" max="100" value="20" step="1"></label>
+      <label>C_comp (fF): <b id="cc_l">0</b> <input type="range" id="cc" min="0" max="1000" value="0" step="10"></label>
+
+      <div class="ro">GBW_A (inner amp): <span id="gbwa">--</span> MHz</div>
+      <div class="ro">f_c,inner (loop crossover): <span id="fc_inner">--</span> MHz</div>
+      <div class="ro" id="pm_ro">PM_inner: <span id="pm_inner">--</span>°</div>
+      <div class="ro">Max stable A_amp: <span id="aamp_max">--</span></div>
+      <div class="ro">r_out multiplier: <span id="rout_mult">--</span>×</div>
+      <div class="ro g">r_out relative gain: <span id="rgc_gain">--</span> dB extra</div>
+
+      <div class="insight" id="insight_box">Adjust A_amp and inner amplifier parameters to find stable operating point.</div>
+    </div>
+
+    <div class="card">
+      <h2>Inner Loop: Gain and Phase (Bode)</h2>
+      <canvas id="cv" height="320"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const gm2  = +document.getElementById('gm2').value  * 1e-3;
+    const Cs   = +document.getElementById('cs').value   * 1e-15;
+    const Cg   = +document.getElementById('cg').value   * 1e-15;
+    const gmi  = +document.getElementById('gmi').value  * 1e-3;
+    const Aamp = +document.getElementById('aamp').value;
+    const Cc   = +document.getElementById('cc').value   * 1e-15;
+
+    document.getElementById('gm2_l').textContent  = (gm2*1e3).toFixed(1);
+    document.getElementById('cs_l').textContent   = (Cs/1e-15).toFixed(0);
+    document.getElementById('cg_l').textContent   = (Cg/1e-15).toFixed(0);
+    document.getElementById('gmi_l').textContent  = (gmi*1e3).toFixed(2);
+    document.getElementById('aamp_l').textContent = Aamp.toFixed(0);
+    document.getElementById('cc_l').textContent   = (Cc/1e-15).toFixed(0);
+
+    // Inner amplifier: differential pair with load C_gate,M2 + C_comp
+    const C_load_inner = Cg + Cc;
+    const GBW_A = gmi / (2 * Math.PI * C_load_inner);
+    const fp_A  = GBW_A / (Aamp > 0 ? Aamp : 1); // inner amp dominant pole (not used directly)
+
+    // Inner loop crossover: f_c,inner = Aamp * gm2 / (2π * Cs)
+    const f_c_inner = Aamp * gm2 / (2 * Math.PI * Cs);
+
+    // PM_inner = 90 - arctan(f_c_inner / GBW_A)
+    const PM_inner = 90 - Math.atan(f_c_inner / GBW_A) * 180 / Math.PI;
+
+    // Max stable Aamp for PM ≥ 60°: PM = 90 - arctan(fc/GBW_A) ≥ 60 → fc/GBW_A ≤ tan(30°)=0.577
+    // fc = Aamp * gm2 / (2π Cs) ≤ 0.577 * GBW_A
+    const Aamp_max = Math.floor(0.577 * GBW_A * 2 * Math.PI * Cs / gm2);
+
+    const rout_mult = Aamp + 1;
+    const rgc_gain_dB = 20 * Math.log10(rout_mult);
+
+    document.getElementById('gbwa').textContent   = (GBW_A/1e6).toFixed(1);
+    document.getElementById('fc_inner').textContent = (f_c_inner/1e6).toFixed(1);
+    document.getElementById('pm_inner').textContent = PM_inner.toFixed(1);
+    document.getElementById('aamp_max').textContent = Aamp_max;
+    document.getElementById('rout_mult').textContent = rout_mult;
+    document.getElementById('rgc_gain').textContent  = rgc_gain_dB.toFixed(1);
+
+    const pmRo = document.getElementById('pm_ro');
+    pmRo.className = PM_inner > 60 ? 'ro g' : PM_inner > 45 ? 'ro' : 'ro warn';
+
+    document.getElementById('insight_box').textContent =
+      'GBW_A = ' + (GBW_A/1e6).toFixed(0) + ' MHz, f_c,inner = ' + (f_c_inner/1e6).toFixed(0) + ' MHz. ' +
+      'PM_inner = ' + PM_inner.toFixed(0) + '° ' + (PM_inner > 60 ? '(stable)' : PM_inner > 45 ? '(marginal)' : '(UNSTABLE!)') + '. ' +
+      'Max stable A_amp = ' + Aamp_max + ' for PM ≥ 60°. ' +
+      (Cc > 0 ? 'C_comp = ' + (Cc/1e-15).toFixed(0) + ' fF reduces load → GBW_A improved.' : 'Try adding C_comp to reduce C_gate,M2 effect.');
+
+    draw(gm2, Cs, Cg, gmi, Aamp, Cc, GBW_A, f_c_inner, PM_inner);
+  }
+
+  function draw(gm2, Cs, Cg, gmi, Aamp, Cc, GBW_A, f_c_inner, PM_inner){
+    const cv  = document.getElementById('cv');
+    const W   = cv.parentElement.clientWidth - 36;
+    cv.width = W; cv.height = 320;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, W, 320);
+
+    const isDark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+    const axCol  = isDark ? '#8899bb' : '#8888aa';
+
+    // Split canvas: top = gain, bottom = phase
+    const pL=52, pT=14, pW=W-pL-10;
+    const hGain = 150, hPhase = 130;
+    const pBgain = pT + hGain, pBphase = pBgain + 30;
+
+    // Inner loop gain = Aamp × gm2 / (jω Cs) × 1/(1 + jω/GBW_A)
+    // Simplified: |L(jω)| = Aamp × gm2 / (ω × Cs) / sqrt(1 + (ω/GBW_A)^2)
+    // Phase: -90° (integrator) - arctan(ω/GBW_A)
+    // Actually, the loop gain of the regulated cascode inner loop:
+    // L(f) = A_amp_dc × (1/(1 + j2πf/GBW_A)) × gm2 × Z_s
+    // Z_s = 1/(j2πf Cs) at the source node (simplified, assuming r_o,M1 >> 1/ωCs)
+    // So L(f) = Aamp × gm2 / (j2πf Cs) / (1 + j2πf/GBW_A)
+    // |L| = Aamp × gm2 / (2πf Cs) / sqrt(1 + (f/GBW_A)^2)
+    // phase = -90° - arctan(f/GBW_A)
+
+    const fMin_log = 4, fMax_log = 11;
+
+    function xPos(f){ return pL + ((Math.log10(f)-fMin_log)/(fMax_log-fMin_log))*pW; }
+    function yGain(dB){ return pT + hGain - ((dB+20)/(140))*hGain; } // -20 to +120 dB
+    function yPhase(deg){ return pBphase + hPhase - ((deg+270)/180)*hPhase; } // -270 to -90
+
+    // Axes
+    ctx.strokeStyle=axCol; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+hGain); ctx.lineTo(pL+pW,pT+hGain); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(pL,pBphase); ctx.lineTo(pL,pBphase+hPhase); ctx.lineTo(pL+pW,pBphase+hPhase); ctx.stroke();
+
+    // Gain grid
+    [-20,0,20,40,60,80,100,120].forEach(dB=>{
+      const y=yGain(dB); if(y<pT||y>pT+hGain) return;
+      ctx.fillStyle=axCol; ctx.font='8px system-ui'; ctx.textAlign='right';
+      ctx.fillText(dB+'dB', pL-3, y+3);
+      ctx.strokeStyle=axCol+'22'; ctx.lineWidth=0.5;
+      ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pW,y); ctx.stroke();
+    });
+
+    // Phase grid
+    [-90,-135,-180,-225,-270].forEach(deg=>{
+      const y=yPhase(deg); if(y<pBphase||y>pBphase+hPhase) return;
+      ctx.fillStyle=axCol; ctx.font='8px system-ui'; ctx.textAlign='right';
+      ctx.fillText(deg+'°', pL-3, y+3);
+      ctx.strokeStyle=axCol+'22'; ctx.lineWidth=0.5;
+      ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pW,y); ctx.stroke();
+    });
+
+    // Loop gain curve
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2;
+    ctx.beginPath(); let first=true;
+    for(let px=0;px<=pW;px++){
+      const f=Math.pow(10,fMin_log+(px/pW)*(fMax_log-fMin_log));
+      const LG_mag = Aamp * gm2 / (2*Math.PI*f*Cs) / Math.sqrt(1+(f/GBW_A)**2);
+      const dB = 20*Math.log10(Math.max(1e-12, LG_mag));
+      const y=yGain(dB);
+      if(y<pT-8||y>pT+hGain+8){first=true;continue;}
+      first?ctx.moveTo(pL+px,y):ctx.lineTo(pL+px,y); first=false;
+    }
+    ctx.stroke();
+
+    // Phase curve
+    ctx.strokeStyle='#0066cc99'; ctx.lineWidth=1.5;
+    ctx.beginPath(); first=true;
+    for(let px=0;px<=pW;px++){
+      const f=Math.pow(10,fMin_log+(px/pW)*(fMax_log-fMin_log));
+      const ph = -90 - Math.atan(f/GBW_A)*180/Math.PI;
+      const y=yPhase(ph);
+      if(y<pBphase-8||y>pBphase+hPhase+8){first=true;continue;}
+      first?ctx.moveTo(pL+px,y):ctx.lineTo(pL+px,y); first=false;
+    }
+    ctx.stroke();
+
+    // 0 dB line in gain panel
+    const y0=yGain(0);
+    if(y0>=pT&&y0<=pT+hGain){
+      ctx.strokeStyle=axCol+'55'; ctx.lineWidth=0.5; ctx.setLineDash([4,4]);
+      ctx.beginPath(); ctx.moveTo(pL,y0); ctx.lineTo(pL+pW,y0); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // f_c,inner marker
+    if(f_c_inner >= Math.pow(10,fMin_log) && f_c_inner <= Math.pow(10,fMax_log)){
+      const xfc = xPos(f_c_inner);
+      ctx.strokeStyle='#ff880088'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(xfc,pT); ctx.lineTo(xfc,pBphase+hPhase); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle='#ff8800'; ctx.font='9px system-ui'; ctx.textAlign='center';
+      ctx.fillText('f_c', xfc, pT+hGain+20);
+
+      // PM marker on phase plot
+      const ph_at_fc = -90 - Math.atan(f_c_inner/GBW_A)*180/Math.PI;
+      const ypm = yPhase(ph_at_fc);
+      const pmColor = PM_inner > 60 ? '#00994d' : PM_inner > 45 ? '#ff8800' : '#cc0000';
+      ctx.fillStyle=pmColor;
+      ctx.beginPath(); ctx.arc(xfc, ypm, 5, 0, 2*Math.PI); ctx.fill();
+      ctx.font='9px system-ui'; ctx.textAlign='left';
+      ctx.fillText('PM='+PM_inner.toFixed(0)+'°', xfc+7, ypm+4);
+    }
+
+    // x labels
+    [1e4,1e5,1e6,1e7,1e8,1e9,1e10,1e11].forEach(f=>{
+      const x=xPos(f);
+      const lbl=f>=1e9?(f/1e9).toFixed(0)+'G':f>=1e6?(f/1e6).toFixed(0)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f;
+      ctx.fillStyle=axCol; ctx.font='8px system-ui'; ctx.textAlign='center';
+      ctx.fillText(lbl+'Hz', x, pBphase+hPhase+14);
+    });
+
+    ctx.textAlign='center'; ctx.fillStyle=axCol; ctx.font='bold 10px system-ui';
+    ctx.fillText('Inner Loop Gain and Phase', pL+pW/2, pT-2);
+    ctx.font='9px system-ui';
+    ctx.fillText('↑ Gain (dB)', pL+8, pT+12);
+    ctx.fillText('↑ Phase (°)', pL+8, pBphase+12);
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e => e.addEventListener('input', compute));
+  compute();
+  window.addEventListener('resize', compute);
+</script>
+</body>
+</html>

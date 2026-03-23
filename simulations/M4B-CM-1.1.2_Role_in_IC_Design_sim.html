@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CM-1.1.2 — Role in IC Design</title>
+<style>
+  :root { --bg:#ffffff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff; }
+  @media (prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  header .mid{font-size:12px;opacity:.85;font-family:monospace;}
+  header h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;letter-spacing:.05em;}
+  label{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--text2);margin-bottom:12px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .readout{background:var(--bg2);border-radius:8px;padding:10px 14px;margin-top:6px;font-size:13px;}
+  .readout span{font-size:19px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .readout.green span{color:var(--green);}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:10px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:14px;}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .block-tree{margin-top:12px;}
+  .tree-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;}
+  .tree-label{width:90px;color:var(--text2);}
+  .bar-track{flex:1;background:var(--bg2);border-radius:4px;height:20px;overflow:hidden;}
+  .bar-fill{height:100%;border-radius:4px;display:flex;align-items:center;padding-left:8px;color:#fff;font-size:12px;font-weight:600;transition:width .25s;}
+  .tree-val{width:80px;text-align:right;font-family:monospace;font-size:13px;color:var(--text);}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CM-1.1.2</div>
+  <h1>Current Mirror — Role in IC Design</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Bias Tree Configuration</h2>
+      <label>Reference Current I_ref (μA): <b id="iref_lbl">10</b> μA
+        <input type="range" id="iref" min="1" max="100" value="10" step="1">
+      </label>
+      <label>Supply Voltage V_DD (V): <b id="vdd_lbl">1.8</b> V
+        <input type="range" id="vdd" min="0.9" max="3.6" value="1.8" step="0.1">
+      </label>
+      <label>Supply Variation ΔV_DD (%): <b id="dv_lbl">0</b> %
+        <input type="range" id="dv" min="-15" max="15" value="0" step="1">
+      </label>
+      <label>Bandgap Accuracy (ppm/V): <b id="bg_lbl">1600</b> ppm/V
+        <input type="range" id="bg" min="0" max="8000" value="1600" step="200">
+      </label>
+
+      <div class="readout">
+        Mirror A (1:1) output: <span id="ma">10.0</span> μA
+      </div>
+      <div class="readout" style="margin-top:6px">
+        Mirror B (5:1) output: <span id="mb">50.0</span> μA
+      </div>
+      <div class="readout" style="margin-top:6px">
+        Mirror C (20:1) output: <span id="mc">200.0</span> μA
+      </div>
+      <div class="readout green" style="margin-top:6px">
+        Total Supply Current: <span id="itot">295.0</span> μA
+      </div>
+      <div class="insight">
+        With a bandgap reference, supply variation changes I_ref only by the BG accuracy × ΔV_DD. Compare to a resistor-to-supply (no BG) where I changes by the full ΔV_DD percentage.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Supply Rejection Comparison</h2>
+      <canvas id="cv" height="260"></canvas>
+      <div class="block-tree" id="tree"></div>
+      <div class="insight">
+        Blue: bandgap-referenced mirror (I_ref nearly flat vs. V_DD).<br>
+        Red: resistor-to-supply (I rises with V_DD). Mirror wins by 20–50×.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  const irefEl=document.getElementById('iref');
+  const vddEl=document.getElementById('vdd');
+  const dvEl=document.getElementById('dv');
+  const bgEl=document.getElementById('bg');
+
+  function update(){
+    const Iref=+irefEl.value, VDD=+vddEl.value, dv=+dvEl.value/100, bg=+bgEl.value;
+    document.getElementById('iref_lbl').textContent=Iref;
+    document.getElementById('vdd_lbl').textContent=VDD.toFixed(1);
+    document.getElementById('dv_lbl').textContent=(dv*100).toFixed(0);
+    document.getElementById('bg_lbl').textContent=bg;
+
+    // Mirror outputs with supply variation
+    const VBG=1.25; const dVBG=bg*1e-6*(VDD*dv); // ppm/V * deltaV
+    const Iref_actual=Iref*(1+dVBG/0.6); // 0.6V = VBG-VBE
+    const ma=Iref_actual*1, mb=Iref_actual*5, mc=Iref_actual*20;
+    const itot=Iref+Iref+Iref+Iref+ma+mb+mc;
+
+    document.getElementById('ma').textContent=ma.toFixed(2);
+    document.getElementById('mb').textContent=mb.toFixed(2);
+    document.getElementById('mc').textContent=mc.toFixed(2);
+    document.getElementById('itot').textContent=itot.toFixed(1);
+
+    // Tree bars
+    const maxI=mc*1.2;
+    const bars=[
+      {lbl:'I_ref',val:Iref_actual,color:'#0066cc'},
+      {lbl:'Mirror A (1×)',val:ma,color:'#0088ee'},
+      {lbl:'Mirror B (5×)',val:mb,color:'#009944'},
+      {lbl:'Mirror C (20×)',val:mc,color:'#00994d'},
+    ];
+    const treeEl=document.getElementById('tree');
+    treeEl.innerHTML='';
+    bars.forEach(b=>{
+      const pct=Math.min(100,(b.val/maxI)*100);
+      treeEl.innerHTML+=`<div class="tree-row">
+        <div class="tree-label">${b.lbl}</div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${b.color}">${b.val.toFixed(1)}</div></div>
+        <div class="tree-val">${b.val.toFixed(1)} μA</div>
+      </div>`;
+    });
+
+    drawSweep(Iref, VDD, bg);
+  }
+
+  function drawSweep(Iref, VDD_nom, bg){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=260;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,260);
+    const pL=52,pR=16,pT=16,pB=40,pw=W-pL-pR,ph=260-pT-pB;
+
+    // Axes
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+
+    // Labels
+    ctx.fillStyle='#8888aa'; ctx.font='11px system-ui';
+    ctx.fillText('I_ref (μA)',4,pT+ph/2);
+    ctx.fillText('V_DD (V)',pL+pw/2-20,260-4);
+
+    const VDD_range=[0.9,3.6];
+    const Imax=Iref*1.8;
+
+    // Y axis ticks
+    for(let i=0;i<=4;i++){
+      const v=(i/4)*Imax;
+      const y=pT+ph-(v/Imax)*ph;
+      ctx.fillStyle='#8888aa'; ctx.fillText(v.toFixed(0),2,y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+
+    // X axis ticks
+    [0.9,1.2,1.8,2.5,3.3,3.6].forEach(v=>{
+      const x=pL+((v-VDD_range[0])/(VDD_range[1]-VDD_range[0]))*pw;
+      ctx.fillStyle='#8888aa'; ctx.fillText(v.toFixed(1),x-8,pT+ph+16);
+    });
+
+    // BG mirror curve (blue)
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+    ctx.beginPath();
+    let first=true;
+    for(let px=0;px<=pw;px++){
+      const v=VDD_range[0]+px/pw*(VDD_range[1]-VDD_range[0]);
+      const dVBG=bg*1e-6*(v-VDD_nom);
+      const I=Iref*(1+dVBG/0.6);
+      const y=pT+ph-(I/Imax)*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // Resistor curve (red) - I = (VDD - VGS)/R, VGS=0.75V, R=50kΩ (normalized to match Iref at VDD_nom)
+    // Normalize: R such that I=Iref at VDD_nom. R=(VDD_nom-0.75)/Iref*1e6
+    const R=(VDD_nom-0.75)/(Iref*1e-6);
+    ctx.strokeStyle='#cc2200'; ctx.lineWidth=2; ctx.setLineDash([6,4]);
+    ctx.beginPath(); first=true;
+    for(let px=0;px<=pw;px++){
+      const v=VDD_range[0]+px/pw*(VDD_range[1]-VDD_range[0]);
+      const I=Math.max(0,(v-0.75)/R*1e6);
+      const y=pT+ph-(I/Imax)*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // V_DD nominal marker
+    const xNom=pL+((VDD_nom-VDD_range[0])/(VDD_range[1]-VDD_range[0]))*pw;
+    ctx.strokeStyle='#44aa44aa'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(xNom,pT); ctx.lineTo(xNom,pT+ph); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Legend
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(pL+pw-120,pT+12); ctx.lineTo(pL+pw-100,pT+12); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='11px system-ui'; ctx.fillText('BG Mirror',pL+pw-96,pT+16);
+    ctx.strokeStyle='#cc2200'; ctx.setLineDash([5,3]);
+    ctx.beginPath(); ctx.moveTo(pL+pw-120,pT+28); ctx.lineTo(pL+pw-100,pT+28); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillText('Resistor',pL+pw-96,pT+32);
+  }
+
+  [irefEl,vddEl,dvEl,bgEl].forEach(e=>e.addEventListener('input',update));
+  update();
+  window.addEventListener('resize',update);
+</script>
+</body>
+</html>

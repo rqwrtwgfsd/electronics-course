@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M3-D-1.2.3 Breakdown Region</title>
+<style>
+  :root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--accent:#0066cc;--accent2:#58a6ff;--text:#e6edf3;--subtext:#8b949e;--green:#3fb950;--red:#f85149;--orange:#d29922;}
+  @media(prefers-color-scheme:light){:root{--bg:#fff;--surface:#f6f8fa;--border:#d0d7de;--accent:#0066cc;--accent2:#0969da;--text:#24292f;--subtext:#57606a;--green:#1a7f37;--red:#d1242f;--orange:#9a6700;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;padding:20px;}
+  h1{color:var(--accent2);font-size:1.3rem;margin-bottom:4px;}
+  .sub{color:var(--subtext);font-size:0.85rem;margin-bottom:16px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;}
+  h2{font-size:0.95rem;color:var(--accent2);margin-bottom:10px;}
+  canvas{display:block;width:100%;}
+  .ctrl{display:flex;flex-direction:column;gap:10px;}
+  label{font-size:0.82rem;color:var(--subtext);}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro-box{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;font-family:monospace;font-size:0.82rem;margin-top:10px;}
+  .ro{display:flex;justify-content:space-between;margin-bottom:4px;}
+  .ro b{color:var(--accent2);}
+  .hl{color:var(--green);font-weight:bold;}
+  button{background:var(--accent);color:#fff;border:none;border-radius:4px;padding:4px 10px;cursor:pointer;font-size:0.8rem;margin-right:4px;}
+  button.on{background:var(--green);}
+</style>
+</head>
+<body>
+<h1>M3-D-1.2.3 — Breakdown Region</h1>
+<p class="sub">Full diode I-V including reverse breakdown; Zener vs Avalanche</p>
+<div class="grid">
+  <div class="card"><h2>Simulation</h2><canvas id="c" height="260"></canvas></div>
+  <div class="card"><h2>Controls</h2>
+    <div class="ctrl"><div style="margin-bottom:8px"><button id="btnZ" class="on" onclick="setMode('zener')">Zener &lt;6V</button><button id="btnA" onclick="setMode('aval')">Avalanche &gt;6V</button></div>
+<div><label>Breakdown Voltage V_Z (V): <b id="vzL">5.1</b></label><input type="range" id="vzS" min="1.5" max="20" value="5.1" step="0.1" oninput="document.getElementById('vzL').textContent=parseFloat(this.value).toFixed(1)"></div></div>
+    <div class="ro-box"><div class="ro"><span>V_Z</span><b id="ro_vz" class="hl">—</b></div>
+<div class="ro"><span>Mechanism</span><b id="ro_mode">—</b></div>
+<div class="ro"><span>Temperature coeff.</span><b id="ro_tc">—</b></div></div>
+  </div>
+</div>
+<script>
+
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const isDark=()=>window.matchMedia('(prefers-color-scheme:dark)').matches;
+function gs(id){return parseFloat(document.getElementById(id).value);}
+function resize(){cv.width=cv.offsetWidth*devicePixelRatio;cv.height=260*devicePixelRatio;ctx.scale(devicePixelRatio,devicePixelRatio);draw();}
+function drawAxes(W,H,pad,xl,yl){
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  ctx.strokeStyle=isDark()?'#333':'#ddd';ctx.lineWidth=1;ctx.strokeRect(pad.l,pad.t,pw,ph);
+  for(let i=1;i<5;i++){
+    ctx.beginPath();ctx.moveTo(pad.l+pw*i/5,pad.t);ctx.lineTo(pad.l+pw*i/5,pad.t+ph);
+    ctx.strokeStyle=isDark()?'#222':'#eee';ctx.stroke();
+    ctx.beginPath();ctx.moveTo(pad.l,pad.t+ph*i/5);ctx.lineTo(pad.l+pw,pad.t+ph*i/5);ctx.stroke();
+  }
+  ctx.fillStyle=isDark()?'#666':'#888';ctx.font='10px system-ui';
+  ctx.textAlign='center';ctx.fillText(xl,pad.l+pw/2,H-3);
+  ctx.save();ctx.translate(12,pad.t+ph/2);ctx.rotate(-Math.PI/2);ctx.fillText(yl,0,0);ctx.restore();
+}
+
+
+let bkMode='zener';
+function setMode(m){bkMode=m;document.getElementById('btnZ').className=m==='zener'?'on':'';document.getElementById('btnA').className=m==='aval'?'on':'';draw();}
+function draw(){
+  const Vz=gs('vzS');
+  const W=cv.width/devicePixelRatio,H=260;
+  ctx.clearRect(0,0,W,H);
+  const pad={l:55,r:15,t:18,b:32};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const Vmin=-(Vz+2),Vmax=1.0,Imax=0.05,Imin=-0.05;
+  drawAxes(W,H,pad,'Voltage (V)','Current (A)');
+  const x0=pad.l+(-Vmin)/(Vmax-Vmin)*pw;
+  const y0=pad.t+ph*(1-(0-Imin)/(Imax-Imin));
+  ctx.strokeStyle=isDark()?'#444':'#ccc';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(x0,pad.t);ctx.lineTo(x0,pad.t+ph);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(pad.l,y0);ctx.lineTo(pad.l+pw,y0);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2.5;ctx.beginPath();
+  let first=true;
+  for(let px=0;px<=pw;px++){
+    const V=Vmin+(Vmax-Vmin)*px/pw;
+    let I;
+    if(V>=0) I=1e-12*(Math.exp(V/0.026)-1);
+    else {
+      const VR=-V;
+      if(VR<Vz*0.95) I=-1e-12;
+      else {
+        const sharp=bkMode==='zener'?200:50;
+        I=-1e-12-0.04*(1-Math.exp(-sharp*(VR-Vz*0.95)/(Vz*0.05+0.01)));
+      }
+    }
+    I=Math.max(Imin,Math.min(Imax,I));
+    const x=pad.l+px,y=pad.t+ph*(1-(I-Imin)/(Imax-Imin));
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  ctx.fillStyle=isDark()?'#888':'#666';ctx.font='10px monospace';
+  ctx.textAlign='center';ctx.fillText(Vmin.toFixed(1)+'V',pad.l+3,pad.t+ph+12);ctx.fillText('1V',pad.l+pw,pad.t+ph+12);
+  ctx.textAlign='right';ctx.fillText('50mA',pad.l-3,pad.t+6);ctx.fillText('-50mA',pad.l-3,pad.t+ph-2);
+  const xz=pad.l+(-Vz-Vmin)/(Vmax-Vmin)*pw;
+  ctx.strokeStyle='#f85149';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(xz,pad.t);ctx.lineTo(xz,pad.t+ph);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#f85149';ctx.font='bold 10px monospace';ctx.textAlign='center';
+  ctx.fillText('V_Z='+Vz.toFixed(1)+'V',xz,pad.t+14);
+  document.getElementById('ro_vz').textContent=Vz.toFixed(1)+' V';
+  document.getElementById('ro_mode').textContent=bkMode==='zener'?'Zener (quantum tunneling)':'Avalanche (carrier mult.)';
+  document.getElementById('ro_tc').textContent=Vz<6?'Negative TC':'Positive TC';
+}
+
+document.querySelectorAll('input[type=range]').forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',resize);
+resize();
+</script>
+</body>
+</html>

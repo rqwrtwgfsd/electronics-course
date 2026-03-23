@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.4.10 — Negative Feedback Benefits</title>
+<style>
+  :root{--bg:#f5f5f5;--card:#fff;--text:#1a1a1a;--subtext:#555;--accent:#0066cc;--accent2:#cc3300;--accent3:#007744;--accent4:#aa5500;--border:#ccc;--grid:#ddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--card:#242424;--text:#e8e8e8;--subtext:#aaa;--accent:#4da6ff;--accent2:#ff6644;--accent3:#44cc88;--accent4:#ffaa44;--border:#444;--grid:#333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;line-height:1.6;}
+  header{background:var(--card);border-bottom:2px solid var(--accent);padding:18px 28px;}
+  header h1{font-size:1.2rem;font-weight:700;color:var(--accent);}
+  header p{font-size:0.85rem;color:var(--subtext);margin-top:3px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:20px;padding:20px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px;}
+  .card h2{font-size:0.95rem;font-weight:600;margin-bottom:4px;}
+  .card p.desc{font-size:0.80rem;color:var(--subtext);margin-bottom:10px;line-height:1.4;}
+  canvas{display:block;width:100%;border-radius:4px;}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;}
+  .ctrl{display:flex;flex-direction:column;font-size:0.78rem;color:var(--subtext);min-width:140px;}
+  .ctrl label{margin-bottom:3px;}
+  input[type=range]{accent-color:var(--accent);width:100%;}
+  .readout{font-size:0.82rem;color:var(--accent);font-weight:600;margin-top:2px;}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:0.78rem;}
+  .leg{display:flex;align-items:center;gap:5px;}
+  .leg-dot{width:20px;height:3px;border-radius:2px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>M4A-AMP-1.4.10 — Negative Feedback Benefits</h1>
+  <p>Gain stabilization, distortion reduction, and impedance transformation — all proportional to loop gain T</p>
+</header>
+<div class="grid">
+
+  <!-- Plot 1: All five benefits vs loop gain T on one chart -->
+  <div class="card">
+    <h2>Five Feedback Benefits vs Loop Gain T</h2>
+    <p class="desc">Every benefit improves by 1/(1+T) or (1+T)×. Gain error, THD, Zout all divide by (1+T). Zin, CMRR, PSRR multiply by (1+T). They all improve on the same diagonal line.</p>
+    <canvas id="c1" height="260"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>Highlight T value: <span id="v1a" class="readout">100</span></label>
+        <input type="range" id="s1a" min="1" max="100000" value="100" step="1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Gain error ε = 1/(1+T)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> THD_cl / THD_ol</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3)"></div> Zout,cl / Zout,open</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent4)"></div> Zin,cl / Zcm (improvement)</div>
+    </div>
+  </div>
+
+  <!-- Plot 2: Gain variation before and after feedback -->
+  <div class="card">
+    <h2>Gain Stabilization: Open-Loop vs Closed-Loop Variation</h2>
+    <p class="desc">Avol varies ±X dB. Closed-loop Acl varies by much less because it is set primarily by the resistor ratio. The feedback suppresses Avol variation by T/(1+T). Move the sliders to see how variation shrinks.</p>
+    <canvas id="c2" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>Avol nominal (dB): <span id="v2a" class="readout">100</span></label>
+        <input type="range" id="s2a" min="40" max="140" value="100" step="1">
+      </div>
+      <div class="ctrl">
+        <label>Avol variation (±dB): <span id="v2b" class="readout">10</span></label>
+        <input type="range" id="s2b" min="1" max="30" value="10" step="0.5">
+      </div>
+      <div class="ctrl">
+        <label>Target Acl (V/V): <span id="v2c" class="readout">100</span></label>
+        <input type="range" id="s2c" min="1" max="1000" value="100" step="1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Open-loop Avol range</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> Closed-loop Acl range</div>
+    </div>
+  </div>
+
+  <!-- Plot 3: THD vs frequency (open vs closed loop) -->
+  <div class="card">
+    <h2>Distortion Reduction vs Frequency</h2>
+    <p class="desc">THD_cl(f) = THD_ol / (1+T(f)). T(f) = GBW/(f×Acl). At low f, T is large and THD is tiny. As f rises, T falls and THD_cl approaches THD_ol. The crossover is the "distortion corner."</p>
+    <canvas id="c3" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>THD_ol (%): <span id="v3a" class="readout">1.0</span></label>
+        <input type="range" id="s3a" min="0.1" max="10" value="1" step="0.1">
+      </div>
+      <div class="ctrl">
+        <label>GBW (MHz): <span id="v3b" class="readout">10</span></label>
+        <input type="range" id="s3b" min="1" max="200" value="10" step="1">
+      </div>
+      <div class="ctrl">
+        <label>Acl: <span id="v3c" class="readout">10</span></label>
+        <input type="range" id="s3c" min="1" max="100" value="10" step="1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> THD_cl(f)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2);opacity:0.5"></div> THD_ol (open-loop)</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function sc(id){const c=document.getElementById(id);const dpr=window.devicePixelRatio||1;return{canvas:c,resize:()=>{const w=c.clientWidth,h=c.clientHeight;c.width=w*dpr;c.height=h*dpr;const ctx=c.getContext('2d');ctx.scale(dpr,dpr);return{ctx,w,h};}};}
+
+function axes(ctx,w,h,pad,xL,yL,xT,yT){
+  ctx.clearRect(0,0,w,h);ctx.fillStyle=css('--card');ctx.fillRect(0,0,w,h);
+  const pw=w-pad.l-pad.r,ph=h-pad.t-pad.b;
+  ctx.strokeStyle=css('--grid');ctx.lineWidth=0.7;
+  xT.forEach(t=>{const x=pad.l+t.px*pw;ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();});
+  yT.forEach(t=>{const y=pad.t+ph-t.py*ph;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();});
+  ctx.strokeStyle=css('--text');ctx.lineWidth=1.5;ctx.strokeRect(pad.l,pad.t,pw,ph);
+  ctx.fillStyle=css('--subtext');ctx.font='10px system-ui';
+  ctx.textAlign='center';xT.forEach(t=>ctx.fillText(t.label,pad.l+t.px*pw,pad.t+ph+13));
+  ctx.textAlign='right';yT.forEach(t=>ctx.fillText(t.label,pad.l-4,pad.t+ph-t.py*ph+3.5));
+  ctx.fillStyle=css('--text');ctx.font='11px system-ui';ctx.textAlign='center';
+  ctx.fillText(xL,pad.l+pw/2,h-2);
+  ctx.save();ctx.translate(11,pad.t+ph/2);ctx.rotate(-Math.PI/2);ctx.fillText(yL,0,0);ctx.restore();
+  return{pw,ph};
+}
+
+// ─── Plot 1: Five benefits vs T ──────────────────────────────────────────────
+const p1=sc('c1');
+function draw1(){
+  const {ctx,w,h}=p1.resize();
+  const T_marker=parseFloat(document.getElementById('s1a').value);
+  document.getElementById('v1a').textContent=T_marker;
+
+  const pad={l:62,r:16,t:18,b:36};
+  const TMin=1,TMax=1e6;
+  // Improvement factor: both (1+T) rise and 1/(1+T) fall
+  const FactMin=1e-7,FactMax=1e7;
+  const xTicks=[1,10,100,1e3,1e4,1e5,1e6].map(v=>({px:Math.log10(v/TMin)/Math.log10(TMax/TMin),label:v>=1e3?(v>=1e6?'1M':v/1000+'k'):v+''}));
+  const yTicks=[1e-7,1e-5,1e-3,0.1,1,10,100,1e4,1e6].filter(v=>v>=FactMin&&v<=FactMax).map(v=>{
+    const e=Math.round(Math.log10(v));
+    const l={'-7':'0.0000001','-5':'0.00001','-3':'0.001','-1':'0.1','0':'1','1':'10','2':'100','3':'1k','4':'10k','5':'100k','6':'1M'};
+    return{py:Math.log10(v/FactMin)/Math.log10(FactMax/FactMin),label:l[e]||v.toExponential(0)};
+  });
+  const {pw,ph}=axes(ctx,w,h,pad,'Loop gain T','Benefit factor',xTicks,yTicks);
+  const xp=T=>pad.l+Math.log10(T/TMin)/Math.log10(TMax/TMin)*pw;
+  const yp=f=>pad.t+ph-Math.log10(Math.max(f,FactMin)/FactMin)/Math.log10(FactMax/FactMin)*ph;
+
+  // 1/(1+T) curves (gain error, THD, Zout)
+  const decCurves=[
+    {c:'--accent',label:'ε, THD_cl, Zout reduction'},
+    {c:'--accent2',label:null},
+    {c:'--accent3',label:null},
+  ];
+
+  ctx.strokeStyle=css('--accent');ctx.lineWidth=2.5;
+  ctx.beginPath();let f=true;
+  for(let i=0;i<=300;i++){const T=TMin*Math.pow(TMax/TMin,i/300);const factor=1/(1+T);const x=xp(T),y=yp(factor);if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);}
+  ctx.stroke();
+
+  // (1+T) improvement
+  ctx.strokeStyle=css('--accent4');ctx.lineWidth=2.5;ctx.setLineDash([5,4]);
+  ctx.beginPath();f=true;
+  for(let i=0;i<=300;i++){const T=TMin*Math.pow(TMax/TMin,i/300);const factor=1+T;if(factor>FactMax){f=true;continue;}const x=xp(T),y=yp(factor);if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);}
+  ctx.stroke();ctx.setLineDash([]);
+
+  // Unity reference
+  ctx.strokeStyle=css('--subtext');ctx.lineWidth=0.8;ctx.globalAlpha=0.4;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,yp(1));ctx.lineTo(pad.l+pw,yp(1));ctx.stroke();
+  ctx.setLineDash([]);ctx.globalAlpha=1;
+
+  // T_marker
+  ctx.strokeStyle=css('--text');ctx.lineWidth=1.2;ctx.globalAlpha=0.4;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(xp(T_marker),pad.t);ctx.lineTo(xp(T_marker),pad.t+ph);ctx.stroke();
+  ctx.setLineDash([]);ctx.globalAlpha=1;
+  const err_at_T=(1/(1+T_marker)).toExponential(2);
+  const imp_at_T=Math.min(FactMax,(1+T_marker));
+  const impStr=imp_at_T>=1e6?'1M+':imp_at_T>=1e3?(imp_at_T/1e3).toFixed(0)+'k':imp_at_T.toFixed(0);
+  ctx.fillStyle=css('--text');ctx.font='bold 9px system-ui';ctx.textAlign='left';
+  ctx.fillText(`T=${T_marker}: error=${err_at_T} | improvement ×${impStr}`,pad.l+4,pad.t+14);
+
+  ctx.fillStyle=css('--accent');ctx.font='9px system-ui';ctx.textAlign='right';
+  ctx.fillText('1/(1+T) → THD, Zout, ε (lower=better)',pad.l+pw-2,pad.t+12);
+  ctx.fillStyle=css('--accent4');
+  ctx.fillText('(1+T) → Zin, PSRR, CMRR (higher=better)',pad.l+pw-2,pad.t+26);
+}
+
+// ─── Plot 2: Gain stabilization ──────────────────────────────────────────────
+const p2=sc('c2');
+function draw2(){
+  const {ctx,w,h}=p2.resize();
+  const Avol_nom_dB=parseFloat(document.getElementById('s2a').value);
+  const Avol_var_dB=parseFloat(document.getElementById('s2b').value);
+  const Acl_target=parseFloat(document.getElementById('s2c').value);
+  document.getElementById('v2a').textContent=Avol_nom_dB;
+  document.getElementById('v2b').textContent=Avol_var_dB.toFixed(1);
+  document.getElementById('v2c').textContent=Acl_target;
+
+  const Avol_min=Math.pow(10,(Avol_nom_dB-Avol_var_dB)/20);
+  const Avol_max=Math.pow(10,(Avol_nom_dB+Avol_var_dB)/20);
+  const beta=1/Acl_target;
+
+  const Acl_min=Avol_min/(1+Avol_min*beta);
+  const Acl_max=Avol_max/(1+Avol_max*beta);
+  const Acl_ideal=Acl_target;
+
+  const var_OL_pct=(Avol_max-Avol_min)/(Math.pow(10,Avol_nom_dB/20))*100;
+  const var_CL_pct=(Acl_max-Acl_min)/Acl_ideal*100;
+
+  ctx.clearRect(0,0,w,h);ctx.fillStyle=css('--card');ctx.fillRect(0,0,w,h);
+
+  const pad={l:80,r:80,t:40,b:36};
+  const pw=w-pad.l-pad.r,ph=h-pad.t-pad.b;
+
+  // Draw two bar groups: OL range and CL range
+  const Avol_nom=Math.pow(10,Avol_nom_dB/20);
+
+  // Group positions
+  const groups=[
+    {label:'Open-loop Avol',min:Avol_min,max:Avol_max,nom:Avol_nom,color:'--accent',unit:'V/V',scale:Avol_nom},
+    {label:'Closed-loop Acl',min:Acl_min,max:Acl_max,nom:Acl_ideal,color:'--accent2',unit:'V/V',scale:Acl_ideal},
+  ];
+
+  const barW=pw*0.3;
+  const centers=[pad.l+pw*0.25, pad.l+pw*0.75];
+
+  groups.forEach((g,i)=>{
+    const cx=centers[i];
+    const scaleH=ph*0.8;
+    const midY=pad.t+ph*0.5;
+
+    // Bar (min to max)
+    const barTop=midY-(g.max-g.nom)/g.nom*scaleH*0.5;
+    const barBot=midY+(g.nom-g.min)/g.nom*scaleH*0.5;
+    const barH=Math.abs(barBot-barTop);
+
+    ctx.fillStyle=css(g.color);ctx.globalAlpha=0.25;
+    ctx.fillRect(cx-barW/2,barTop,barW,barH);
+    ctx.globalAlpha=1;
+    ctx.strokeStyle=css(g.color);ctx.lineWidth=2;
+    ctx.strokeRect(cx-barW/2,barTop,barW,barH);
+
+    // Nom line
+    ctx.strokeStyle=css(g.color);ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(cx-barW/2,midY);ctx.lineTo(cx+barW/2,midY);ctx.stroke();
+
+    // Labels
+    ctx.fillStyle=css('--text');ctx.font='10px system-ui';ctx.textAlign='center';
+    ctx.fillText(g.label,cx,pad.t+20);
+    ctx.fillStyle=css(g.color);ctx.font='bold 9px system-ui';
+    ctx.fillText('nom: '+g.nom.toFixed(g.scale>1000?0:2),cx,midY-4);
+
+    const pct=((g.max-g.min)/g.nom*100).toFixed(3);
+    ctx.fillText('±'+pct+'% range',cx,barBot+14);
+    ctx.fillText('max: '+g.max.toFixed(g.scale>1000?0:4),cx,barTop-4);
+    ctx.fillText('min: '+g.min.toFixed(g.scale>1000?0:4),cx,barBot+26);
+  });
+
+  // Suppression factor
+  const T_nom=Avol_nom*beta;
+  ctx.fillStyle=css('--text');ctx.font='bold 10px system-ui';ctx.textAlign='center';
+  ctx.fillText(`T = ${T_nom.toFixed(0)} → variation suppressed ${(var_OL_pct/Math.max(var_CL_pct,0.0001)).toFixed(0)}×`,
+    w/2,h-4);
+}
+
+// ─── Plot 3: THD vs frequency ─────────────────────────────────────────────────
+const p3=sc('c3');
+function draw3(){
+  const {ctx,w,h}=p3.resize();
+  const THDol=parseFloat(document.getElementById('s3a').value);
+  const GBW=parseFloat(document.getElementById('s3b').value)*1e6;
+  const Acl=parseFloat(document.getElementById('s3c').value);
+  document.getElementById('v3a').textContent=THDol.toFixed(1);
+  document.getElementById('v3b').textContent=document.getElementById('s3b').value;
+  document.getElementById('v3c').textContent=Acl;
+
+  const pad={l:56,r:16,t:18,b:36};
+  const fMin=10,fMax=GBW*2;
+  const THDMin=THDol*1e-6,THDMax=THDol*2;
+
+  const xDec=[10,100,1e3,1e4,1e5,1e6,1e7,1e8].filter(f=>f>=fMin&&f<=fMax);
+  const xTicks=xDec.map(f=>{const e=Math.round(Math.log10(f));const l={1:'10',2:'100',3:'1k',4:'10k',5:'100k',6:'1M',7:'10M',8:'100M'};return{px:Math.log10(f/fMin)/Math.log10(fMax/fMin),label:l[e]||f};});
+  const yDec=[1e-6,1e-5,1e-4,1e-3,0.01,0.1,1,10,100].filter(v=>v>=THDMin/2&&v<=THDMax*2).slice(0,7);
+  const yTicks=yDec.map(v=>({py:Math.log10(v/THDMin)/Math.log10(THDMax/THDMin),label:v>=1?(v.toFixed(0)+'%'):v>=0.01?((v*100).toFixed(0)+'%'):((v*100).toFixed(3)+'%')}));
+
+  const {pw,ph}=axes(ctx,w,h,pad,'Frequency (Hz)','THD (%)',xTicks,yTicks);
+  const xp=fv=>pad.l+Math.log10(fv/fMin)/Math.log10(fMax/fMin)*pw;
+  const yp=v=>pad.t+ph-Math.log10(Math.max(v,THDMin)/THDMin)/Math.log10(THDMax/THDMin)*ph;
+
+  // Open-loop THD line
+  ctx.strokeStyle=css('--accent2');ctx.lineWidth=1.5;ctx.globalAlpha=0.5;ctx.setLineDash([5,4]);
+  ctx.beginPath();ctx.moveTo(xp(fMin),yp(THDol));ctx.lineTo(xp(fMax),yp(THDol));ctx.stroke();
+  ctx.setLineDash([]);ctx.globalAlpha=1;
+  ctx.fillStyle=css('--accent2');ctx.font='9px system-ui';ctx.textAlign='left';
+  ctx.fillText('THD_ol='+THDol.toFixed(1)+'%',pad.l+4,yp(THDol)-4);
+
+  // Closed-loop THD
+  ctx.strokeStyle=css('--accent');ctx.lineWidth=2.5;
+  ctx.beginPath();let f=true;
+  for(let i=0;i<=400;i++){
+    const fv=fMin*Math.pow(fMax/fMin,i/400);
+    const T=GBW/(fv*Acl);
+    const thd=THDol/(1+T);
+    const x=xp(fv),y=yp(thd);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Distortion corner (where THD_cl = THD_ol/2)
+  const f_corner=GBW/Acl;
+  if(f_corner>=fMin&&f_corner<=fMax){
+    ctx.strokeStyle=css('--accent');ctx.lineWidth=1;ctx.globalAlpha=0.4;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(xp(f_corner),pad.t);ctx.lineTo(xp(f_corner),pad.t+ph);ctx.stroke();
+    ctx.setLineDash([]);ctx.globalAlpha=1;
+    const fcStr=f_corner>=1e6?(f_corner/1e6).toFixed(1)+'MHz':f_corner>=1e3?(f_corner/1e3).toFixed(1)+'kHz':f_corner.toFixed(0)+'Hz';
+    ctx.fillStyle=css('--accent');ctx.font='9px system-ui';ctx.textAlign='left';
+    ctx.fillText('f_cl='+fcStr,xp(f_corner)+3,pad.t+12);
+  }
+
+  const T_1kHz=GBW/(1e3*Acl);
+  const thd_1kHz=THDol/(1+T_1kHz);
+  ctx.fillStyle=css('--accent');ctx.font='bold 9px system-ui';ctx.textAlign='left';
+  ctx.fillText(`THD @ 1kHz = ${thd_1kHz.toExponential(2)}% (T=${T_1kHz.toFixed(0)})`,pad.l+4,pad.t+14);
+}
+
+['s1a'].forEach(id=>document.getElementById(id).addEventListener('input',draw1));
+['s2a','s2b','s2c'].forEach(id=>document.getElementById(id).addEventListener('input',draw2));
+['s3a','s3b','s3c'].forEach(id=>document.getElementById(id).addEventListener('input',draw3));
+window.addEventListener('resize',()=>{draw1();draw2();draw3();});
+draw1();draw2();draw3();
+</script>
+</body>
+</html>

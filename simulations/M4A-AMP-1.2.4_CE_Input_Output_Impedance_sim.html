@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.2.4 — CE Input and Output Impedance</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;gap:16px;align-items:baseline;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:14px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.2.4</div>
+  <div class="topic">CE Amplifier Input & Output Impedance — Interactive Analysis</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>Transistor & Bias</h3>
+      <label>IC (mA): <b id="ic_lbl">1.0</b></label>
+      <input type="range" id="ic" min="0.05" max="10" value="1" step="0.05">
+      <label>β: <b id="b_lbl">150</b></label>
+      <input type="range" id="beta" min="30" max="500" value="150" step="10">
+      <label>Early Voltage VA (V): <b id="va_lbl">80</b></label>
+      <input type="range" id="va" min="20" max="300" value="80" step="5">
+    </div>
+    <div class="cg">
+      <h3>Circuit</h3>
+      <label>R1 (kΩ): <b id="r1_lbl">47</b></label>
+      <input type="range" id="r1" min="5" max="500" value="47" step="1">
+      <label>R2 (kΩ): <b id="r2_lbl">10</b></label>
+      <input type="range" id="r2" min="1" max="100" value="10" step="1">
+      <label>RC (kΩ): <b id="rc_lbl">8.2</b></label>
+      <input type="range" id="rc" min="0.5" max="50" value="8.2" step="0.1">
+      <label>RE (Ω, unbypassed): <b id="re_lbl">0</b></label>
+      <input type="range" id="re" min="0" max="5000" value="0" step="50">
+      <label>Source Rs (kΩ): <b id="rs_lbl">1.0</b></label>
+      <input type="range" id="rs" min="0.05" max="50" value="1" step="0.05">
+      <label>Load RL (kΩ): <b id="rl_lbl">22</b></label>
+      <input type="range" id="rl" min="0.1" max="500" value="22" step="0.1">
+    </div>
+    <div class="cg">
+      <h3>Impedance Results</h3>
+      <div class="rd">rπ: <span id="r_rpi">—</span> kΩ</div>
+      <div class="rd">Zin_device: <span id="r_zindev">—</span> kΩ</div>
+      <div class="rd">R1‖R2: <span id="r_rbias">—</span> kΩ</div>
+      <div class="rd">Zin total: <span id="r_zin">—</span> kΩ</div>
+      <div class="rd">ro: <span id="r_ro">—</span> kΩ</div>
+      <div class="rd">Zout: <span id="r_zout">—</span> kΩ</div>
+      <div class="rd">|Av|: <span id="r_av">—</span> V/V</div>
+      <div class="rd">Vout/Vs (with Rs, RL): <span id="r_sys">—</span> V/V</div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_zin">—</div><div class="l">Zin (kΩ)</div></div>
+      <div class="met"><div class="v" id="m_zout">—</div><div class="l">Zout (kΩ)</div></div>
+      <div class="met"><div class="v" id="m_av">—</div><div class="l">|Av| (V/V)</div></div>
+      <div class="met"><div class="v" id="m_sys">—</div><div class="l">Sys Gain</div></div>
+    </div>
+    <div>
+      <div class="pl">Zin vs IC — effect of β and RE</div>
+      <canvas id="zinCanvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">Gain vs Load RL — output impedance effect</div>
+      <canvas id="gainCanvas" height="180"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+const VT=0.026;
+function par(a,b){return a*b/(a+b);}
+
+function compute(){
+  const ic=parseFloat(document.getElementById('ic').value)*1e-3;
+  const beta=parseFloat(document.getElementById('beta').value);
+  const va=parseFloat(document.getElementById('va').value);
+  const r1=parseFloat(document.getElementById('r1').value)*1e3;
+  const r2=parseFloat(document.getElementById('r2').value)*1e3;
+  const rc=parseFloat(document.getElementById('rc').value)*1e3;
+  const re=parseFloat(document.getElementById('re').value);
+  const rs=parseFloat(document.getElementById('rs').value)*1e3;
+  const rl=parseFloat(document.getElementById('rl').value)*1e3;
+  const gm=ic/VT;
+  const rpi=beta/gm;
+  const ro=va/ic;
+  const zin_dev=rpi+(beta+1)*re;
+  const rbias=par(r1,r2);
+  const zin=par(rbias,zin_dev);
+  const zout=par(rc,ro);
+  const rload=par(rc,par(ro,rl));
+  const gm_eff=gm/(1+gm*re);
+  const av=gm_eff*rload;
+  const sys_gain=av*zin/(zin+rs);
+  return{ic,beta,va,r1,r2,rc,re,rs,rl,gm,rpi,ro,zin_dev,rbias,zin,zout,rload,av,sys_gain};
+}
+
+function update(){
+  const p=compute();
+  document.getElementById('ic_lbl').textContent=(p.ic*1000).toFixed(2);
+  document.getElementById('b_lbl').textContent=p.beta;
+  document.getElementById('va_lbl').textContent=p.va;
+  document.getElementById('r1_lbl').textContent=(p.r1/1e3).toFixed(0);
+  document.getElementById('r2_lbl').textContent=(p.r2/1e3).toFixed(0);
+  document.getElementById('rc_lbl').textContent=(p.rc/1e3).toFixed(1);
+  document.getElementById('re_lbl').textContent=p.re.toFixed(0);
+  document.getElementById('rs_lbl').textContent=(p.rs/1e3).toFixed(2);
+  document.getElementById('rl_lbl').textContent=(p.rl/1e3).toFixed(1);
+
+  document.getElementById('r_rpi').textContent=(p.rpi/1e3).toFixed(2);
+  document.getElementById('r_zindev').textContent=(p.zin_dev/1e3).toFixed(2);
+  document.getElementById('r_rbias').textContent=(p.rbias/1e3).toFixed(2);
+  document.getElementById('r_zin').textContent=(p.zin/1e3).toFixed(2);
+  document.getElementById('r_ro').textContent=(p.ro/1e3).toFixed(1);
+  document.getElementById('r_zout').textContent=(p.zout/1e3).toFixed(2);
+  document.getElementById('r_av').textContent=p.av.toFixed(1);
+  document.getElementById('r_sys').textContent=p.sys_gain.toFixed(1);
+
+  document.getElementById('m_zin').textContent=(p.zin/1e3).toFixed(2);
+  document.getElementById('m_zout').textContent=(p.zout/1e3).toFixed(2);
+  document.getElementById('m_av').textContent=p.av.toFixed(0);
+  document.getElementById('m_sys').textContent=p.sys_gain.toFixed(1);
+
+  drawZinVsIc(p);
+  drawGainVsLoad(p);
+}
+
+function drawZinVsIc(p){
+  const canvas=document.getElementById('zinCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:55,r:10,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const IC_MIN=0.05e-3,IC_MAX=10e-3;
+  const ZIN_MAX=100e3;
+  function xOf(ic){return pad.l+(Math.log10(ic)-Math.log10(IC_MIN))/(Math.log10(IC_MAX)-Math.log10(IC_MIN))*pw;}
+  function yOf(z){return pad.t+ph-Math.min(z,ZIN_MAX)/ZIN_MAX*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [0,20,40,60,80,100].forEach(k=>{
+    const y=yOf(k*1e3);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(k+'k',2,y+3);
+  });
+  [0.05,0.1,0.5,1,5,10].forEach(mA=>{
+    const x=xOf(mA*1e-3);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(mA+'mA',x-10,H-4);
+  });
+
+  // Zin curve (bypassed RE = 0)
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const frac=px/pw;
+    const logic=Math.log10(IC_MIN)+frac*(Math.log10(IC_MAX)-Math.log10(IC_MIN));
+    const ic=Math.pow(10,logic);
+    const gm=ic/VT;
+    const rpi=p.beta/gm;
+    const z=par(par(p.r1,p.r2),rpi);
+    const y=yOf(z);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  // Zin curve with RE
+  if(p.re>0){
+    ctx.strokeStyle='#cc6600';ctx.lineWidth=2;ctx.setLineDash([6,3]);
+    ctx.beginPath();
+    for(let px=0;px<=pw;px++){
+      const frac=px/pw;
+      const logic=Math.log10(IC_MIN)+frac*(Math.log10(IC_MAX)-Math.log10(IC_MIN));
+      const ic=Math.pow(10,logic);
+      const gm=ic/VT;
+      const rpi=p.beta/gm;
+      const zindev=rpi+(p.beta+1)*p.re;
+      const z=par(par(p.r1,p.r2),zindev);
+      const y=yOf(z);
+      if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+    }
+    ctx.stroke();ctx.setLineDash([]);
+  }
+
+  // Current IC marker
+  ctx.fillStyle='#ff8800';
+  const xc=xOf(p.ic);const yc=yOf(p.zin);
+  ctx.beginPath();ctx.arc(xc,yc,5,0,2*Math.PI);ctx.fill();
+
+  ctx.font='10px Courier New';
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.fillText('── Zin (RE bypassed)',W-230,20);
+  if(p.re>0){ctx.fillStyle='#cc6600';ctx.fillText('-- Zin (RE='+p.re+'Ω unbypassed)',W-230,34);}
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();
+  ctx.fillText('IC (log scale) →',W/2-40,H-1);
+}
+
+function drawGainVsLoad(p){
+  const canvas=document.getElementById('gainCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:50,r:10,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const RL_MIN=100,RL_MAX=1e6;
+  const AV_MAX=p.gm*p.rc;
+  function xOf(rl){return pad.l+(Math.log10(rl)-Math.log10(RL_MIN))/(Math.log10(RL_MAX)-Math.log10(RL_MIN))*pw;}
+  function yOf(av){return pad.t+ph-Math.min(av,AV_MAX)/AV_MAX*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [100,1000,10000,100000,1000000].forEach(rl=>{
+    const x=xOf(rl);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    const lbl=rl>=1000?(rl/1000)+'k':rl;
+    ctx.fillText(lbl,x-8,H-4);
+  });
+
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const frac=px/pw;
+    const logrl=Math.log10(RL_MIN)+frac*(Math.log10(RL_MAX)-Math.log10(RL_MIN));
+    const rl=Math.pow(10,logrl);
+    const gm_eff=p.gm/(1+p.gm*p.re);
+    const load=par(p.rc,par(p.ro,rl));
+    const av=gm_eff*load;
+    const y=yOf(av);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  // Zout marker
+  const xZout=xOf(p.zout);
+  ctx.strokeStyle='#cc0000';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(xZout,pad.t);ctx.lineTo(xZout,pad.t+ph);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#cc0000';ctx.font='10px Courier New';ctx.fillText('Zout',xZout+3,14);
+
+  // Current RL point
+  const xRL=xOf(p.rl);
+  const gm_eff=p.gm/(1+p.gm*p.re);
+  const yRL=yOf(gm_eff*par(p.rc,par(p.ro,p.rl)));
+  ctx.fillStyle='#ff8800';ctx.beginPath();ctx.arc(xRL,yRL,5,0,2*Math.PI);ctx.fill();
+
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.fillText('Load RL →',W/2-30,H-1);
+  ctx.save();ctx.translate(12,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('|Av|',0,0);ctx.restore();
+}
+
+['ic','beta','va','r1','r2','rc','re','rs','rl'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

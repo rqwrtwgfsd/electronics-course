@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M3-D-1.9.4 — Debug: Diode Running Hot</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--text2:#8b949e;--accent:#0066cc;--accent2:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922}
+@media(prefers-color-scheme:light){:root{--bg:#ffffff;--surface:#f6f8fa;--border:#d0d7de;--text:#24292f;--text2:#656d76;--accent:#0066cc;--accent2:#0969da;--green:#2da44e;--red:#cf222e;--yellow:#9a6700}}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;font-size:14px;padding:16px}
+h2{color:var(--accent2);font-size:16px;margin-bottom:12px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px}
+canvas{width:100%;border-radius:6px;background:var(--bg);display:block}
+.controls{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px}
+.ctrl{flex:1;min-width:180px}
+label{display:block;color:var(--text2);font-size:12px;margin-bottom:4px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.readout{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.ro{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;font-size:12px;font-family:monospace}
+.ro span{color:var(--accent2);font-weight:bold}
+.note{color:var(--text2);font-size:12px;margin-top:8px;line-height:1.5}
+</style></head>
+<body>
+<h2>M3-D-1.9.4 — Debug: Diode Running Hot</h2>
+<div class="panel">
+<canvas id="cv" height="260"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>I_avg (A): <b id="lIavg">1.0</b></label>
+    <input type="range" id="Iavg" min="0.1" max="10" step="0.1" value="1"></div>
+  <div class="ctrl"><label>V_F (V): <b id="lVf">0.7</b></label>
+    <input type="range" id="Vf" min="0.2" max="1.2" step="0.05" value="0.7"></div>
+  <div class="ctrl"><label>R_thJA (°C/W): <b id="lRth">65</b></label>
+    <input type="range" id="Rth" min="5" max="200" step="5" value="65"></div>
+  <div class="ctrl"><label>T_ambient (°C): <b id="lTa">25</b></label>
+    <input type="range" id="Ta" min="0" max="85" step="5" value="25"></div>
+</div>
+<div class="readout">
+  <div class="ro">P_diode: <span id="r1">0.00</span> W</div>
+  <div class="ro">T_junction: <span id="r2">0.0</span> °C</div>
+  <div class="ro">Thermal margin: <span id="r3">0.0</span> °C</div>
+  <div class="ro">Status: <span id="r4">OK</span></div>
+</div>
+<p class="note">T_J = T_ambient + P × R_thJA. Must stay below 150°C (silicon max). Reduce I_avg, add heatsink (lower R_thJA), or use a higher-rated diode.</p>
+</div>
+<script>
+
+const isDark=()=>window.matchMedia('(prefers-color-scheme:dark)').matches;
+function gs(id){return parseFloat(document.getElementById(id).value);}
+function sv(id,val){document.getElementById(id).textContent=val;}
+function resize(cv,draw){cv.width=cv.offsetWidth*devicePixelRatio;cv.height=260*devicePixelRatio;cv.getContext('2d').scale(devicePixelRatio,devicePixelRatio);draw();}
+function drawAxes(ctx,W,H,pad,xl,yl,color){
+  ctx.strokeStyle=color;ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  ctx.fillStyle=color;ctx.font='11px system-ui';
+  ctx.fillText(yl,pad+4,pad+12);ctx.fillText(xl,W-pad-2,H-pad-4);
+}
+
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+function draw(){
+  const iavg=gs('Iavg'),vf=gs('Vf'),rth=gs('Rth'),ta=gs('Ta');
+  document.getElementById('lIavg').textContent=iavg.toFixed(1);
+  document.getElementById('lVf').textContent=vf.toFixed(2);
+  document.getElementById('lRth').textContent=rth.toFixed(0);
+  document.getElementById('lTa').textContent=ta.toFixed(0);
+  const P=vf*iavg;
+  const Tj=ta+P*rth;
+  const margin=150-Tj;
+  sv('r1',P.toFixed(2));sv('r2',Tj.toFixed(1));sv('r3',margin.toFixed(1));
+  sv('r4',Tj<125?'SAFE':Tj<150?'WARNING — close to limit':'THERMAL FAILURE');
+
+  const W=cv.offsetWidth,H=260,pad=40;
+  const bg=isDark()?'#0d1117':'#fff',fg=isDark()?'#8b949e':'#656d76';
+  ctx.clearRect(0,0,W,H);ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  drawAxes(ctx,W,H,pad,'I_avg (A) →','T_J (°C) ↑',fg);
+  const maxI=10,xsc=(W-2*pad)/maxI;
+  const maxT=200,ysc=(H-2*pad)/maxT;
+  // Safe zone
+  ctx.fillStyle='rgba(63,185,80,0.1)';ctx.fillRect(pad,H-pad-125*ysc,W-2*pad,125*ysc);
+  ctx.fillStyle='rgba(248,81,73,0.1)';ctx.fillRect(pad,H-pad-200*ysc,W-2*pad,(200-125)*ysc);
+  // T_J vs I curve
+  ctx.strokeStyle='#58a6ff';ctx.lineWidth=2;ctx.beginPath();
+  for(let ii=0;ii<=maxI;ii+=0.1){
+    const tj_=ta+vf*ii*rth;
+    const x=pad+ii*xsc,y=H-pad-Math.min(tj_,maxT)*ysc;
+    if(ii===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+  // Limit lines
+  ctx.strokeStyle='#f85149';ctx.lineWidth=1;ctx.setLineDash([6,3]);
+  ctx.beginPath();ctx.moveTo(pad,H-pad-150*ysc);ctx.lineTo(W-pad,H-pad-150*ysc);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#f85149';ctx.font='11px system-ui';ctx.fillText('T_J_max = 150°C',W-pad-130,H-pad-150*ysc-4);
+  // Operating point
+  const xop=pad+iavg*xsc,yop=H-pad-Math.min(Tj,maxT)*ysc;
+  const opColor=Tj<125?'#3fb950':Tj<150?'#d29922':'#f85149';
+  ctx.fillStyle=opColor;ctx.beginPath();ctx.arc(xop,yop,6,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle=fg;ctx.font='11px system-ui';
+  ctx.fillText('0A',pad,H-pad+14);ctx.fillText('10A',W-pad-20,H-pad+14);
+  ctx.fillText('T_J='+Tj.toFixed(0)+'°C at I='+iavg.toFixed(1)+'A',xop+8,yop-5);
+}
+document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',draw));
+window.addEventListener('resize',()=>resize(cv,draw));
+resize(cv,draw);
+</script>
+</body></html>

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-GB-2.4.1 — Bode Plot Magnitude</title>
+<style>
+  :root{--bg:#ffffff;--surface:#f5f5f5;--border:#dddddd;--text:#1a1a1a;--accent:#0066cc;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Arial,sans-serif;font-size:14px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;display:flex;align-items:baseline;gap:16px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}
+  h1{font-size:17px;font-weight:600;}
+  .main{display:grid;grid-template-columns:280px 1fr;height:calc(100vh - 48px);}
+  .ctrl{background:var(--surface);border-right:1px solid var(--border);padding:18px;overflow-y:auto;}
+  .ctrl h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin-bottom:10px;margin-top:14px;}
+  .cg{margin-bottom:13px;}
+  .cg label{display:block;font-size:12px;margin-bottom:4px;}
+  .val{font-weight:700;color:var(--accent);}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rbox{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:8px;margin-bottom:8px;}
+  .rl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;opacity:.7;margin-bottom:2px;}
+  .rv{font-size:17px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .carea{padding:16px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;}
+  canvas{border:1px solid var(--border);border-radius:6px;display:block;}
+  .clabel{font-size:12px;font-weight:600;margin-bottom:4px;opacity:.8;}
+</style>
+</head>
+<body>
+<header>
+  <span class="mid">M4A-GB-2.4.1</span>
+  <h1>Bode Plot Magnitude — Pole-Zero Builder</h1>
+</header>
+<div class="main">
+  <div class="ctrl">
+    <h2>DC Gain</h2>
+    <div class="cg"><label>K (dB): <span class="val" id="k-v">40 dB</span></label><input type="range" id="k-s" min="-20" max="100" step="1" value="40"></div>
+
+    <h2>Poles (Hz)</h2>
+    <div class="cg"><label>Pole 1 (Hz): <span class="val" id="p1-v">1 kHz</span></label><input type="range" id="p1-s" min="1" max="7" step="0.05" value="3"></div>
+    <div class="cg"><label>Pole 2 (Hz): <span class="val" id="p2-v">OFF</span></label><input type="range" id="p2-s" min="1" max="7" step="0.05" value="7"></div>
+    <div class="cg"><label>Pole 3 (Hz): <span class="val" id="p3-v">OFF</span></label><input type="range" id="p3-s" min="1" max="7" step="0.05" value="7"></div>
+
+    <h2>Zeros (Hz)</h2>
+    <div class="cg"><label>Zero 1 (Hz): <span class="val" id="z1-v">OFF</span></label><input type="range" id="z1-s" min="1" max="7" step="0.05" value="7"></div>
+    <div class="cg"><label>Zero 2 (Hz): <span class="val" id="z2-v">OFF</span></label><input type="range" id="z2-s" min="1" max="7" step="0.05" value="7"></div>
+
+    <h2>Readouts</h2>
+    <div class="rbox"><div class="rl">DC Gain</div><div class="rv" id="dc-out">100 V/V</div></div>
+    <div class="rbox"><div class="rl">Pole 1</div><div class="rv" id="po1-out">1.0 kHz</div></div>
+    <div class="rbox"><div class="rl">Slope above all poles</div><div class="rv" id="slope-out">-20 dB/dec</div></div>
+    <div class="rbox"><div class="rl">Asymptote Error at p1</div><div class="rv" id="err-out">3.0 dB</div></div>
+
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:10px;margin-top:8px;font-size:12px;line-height:1.5;">
+      <strong>Rules:</strong><br>
+      • Each pole: slope −20 dB/dec<br>
+      • Each zero: slope +20 dB/dec<br>
+      • At corner: exact = asymptote − 3 dB<br>
+      • Pole 2 or Z ON if &lt;10 MHz<br>
+    </div>
+  </div>
+
+  <div class="carea">
+    <div>
+      <div class="clabel">Bode Magnitude — Exact (solid) vs Asymptote (dashed)</div>
+      <canvas id="bodeCanvas" width="820" height="450"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  function G(id){return document.getElementById(id);}
+  const kS=G('k-s'),p1S=G('p1-s'),p2S=G('p2-s'),p3S=G('p3-s'),z1S=G('z1-s'),z2S=G('z2-s');
+  const OFF_VAL=7;
+
+  function logToF(lv){return Math.pow(10,lv);}
+
+  function getC(){
+    const dk=window.matchMedia('(prefers-color-scheme:dark)').matches;
+    return{bg:dk?'#1a1a1a':'#fff',grid:dk?'#2e2e2e':'#eee',text:dk?'#ccc':'#555',blue:dk?'#4499ff':'#0066cc',orange:dk?'#ff9944':'#cc6600',red:dk?'#ff5555':'#cc0000',green:dk?'#44bb44':'#007700',dashed:dk?'#555':'#aaa'};
+  }
+
+  function fmtF(f){return f>=1e6?(f/1e6).toFixed(2)+'M':f>=1e3?(f/1e3).toFixed(1)+'k':f.toFixed(0);}
+
+  function update(){
+    const K_dB=parseFloat(kS.value);
+    const K=Math.pow(10,K_dB/20);
+    const p1v=parseFloat(p1S.value), p2v=parseFloat(p2S.value), p3v=parseFloat(p3S.value);
+    const z1v=parseFloat(z1S.value), z2v=parseFloat(z2S.value);
+    const p1=logToF(p1v);
+    const p2=p2v>=OFF_VAL?null:logToF(p2v);
+    const p3=p3v>=OFF_VAL?null:logToF(p3v);
+    const z1=z1v>=OFF_VAL?null:logToF(z1v);
+    const z2=z2v>=OFF_VAL?null:logToF(z2v);
+
+    G('k-v').textContent=K_dB+' dB';
+    G('p1-v').textContent=fmtF(p1)+'Hz';
+    G('p2-v').textContent=p2?fmtF(p2)+'Hz':'OFF';
+    G('p3-v').textContent=p3?fmtF(p3)+'Hz':'OFF';
+    G('z1-v').textContent=z1?fmtF(z1)+'Hz':'OFF';
+    G('z2-v').textContent=z2?fmtF(z2)+'Hz':'OFF';
+    G('dc-out').textContent=K.toFixed(0)+' V/V';
+    G('po1-out').textContent=fmtF(p1)+'Hz';
+    const numPoles=[p1,p2,p3].filter(Boolean).length;
+    const numZeros=[z1,z2].filter(Boolean).length;
+    G('slope-out').textContent=(-20*(numPoles-numZeros))+' dB/dec';
+    G('err-out').textContent='3.0 dB at each corner';
+
+    drawBode(K_dB,p1,p2,p3,z1,z2);
+  }
+
+  function exactGain_dB(f,K_dB,p1,p2,p3,z1,z2){
+    let dB=K_dB;
+    const poles=[p1,p2,p3].filter(Boolean);
+    const zeros=[z1,z2].filter(Boolean);
+    for(const p of poles) dB-=20*Math.log10(Math.sqrt(1+(f/p)**2));
+    for(const z of zeros) dB+=20*Math.log10(Math.sqrt(1+(f/z)**2));
+    return dB;
+  }
+
+  function asymptoteGain_dB(f,K_dB,p1,p2,p3,z1,z2){
+    let dB=K_dB;
+    const poles=[p1,p2,p3].filter(Boolean);
+    const zeros=[z1,z2].filter(Boolean);
+    for(const p of poles){
+      if(f>p) dB-=20*Math.log10(f/p);
+    }
+    for(const z of zeros){
+      if(f>z) dB+=20*Math.log10(f/z);
+    }
+    return dB;
+  }
+
+  function drawBode(K_dB,p1,p2,p3,z1,z2){
+    const cv=G('bodeCanvas');
+    const ctx=cv.getContext('2d');
+    const W=cv.width,H=cv.height;
+    const c=getC();
+    ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+
+    const fMin=1, fMax=1e8;
+    const logMin=0, logMax=8;
+    const pad={l:65,r:30,t:25,b:50};
+    const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+    // find gain range
+    let gMin=Infinity,gMax=-Infinity;
+    for(let lf=logMin;lf<=logMax;lf+=0.1){
+      const f=Math.pow(10,lf);
+      const g=exactGain_dB(f,K_dB,p1,p2,p3,z1,z2);
+      gMin=Math.min(gMin,g); gMax=Math.max(gMax,g);
+    }
+    gMax=Math.ceil((gMax+10)/20)*20;
+    gMin=Math.floor((gMin-10)/20)*20;
+
+    function fX(f){return pad.l+(Math.log10(f)-logMin)/(logMax-logMin)*pw;}
+    function dY(db){return pad.t+ph-(db-gMin)/(gMax-gMin)*ph;}
+
+    // grid
+    ctx.strokeStyle=c.grid; ctx.lineWidth=1;
+    for(let lf=0;lf<=8;lf++){
+      const x=fX(Math.pow(10,lf));
+      ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,pad.t+ph); ctx.stroke();
+      const f=Math.pow(10,lf);
+      ctx.fillStyle=c.text; ctx.font='10px monospace'; ctx.textAlign='center';
+      ctx.fillText(f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f+'',x,pad.t+ph+15);
+    }
+    for(let db=gMin;db<=gMax;db+=20){
+      const y=dY(db);
+      if(y<pad.t-5||y>pad.t+ph+5) continue;
+      ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+pw,y); ctx.stroke();
+      ctx.fillStyle=c.text; ctx.font='10px monospace'; ctx.textAlign='right';
+      ctx.fillText(db,pad.l-4,y+4);
+    }
+    ctx.fillStyle=c.text; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Frequency (Hz) →',pad.l+pw/2,H-8);
+    ctx.save(); ctx.translate(14,pad.t+ph/2); ctx.rotate(-Math.PI/2); ctx.fillText('Gain (dB)',0,0); ctx.restore();
+
+    // asymptote
+    ctx.beginPath(); ctx.strokeStyle=c.dashed; ctx.lineWidth=2; ctx.setLineDash([8,4]);
+    for(let px=0;px<=pw;px++){
+      const logF=logMin+(px/pw)*(logMax-logMin);
+      const f=Math.pow(10,logF);
+      const db=asymptoteGain_dB(f,K_dB,p1,p2,p3,z1,z2);
+      const x=pad.l+px;
+      const y=dY(db);
+      px===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+
+    // exact
+    ctx.beginPath(); ctx.strokeStyle=c.blue; ctx.lineWidth=2.5;
+    for(let px=0;px<=pw;px++){
+      const logF=logMin+(px/pw)*(logMax-logMin);
+      const f=Math.pow(10,logF);
+      const db=exactGain_dB(f,K_dB,p1,p2,p3,z1,z2);
+      const x=pad.l+px;
+      const y=dY(db);
+      px===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    // corner markers
+    const corners=[
+      {f:p1,type:'pole',color:c.red},
+      {f:p2,type:'pole',color:c.red},{f:p3,type:'pole',color:c.red},
+      {f:z1,type:'zero',color:c.green},{f:z2,type:'zero',color:c.green}
+    ].filter(p=>p.f);
+
+    for(const corn of corners){
+      const x=fX(corn.f);
+      const db=exactGain_dB(corn.f,K_dB,p1,p2,p3,z1,z2);
+      const y=dY(db);
+      ctx.beginPath(); ctx.arc(x,y,6,0,2*Math.PI);
+      ctx.fillStyle=corn.color; ctx.fill();
+      ctx.fillStyle=corn.type==='pole'?c.red:c.green;
+      ctx.font='bold 10px monospace'; ctx.textAlign='center';
+      ctx.fillText((corn.type==='pole'?'P':'Z')+' '+fmtF(corn.f)+'Hz',x,y-10);
+    }
+
+    // legend
+    ctx.font='12px sans-serif'; ctx.textAlign='left';
+    ctx.fillStyle=c.blue; ctx.fillText('— Exact response',pad.l+8,pad.t+18);
+    ctx.fillStyle=c.dashed; ctx.fillText('- - Asymptote',pad.l+150,pad.t+18);
+    ctx.fillStyle=c.red; ctx.fillText('● Pole (−3dB at corner)',pad.l+270,pad.t+18);
+    ctx.fillStyle=c.green; ctx.fillText('● Zero (+3dB at corner)',pad.l+440,pad.t+18);
+  }
+
+  [kS,p1S,p2S,p3S,z1S,z2S].forEach(e=>e.addEventListener('input',update));
+  window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',update);
+  update();
+})();
+</script>
+</body>
+</html>

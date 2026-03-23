@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-DA-2.2.2 — CMRR</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-DA-2.2.2</div>
+  <h1>Differential Amplifier — CMRR</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>CMRR Parameters</h2>
+      <label>g_m (mA/V): <b id="gm_l">1.65</b> <input type="range" id="gm" min="0.1" max="20" value="1.65" step="0.05"></label>
+      <label>r_SS — tail source (kΩ): <b id="rss_l">125</b> kΩ <input type="range" id="rss" min="10" max="100000" value="125" step="10"></label>
+      <label>ΔV_th mismatch (mV): <b id="dvth_l">5</b> mV <input type="range" id="dvth" min="0" max="50" value="5" step="0.5"></label>
+      <label>V_ov (mV): <b id="vov_l">200</b> mV <input type="range" id="vov" min="50" max="500" value="200" step="10"></label>
+      <label>C_SS tail cap (fF): <b id="css_l">300</b> fF <input type="range" id="css" min="10" max="5000" value="300" step="10"></label>
+
+      <div class="ro">CMRR_tail (dB): <span id="cmrr_t">--</span></div>
+      <div class="ro" style="margin-top:4px">CMRR_mismatch (dB): <span id="cmrr_m">--</span></div>
+      <div class="ro g" style="margin-top:4px">CMRR total (dB): <span id="cmrr_tot">--</span></div>
+      <div class="ro" style="margin-top:4px">Tail pole f_p (kHz): <span id="fp_d">--</span></div>
+      <div class="insight">
+        CMRR has two independent floors: tail source (2g_m × r_SS) and mismatch (V_ov/ΔV_th). The total CMRR is the minimum of the two. At high frequency, the tail capacitance C_SS adds a −20 dB/dec roll-off starting at f_p = 1/(2π r_SS C_SS).
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>CMRR vs Frequency</h2>
+      <canvas id="cv" height="280"></canvas>
+      <div class="insight">
+        Blue: tail-limited CMRR (flat at DC, rolls off above f_p due to C_SS). Orange: mismatch floor (frequency-independent). Green: total CMRR = min(tail, mismatch). The dominant limitation at each frequency is the lower curve.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const gm=+document.getElementById('gm').value*1e-3;
+    const rSS=+document.getElementById('rss').value*1e3;
+    const dvth=+document.getElementById('dvth').value*1e-3;
+    const vov=+document.getElementById('vov').value*1e-3;
+    const Css=+document.getElementById('css').value*1e-15;
+
+    document.getElementById('gm_l').textContent=(gm*1e3).toFixed(2);
+    document.getElementById('rss_l').textContent=(rSS/1e3).toFixed(0);
+    document.getElementById('dvth_l').textContent=(dvth*1e3).toFixed(1);
+    document.getElementById('vov_l').textContent=(vov*1e3).toFixed(0);
+    document.getElementById('css_l').textContent=(Css*1e15).toFixed(0);
+
+    const cmrr_tail_lin=2*gm*rSS;
+    const cmrr_mism_lin=dvth>0?vov/dvth:1e10;
+    const cmrr_tot=Math.min(cmrr_tail_lin,cmrr_mism_lin);
+    const fp=1/(2*Math.PI*rSS*Css);
+
+    document.getElementById('cmrr_t').textContent=(20*Math.log10(cmrr_tail_lin)).toFixed(1);
+    document.getElementById('cmrr_m').textContent=(dvth>0?(20*Math.log10(cmrr_mism_lin)).toFixed(1):'∞');
+    document.getElementById('cmrr_tot').textContent=(20*Math.log10(cmrr_tot)).toFixed(1);
+    document.getElementById('fp_d').textContent=(fp/1e3).toFixed(2);
+
+    draw(gm,rSS,dvth,vov,Css,cmrr_tail_lin,cmrr_mism_lin);
+  }
+
+  function draw(gm,rSS,dvth,vov,Css,ct,cm){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=280;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,280);
+    const pL=55,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=280-pT-pB;
+
+    const fmin=1, fmax=1e10;
+    const logFmin=0, logFmax=10;
+    const CMRRmax_dB=160, CMRRmin_dB=0;
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='10px system-ui';
+    ctx.fillText('CMRR (dB)', 2, pT+ph/2);
+    ctx.fillText('Frequency (Hz)', pL+pw/2-20, 280-4);
+
+    for(let db=CMRRmin_dB;db<=CMRRmax_dB;db+=20){
+      const y=pT+ph-((db-CMRRmin_dB)/(CMRRmax_dB-CMRRmin_dB))*ph;
+      ctx.fillStyle='#8888aa'; ctx.fillText(db, 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+    ['1','100','10k','1M','100M','10G'].forEach((lbl,i)=>{
+      const x=pL+(i*2/logFmax)*pw;
+      ctx.fillStyle='#8888aa'; ctx.fillText(lbl, x-10, pT+ph+14);
+    });
+
+    // Tail CMRR(f) = 2*gm*rSS / sqrt(1+(f/fp)^2) * fp = 1/(2pi*rSS*Css)
+    const fp=1/(2*Math.PI*rSS*Css);
+    const drawC=(fn,color,dash)=>{
+      ctx.strokeStyle=color; ctx.lineWidth=2; ctx.setLineDash(dash||[]);
+      ctx.beginPath(); let first=true;
+      for(let px=0;px<=pw;px++){
+        const f=Math.pow(10,logFmin+(px/pw)*(logFmax-logFmin));
+        const val=fn(f);
+        if(val<=0) continue;
+        const dB=20*Math.log10(val);
+        const y=pT+ph-((dB-CMRRmin_dB)/(CMRRmax_dB-CMRRmin_dB))*ph;
+        if(y<pT-5||y>pT+ph+5){if(!first)ctx.lineTo(pL+px,Math.max(pT,Math.min(pT+ph,y)));continue;}
+        if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    };
+
+    drawC(f=>2*gm*rSS/Math.sqrt(1+(f/fp)**2),'#0066cc',[]);
+    if(dvth>0) drawC(f=>vov/dvth,'#ff8800',[5,4]);
+    drawC(f=>Math.min(2*gm*rSS/Math.sqrt(1+(f/fp)**2),dvth>0?vov/dvth:1e10),'#00994d',[]);
+
+    // fp marker
+    const xfp=pL+((Math.log10(fp)-logFmin)/(logFmax-logFmin))*pw;
+    if(xfp>pL&&xfp<pL+pw){
+      ctx.strokeStyle='#cc220066'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(xfp,pT); ctx.lineTo(xfp,pT+ph); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle='#cc2200'; ctx.font='9px system-ui';
+      const fpStr=fp>=1e6?'f_p='+(fp/1e6).toFixed(1)+'MHz':fp>=1e3?'f_p='+(fp/1e3).toFixed(0)+'kHz':'f_p='+fp.toFixed(0)+'Hz';
+      ctx.fillText(fpStr, xfp+3, pT+12);
+    }
+
+    const items=[{c:'#0066cc',lbl:'Tail CMRR(f)',d:[]},{c:'#ff8800',lbl:'Mismatch floor',d:[5,4]},{c:'#00994d',lbl:'Total CMRR',d:[]}];
+    items.forEach(({c,lbl,d},i)=>{
+      ctx.strokeStyle=c; ctx.lineWidth=1.8; ctx.setLineDash(d);
+      ctx.beginPath(); ctx.moveTo(pL+pw-100,pT+12+14*i); ctx.lineTo(pL+pw-80,pT+12+14*i); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle='#8888aa'; ctx.font='10px system-ui'; ctx.fillText(lbl, pL+pw-76, pT+16+14*i);
+    });
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

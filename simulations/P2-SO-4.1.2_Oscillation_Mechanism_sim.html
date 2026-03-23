@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-SO-4.1.2 — Oscillation Mechanism</title>
+<style>
+  :root { --accent: #0066cc; --bg: #1a1a1a; --panel: #242424; --border: #333; --text: #e0e0e0; --muted: #888; }
+  @media (prefers-color-scheme: light) { :root { --bg: #f4f4f4; --panel: #fff; --border: #ccc; --text: #1a1a1a; --muted: #555; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+  h1 { font-size: 1.1rem; color: var(--accent); padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .subtitle { font-size: 0.8rem; color: var(--muted); padding: 0 16px 8px; }
+  .layout { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; }
+  .controls { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px; min-width: 230px; flex: 0 0 230px; }
+  .ctrl-group { margin-bottom: 14px; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .val { font-weight: bold; color: var(--accent); }
+  .readout { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 10px; }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 5px 7px; }
+  .card-label { font-size: 0.68rem; color: var(--muted); }
+  .card-val { font-size: 0.84rem; font-weight: bold; color: var(--accent); }
+  canvas { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: block; }
+  .canvas-wrap { flex: 1; min-width: 300px; }
+  .tog-row { display: flex; gap: 8px; margin-top: 8px; }
+  .tog { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 0.78rem; color: var(--muted); }
+  .tog.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+</style>
+</head>
+<body>
+<h1>P2-SO-4.1.2 — Oscillation Mechanism</h1>
+<p class="subtitle">α = R/(2L) &nbsp;|&nbsp; ω_d = √(ω₀²−α²) &nbsp;|&nbsp; V_C(t) = V₀·e^(−αt)·cos(ω_d·t)</p>
+<div class="layout">
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>Inductance L (µH): <span class="val" id="vL">10.0</span></label>
+      <input type="range" id="sL" min="1" max="100" step="1" value="10">
+    </div>
+    <div class="ctrl-group">
+      <label>Capacitance C (nF): <span class="val" id="vC">10</span></label>
+      <input type="range" id="sC" min="1" max="100" step="1" value="10">
+    </div>
+    <div class="ctrl-group">
+      <label>Resistance R (Ω): <span class="val" id="vR">3.16</span></label>
+      <input type="range" id="sR" min="0" max="100" step="0.1" value="3.16">
+    </div>
+    <div class="tog-row">
+      <span class="tog on" id="tEnv" onclick="toggleEnv()">Envelope</span>
+      <span class="tog on" id="tUn" onclick="toggleUn()">R=0 ideal</span>
+    </div>
+    <div class="readout">
+      <div class="card"><div class="card-label">ω₀ (Mrad/s)</div><div class="card-val" id="rO0">10.0</div></div>
+      <div class="card"><div class="card-label">α (krad/s)</div><div class="card-val" id="rAlpha">158</div></div>
+      <div class="card"><div class="card-label">ζ = α/ω₀</div><div class="card-val" id="rZeta">0.0158</div></div>
+      <div class="card"><div class="card-label">ω_d (Mrad/s)</div><div class="card-val" id="rOd">10.0</div></div>
+      <div class="card"><div class="card-label">τ_decay (µs)</div><div class="card-val" id="rTd">6.32</div></div>
+      <div class="card"><div class="card-label">Rings to 1%</div><div class="card-val" id="rN">7.3</div></div>
+    </div>
+  </div>
+  <div class="canvas-wrap">
+    <canvas id="cv" width="560" height="440"></canvas>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+let showEnv=true, showUndamped=true;
+function toggleEnv(){showEnv=!showEnv;document.getElementById('tEnv').className='tog'+(showEnv?' on':'');draw();}
+function toggleUn(){showUndamped=!showUndamped;document.getElementById('tUn').className='tog'+(showUndamped?' on':'');draw();}
+
+function draw() {
+  const L=parseFloat(document.getElementById('sL').value)*1e-6;
+  const C=parseFloat(document.getElementById('sC').value)*1e-9;
+  const R=parseFloat(document.getElementById('sR').value);
+  document.getElementById('vL').textContent=(L*1e6).toFixed(1);
+  document.getElementById('vC').textContent=(C*1e9).toFixed(0);
+  document.getElementById('vR').textContent=R.toFixed(2);
+
+  const omega0=1/Math.sqrt(L*C);
+  const alpha=R/(2*L);
+  const zeta=alpha/omega0;
+  const omegadSq=omega0*omega0-alpha*alpha;
+  const underdamped=omegadSq>0;
+  const omegad=underdamped?Math.sqrt(omegadSq):0;
+  const T=underdamped?2*Math.PI/omegad:2*Math.PI/omega0;
+  const tauD=underdamped?1/alpha:Infinity;
+  const N=underdamped?0.733/zeta:0;
+  const V0=1;
+
+  document.getElementById('rO0').textContent=(omega0/1e6).toFixed(2);
+  document.getElementById('rAlpha').textContent=(alpha/1e3).toFixed(1);
+  document.getElementById('rZeta').textContent=zeta.toFixed(4);
+  document.getElementById('rOd').textContent=underdamped?(omegad/1e6).toFixed(2):'N/A';
+  document.getElementById('rTd').textContent=R>0?(tauD*1e6).toFixed(2):'∞';
+  document.getElementById('rN').textContent=underdamped&&R>0?N.toFixed(1):'∞';
+
+  const W=cv.width,H=cv.height,padL=60,padR=20,padT=30,padB=50,plotW=W-padL-padR,plotH=H-padT-padB;
+  const tMax=Math.min(5*T,underdamped&&R>0?5*tauD:5*T);
+
+  const isDark=window.matchMedia('(prefers-color-scheme: dark)').matches;
+  ctx.fillStyle=isDark?'#242424':'#fff';ctx.fillRect(0,0,W,H);
+  const gridC=isDark?'#2e2e2e':'#e8e8e8';
+  const mutC=isDark?'#888':'#555';
+
+  const tx=t=>padL+(t/tMax)*plotW;
+  const ty=y=>padT+(1-(y+V0)/(2*V0))*plotH;
+
+  ctx.strokeStyle=gridC;ctx.lineWidth=1;
+  for(let i=0;i<=5;i++){ctx.beginPath();ctx.moveTo(tx(i*tMax/5),padT);ctx.lineTo(tx(i*tMax/5),padT+plotH);ctx.stroke();}
+  ctx.beginPath();ctx.moveTo(padL,ty(0));ctx.lineTo(padL+plotW,ty(0));ctx.stroke();
+  ctx.strokeStyle=mutC;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(padL,padT);ctx.lineTo(padL,padT+plotH);ctx.lineTo(padL+plotW,padT+plotH);ctx.stroke();
+
+  // Undamped (R=0) reference
+  if(showUndamped){
+    ctx.strokeStyle='rgba(100,200,100,0.4)';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+    ctx.beginPath();
+    for(let i=0;i<=500;i++){const t=i/500*tMax;const v=V0*Math.cos(omega0*t);if(i===0)ctx.moveTo(tx(t),ty(v));else ctx.lineTo(tx(t),ty(v));}
+    ctx.stroke();ctx.setLineDash([]);
+  }
+
+  // Envelope
+  if(showEnv&&underdamped&&R>0){
+    ctx.strokeStyle='rgba(255,136,68,0.5)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();
+    for(let i=0;i<=300;i++){const t=i/300*tMax;const e=V0*Math.exp(-alpha*t);if(i===0)ctx.moveTo(tx(t),ty(e));else ctx.lineTo(tx(t),ty(e));}
+    ctx.stroke();
+    ctx.beginPath();
+    for(let i=0;i<=300;i++){const t=i/300*tMax;const e=-V0*Math.exp(-alpha*t);if(i===0)ctx.moveTo(tx(t),ty(e));else ctx.lineTo(tx(t),ty(e));}
+    ctx.stroke();ctx.setLineDash([]);
+  }
+
+  // Main response
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2.5;ctx.beginPath();
+  for(let i=0;i<=600;i++){
+    const t=i/600*tMax;
+    let v;
+    if(!underdamped){
+      // Critically or overdamped
+      const s=alpha,c2=V0;
+      v=V0*(1+alpha*t)*Math.exp(-alpha*t); // critical approx
+    } else {
+      v=V0*Math.exp(-alpha*t)*(Math.cos(omegad*t)+(alpha/omegad)*Math.sin(omegad*t));
+    }
+    if(i===0)ctx.moveTo(tx(t),ty(v));else ctx.lineTo(tx(t),ty(v));
+  }
+  ctx.stroke();
+
+  ctx.fillStyle='#0066cc';ctx.font='11px sans-serif';
+  ctx.fillText('V_C(t)',padL+4,padT+14);
+  if(showUndamped){ctx.fillStyle='rgba(100,200,100,0.8)';ctx.fillText('R=0 ideal',padL+4,padT+26);}
+  if(!underdamped){ctx.fillStyle='#ffaa00';ctx.font='bold 11px sans-serif';ctx.fillText('OVERDAMPED / CRITICAL',padL+plotW/2-60,padT+20);}
+
+  ctx.fillStyle=mutC;ctx.font='10px sans-serif';
+  for(let i=0;i<=5;i++){
+    const t=i*tMax/5;
+    const ts=t>=1e-6?(t*1e9).toFixed(0)+'ns':(t*1e9).toFixed(0)+'ns';
+    ctx.fillText(ts,tx(t)-15,padT+plotH+18);
+  }
+  ctx.fillText('t',padL+plotW/2,padT+plotH+36);
+  [V0,V0*0.5,0,-V0*0.5,-V0].forEach(y=>ctx.fillText(y.toFixed(1),2,ty(y)+4));
+}
+
+['sL','sC','sR'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',draw);
+draw();
+</script>
+</body>
+</html>

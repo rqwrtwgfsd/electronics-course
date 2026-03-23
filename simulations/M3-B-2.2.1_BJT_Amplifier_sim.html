@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M3-B-2.2.1 BJT CE Amplifier</title>
+<style>
+:root{--bg:#ffffff;--surface:#f5f5f5;--border:#cccccc;--text:#111111;--accent:#0066cc;--accent2:#0066cc;}
+@media(prefers-color-scheme:dark){:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--accent:#0066cc;--accent2:#58a6ff;}}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;padding:16px;max-width:860px;margin:0 auto;}
+h1{font-size:1.2rem;color:var(--accent2);margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:8px;}
+.note{font-size:0.85rem;color:var(--text);opacity:0.7;margin-bottom:12px;}
+canvas{width:100%;height:260px;display:block;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:12px;}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;}
+.ctrl{display:flex;flex-direction:column;gap:3px;font-size:0.82rem;}
+.ctrl label{color:var(--text);opacity:0.8;}
+input[type=range]{width:160px;accent-color:var(--accent);}
+.readouts{display:flex;flex-wrap:wrap;gap:12px;font-size:0.85rem;font-family:monospace;}
+.ro{background:var(--surface);border:1px solid var(--border);padding:4px 10px;border-radius:4px;color:var(--accent2);}
+</style></head><body>
+<h1>M3-B-2.2.1 — Common-Emitter Amplifier: Gain and Waveform</h1>
+<p class="note">Adjust I_C and RC to change gain. Toggle emitter bypass to compare with/without RE.</p>
+<canvas id="cv"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>I_C (mA): <span id="icv">2</span></label><input type="range" id="ic" min="0.1" max="10" value="2" step="0.1" oninput="sv('icv',parseFloat(this.value).toFixed(1));draw();"></div>
+  <div class="ctrl"><label>R_C (kΩ): <span id="rcv">2.2</span></label><input type="range" id="rc" min="0.5" max="10" value="2.2" step="0.1" oninput="sv('rcv',parseFloat(this.value).toFixed(1));draw();"></div>
+  <div class="ctrl"><label>R_E (Ω): <span id="rev">220</span></label><input type="range" id="re" min="0" max="2000" value="220" step="10" oninput="sv('rev',this.value);draw();"></div>
+  <div class="ctrl"><label>V_in (mV pk): <span id="vinv">10</span></label><input type="range" id="vin" min="1" max="200" value="10" step="1" oninput="sv('vinv',this.value);draw();"></div>
+</div>
+<div class="readouts">
+  <div class="ro">r_e: <span id="re_val">0</span> Ω</div>
+  <div class="ro">A_v (bypass): <span id="av_by">0</span></div>
+  <div class="ro">A_v (no bypass): <span id="av_no">0</span></div>
+  <div class="ro">V_out_pk: <span id="vout">0</span> mV</div>
+  <div class="ro">Z_in_BJT: <span id="zin">0</span> Ω</div>
+</div>
+<script>
+
+const isDark=()=>window.matchMedia('(prefers-color-scheme:dark)').matches;
+function gs(id){return parseFloat(document.getElementById(id).value);}
+function sv(id,val){document.getElementById(id).textContent=val;}
+function resize(cv,draw){
+  cv.width=cv.offsetWidth*devicePixelRatio;
+  cv.height=260*devicePixelRatio;
+  cv.style.height='260px';
+  draw();
+}
+function drawAxes(ctx,W,H,pad,xl,yl,color){
+  ctx.strokeStyle=color;ctx.lineWidth=1;ctx.fillStyle=color;ctx.font=`${11*devicePixelRatio}px system-ui`;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  ctx.fillText(xl,W-pad-30,H-pad+14*devicePixelRatio);
+  ctx.save();ctx.translate(pad-14*devicePixelRatio,pad+30);ctx.rotate(-Math.PI/2);ctx.fillText(yl,0,0);ctx.restore();
+}
+
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+const Vcc=12, beta=150;
+window.addEventListener('resize',()=>resize(cv,draw));
+
+function draw(){
+  const dpr=devicePixelRatio;
+  cv.width=cv.offsetWidth*dpr; cv.height=260*dpr;
+  const W=cv.width,H=cv.height,pad=50*dpr;
+  const dark=isDark();
+  const bg=dark?'#161b22':'#f5f5f5';
+  const fg=dark?'#e6edf3':'#111111';
+  const acc=dark?'#58a6ff':'#0066cc';
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  const IC=gs('ic')/1000; // A
+  const RC=gs('rc')*1000;
+  const RE=gs('re');
+  const Vin=gs('vin')/1000; // V peak
+
+  const re=0.026/IC;
+  const Av_by=-RC/re;
+  const Av_no=-RC/(RE+re);
+  const r_pi=beta*re;
+  const Vout_pk=Math.abs(Av_by)*Vin*1000; // mV
+
+  sv('re_val',re.toFixed(1));
+  sv('av_by',Av_by.toFixed(1));
+  sv('av_no',Av_no.toFixed(2));
+  sv('vout',Math.min(Vout_pk,(Vcc/2*1000)).toFixed(0));
+  sv('zin',r_pi.toFixed(0));
+
+  // Draw input and output waveforms
+  const N=300;
+  const mid_in=H*0.28, mid_out=H*0.72;
+  const amp_in=60*dpr, amp_out=Math.min(60*dpr, Vout_pk/1000/Vcc*200*dpr);
+
+  ctx.strokeStyle=dark?'#30363d':'#dddddd'; ctx.lineWidth=0.5;
+  ctx.beginPath(); ctx.moveTo(pad,mid_in); ctx.lineTo(W-pad,mid_in); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pad,mid_out); ctx.lineTo(W-pad,mid_out); ctx.stroke();
+
+  ctx.fillStyle=fg; ctx.font=`${10*dpr}px system-ui`;
+  ctx.fillText('V_in',pad-30*dpr,mid_in+4);
+  ctx.fillText('V_out (bypassed)',pad-30*dpr,mid_out+4);
+
+  ctx.strokeStyle='#2ed573'; ctx.lineWidth=2*dpr; ctx.beginPath();
+  for(let i=0;i<=N;i++){
+    const t=i/N, x=pad+t*(W-2*pad);
+    const y=mid_in - Math.sin(2*Math.PI*t*2)*amp_in;
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Clipping check
+  const clipped = Vout_pk/1000 > Vcc/2;
+  ctx.strokeStyle=clipped?'#ff6b6b':acc; ctx.lineWidth=2*dpr; ctx.beginPath();
+  for(let i=0;i<=N;i++){
+    const t=i/N, x=pad+t*(W-2*pad);
+    let y_amp = Math.min(amp_out, 90*dpr);
+    const raw=-Math.sin(2*Math.PI*t*2)*y_amp;
+    const y=mid_out + (clipped? Math.max(-80*dpr,Math.min(80*dpr,raw)) : raw);
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle=fg; ctx.font=`${11*dpr}px system-ui`;
+  ctx.fillText(`A_v (bypass)=${Av_by.toFixed(0)}  A_v (no bypass)=${Av_no.toFixed(1)}${clipped?' [CLIPPED]':''}`, pad, pad-8*dpr);
+}
+draw();
+</script></body></html>

@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-C-1.2.3 — RC Discharging Process Simulator</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --surface: #f5f5f5;
+    --border: #cccccc;
+    --text: #1a1a1a;
+    --accent: #0066cc;
+    --accent2: #cc4400;
+    --accent3: #008844;
+    --muted: #666666;
+    --grid: #e0e0e0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a;
+      --surface: #2a2a2a;
+      --border: #444444;
+      --text: #e8e8e8;
+      --accent: #4499ff;
+      --accent2: #ff6633;
+      --accent3: #44cc88;
+      --muted: #999999;
+      --grid: #333333;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 20px;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  header {
+    border-bottom: 2px solid var(--accent);
+    padding-bottom: 12px;
+    margin-bottom: 20px;
+  }
+  .module-id { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+  h1 { font-size: 22px; margin: 4px 0; }
+  .subtitle { font-size: 14px; color: var(--muted); }
+  .layout { display: grid; grid-template-columns: 1fr 280px; gap: 20px; }
+  canvas { border: 1px solid var(--border); border-radius: 4px; display: block; background: var(--surface); width: 100%; }
+  .controls { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 16px; }
+  .ctrl-group { margin-bottom: 18px; }
+  .ctrl-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: baseline; }
+  .ctrl-value { color: var(--accent); font-size: 14px; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; height: 4px; }
+  .toggle-row { display: flex; gap: 8px; margin-bottom: 18px; }
+  .toggle-btn {
+    flex: 1; padding: 8px 4px; border-radius: 4px; border: 2px solid var(--border);
+    background: transparent; color: var(--text); font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .toggle-btn.active { border-color: var(--accent); background: var(--accent); color: #fff; }
+  .readouts { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px; }
+  .readout-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 13px; }
+  .readout-label { color: var(--muted); }
+  .readout-val { font-family: monospace; font-size: 15px; font-weight: 700; }
+  .val-v { color: var(--accent); }
+  .val-d { color: var(--accent2); }
+  .val-t { color: var(--accent3); }
+  .arrow-indicator { text-align: center; font-size: 28px; margin: 10px 0; }
+  .arrow-label { font-size: 11px; color: var(--muted); text-align: center; }
+  .legend-wrap { display: flex; gap: 20px; margin-top: 8px; padding-left: 4px; }
+  .legend-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .legend-line { width: 24px; height: 3px; border-radius: 2px; }
+  .legend-line.dashed { background: repeating-linear-gradient(to right, var(--accent) 0, var(--accent) 6px, transparent 6px, transparent 10px); }
+  @media (max-width: 640px) { .layout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">P2-C-1.2.3 | Analog Electronics</div>
+  <h1>RC Charging &amp; Discharging — Comparison</h1>
+  <div class="subtitle">Charge: V(t) = V<sub>s</sub>(1−e<sup>−t/τ</sup>) &nbsp;|&nbsp; Discharge: V(t) = V<sub>0</sub>·e<sup>−t/τ</sup></div>
+</header>
+
+<div class="layout">
+  <div>
+    <canvas id="cv" height="380"></canvas>
+    <div class="legend-wrap">
+      <div class="legend-row"><div class="legend-line" style="background:var(--accent)"></div>V<sub>C</sub>(t) — Charging</div>
+      <div class="legend-row"><div class="legend-line" style="background:var(--accent2)"></div>V<sub>C</sub>(t) — Discharging</div>
+      <div class="legend-row"><div class="legend-line" style="background:var(--accent); opacity:0.4"></div>V<sub>s</sub> asymptote</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="toggle-row">
+      <button class="toggle-btn active" id="btn-both" onclick="setMode('both')">Both</button>
+      <button class="toggle-btn" id="btn-charge" onclick="setMode('charge')">Charge</button>
+      <button class="toggle-btn" id="btn-discharge" onclick="setMode('discharge')">Discharge</button>
+    </div>
+
+    <div class="ctrl-group">
+      <div class="ctrl-label">Resistance R <span class="ctrl-value" id="r-display">10 kΩ</span></div>
+      <input type="range" id="r-slider" min="0" max="100" value="40">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Capacitance C <span class="ctrl-value" id="c-display">100 nF</span></div>
+      <input type="range" id="c-slider" min="0" max="100" value="50">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Supply V<sub>s</sub> <span class="ctrl-value" id="vs-display">5.0 V</span></div>
+      <input type="range" id="vs-slider" min="1" max="20" step="0.5" value="5">
+    </div>
+
+    <div class="arrow-indicator" id="arrow-display">⬆</div>
+    <div class="arrow-label" id="arrow-label">Current: Into capacitor (charging)</div>
+
+    <div class="readouts">
+      <div class="readout-row">
+        <span class="readout-label">τ = RC</span>
+        <span class="readout-val val-t" id="rd-tau">—</span>
+      </div>
+      <div class="readout-row">
+        <span class="readout-label">V at t = τ (charge)</span>
+        <span class="readout-val val-v" id="rd-vc-tau">—</span>
+      </div>
+      <div class="readout-row">
+        <span class="readout-label">V at t = τ (discharge)</span>
+        <span class="readout-val val-d" id="rd-vd-tau">—</span>
+      </div>
+      <div class="readout-row">
+        <span class="readout-label">Sum at t = τ</span>
+        <span class="readout-val" id="rd-sum">—</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+let mode = 'both';
+
+function setMode(m) {
+  mode = m;
+  ['both','charge','discharge'].forEach(id => {
+    document.getElementById('btn-' + id).classList.toggle('active', id === m);
+  });
+  updateArrow();
+  draw();
+}
+
+function updateArrow() {
+  const arrow = document.getElementById('arrow-display');
+  const label = document.getElementById('arrow-label');
+  if (mode === 'charge') {
+    arrow.textContent = '⬆'; arrow.style.color = 'var(--accent)';
+    label.textContent = 'Current: Into capacitor (charging)';
+  } else if (mode === 'discharge') {
+    arrow.textContent = '⬇'; arrow.style.color = 'var(--accent2)';
+    label.textContent = 'Current: Out of capacitor (discharging)';
+  } else {
+    arrow.textContent = '↕'; arrow.style.color = 'var(--muted)';
+    label.textContent = 'Both charging and discharging shown';
+  }
+}
+
+function sliderToR(v) { return Math.pow(10, v/100 * 5); }
+function sliderToC(v) { return 1e-9 * Math.pow(10, v/100 * 6); }
+
+function formatR(r) {
+  if (r >= 1e3) return (r/1e3).toPrecision(3) + ' kΩ';
+  return r.toPrecision(3) + ' Ω';
+}
+function formatC(c) {
+  if (c >= 1e-6) return (c*1e6).toPrecision(3) + ' µF';
+  if (c >= 1e-9) return (c*1e9).toPrecision(3) + ' nF';
+  return (c*1e12).toPrecision(3) + ' pF';
+}
+function formatTau(t) {
+  if (t >= 1) return t.toPrecision(3) + ' s';
+  if (t >= 1e-3) return (t*1e3).toPrecision(3) + ' ms';
+  if (t >= 1e-6) return (t*1e6).toPrecision(3) + ' µs';
+  return (t*1e9).toPrecision(3) + ' ns';
+}
+
+function resizeCanvas() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width;
+  canvas.height = 380;
+}
+
+function draw() {
+  const R = sliderToR(+document.getElementById('r-slider').value);
+  const C = sliderToC(+document.getElementById('c-slider').value);
+  const Vs = +document.getElementById('vs-slider').value;
+  const tau = R * C;
+
+  document.getElementById('r-display').textContent = formatR(R);
+  document.getElementById('c-display').textContent = formatC(C);
+  document.getElementById('vs-display').textContent = Vs.toFixed(1) + ' V';
+  document.getElementById('rd-tau').textContent = formatTau(tau);
+  document.getElementById('rd-vc-tau').textContent = (Vs*(1-Math.exp(-1))).toFixed(3) + ' V';
+  document.getElementById('rd-vd-tau').textContent = (Vs*Math.exp(-1)).toFixed(3) + ' V';
+  document.getElementById('rd-sum').textContent = Vs.toFixed(3) + ' V = V_s ✓';
+
+  const W = canvas.width, H = canvas.height;
+  const PAD = { top: 30, right: 24, bottom: 50, left: 62 };
+  const pw = W - PAD.left - PAD.right;
+  const ph = H - PAD.top - PAD.bottom;
+  const tMax = 6 * tau;
+  const Vscale = Vs * 1.1;
+
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const gridColor = isDark ? '#333333' : '#e0e0e0';
+  const textColor = isDark ? '#e8e8e8' : '#1a1a1a';
+  const mutedColor = isDark ? '#999999' : '#666666';
+  const accentV = isDark ? '#4499ff' : '#0066cc';
+  const accentD = isDark ? '#ff6633' : '#cc4400';
+
+  function tx(t) { return PAD.left + (t / tMax) * pw; }
+  function ty(v) { return PAD.top + ph - (v / Vscale) * ph; }
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = isDark ? '#2a2a2a' : '#f5f5f5';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = gridColor;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  for (let n = 1; n <= 5; n++) {
+    const x = tx(n * tau);
+    ctx.beginPath(); ctx.moveTo(x, PAD.top); ctx.lineTo(x, PAD.top + ph); ctx.stroke();
+  }
+  [0, 0.25, 0.5, 0.75, 1].forEach(frac => {
+    const y = ty(frac * Vs);
+    ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + pw, y); ctx.stroke();
+  });
+  ctx.setLineDash([]);
+
+  // Axes
+  ctx.strokeStyle = mutedColor;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(PAD.left, PAD.top);
+  ctx.lineTo(PAD.left, PAD.top + ph);
+  ctx.lineTo(PAD.left + pw, PAD.top + ph);
+  ctx.stroke();
+
+  // Tick labels
+  ctx.fillStyle = mutedColor;
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'center';
+  for (let n = 0; n <= 6; n++) ctx.fillText(n + 'τ', tx(n*tau), PAD.top+ph+18);
+  ctx.fillText('Time', PAD.left + pw/2, PAD.top + ph + 38);
+  ctx.textAlign = 'right';
+  [0, 0.25, 0.5, 0.75, 1].forEach(frac => {
+    ctx.fillText((frac*Vs).toFixed(1)+'V', PAD.left-6, ty(frac*Vs)+4);
+  });
+
+  const N = 400;
+
+  // V_s asymptote
+  ctx.strokeStyle = accentV; ctx.lineWidth = 1; ctx.setLineDash([6,3]); ctx.globalAlpha = 0.4;
+  ctx.beginPath(); ctx.moveTo(PAD.left, ty(Vs)); ctx.lineTo(PAD.left+pw, ty(Vs)); ctx.stroke();
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+
+  // Mirror symmetry shaded region (only in "both" mode)
+  if (mode === 'both') {
+    ctx.fillStyle = isDark ? 'rgba(100,150,255,0.06)' : 'rgba(0,102,204,0.05)';
+    ctx.beginPath();
+    ctx.moveTo(PAD.left, ty(0));
+    for (let i = 0; i <= N; i++) {
+      const t = (i/N) * tMax;
+      ctx.lineTo(tx(t), ty(Vs*(1-Math.exp(-t/tau))));
+    }
+    for (let i = N; i >= 0; i--) {
+      const t = (i/N) * tMax;
+      ctx.lineTo(tx(t), ty(Vs*Math.exp(-t/tau)));
+    }
+    ctx.closePath(); ctx.fill();
+  }
+
+  // Discharge curve
+  if (mode === 'both' || mode === 'discharge') {
+    ctx.strokeStyle = accentD; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    for (let i = 0; i <= N; i++) {
+      const t = (i/N)*tMax;
+      const v = Vs * Math.exp(-t/tau);
+      if (i===0) ctx.moveTo(tx(t), ty(v)); else ctx.lineTo(tx(t), ty(v));
+    }
+    ctx.stroke();
+    // Dot at τ
+    const yd = ty(Vs * Math.exp(-1));
+    ctx.fillStyle = accentD;
+    ctx.beginPath(); ctx.arc(tx(tau), yd, 5, 0, 2*Math.PI); ctx.fill();
+    ctx.fillStyle = accentD; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'right';
+    ctx.fillText('36.8%', tx(tau)-8, yd-6);
+  }
+
+  // Charge curve
+  if (mode === 'both' || mode === 'charge') {
+    ctx.strokeStyle = accentV; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    for (let i = 0; i <= N; i++) {
+      const t = (i/N)*tMax;
+      const v = Vs * (1-Math.exp(-t/tau));
+      if (i===0) ctx.moveTo(tx(t), ty(v)); else ctx.lineTo(tx(t), ty(v));
+    }
+    ctx.stroke();
+    // Dot at τ
+    const yc = ty(Vs*(1-Math.exp(-1)));
+    ctx.fillStyle = accentV;
+    ctx.beginPath(); ctx.arc(tx(tau), yc, 5, 0, 2*Math.PI); ctx.fill();
+    ctx.fillStyle = accentV; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('63.2%', tx(tau)+8, yc-6);
+  }
+
+  // τ marker
+  ctx.strokeStyle = '#00aa44'; ctx.lineWidth = 2; ctx.setLineDash([6,4]);
+  ctx.beginPath(); ctx.moveTo(tx(tau), PAD.top); ctx.lineTo(tx(tau), PAD.top+ph); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#00aa44'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('τ', tx(tau), PAD.top+12);
+
+  // Title
+  ctx.fillStyle = textColor; ctx.textAlign = 'center'; ctx.font = 'bold 13px system-ui';
+  ctx.fillText('RC Charge vs Discharge — Mirror Symmetry', PAD.left+pw/2, PAD.top-10);
+}
+
+window.addEventListener('resize', () => { resizeCanvas(); draw(); });
+['r-slider','c-slider','vs-slider'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+
+resizeCanvas(); draw();
+</script>
+</body>
+</html>

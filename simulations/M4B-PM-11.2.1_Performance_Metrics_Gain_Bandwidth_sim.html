@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-PM-11.2.1 — Gain & Bandwidth Metrics</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0e1117; color: #cdd6f4; font-family: 'Segoe UI', sans-serif; font-size: 14px; }
+  h1 { text-align: center; padding: 18px; font-size: 17px; color: #cba6f7; border-bottom: 1px solid #313244; }
+  .tabs { display: flex; background: #181825; border-bottom: 1px solid #313244; }
+  .tab { padding: 10px 22px; cursor: pointer; color: #a6adc8; font-size: 13px; border-bottom: 3px solid transparent; transition: all .2s; }
+  .tab.active { color: #cba6f7; border-bottom-color: #cba6f7; }
+  .tab:hover:not(.active) { color: #cdd6f4; }
+  .panel { display: none; padding: 18px; }
+  .panel.active { display: block; }
+  canvas { display: block; background: #1e1e2e; border-radius: 8px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+  .ctrl { background: #181825; border-radius: 8px; padding: 14px; min-width: 220px; }
+  .ctrl label { display: block; color: #a6adc8; font-size: 12px; margin-bottom: 6px; }
+  .ctrl input[type=range] { width: 100%; accent-color: #cba6f7; margin-bottom: 2px; }
+  .ctrl .val { color: #a6e3a1; font-size: 12px; text-align: right; margin-bottom: 8px; }
+  .info-box { background: #181825; border-radius: 8px; padding: 12px; margin-top: 12px; font-size: 12px; line-height: 1.7; }
+  .hi { color: #a6e3a1; font-weight: bold; }
+  .warn { color: #f38ba8; font-weight: bold; }
+  .note { color: #fab387; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+  .leg-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #a6adc8; }
+  .leg-dot { width: 18px; height: 3px; border-radius: 2px; display: inline-block; }
+</style>
+</head>
+<body>
+<h1>M4B-PM-11.2.1 — Gain and Bandwidth Metrics</h1>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">Gain Error vs Resolution</div>
+  <div class="tab" onclick="showTab(1)">Closed-Loop Bandwidth & Peaking</div>
+  <div class="tab" onclick="showTab(2)">Settling Time vs N Bits</div>
+</div>
+
+<!-- TAB 0: Gain Error -->
+<div class="panel active" id="tab0">
+  <div class="row">
+    <canvas id="c0" width="600" height="400"></canvas>
+    <div class="ctrl" style="max-width:230px;">
+      <label>Av0 (dB): <span class="val" id="v0_av">80</span></label>
+      <input type="range" id="r0_av" min="40" max="140" step="1" value="80" oninput="draw0()">
+      <label>Closed-loop gain (V/V): <span class="val" id="v0_acl">1</span></label>
+      <input type="range" id="r0_acl" min="1" max="100" step="1" value="1" oninput="draw0()">
+      <label>Target resolution (bits): <span class="val" id="v0_bits">12</span></label>
+      <input type="range" id="r0_bits" min="8" max="20" step="1" value="12" oninput="draw0()">
+    </div>
+  </div>
+  <div class="info-box" id="info0"></div>
+</div>
+
+<!-- TAB 1: CL Bode + peaking -->
+<div class="panel" id="tab1">
+  <div class="row">
+    <canvas id="c1" width="620" height="400"></canvas>
+    <div class="ctrl" style="max-width:230px;">
+      <label>GBW (MHz): <span class="val" id="v1_gbw">500</span></label>
+      <input type="range" id="r1_gbw" min="50" max="2000" step="10" value="500" oninput="draw1()">
+      <label>β (feedback factor): <span class="val" id="v1_beta">1.00</span></label>
+      <input type="range" id="r1_beta" min="0.01" max="1.0" step="0.01" value="1.0" oninput="draw1()">
+      <label>Phase Margin (°): <span class="val" id="v1_pm">65</span></label>
+      <input type="range" id="r1_pm" min="20" max="90" step="1" value="65" oninput="draw1()">
+    </div>
+  </div>
+  <div class="legend">
+    <div class="leg-item"><div class="leg-dot" style="background:#89b4fa"></div>Open-loop gain</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#a6e3a1"></div>Closed-loop gain</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#f38ba8"></div>1/β (noise gain)</div>
+  </div>
+  <div class="info-box" id="info1"></div>
+</div>
+
+<!-- TAB 2: Settling -->
+<div class="panel" id="tab2">
+  <div class="row">
+    <canvas id="c2" width="620" height="400"></canvas>
+    <div class="ctrl" style="max-width:230px;">
+      <label>gm1 (mA/V): <span class="val" id="v2_gm1">1.60</span></label>
+      <input type="range" id="r2_gm1" min="0.2" max="10.0" step="0.1" value="1.60" oninput="draw2()">
+      <label>CL (pF): <span class="val" id="v2_cl">1.0</span></label>
+      <input type="range" id="r2_cl" min="0.1" max="10.0" step="0.1" value="1.0" oninput="draw2()">
+      <label>Window T (ns): <span class="val" id="v2_T">5.0</span></label>
+      <input type="range" id="r2_T" min="0.5" max="20" step="0.5" value="5.0" oninput="draw2()">
+      <label>Av0 (dB): <span class="val" id="v2_av">80</span></label>
+      <input type="range" id="r2_av" min="40" max="140" step="1" value="80" oninput="draw2()">
+    </div>
+  </div>
+  <div class="info-box" id="info2"></div>
+</div>
+
+<script>
+const dpr = window.devicePixelRatio || 1;
+function setupCanvas(id, w, h) {
+  const c = document.getElementById(id);
+  c.width = w*dpr; c.height = h*dpr;
+  c.style.width = w+'px'; c.style.height = h+'px';
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr,dpr);
+  return ctx;
+}
+function g(id) { return parseFloat(document.getElementById(id).value); }
+function sv(id,v) { document.getElementById(id).textContent = v; }
+function showTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
+  if(n===1) draw1();
+  if(n===2) draw2();
+}
+
+// ── TAB 0: Gain error vs resolution ─────────────────────────────────────────
+function draw0() {
+  const Av0_dB=g('r0_av'), Acl=g('r0_acl'), bits=g('r0_bits');
+  sv('v0_av', Av0_dB.toFixed(0)); sv('v0_acl', Acl.toFixed(0)); sv('v0_bits', bits.toFixed(0));
+
+  const Av0=Math.pow(10, Av0_dB/20);
+  const beta=1/Acl;
+  const gain_error_ppm = 1e6/(1+Av0*beta);
+  const required_ppm = 1e6/Math.pow(2,bits+1);
+  const pass = gain_error_ppm < required_ppm;
+  const required_Av0_dB = 20*Math.log10(Math.pow(2,bits+1)/beta - 1);
+
+  const ctx = setupCanvas('c0', 600, 400);
+  const W=600, H=400;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Gain Error vs Open-Loop Gain (Av0)', W/2, 22);
+
+  const mL=80, mR=30, mT=40, mB=50;
+  const bW=W-mL-mR, bH=H-mT-mB;
+
+  // X: Av0 from 40 to 140 dB, Y: gain error in ppm
+  const xMin=40, xMax=140;
+  const yMin_log=-3, yMax_log=7; // log10(ppm)
+  function xx(av_db){return mL+bW*(av_db-xMin)/(xMax-xMin);}
+  function yy(ppm){return mT+bH*(1-(Math.log10(Math.max(ppm,1e-3))-yMin_log)/(yMax_log-yMin_log));}
+
+  // Grid
+  for(let lp=yMin_log; lp<=yMax_log; lp++) {
+    const y=yy(Math.pow(10,lp));
+    ctx.beginPath(); ctx.moveTo(mL,y); ctx.lineTo(mL+bW,y);
+    ctx.strokeStyle='#313244'; ctx.lineWidth=0.7; ctx.stroke();
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='right';
+    ctx.fillText('10^'+lp, mL-4, y+3);
+  }
+  [40,60,80,100,120,140].forEach(av=>{
+    const x=xx(av);
+    ctx.beginPath(); ctx.moveTo(x,mT); ctx.lineTo(x,mT+bH);
+    ctx.strokeStyle='#313244'; ctx.lineWidth=0.7; ctx.stroke();
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText(av+'dB', x, mT+bH+14);
+  });
+
+  // Curves for different Acl
+  const acl_vals=[1,2,10,100];
+  const acl_colors=['#89b4fa','#a6e3a1','#fab387','#f38ba8'];
+  acl_vals.forEach((acl_v,ci) => {
+    const b_v=1/acl_v;
+    ctx.beginPath();
+    for(let av=40; av<=140; av+=0.5) {
+      const a=Math.pow(10,av/20);
+      const eps=1e6/(1+a*b_v);
+      const x=xx(av), y=yy(eps);
+      av===40?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle=acl_colors[ci]; ctx.lineWidth=1.5; ctx.stroke();
+    // Label at right
+    const b_v2=1/acl_v;
+    const eps_end=1e6/(1+Math.pow(10,140/20)*b_v2);
+    const y_end=yy(eps_end);
+    ctx.fillStyle=acl_colors[ci]; ctx.font='10px Segoe UI'; ctx.textAlign='left';
+    ctx.fillText('Acl='+acl_v, mL+bW+3, Math.max(mT+5, Math.min(mT+bH-5,y_end)));
+  });
+
+  // Required ppm line
+  const y_req=yy(required_ppm);
+  ctx.beginPath(); ctx.moveTo(mL,y_req); ctx.lineTo(mL+bW,y_req);
+  ctx.strokeStyle='#f38ba8'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#f38ba8'; ctx.font='10px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText(bits+'-bit limit: '+required_ppm.toFixed(0)+' ppm', mL+3, y_req-5);
+
+  // Current operating point
+  const x_cur=xx(Av0_dB);
+  const y_cur=yy(gain_error_ppm);
+  ctx.beginPath(); ctx.arc(x_cur, Math.max(mT+3,Math.min(mT+bH-3,y_cur)), 6,0,2*Math.PI);
+  ctx.fillStyle=pass?'#a6e3a1':'#f38ba8'; ctx.fill();
+
+  // Required Av0 line
+  const x_req=xx(required_Av0_dB);
+  if(x_req>=mL && x_req<=mL+bW) {
+    ctx.beginPath(); ctx.moveTo(x_req,mT); ctx.lineTo(x_req,mT+bH);
+    ctx.strokeStyle='#fab387'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#fab387'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText('Min Av0='+(required_Av0_dB).toFixed(0)+'dB', x_req, mT-5);
+  }
+
+  ctx.fillStyle='#585b70'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Open-loop gain Av0 (dB)', W/2, H-8);
+  ctx.save(); ctx.translate(14,H/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('Gain error (ppm)', 0, 0); ctx.restore();
+
+  document.getElementById('info0').innerHTML =
+    `Av0 = ${Av0_dB} dB (${(Av0/1000).toFixed(1)}k V/V),  β = ${beta.toFixed(3)},  Acl = ${Acl}.
+     <br>Gain error = ${gain_error_ppm.toFixed(0)} ppm.  ${bits}-bit limit = ${required_ppm.toFixed(0)} ppm.
+     <br>${pass?'<span class="hi">PASS: Av0 is sufficient for '+bits+'-bit accuracy.</span>':'<span class="warn">FAIL: Need Av0 ≥ '+required_Av0_dB.toFixed(0)+' dB for '+bits+'-bit at Acl='+Acl+'.</span>'}`;
+}
+
+// ── TAB 1: Closed-loop Bode ──────────────────────────────────────────────────
+function draw1() {
+  const GBW=g('r1_gbw')*1e6, beta=g('r1_beta'), PM=g('r1_pm');
+  sv('v1_gbw', g('r1_gbw').toFixed(0)); sv('v1_beta', beta.toFixed(2)); sv('v1_pm', PM.toFixed(0));
+
+  const Acl_ideal = 1/beta;
+  // Second pole from PM
+  const fp2 = GBW/Math.tan((90-PM)*Math.PI/180);
+  const Av0 = 10000; // 80 dB
+  const omega_n = 2*Math.PI*GBW*beta; // closed-loop natural frequency approx
+  const zeta = PM/100; // very rough approximation of damping ratio from PM
+
+  const ctx = setupCanvas('c1', 620, 400);
+  const W=620, H=400;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Open-Loop vs Closed-Loop Frequency Response', W/2, 22);
+
+  const mL=65, mR=30, mT=35, mB=45;
+  const bW=W-mL-mR, bH=H-mT-mB;
+
+  const fMin=1e3, fMax=1e10;
+  function fx(f){return mL+bW*Math.log10(f/fMin)/Math.log10(fMax/fMin);}
+  const gMin=-40, gMax=100;
+  function gy(db){return mT+bH*(1-(db-gMin)/(gMax-gMin));}
+
+  // Grid
+  [-40,-20,0,20,40,60,80,100].forEach(db=>{
+    ctx.beginPath(); ctx.moveTo(mL,gy(db)); ctx.lineTo(mL+bW,gy(db));
+    ctx.strokeStyle=db===0?'rgba(243,139,168,0.5)':'#313244'; ctx.lineWidth=db===0?1:0.7;
+    ctx.setLineDash(db===0?[3,3]:[]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='right';
+    ctx.fillText(db,mL-4,gy(db)+3);
+  });
+  [1e3,1e4,1e5,1e6,1e7,1e8,1e9,1e10].forEach(f=>{
+    const x=fx(f);
+    ctx.beginPath(); ctx.moveTo(x,mT); ctx.lineTo(x,mT+bH);
+    ctx.strokeStyle='#313244'; ctx.lineWidth=0.7; ctx.stroke();
+    const ls={1e3:'1k',1e4:'10k',1e5:'100k',1e6:'1M',1e7:'10M',1e8:'100M',1e9:'1G',1e10:'10G'};
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText(ls[f]||'',x,mT+bH+14);
+  });
+
+  const nPts=300;
+  // Open-loop (two-pole model)
+  const fp1_ol = GBW/Av0;
+  ctx.beginPath();
+  for(let i=0;i<=nPts;i++) {
+    const f=fMin*Math.pow(fMax/fMin,i/nPts);
+    const w=2*Math.PI*f;
+    const mag=Av0/(Math.sqrt(1+(w/(2*Math.PI*fp1_ol))**2)*Math.sqrt(1+(w/(2*Math.PI*fp2))**2));
+    const db=20*Math.log10(Math.max(mag,1e-6));
+    const x=fx(f), y=gy(Math.max(gMin+1,Math.min(gMax-1,db)));
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.strokeStyle='#89b4fa'; ctx.lineWidth=2; ctx.stroke();
+
+  // 1/β line
+  const Acl_dB=20*Math.log10(Acl_ideal);
+  ctx.beginPath(); ctx.moveTo(mL,gy(Acl_dB)); ctx.lineTo(mL+bW,gy(Acl_dB));
+  ctx.strokeStyle='#f38ba8'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#f38ba8'; ctx.font='10px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText('1/β = '+Acl_ideal.toFixed(1)+' ('+Acl_dB.toFixed(0)+'dB)', mL+5, gy(Acl_dB)-5);
+
+  // Closed-loop: Acl × 1 / (1 + jω/ω_cl_3dB)... approximate
+  // Use 2nd-order closed-loop model: Acl/(1 + 2ζ/ωn × jω + (jω/ωn)^2)
+  const wn=2*Math.PI*GBW*beta; // approx natural freq
+  ctx.beginPath();
+  for(let i=0;i<=nPts;i++) {
+    const f=fMin*Math.pow(fMax/fMin,i/nPts);
+    const w=2*Math.PI*f;
+    const real_part=1-(w/wn)**2;
+    const imag_part=2*zeta*(w/wn);
+    const mag=Acl_ideal/Math.sqrt(real_part**2+imag_part**2);
+    const db=20*Math.log10(Math.max(mag,1e-6));
+    const x=fx(f), y=gy(Math.max(gMin+1,Math.min(gMax-1,db)));
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.strokeStyle='#a6e3a1'; ctx.lineWidth=2; ctx.stroke();
+
+  // GBW marker
+  const x_gbw=fx(GBW);
+  ctx.beginPath(); ctx.moveTo(x_gbw,mT); ctx.lineTo(x_gbw,mT+bH);
+  ctx.strokeStyle='#fab387'; ctx.lineWidth=1; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#fab387'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('GBW', x_gbw, mT-3);
+
+  // Closed-loop bandwidth marker
+  const f_cl_3db=GBW*beta;
+  const x_cl=fx(f_cl_3db);
+  ctx.beginPath(); ctx.moveTo(x_cl,mT); ctx.lineTo(x_cl,mT+bH);
+  ctx.strokeStyle='#a6e3a1'; ctx.lineWidth=1; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#a6e3a1'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('f_cl', x_cl, mT-3);
+
+  // Peaking indicator
+  const Q = 1/(2*zeta);
+  const peak_dB = Q > 0.5 ? 20*Math.log10(Q/Math.sqrt(1-1/(4*Q*Q))) : 0;
+  ctx.fillStyle='#cba6f7'; ctx.font='11px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText('f_cl = '+(f_cl_3db*1e-6).toFixed(0)+' MHz', mL+5, mT+20);
+  ctx.fillText('Peak = '+(peak_dB>0?peak_dB.toFixed(1)+'dB':'none'), mL+5, mT+35);
+
+  document.getElementById('info1').innerHTML =
+    `GBW = ${(GBW*1e-6).toFixed(0)} MHz, β = ${beta.toFixed(2)}, Acl = ${Acl_ideal.toFixed(1)}.
+     Closed-loop −3dB ≈ ${(f_cl_3db*1e-6).toFixed(0)} MHz.
+     PM = ${PM.toFixed(0)}°, ζ ≈ ${zeta.toFixed(2)}.
+     ${PM<65?`<span class="warn">PM < 65° — closed-loop peaking: ~${peak_dB.toFixed(1)} dB above Acl at ω_n.</span>`:'<span class="hi">PM ≥ 65° — no significant peaking.</span>'}`;
+}
+
+// ── TAB 2: Settling vs bits ──────────────────────────────────────────────────
+function draw2() {
+  const gm1=g('r2_gm1')*1e-3, CL=g('r2_cl')*1e-12, T_ns=g('r2_T'), Av0_dB=g('r2_av');
+  sv('v2_gm1', g('r2_gm1').toFixed(2)); sv('v2_cl', g('r2_cl').toFixed(1));
+  sv('v2_T', T_ns.toFixed(1)); sv('v2_av', Av0_dB.toFixed(0));
+
+  const tau=CL/gm1; // seconds
+  const tau_ns=tau*1e9;
+  const n_tau=T_ns/tau_ns; // number of time constants in window
+  const Av0=Math.pow(10,Av0_dB/20);
+
+  // Max achievable N (from gain error + settling error combined)
+  // settling error e^(-n_tau) < 2^(-(N+1)) → N < n_tau/ln2 - 1
+  const N_from_tau = n_tau/Math.log(2) - 1;
+  // gain error 1/(Av0+1) < 2^(-(N+1)) → N < log2(Av0+1) - 1
+  const N_from_gain = Math.log2(Av0+1) - 1;
+  const N_achievable = Math.floor(Math.min(N_from_tau, N_from_gain));
+
+  const ctx = setupCanvas('c2', 620, 400);
+  const W=620, H=400;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Achievable Resolution vs τ and Av0', W/2, 22);
+
+  const mL=60, mR=20, mT=40, mB=50;
+  const bW=W-mL-mR, bH=H-mT-mB;
+
+  // Plot: achievable N bits vs gm1 (which determines tau)
+  const gm1_range=[0.2,0.3,0.5,0.7,1.0,1.5,2.0,3.0,5.0,7.0,10.0];
+  function gx(gm){return mL+bW*Math.log10(gm/0.2)/Math.log10(10/0.2);}
+  function ny(N){return mT+bH*(1-(N-0)/(20-0));}
+
+  // Grid
+  for(let N=0;N<=20;N+=2) {
+    const y=ny(N);
+    ctx.beginPath(); ctx.moveTo(mL,y); ctx.lineTo(mL+bW,y);
+    ctx.strokeStyle='#313244'; ctx.lineWidth=0.7; ctx.stroke();
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='right';
+    ctx.fillText(N, mL-4, y+3);
+  }
+  [0.2,0.5,1.0,2.0,5.0,10.0].forEach(gm=>{
+    const x=gx(gm);
+    ctx.beginPath(); ctx.moveTo(x,mT); ctx.lineTo(x,mT+bH);
+    ctx.strokeStyle='#313244'; ctx.lineWidth=0.7; ctx.stroke();
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText(gm+' mA/V', x, mT+bH+14);
+  });
+
+  // N_from_tau curve
+  ctx.beginPath();
+  for(let gm=0.2; gm<=10; gm*=1.05) {
+    const tau_v = CL / (gm*1e-3);
+    const n = (T_ns*1e-9)/tau_v;
+    const N_t = n/Math.log(2) - 1;
+    const N_plot = Math.max(0,Math.min(20,N_t));
+    const x=gx(gm), y=ny(N_plot);
+    gm<=0.21?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.strokeStyle='#89b4fa'; ctx.lineWidth=2; ctx.stroke();
+
+  // N_from_gain line (horizontal)
+  const y_gain=ny(Math.max(0,Math.min(20,N_from_gain)));
+  ctx.beginPath(); ctx.moveTo(mL,y_gain); ctx.lineTo(mL+bW,y_gain);
+  ctx.strokeStyle='#fab387'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#fab387'; ctx.font='10px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText('Gain limit (Av0='+Av0_dB+'dB): N='+Math.floor(N_from_gain), mL+3, y_gain-5);
+
+  // Current point
+  const x_cur=gx(g('r2_gm1'));
+  const y_cur=ny(Math.max(0,Math.min(20,N_achievable)));
+  ctx.beginPath(); ctx.arc(x_cur, y_cur, 6,0,2*Math.PI);
+  ctx.fillStyle='#a6e3a1'; ctx.fill();
+  ctx.fillStyle='#a6e3a1'; ctx.font='bold 11px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText('N_max = '+N_achievable+' bits', x_cur+10, y_cur);
+
+  // Target bit lines
+  [8,10,12,14,16].forEach(N=>{
+    const y=ny(N);
+    ctx.beginPath(); ctx.moveTo(mL,y); ctx.lineTo(mL+bW,y);
+    ctx.strokeStyle='rgba(166,227,161,0.2)'; ctx.lineWidth=1; ctx.setLineDash([2,4]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='rgba(166,227,161,0.6)'; ctx.font='9px Segoe UI'; ctx.textAlign='right';
+    ctx.fillText(N+'-bit', mL+bW-2, y-2);
+  });
+
+  ctx.fillStyle='#585b70'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('gm1 (mA/V)', W/2, H-8);
+  ctx.save(); ctx.translate(14,H/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('Achievable resolution (bits)', 0, 0); ctx.restore();
+
+  document.getElementById('info2').innerHTML =
+    `τ = CL/gm1 = ${tau_ns.toFixed(2)} ns.  Window T = ${T_ns} ns → ${n_tau.toFixed(1)} time constants.
+     <br>From settling: N ≤ ${N_from_tau.toFixed(1)} bits.  From gain error: N ≤ ${N_from_gain.toFixed(1)} bits.
+     <br>Achievable: <span class="${N_achievable>=12?'hi':'warn'}">${N_achievable} bits</span>.
+     ${N_from_gain < N_from_tau ? '<span class="note">DC gain is the bottleneck — increase Av0.</span>' : '<span class="note">τ (settling) is the bottleneck — increase gm1 or reduce CL.</span>'}`;
+}
+
+draw0();
+draw1();
+draw2();
+</script>
+</body>
+</html>

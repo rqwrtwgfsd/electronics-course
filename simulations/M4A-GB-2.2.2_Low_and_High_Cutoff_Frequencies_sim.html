@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-GB-2.2.2 — Low and High Cutoff Frequencies</title>
+<style>
+  :root{--bg:#ffffff;--surface:#f5f5f5;--border:#dddddd;--text:#1a1a1a;--accent:#0066cc;--accent2:#cc6600;--green:#007700;--red:#cc0000;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--accent2:#ff9944;--green:#44bb44;--red:#ff5555;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Arial,sans-serif;font-size:14px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;display:flex;align-items:baseline;gap:16px;}
+  header .mid{font-size:12px;opacity:.85;font-family:monospace;}
+  header h1{font-size:17px;font-weight:600;}
+  .main{display:grid;grid-template-columns:300px 1fr;height:calc(100vh - 48px);}
+  .ctrl{background:var(--surface);border-right:1px solid var(--border);padding:18px;overflow-y:auto;}
+  .ctrl h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin-bottom:10px;margin-top:14px;}
+  .cg{margin-bottom:13px;}
+  .cg label{display:block;font-size:12px;margin-bottom:4px;}
+  .val{font-weight:700;color:var(--accent);}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rbox{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:8px;margin-bottom:8px;}
+  .rl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;opacity:.7;margin-bottom:2px;}
+  .rv{font-size:17px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ru{font-size:11px;opacity:.7;}
+  .carea{padding:16px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;}
+  canvas{border:1px solid var(--border);border-radius:6px;display:block;}
+  .clabel{font-size:12px;font-weight:600;margin-bottom:4px;opacity:.8;}
+</style>
+</head>
+<body>
+<header>
+  <span class="mid">M4A-GB-2.2.2</span>
+  <h1>Low and High Cutoff Frequencies — Bandpass Response Explorer</h1>
+</header>
+<div class="main">
+  <div class="ctrl">
+    <h2>Lower Cutoff (Coupling Cap)</h2>
+    <div class="cg">
+      <label>RS + Rin: <span class="val" id="r-in-v">5.6 kΩ</span></label>
+      <input type="range" id="r-in" min="0.5" max="50" step="0.5" value="5.6">
+    </div>
+    <div class="cg">
+      <label>Coupling Cap CC: <span class="val" id="cc-v">4.7 µF</span></label>
+      <input type="range" id="cc-s" min="0.1" max="100" step="0.1" value="4.7">
+    </div>
+
+    <h2>Upper Cutoff (Miller + Load)</h2>
+    <div class="cg">
+      <label>gm: <span class="val" id="gm-v">38 mA/V</span></label>
+      <input type="range" id="gm-s" min="5" max="200" step="1" value="38">
+    </div>
+    <div class="cg">
+      <label>RC Load: <span class="val" id="rc-v">4.7 kΩ</span></label>
+      <input type="range" id="rc-s" min="0.5" max="20" step="0.5" value="4.7">
+    </div>
+    <div class="cg">
+      <label>Feedback Cap Cµ: <span class="val" id="cmu-v">5 pF</span></label>
+      <input type="range" id="cmu-s" min="0.5" max="20" step="0.5" value="5">
+    </div>
+    <div class="cg">
+      <label>Source Resistance RS: <span class="val" id="rs-v">1.0 kΩ</span></label>
+      <input type="range" id="rs-s" min="0.1" max="10" step="0.1" value="1.0">
+    </div>
+    <div class="cg">
+      <label>Load Capacitance CL: <span class="val" id="cl-v">10 pF</span></label>
+      <input type="range" id="cl-s" min="1" max="200" step="1" value="10">
+    </div>
+
+    <h2>Readouts</h2>
+    <div class="rbox"><div class="rl">Midband Gain |Av|</div><div class="rv" id="av-out">181</div><div class="ru">V/V</div></div>
+    <div class="rbox"><div class="rl">Lower Cutoff f_L</div><div class="rv" id="fl-out">6.0</div><div class="ru">Hz (coupling cap)</div></div>
+    <div class="rbox"><div class="rl">Miller Capacitance</div><div class="rv" id="cm-out">728</div><div class="ru">pF</div></div>
+    <div class="rbox"><div class="rl">Upper Cutoff f_H</div><div class="rv" id="fh-out">218</div><div class="ru">kHz (Miller)</div></div>
+    <div class="rbox"><div class="rl">Bandwidth</div><div class="rv" id="bw-out">218</div><div class="ru">kHz</div></div>
+  </div>
+
+  <div class="carea">
+    <div>
+      <div class="clabel">Full Bandpass Bode Plot — Midband, Lower, and Upper Cutoff</div>
+      <canvas id="bodeCanvas" width="820" height="340"></canvas>
+    </div>
+    <div>
+      <div class="clabel">Miller Effect: Common-Emitter vs Cascode Comparison</div>
+      <canvas id="millerCanvas" width="820" height="180"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  function getEl(id){return document.getElementById(id);}
+  const rinS=getEl('r-in'), ccS=getEl('cc-s'), gmS=getEl('gm-s'), rcS=getEl('rc-s');
+  const cmuS=getEl('cmu-s'), rsS=getEl('rs-s'), clS=getEl('cl-s');
+
+  function P(){
+    return{
+      Rin: parseFloat(rinS.value)*1e3,
+      CC: parseFloat(ccS.value)*1e-6,
+      gm: parseFloat(gmS.value)*1e-3,
+      RC: parseFloat(rcS.value)*1e3,
+      Cmu: parseFloat(cmuS.value)*1e-12,
+      RS: parseFloat(rsS.value)*1e3,
+      CL: parseFloat(clS.value)*1e-12
+    };
+  }
+
+  function compute(p){
+    const Av=p.gm*p.RC;
+    const fL=1/(2*Math.PI*p.Rin*p.CC);
+    const Cmiller=p.Cmu*(1+Av);
+    const fH_miller=1/(2*Math.PI*p.RS*Cmiller);
+    const fH_output=1/(2*Math.PI*p.RC*p.CL);
+    const fH=Math.min(fH_miller,fH_output);
+    return{Av,fL,Cmiller,fH_miller,fH_output,fH};
+  }
+
+  function getC(){
+    const dk=window.matchMedia('(prefers-color-scheme:dark)').matches;
+    return{bg:dk?'#1a1a1a':'#fff',grid:dk?'#2e2e2e':'#eee',text:dk?'#ccc':'#555',blue:dk?'#4499ff':'#0066cc',orange:dk?'#ff9944':'#cc6600',red:dk?'#ff5555':'#cc0000',green:dk?'#44bb44':'#007700',purple:dk?'#bb88ff':'#7700cc'};
+  }
+
+  function fmtF(f){return f>=1e6?(f/1e6).toFixed(2)+' MHz':f>=1e3?(f/1e3).toFixed(1)+' kHz':f.toFixed(1)+' Hz';}
+
+  function update(){
+    const p=P();
+    const r=compute(p);
+    getEl('r-in-v').textContent=(p.Rin/1e3).toFixed(1)+' kΩ';
+    getEl('cc-v').textContent=(p.CC*1e6).toFixed(1)+' µF';
+    getEl('gm-v').textContent=(p.gm*1e3).toFixed(0)+' mA/V';
+    getEl('rc-v').textContent=(p.RC/1e3).toFixed(1)+' kΩ';
+    getEl('cmu-v').textContent=(p.Cmu*1e12).toFixed(1)+' pF';
+    getEl('rs-v').textContent=(p.RS/1e3).toFixed(1)+' kΩ';
+    getEl('cl-v').textContent=(p.CL*1e12).toFixed(0)+' pF';
+    getEl('av-out').textContent=r.Av.toFixed(1);
+    getEl('fl-out').textContent=fmtF(r.fL);
+    getEl('cm-out').textContent=(r.Cmiller*1e12).toFixed(0);
+    getEl('fh-out').textContent=fmtF(r.fH);
+    getEl('bw-out').textContent=fmtF(r.fH - r.fL);
+    drawBode(p,r);
+    drawMiller(p,r);
+  }
+
+  function gainAtF(p,r,f){
+    // high-pass from coupling cap × low-pass from upper cutoff
+    const hp=f/r.fL/Math.sqrt(1+(f/r.fL)**2)*Math.sqrt(1+(f/r.fL)**2)/Math.sqrt(1+(r.fL/f)**2);
+    // actually: |H_HP| = (f/fL)/sqrt(1+(f/fL)^2) * sqrt(fL^2+f^2)/f = 1/sqrt(1+(fL/f)^2)
+    const hpGain=1/Math.sqrt(1+(r.fL/f)**2);
+    const lpGain=1/Math.sqrt(1+(f/r.fH)**2);
+    return r.Av*hpGain*lpGain;
+  }
+
+  function drawBode(p,r){
+    const cv=getEl('bodeCanvas');
+    const ctx=cv.getContext('2d');
+    const W=cv.width,H=cv.height;
+    const c=getC();
+    ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+
+    const pad={l:65,r:30,t:25,b:50};
+    const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+    const fMin=Math.max(0.1,r.fL/100), fMax=r.fH*100;
+    const logMin=Math.log10(fMin), logMax=Math.log10(fMax);
+    const A0_dB=20*Math.log10(r.Av);
+    const gainMin_dB=A0_dB-80, gainMax_dB=A0_dB+10;
+
+    function fX(f){return pad.l+(Math.log10(f)-logMin)/(logMax-logMin)*pw;}
+    function dY(db){return pad.t+ph-(db-gainMin_dB)/(gainMax_dB-gainMin_dB)*ph;}
+
+    // grid
+    ctx.strokeStyle=c.grid; ctx.lineWidth=1;
+    for(let lf=Math.ceil(logMin);lf<=Math.floor(logMax);lf++){
+      const x=fX(Math.pow(10,lf));
+      ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,pad.t+ph); ctx.stroke();
+      const f=Math.pow(10,lf);
+      ctx.fillStyle=c.text; ctx.font='10px monospace'; ctx.textAlign='center';
+      ctx.fillText(f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f+'', x, pad.t+ph+15);
+    }
+    for(let db=Math.ceil(gainMin_dB/10)*10;db<=gainMax_dB;db+=10){
+      const y=dY(db);
+      if(y<pad.t||y>pad.t+ph) continue;
+      ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+pw,y); ctx.stroke();
+      ctx.fillStyle=c.text; ctx.font='10px monospace'; ctx.textAlign='right';
+      ctx.fillText(db+'dB',pad.l-4,y+4);
+    }
+
+    ctx.fillStyle=c.text; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Frequency (Hz) →',pad.l+pw/2,H-8);
+
+    // curve
+    ctx.beginPath(); ctx.strokeStyle=c.blue; ctx.lineWidth=2.5;
+    for(let px=0;px<=pw;px++){
+      const logF=logMin+(px/pw)*(logMax-logMin);
+      const f=Math.pow(10,logF);
+      const g=gainAtF(p,r,f);
+      const db=20*Math.log10(Math.max(g,1e-10));
+      const x=pad.l+px;
+      const y=dY(db);
+      px===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    // midband line
+    ctx.beginPath(); ctx.strokeStyle=c.green; ctx.lineWidth=1; ctx.setLineDash([6,3]);
+    ctx.moveTo(pad.l,dY(A0_dB)); ctx.lineTo(pad.l+pw,dY(A0_dB)); ctx.stroke(); ctx.setLineDash([]);
+
+    // -3dB lines
+    const y3=dY(A0_dB-3);
+    ctx.beginPath(); ctx.strokeStyle=c.orange; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+    ctx.moveTo(pad.l,y3); ctx.lineTo(pad.l+pw,y3); ctx.stroke();
+
+    // f_L marker
+    const xL=fX(r.fL), xH=fX(r.fH);
+    ctx.moveTo(xL,pad.t); ctx.lineTo(xL,pad.t+ph); ctx.stroke();
+    ctx.moveTo(xH,pad.t); ctx.lineTo(xH,pad.t+ph); ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.beginPath(); ctx.arc(xL,y3,6,0,2*Math.PI); ctx.fillStyle=c.orange; ctx.fill();
+    ctx.beginPath(); ctx.arc(xH,y3,6,0,2*Math.PI); ctx.fillStyle=c.red; ctx.fill();
+
+    ctx.fillStyle=c.orange; ctx.font='bold 11px monospace'; ctx.textAlign='center';
+    ctx.fillText('f_L='+fmtF(r.fL),xL,pad.t+ph+30);
+    ctx.fillStyle=c.red;
+    ctx.fillText('f_H='+fmtF(r.fH),xH,pad.t+ph+30);
+
+    // bandwidth arrow
+    if(xH>xL+40){
+      const bwY=pad.t+15;
+      ctx.strokeStyle=c.text; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(xL,bwY); ctx.lineTo(xH,bwY); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(xL+6,bwY-4); ctx.lineTo(xL,bwY); ctx.lineTo(xL+6,bwY+4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(xH-6,bwY-4); ctx.lineTo(xH,bwY); ctx.lineTo(xH-6,bwY+4); ctx.stroke();
+      ctx.fillStyle=c.text; ctx.font='bold 11px sans-serif'; ctx.textAlign='center';
+      ctx.fillText('BW = '+fmtF(r.fH-r.fL),(xL+xH)/2,bwY-5);
+    }
+  }
+
+  function drawMiller(p,r){
+    const cv=getEl('millerCanvas');
+    const ctx=cv.getContext('2d');
+    const W=cv.width,H=cv.height;
+    const c=getC();
+    ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+
+    // Side-by-side CE vs Cascode bandwidth bars
+    const pad={l:20,r:20,t:30,b:40};
+    const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+    const fH_CE=r.fH_miller;
+    const fH_casc=1/(2*Math.PI*p.RS*p.Cmu*2); // cascode: C_Miller = Cmu*(1+1)=2*Cmu
+    const fMax=Math.max(fH_casc,fH_CE)*1.2;
+
+    function bw(fh,y,col,label){
+      const bw=fh/fMax*pw;
+      ctx.fillStyle=col;
+      ctx.fillRect(pad.l,y,bw,30);
+      ctx.strokeStyle=c.border; ctx.lineWidth=1; ctx.strokeRect(pad.l,y,bw,30);
+      ctx.fillStyle=c.text; ctx.font='bold 11px monospace'; ctx.textAlign='left';
+      ctx.fillText(label+': '+fmtF(fh),pad.l+bw+8,y+20);
+    }
+
+    ctx.fillStyle=c.text; ctx.font='bold 12px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Upper Bandwidth Comparison (same transistors, same gain)', W/2, 18);
+
+    bw(fH_CE, pad.t, c.orange, 'Common-Emitter (Miller effect)');
+    bw(fH_casc, pad.t+45, c.green, 'Cascode (Miller eliminated)');
+
+    const ratio=(fH_casc/fH_CE).toFixed(0);
+    ctx.fillStyle=c.text; ctx.font='12px sans-serif'; ctx.textAlign='right';
+    ctx.fillText('Cascode is '+ratio+'× wider bandwidth at same gain', W-pad.r, H-8);
+  }
+
+  [rinS,ccS,gmS,rcS,cmuS,rsS,clS].forEach(e=>e.addEventListener('input',update));
+  window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',update);
+  update();
+})();
+</script>
+</body>
+</html>

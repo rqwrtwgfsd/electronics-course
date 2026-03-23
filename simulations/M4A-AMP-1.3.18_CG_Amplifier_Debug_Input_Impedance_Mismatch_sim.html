@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.3.18 — CG Zin Mismatch Debug</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;gap:16px;align-items:baseline;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .ok{color:#009900!important;font-weight:bold;}
+  .warn{color:#cc6600!important;font-weight:bold;}
+  .err{color:#cc0000!important;font-weight:bold;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:13px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.3.18</div>
+  <div class="topic">CG Zin Mismatch Debug — S11, NF Penalty, Signal Loss vs gm Deviation</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>Target System</h3>
+      <label>Source Rs (Ω): <b id="rsrc_lbl">50</b></label>
+      <input type="range" id="rsrc" min="25" max="200" value="50" step="5">
+    </div>
+    <div class="cg">
+      <h3>Actual CG</h3>
+      <label>Actual gm (mA/V): <b id="gm_lbl">10</b></label>
+      <input type="range" id="gm" min="1" max="60" value="10" step="0.5">
+      <label>Cgs (fF): <b id="cgs_lbl">100</b></label>
+      <input type="range" id="cgs" min="20" max="500" value="100" step="10">
+    </div>
+    <div class="cg">
+      <h3>Mismatch Results</h3>
+      <div class="rd">Zin: <span id="r_zin">—</span></div>
+      <div class="rd">Γ: <span id="r_gamma">—</span></div>
+      <div class="rd">S11: <span id="r_s11">—</span></div>
+      <div class="rd">Signal frac: <span id="r_sfrac">—</span></div>
+      <div class="rd">NF penalty: <span id="r_nfpen">—</span></div>
+      <div class="rd">Status: <span id="r_status">—</span></div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_s11">—</div><div class="l">S11 (dB)</div></div>
+      <div class="met"><div class="v" id="m_sfrac">—</div><div class="l">Signal fraction</div></div>
+      <div class="met"><div class="v" id="m_nfpen">—</div><div class="l">NF penalty (dB)</div></div>
+    </div>
+    <div>
+      <div class="pl">S11 (return loss) vs gm — target gm highlighted</div>
+      <canvas id="s11Canvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">Signal fraction and NF penalty vs Zin/Rs ratio</div>
+      <canvas id="fracCanvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">Required ID vs target gm for matching (K slider controls)</div>
+      <canvas id="idCanvas" height="180"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+function update(){
+  const rsrc=parseFloat(document.getElementById('rsrc').value);
+  const gm=parseFloat(document.getElementById('gm').value)*1e-3;
+  const cgs=parseFloat(document.getElementById('cgs').value)*1e-15;
+
+  document.getElementById('rsrc_lbl').textContent=rsrc.toFixed(0);
+  document.getElementById('gm_lbl').textContent=(gm*1e3).toFixed(1);
+  document.getElementById('cgs_lbl').textContent=(cgs*1e15).toFixed(0);
+
+  const zin=1/gm;
+  const gamma=(zin-rsrc)/(zin+rsrc);
+  const s11=20*Math.log10(Math.abs(gamma));
+  const sfrac=zin/(zin+rsrc);
+  const eff=1-gamma*gamma;
+  const nfpen=-10*Math.log10(eff);
+
+  document.getElementById('r_zin').textContent=zin.toFixed(1)+' Ω';
+  document.getElementById('r_gamma').textContent=gamma.toFixed(3);
+  document.getElementById('r_s11').textContent=s11.toFixed(1)+' dB';
+  document.getElementById('r_sfrac').textContent=(sfrac*100).toFixed(1)+'%';
+  document.getElementById('r_nfpen').textContent=nfpen.toFixed(2)+' dB';
+
+  const ok=s11<-10;
+  const statusEl=document.getElementById('r_status');
+  statusEl.textContent=ok?'PASS (S11<–10dB)':'FAIL — adjust gm';
+  statusEl.className=ok?'ok':'err';
+
+  document.getElementById('m_s11').textContent=s11.toFixed(1);
+  document.getElementById('m_sfrac').textContent=(sfrac*100).toFixed(1)+'%';
+  document.getElementById('m_nfpen').textContent=nfpen.toFixed(2);
+
+  drawS11(rsrc,gm);
+  drawFrac(rsrc,gm);
+  drawID(rsrc,gm);
+}
+
+function drawS11(rsrc0,gm0){
+  const canvas=document.getElementById('s11Canvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:55,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+  const gmmin=1e-3,gmmax=60e-3;
+  const toX=gm=>pad.l+(gm-gmmin)/(gmmax-gmmin)*pw;
+  const s11min=-40,s11max=0;
+  const toY=s11=>pad.t+(1-(s11-s11min)/(s11max-s11min))*ph;
+
+  // grid
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [-40,-30,-20,-10,0].forEach(v=>{
+    const y=toY(v);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(v+'dB',pad.l-30,y+3);
+  });
+
+  // –10 dB spec line
+  ctx.strokeStyle='#cc0000';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,toY(-10));ctx.lineTo(pad.l+pw,toY(-10));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#cc0000';ctx.font='9px Courier New';ctx.fillText('–10dB spec',pad.l+pw-65,toY(-10)-3);
+
+  // target gm line
+  const gm_target=1/rsrc0;
+  const x_target=toX(gm_target);
+  ctx.strokeStyle='#006633';ctx.lineWidth=1.5;ctx.setLineDash([6,3]);
+  ctx.beginPath();ctx.moveTo(x_target,pad.t);ctx.lineTo(x_target,pad.t+ph);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#006633';ctx.font='8px Courier New';ctx.fillText('target',x_target+2,pad.t+14);
+
+  // S11 curve
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=300;i++){
+    const gm_v=gmmin+i/300*(gmmax-gmmin);
+    const zin=1/gm_v;
+    const gamma=(zin-rsrc0)/(zin+rsrc0);
+    const s11=20*Math.log10(Math.abs(gamma)||1e-10);
+    const x=pad.l+i/300*pw,y=toY(Math.max(s11,s11min));
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // pass region
+  ctx.fillStyle='rgba(0,150,0,0.08)';
+  const y_pass=toY(-10);
+  const gm_lo=1e-3,gm_hi=gmmax;
+  let x_left=null,x_right=null;
+  for(let i=0;i<=300;i++){
+    const gm_v=gmmin+i/300*(gmmax-gmmin);
+    const zin=1/gm_v;
+    const gamma=(zin-rsrc0)/(zin+rsrc0);
+    const s11=20*Math.log10(Math.abs(gamma)||1e-10);
+    if(s11<-10){
+      if(x_left===null)x_left=pad.l+i/300*pw;
+      x_right=pad.l+i/300*pw;
+    }
+  }
+  if(x_left&&x_right)ctx.fillRect(x_left,pad.t,x_right-x_left,ph);
+
+  // current point
+  const zin0=1/gm0;const gamma0=(zin0-rsrc0)/(zin0+rsrc0);
+  const s11_0=20*Math.log10(Math.abs(gamma0)||1e-10);
+  const yp=toY(Math.max(s11_0,s11min));
+  ctx.fillStyle=gm0>1/rsrc0*0.684&&gm0<1/rsrc0*1.463?'#009900':'#cc0000';
+  ctx.beginPath();ctx.arc(toX(gm0),yp,5,0,2*Math.PI);ctx.fill();
+
+  [10,20,30,40,50,60].forEach(v=>{ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(v,toX(v*1e-3)-5,pad.t+ph+12);});
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('gm (mA/V) →',W/2-25,H-3);
+  ctx.save();ctx.translate(10,H/2+15);ctx.rotate(-Math.PI/2);ctx.fillText('S11 (dB)',0,0);ctx.restore();
+}
+
+function drawFrac(rsrc0,gm0){
+  const canvas=document.getElementById('fracCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:55,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+  const ratioMin=0.1,ratioMax=10;
+  const toX=r=>pad.l+(Math.log10(r)-Math.log10(ratioMin))/(Math.log10(ratioMax)-Math.log10(ratioMin))*pw;
+  const toY=v=>pad.t+(1-v)*ph;
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [0.25,0.5,0.75,1.0].forEach(v=>{ctx.beginPath();ctx.moveTo(pad.l,toY(v));ctx.lineTo(pad.l+pw,toY(v));ctx.stroke();ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText((v*100).toFixed(0)+'%',pad.l-22,toY(v)+3);});
+  [0.1,0.3,1,3,10].forEach(v=>{const x=toX(v);ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(v,x-5,pad.t+ph+12);});
+
+  // Signal fraction = Zin/(Zin+Rs) = (1/gm)/((1/gm)+Rs) = 1/(1+gm*Rs) = 1/(1+Rs/Zin) = 1/(1+ratio) for ratio=Rs/Zin=ratio
+  // x = Zin/Rs ratio
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=300;i++){
+    const ratio=Math.pow(10,Math.log10(ratioMin)+i/300*(Math.log10(ratioMax)-Math.log10(ratioMin)));
+    const sfrac=ratio/(ratio+1); // Zin/(Zin+Rs) = ratio/(ratio+1) where ratio = Zin/Rs
+    const y=toY(sfrac);
+    if(i===0)ctx.moveTo(pad.l+i/300*pw,y);else ctx.lineTo(pad.l+i/300*pw,y);
+  }
+  ctx.stroke();
+
+  // NF penalty curve (normalized, scale to 0-1: 0 means 0 dB, 1 means 3 dB)
+  ctx.strokeStyle='#cc6600';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=300;i++){
+    const ratio=Math.pow(10,Math.log10(ratioMin)+i/300*(Math.log10(ratioMax)-Math.log10(ratioMin)));
+    const gamma=(ratio-1)/(ratio+1); // (Zin-Rs)/(Zin+Rs) where ratio = Zin/Rs
+    const nfpen=-10*Math.log10(1-gamma*gamma);
+    const y_norm=Math.min(nfpen/3,1); // normalize to 3 dB max
+    const y=toY(y_norm);
+    if(i===0)ctx.moveTo(pad.l+i/300*pw,y);else ctx.lineTo(pad.l+i/300*pw,y);
+  }
+  ctx.stroke();
+
+  // current Zin/Rs ratio
+  const ratio0=(1/gm0)/rsrc0;
+  if(ratio0>=ratioMin&&ratio0<=ratioMax){
+    const sfrac0=ratio0/(ratio0+1);
+    ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.beginPath();ctx.arc(toX(ratio0),toY(sfrac0),4,0,2*Math.PI);ctx.fill();
+    const gamma0=(ratio0-1)/(ratio0+1);
+    const nfpen0=-10*Math.log10(1-gamma0*gamma0);
+    ctx.fillStyle='#cc6600';ctx.beginPath();ctx.arc(toX(ratio0),toY(Math.min(nfpen0/3,1)),4,0,2*Math.PI);ctx.fill();
+  }
+
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='9px Courier New';ctx.fillText('Signal fraction (% of Vs)',pad.l+5,pad.t+14);
+  ctx.fillStyle='#cc6600';ctx.fillText('NF penalty (÷3 dB, normalized)',pad.l+5,pad.t+26);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('Zin/Rs →',W/2-20,H-3);
+}
+
+function drawID(rsrc0,gm0){
+  const canvas=document.getElementById('idCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:60,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+  // x: target gm from 1 to 60 mA/V
+  const gmmin=1e-3,gmmax=60e-3;
+  const toX=gm=>pad.l+(gm-gmmin)/(gmmax-gmmin)*pw;
+  // y: ID = (gm/2)^2/K for several K values, log
+  const idmin=1e-5,idmax=1e-1;
+  const toY=id=>pad.t+(1-(Math.log10(id)-Math.log10(idmin))/(Math.log10(idmax)-Math.log10(idmin)))*ph;
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [1e-5,1e-4,1e-3,1e-2,1e-1].forEach(v=>{
+    const y=toY(v);if(y<pad.t||y>pad.t+ph)return;
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    const lbl=v>=1e-3?(v*1e3).toFixed(0)+'mA':(v*1e6).toFixed(0)+'µA';
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(lbl,pad.l-38,y+3);
+  });
+  [10,20,30,40,50,60].forEach(v=>{const x=toX(v*1e-3);ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(v,x-5,pad.t+ph+12);});
+
+  // ID = (gm/2)^2/K for K = 1, 5, 20 mA/V²
+  const Kvals=[1e-3,5e-3,20e-3];
+  const colors=[cs.getPropertyValue('--accent').trim(),'#006633','#cc6600'];
+  Kvals.forEach((K,ki)=>{
+    ctx.strokeStyle=colors[ki];ctx.lineWidth=2;
+    ctx.beginPath();
+    for(let i=0;i<=200;i++){
+      const gm_v=gmmin+i/200*(gmmax-gmmin);
+      const id=(gm_v/2)*(gm_v/2)/K;
+      const y=toY(Math.max(id,idmin));
+      if(i===0)ctx.moveTo(toX(gm_v),y);else ctx.lineTo(toX(gm_v),y);
+    }
+    ctx.stroke();
+    ctx.fillStyle=colors[ki];ctx.font='8px Courier New';ctx.fillText('K='+(K*1000).toFixed(0)+'mA/V²',pad.l+5+(ki*65),pad.t+14+ki*0);
+  });
+
+  // target gm = 1/rsrc
+  const gm_target=1/rsrc0;
+  const x_t=toX(gm_target);
+  ctx.strokeStyle='#cc0000';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(x_t,pad.t);ctx.lineTo(x_t,pad.t+ph);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#cc0000';ctx.font='8px Courier New';ctx.fillText('1/Rs',x_t+2,pad.t+12);
+
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('gm (mA/V) →',W/2-25,H-3);
+  ctx.save();ctx.translate(10,H/2+15);ctx.rotate(-Math.PI/2);ctx.fillText('ID = (gm/2)²/K',0,0);ctx.restore();
+}
+
+['rsrc','gm','cgs'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

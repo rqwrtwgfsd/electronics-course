@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M3-D-1.6.3 — Biased Clipper</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--text2:#8b949e;--accent:#0066cc;--accent2:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922}
+@media(prefers-color-scheme:light){:root{--bg:#ffffff;--surface:#f6f8fa;--border:#d0d7de;--text:#24292f;--text2:#656d76;--accent:#0066cc;--accent2:#0969da;--green:#2da44e;--red:#cf222e;--yellow:#9a6700}}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;font-size:14px;padding:16px}
+h2{color:var(--accent2);font-size:16px;margin-bottom:12px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px}
+canvas{width:100%;border-radius:6px;background:var(--bg);display:block}
+.controls{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px}
+.ctrl{flex:1;min-width:180px}
+label{display:block;color:var(--text2);font-size:12px;margin-bottom:4px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.readout{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.ro{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;font-size:12px;font-family:monospace}
+.ro span{color:var(--accent2);font-weight:bold}
+.note{color:var(--text2);font-size:12px;margin-top:8px;line-height:1.5}
+</style></head>
+<body>
+<h2>M3-D-1.6.3 — Biased Clipper</h2>
+<div class="panel">
+<canvas id="cv" height="260"></canvas>
+<div class="controls">
+
+  <div class="ctrl"><label>V_pos clip (V): <b id="lVpos">2</b></label>
+    <input type="range" id="Vpos" min="0.5" max="10" step="0.1" value="2"></div>
+  <div class="ctrl"><label>V_neg clip (V): <b id="lVneg">-2</b></label>
+    <input type="range" id="Vneg" min="-10" max="-0.5" step="0.1" value="-2"></div>
+  <div class="ctrl"><label>V_in amplitude (V): <b id="lVa">5</b></label>
+    <input type="range" id="Va" min="0.5" max="15" step="0.1" value="5"></div>
+
+</div>
+<div class="readout">
+  <div class="ro">Pos clip level (V): <span id="r1">0</span></div>
+  <div class="ro">Neg clip level (V): <span id="r2">0</span></div>
+  <div class="ro">Output window (V): <span id="r3">0</span></div>
+  <div class="ro">Clipping active: <span id="r4">0</span></div>
+</div>
+<p class="note">Both positive and negative clipping with adjustable thresholds — creates an output window.</p>
+</div>
+<script>
+
+const isDark=()=>window.matchMedia('(prefers-color-scheme:dark)').matches;
+function gs(id){return parseFloat(document.getElementById(id).value);}
+function sv(id,val){document.getElementById(id).textContent=val;}
+function resize(cv,draw){cv.width=cv.offsetWidth*devicePixelRatio;cv.height=260*devicePixelRatio;cv.getContext('2d').scale(devicePixelRatio,devicePixelRatio);draw();}
+function drawAxes(ctx,W,H,pad,xl,yl,color){
+  ctx.strokeStyle=color;ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  ctx.fillStyle=color;ctx.font='11px system-ui';
+  ctx.fillText(yl,pad+4,pad+12);ctx.fillText(xl,W-pad-2,H-pad-4);
+}
+
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+function draw(){
+
+  const vpos=gs('Vpos'),vneg=gs('Vneg'),va=gs('Va');
+  document.getElementById('lVpos').textContent=vpos.toFixed(1);
+  document.getElementById('lVneg').textContent=vneg.toFixed(1);
+  document.getElementById('lVa').textContent=va.toFixed(1);
+  const window=vpos-vneg;
+  sv('r1',vpos.toFixed(1));sv('r2',vneg.toFixed(1));
+  sv('r3',window.toFixed(1));sv('r4',(va>vpos||(-va)<vneg?'YES':'NO'));
+
+  const W=cv.offsetWidth,H=260,pad=40;
+  const bg=isDark()?'#0d1117':'#fff',fg=isDark()?'#8b949e':'#656d76';
+  ctx.clearRect(0,0,W,H);ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  drawAxes(ctx,W,H,pad,'t →','V ↑',fg);
+  const yc=H/2,ysc=(H/2-pad)/Math.max(va,Math.abs(vneg),vpos);
+  ctx.setLineDash([4,4]);ctx.strokeStyle=fg;ctx.globalAlpha=0.3;
+  ctx.beginPath();ctx.moveTo(pad,yc);ctx.lineTo(W-pad,yc);ctx.stroke();
+  ctx.globalAlpha=1;ctx.setLineDash([]);
+  ctx.strokeStyle='#58a6ff';ctx.lineWidth=1.5;ctx.beginPath();
+  for(let i=0;i<W-2*pad;i++){{const t=i/(W-2*pad)*4*Math.PI;const v=va*Math.sin(t);const x=pad+i,y=yc-v*ysc;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}}
+  ctx.stroke();
+  ctx.strokeStyle='#3fb950';ctx.lineWidth=2;ctx.beginPath();
+  for(let i=0;i<W-2*pad;i++){{const t=i/(W-2*pad)*4*Math.PI;const v=va*Math.sin(t);const vout=Math.min(Math.max(v,vneg),vpos);const x=pad+i,y=yc-vout*ysc;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}}
+  ctx.stroke();
+  [['#f85149',vpos],[' #d29922',vneg]].forEach(([c,v])=>{{
+    ctx.strokeStyle=c.trim();ctx.lineWidth=1;ctx.setLineDash([6,3]);
+    ctx.beginPath();ctx.moveTo(pad,yc-v*ysc);ctx.lineTo(W-pad,yc-v*ysc);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=c.trim();ctx.font='11px system-ui';ctx.fillText(v.toFixed(1)+'V',W-pad-40,yc-v*ysc-4);
+  }});
+
+}
+document.querySelectorAll('input[type=range],select').forEach(e=>e.addEventListener('input',draw));
+window.addEventListener('resize',()=>resize(cv,draw));
+resize(cv,draw);
+</script>
+</body></html>

@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-RW-8.3.2 Pulse Shaping</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:10px;padding:10px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:230px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.btn{display:block;width:100%;margin-top:5px;padding:5px;background:#1a1a3a;border:1px solid #334;color:#ccc;cursor:pointer;font-family:inherit;font-size:11px;border-radius:3px}
+.btn.active{background:#003366;border-color:#0066cc;color:#00aaff}
+.formula{color:#ffaa00;font-size:11px;margin-top:8px;line-height:1.6}
+</style>
+</head>
+<body>
+<h1>P2-RW-8.3.2 — RC Pulse Shaping: Differentiator and Integrator</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="580" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>Input Pulse</h2>
+<label>Pulse Width t_p (μs)
+<input type="range" id="tp" min="1" max="500" step="1" value="50">
+<div class="readout" id="tp_v">t_p = 50 μs</div>
+</label>
+<label>Amplitude V_in (V)
+<input type="range" id="vin" min="1" max="10" step="0.5" value="5">
+<div class="readout" id="vin_v">V_in = 5 V</div>
+</label>
+<h2 style="margin-top:10px">RC Network</h2>
+<label>τ = RC (μs)
+<input type="range" id="tau" min="1" max="500" step="1" value="20">
+<div class="readout" id="tau_v">τ = 20 μs</div>
+</label>
+<h2 style="margin-top:10px">Output Mode</h2>
+<button class="btn active" id="b_diff" onclick="setMode('diff')">Differentiator (output across R)</button>
+<button class="btn" id="b_int" onclick="setMode('int')">Integrator (output across C)</button>
+<h2 style="margin-top:10px">Analysis</h2>
+<div class="readout" id="ratio">t_p / τ = —</div>
+<div class="readout" id="regime">Regime: —</div>
+<div class="readout" id="vpeak">V_peak_out: —</div>
+<div class="readout" id="vneg">V_neg_spike: —</div>
+<div class="formula">Diff: V_R(t)=V_in×e^(−t/τ)<br>Int: V_pk≈V_in×t_p/τ (t_p≪τ)<br>V_neg=−V_in×(1−e^(−t_p/τ))</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let tp=50,vin=5,tau=20,mode='diff';
+const W=580,H=380,pd={l:65,r:20,t:30,b:40};
+const CW=W-pd.l-pd.r,CH=H-pd.t-pd.b;
+
+function setMode(m){mode=m;['diff','int'].forEach(k=>document.getElementById('b_'+k).classList.toggle('active',k===m));draw();}
+['tp','vin','tau'].forEach(id=>{
+  document.getElementById(id).oninput=function(){
+    const v=parseFloat(this.value);
+    if(id==='tp'){tp=v;document.getElementById('tp_v').textContent='t_p = '+v+' μs';}
+    if(id==='vin'){vin=v;document.getElementById('vin_v').textContent='V_in = '+v+' V';}
+    if(id==='tau'){tau=v;document.getElementById('tau_v').textContent='τ = '+v+' μs';}
+    draw();
+  };
+});
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const tmax=Math.max(tp*4,tau*8);
+  const vrange_pos=mode==='diff'?vin*1.2:vin*Math.min(1.2,tp/tau*1.5||1.2);
+  const vrange_neg=mode==='diff'?vin*1.2:0.2;
+  const vrange=vrange_pos+vrange_neg;
+  function toPx(t,v){return[pd.l+CW*(t/tmax),pd.t+CH*(1-(v+vrange_neg)/vrange)];}
+  // Grid
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=8;i++){const x=pd.l+CW*(i/8);ctx.beginPath();ctx.moveTo(x,pd.t);ctx.lineTo(x,pd.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=pd.t+CH*(i/5);ctx.beginPath();ctx.moveTo(pd.l,y);ctx.lineTo(pd.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pd.l,pd.t);ctx.lineTo(pd.l,pd.t+CH);ctx.moveTo(pd.l,pd.t+CH);ctx.lineTo(pd.l+CW,pd.t+CH);ctx.stroke();
+  // Zero line
+  const[,y0]=toPx(0,0);ctx.strokeStyle='#333';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pd.l,y0);ctx.lineTo(pd.l+CW,y0);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=8;i++){const t=tmax*i/8;ctx.fillText(t.toFixed(0)+'μs',pd.l+CW*(i/8),pd.t+CH+14);}
+  ctx.textAlign='right';
+  const vstep=vrange/5;
+  for(let i=0;i<=5;i++){const v=-vrange_neg+vrange*i/5;ctx.fillText(v.toFixed(1)+'V',pd.l-4,pd.t+CH*(1-i/5)+4);}
+  // Input pulse (dashed)
+  ctx.strokeStyle='#334';ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
+  const[x0,y0i]=toPx(0,0);const[xtp,ytpi]=toPx(tp,0);const[,yh]=toPx(0,vin);
+  ctx.beginPath();ctx.moveTo(x0,y0i);ctx.lineTo(x0,yh);ctx.lineTo(xtp,yh);ctx.lineTo(xtp,y0i);ctx.lineTo(toPx(tmax,0)[0],y0i);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#555';ctx.textAlign='left';ctx.font='10px Courier New';ctx.fillText('Input pulse V_in='+vin+'V, t_p='+tp+'μs',pd.l+4,pd.t+14);
+  // Output
+  const dt=tmax/600;
+  let vc=0;
+  const vouts=[];
+  for(let i=0;i<=600;i++){
+    const t=tmax*i/600;
+    const v_in=t<tp?vin:0;
+    const dvc=(v_in-vc)/tau*dt;
+    vc+=dvc;
+    if(mode==='diff'){vouts.push(v_in-vc);}
+    else{vouts.push(vc);}
+  }
+  const col=mode==='diff'?'#ff6600':'#00ff88';
+  ctx.strokeStyle=col;ctx.lineWidth=2.5;
+  ctx.beginPath();
+  vouts.forEach((v,i)=>{const[x,y]=toPx(tmax*i/600,v);if(y>pd.t-5&&y<pd.t+CH+5){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}});
+  ctx.stroke();
+  ctx.fillStyle=col;ctx.font='11px Courier New';ctx.textAlign='left';
+  ctx.fillText(mode==='diff'?'Differentiator output (across R)':'Integrator output (across C)',pd.l+4,pd.t+28);
+  const ratio_v=tp/tau;
+  const regime=ratio_v>5?'Differentiation (t_p >> τ)':ratio_v<0.2?'Integration (t_p << τ)':'Transition region';
+  const vpeak=Math.max(...vouts.map(Math.abs));
+  const vneg_v=mode==='diff'?-vin*(1-Math.exp(-tp/tau)):0;
+  document.getElementById('ratio').textContent='t_p / τ = '+ratio_v.toFixed(2);
+  document.getElementById('regime').textContent='Regime: '+regime;
+  document.getElementById('vpeak').textContent='V_peak_out = '+vpeak.toFixed(3)+' V';
+  document.getElementById('vneg').textContent=mode==='diff'?'V_neg_spike = '+vneg_v.toFixed(3)+' V':'N/A (integrator)';
+}
+setMode('diff');
+</script>
+</body>
+</html>

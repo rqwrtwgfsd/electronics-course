@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-SO-4.6.2 — Damping Variation Simulation</title>
+<style>
+  :root { --accent: #0066cc; --bg: #1a1a1a; --panel: #242424; --border: #333; --text: #e0e0e0; --muted: #888; }
+  @media (prefers-color-scheme: light) { :root { --bg: #f4f4f4; --panel: #fff; --border: #ccc; --text: #1a1a1a; --muted: #555; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+  h1 { font-size: 1.1rem; color: var(--accent); padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .subtitle { font-size: 0.8rem; color: var(--muted); padding: 0 16px 8px; }
+  .layout { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; }
+  .controls { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px; min-width: 240px; flex: 0 0 240px; }
+  .ctrl-group { margin-bottom: 14px; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .val { font-weight: bold; color: var(--accent); }
+  .legend { margin-top: 10px; }
+  .leg-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 0.78rem; cursor: pointer; }
+  .leg-swatch { width: 22px; height: 3px; border-radius: 2px; }
+  .leg-row.hidden { opacity: 0.35; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.72rem; }
+  th, td { border: 1px solid var(--border); padding: 3px 5px; text-align: right; }
+  th { background: var(--bg); color: var(--muted); }
+  canvas { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: block; }
+  .canvas-wrap { flex: 1; min-width: 300px; }
+</style>
+</head>
+<body>
+<h1>P2-SO-4.6.2 — Damping Variation Simulation</h1>
+<p class="subtitle">.step param R LIST — Family of 5 curves (ζ=0.3,0.5,0.7,1.0,1.5) &nbsp;|&nbsp; Toggle visibility</p>
+<div class="layout">
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>ω₀ (Mrad/s): <span class="val" id="vO0">10.0</span></label>
+      <input type="range" id="sO0" min="1" max="50" step="0.5" value="10">
+    </div>
+    <div class="ctrl-group">
+      <label>Characteristic impedance Z₀ (Ω): <span class="val" id="vZ0">31.6</span></label>
+      <input type="range" id="sZ0" min="1" max="200" step="1" value="31.6">
+    </div>
+    <div class="legend" id="legend"></div>
+    <table id="tbl">
+      <tr><th>ζ</th><th>R (Ω)</th><th>OS%</th><th>t_s2% (ns)</th></tr>
+    </table>
+  </div>
+  <div class="canvas-wrap">
+    <canvas id="cv" width="560" height="460"></canvas>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const ZETAS=[0.3,0.5,0.7,1.0,1.5];
+const COLORS=['#ff4444','#ff8844','#44aa44','#ffaa00','#0066cc'];
+const visible=[true,true,true,true,true];
+
+function stepResponse(omega0,zeta,t){
+  const a=zeta*omega0;
+  if(Math.abs(zeta-1)<0.01){return 1-(1+omega0*t)*Math.exp(-omega0*t);}
+  if(zeta<1){const od=omega0*Math.sqrt(1-zeta*zeta);return 1-Math.exp(-a*t)*(Math.cos(od*t)+(a/od)*Math.sin(od*t));}
+  const sq=Math.sqrt(a*a-omega0*omega0);
+  const s1=-a+sq,s2=-a-sq;
+  const A=-s2/(s2-s1);
+  return 1+A*Math.exp(s1*t)+(1-A)*Math.exp(s2*t);
+}
+
+function settleTime(omega0,zeta,band){
+  const a=zeta*omega0;
+  if(zeta<1){return Math.log(1/(band*Math.sqrt(1-zeta*zeta)))/a;}
+  // overdamped/critical
+  if(Math.abs(zeta-1)<0.01){
+    // Numerically: (1+omega0*t)*exp(-omega0*t)=band
+    let t=1/omega0;
+    for(let i=0;i<100;i++){const err=(1+omega0*t)*Math.exp(-omega0*t)-band;if(Math.abs(err)<1e-6)break;t-=err/(-omega0*(omega0*t)*Math.exp(-omega0*t));}
+    return t;
+  }
+  // Find via iteration for overdamped
+  const sq=Math.sqrt(a*a-omega0*omega0);
+  const s1=-a+sq,s2=-a-sq;
+  const A=-s2/(s2-s1);
+  let t=5/Math.abs(s1);
+  for(let i=0;i<50;i++){
+    const y=1+A*Math.exp(s1*t)+(1-A)*Math.exp(s2*t);
+    if(y>=1-band&&y<=1+band)return t;
+    t*=1.1;
+  }
+  return t;
+}
+
+function buildLegend() {
+  const leg=document.getElementById('legend');
+  leg.innerHTML='';
+  ZETAS.forEach((z,i)=>{
+    const row=document.createElement('div');
+    row.className='leg-row'+(visible[i]?'':' hidden');
+    row.innerHTML=`<div class="leg-swatch" style="background:${COLORS[i]};height:3px;width:22px;"></div><span>ζ=${z.toFixed(1)}</span>`;
+    row.addEventListener('click',()=>{visible[i]=!visible[i];draw();});
+    leg.appendChild(row);
+  });
+}
+
+function draw() {
+  const omega0=parseFloat(document.getElementById('sO0').value)*1e6;
+  const Z0=parseFloat(document.getElementById('sZ0').value);
+  document.getElementById('vO0').textContent=(omega0/1e6).toFixed(1);
+  document.getElementById('sZ0').value=Z0;
+  document.getElementById('vZ0').textContent=Z0.toFixed(1);
+
+  // Build table
+  let tblHtml='<tr><th>ζ</th><th>R (Ω)</th><th>OS%</th><th>t_s2%</th></tr>';
+  const tMax=8/omega0*Math.max(...ZETAS.map(z=>{
+    const a=z*omega0;
+    if(z<1)return Math.max(5*Math.PI/Math.sqrt(omega0*omega0-a*a),5/a);
+    return 7/Math.abs(-a+Math.sqrt(Math.max(a*a-omega0*omega0,0)));
+  }));
+
+  ZETAS.forEach((z,i)=>{
+    const R=2*z*Z0;
+    const OS=z<1?100*Math.exp(-Math.PI*z/Math.sqrt(1-z*z)):0;
+    const ts=settleTime(omega0,z,0.02);
+    tblHtml+=`<tr><td>${z.toFixed(1)}</td><td>${R.toFixed(1)}</td><td>${OS.toFixed(1)}%</td><td>${(ts*1e9).toFixed(0)}ns</td></tr>`;
+  });
+  document.getElementById('tbl').innerHTML=tblHtml;
+
+  // NGSpice .step syntax display: append to legend
+  const Z_list=ZETAS.map(z=>(2*z*Z0).toFixed(1)).join(' ');
+
+  const W=cv.width,H=cv.height,padL=60,padR=20,padT=40,padB=65,plotW=W-padL-padR,plotH=H-padT-padB;
+  const isDark=window.matchMedia('(prefers-color-scheme: dark)').matches;
+  ctx.fillStyle=isDark?'#242424':'#fff';ctx.fillRect(0,0,W,H);
+  const gridC=isDark?'#2e2e2e':'#e8e8e8';
+  const mutC=isDark?'#888':'#555';
+
+  // tMax: enough for slowest curve
+  const tPlotMax=8/omega0*1.5;
+  const yMax=ZETAS.filter((_,i)=>visible[i]).reduce((mx,z)=>{
+    if(z<1)return Math.max(mx,1+100*Math.exp(-Math.PI*z/Math.sqrt(1-z*z))/100);
+    return Math.max(mx,1.03);
+  },1.03);
+
+  const tx=t=>padL+(t/tPlotMax)*plotW;
+  const ty=y=>padT+(1-y/yMax)*plotH;
+
+  ctx.strokeStyle=gridC;ctx.lineWidth=1;
+  for(let i=0;i<=6;i++){ctx.beginPath();ctx.moveTo(tx(i*tPlotMax/6),padT);ctx.lineTo(tx(i*tPlotMax/6),padT+plotH);ctx.stroke();}
+  for(let i=0;i<=5;i++){ctx.beginPath();ctx.moveTo(padL,padT+i*plotH/5);ctx.lineTo(padL+plotW,padT+i*plotH/5);ctx.stroke();}
+  ctx.strokeStyle=mutC;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(padL,padT);ctx.lineTo(padL,padT+plotH);ctx.lineTo(padL+plotW,padT+plotH);ctx.stroke();
+
+  // ±2% band
+  ctx.fillStyle=isDark?'rgba(0,102,204,0.1)':'rgba(0,102,204,0.06)';
+  ctx.fillRect(padL,ty(1.02),plotW,ty(0.98)-ty(1.02));
+  ctx.setLineDash([4,3]);ctx.strokeStyle='rgba(100,150,255,0.4)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,ty(1));ctx.lineTo(padL+plotW,ty(1));ctx.stroke();ctx.setLineDash([]);
+
+  // Curves
+  ZETAS.forEach((z,i)=>{
+    if(!visible[i])return;
+    ctx.strokeStyle=COLORS[i];ctx.lineWidth=2;ctx.beginPath();
+    for(let j=0;j<=600;j++){const t=j/600*tPlotMax;const y=stepResponse(omega0,z,t);if(j===0)ctx.moveTo(tx(t),ty(y));else ctx.lineTo(tx(t),ty(y));}
+    ctx.stroke();
+    // Label at 60% of tPlotMax
+    const labT=tPlotMax*0.65;
+    const labY=stepResponse(omega0,z,labT);
+    ctx.fillStyle=COLORS[i];ctx.font='10px sans-serif';
+    ctx.fillText(`ζ=${z.toFixed(1)}`,tx(labT)+3,ty(labY)+4);
+  });
+
+  // NGSpice step command annotation
+  ctx.fillStyle=isDark?'#4488cc':'#2244aa';ctx.font='10px monospace';
+  ctx.fillText(`.step param R LIST ${Z_list}`,padL,padT-14);
+
+  ctx.fillStyle=mutC;ctx.font='10px sans-serif';
+  for(let i=0;i<=6;i++){ctx.fillText((i*tPlotMax/6*1e9).toFixed(0)+'n',tx(i*tPlotMax/6)-12,padT+plotH+18);}
+  ctx.fillText('t',padL+plotW/2,padT+plotH+36);
+  ctx.fillText('±2% band',padL+4,padT-2);
+  for(let i=0;i<=5;i++)ctx.fillText((i*yMax/5).toFixed(2),4,ty(i*yMax/5)+4);
+
+  buildLegend();
+}
+
+['sO0','sZ0'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',draw);
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-WI-5.1.2 Exponential Decay Pattern</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:12px;padding:12px}
+canvas{background:#0a0a1a;border:1px solid #333;display:block}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:220px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:10px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:13px;margin-top:4px}
+.toggle-btn{display:block;width:100%;margin-top:6px;padding:6px;background:#1a1a3a;border:1px solid #0066cc;color:#0066cc;cursor:pointer;font-family:inherit;font-size:11px;border-radius:3px;text-align:left}
+.toggle-btn.active{background:#0066cc;color:#fff}
+.formula{color:#ffaa00;font-size:12px;margin-top:8px;line-height:1.6}
+</style>
+</head>
+<body>
+<h1>P2-WI-5.1.2 — Exponential Decay Pattern | RC Discharge</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="680" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>Controls</h2>
+<label>Time Constant τ (ms)
+<input type="range" id="tau" min="0.2" max="5" step="0.1" value="1.5">
+<div class="readout" id="tau_v">τ = 1.5 ms</div>
+</label>
+<label>Initial Voltage V₀ (V)
+<input type="range" id="v0" min="1" max="10" step="0.5" value="5">
+<div class="readout" id="v0_v">V₀ = 5.0 V</div>
+</label>
+<h2 style="margin-top:14px">View Mode</h2>
+<button class="toggle-btn active" id="btn_lin" onclick="setMode('lin')">Linear Plot</button>
+<button class="toggle-btn" id="btn_log" onclick="setMode('log')">Semi-Log Plot (ln V vs t)</button>
+<h2 style="margin-top:14px">Markers</h2>
+<button class="toggle-btn active" id="btn_37" onclick="toggleMarker('m37')">36.8% Marker</button>
+<button class="toggle-btn" id="btn_half" onclick="toggleMarker('mhalf')">Half-Life Marker</button>
+<h2 style="margin-top:14px">Live Readouts</h2>
+<div class="readout" id="r_tau">V at τ: —</div>
+<div class="readout" id="r_thalf">t₁/₂: —</div>
+<div class="readout" id="r_5tau">5τ: —</div>
+<div class="formula">V(t) = V₀ · e<sup>−t/τ</sup><br>t₁/₂ = τ · ln(2) = 0.693τ</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let tau=1.5,v0=5,mode='lin',markers={m37:true,mhalf:false};
+const W=680,H=380,PAD={l:65,r:20,t:20,b:40};
+const CW=W-PAD.l-PAD.r, CH=H-PAD.t-PAD.b;
+
+function setMode(m){mode=m;['lin','log'].forEach(x=>document.getElementById('btn_'+x).classList.toggle('active',x===m));draw();}
+function toggleMarker(m){markers[m]=!markers[m];document.getElementById(m==='m37'?'btn_37':'btn_half').classList.toggle('active',markers[m]);draw();}
+
+document.getElementById('tau').oninput=function(){tau=parseFloat(this.value);document.getElementById('tau_v').textContent='τ = '+tau.toFixed(1)+' ms';updateR();draw();};
+document.getElementById('v0').oninput=function(){v0=parseFloat(this.value);document.getElementById('v0_v').textContent='V₀ = '+v0.toFixed(1)+' V';updateR();draw();};
+
+function updateR(){
+  document.getElementById('r_tau').textContent='V at τ: '+(0.368*v0).toFixed(3)+' V';
+  document.getElementById('r_thalf').textContent='t₁/₂ = '+(0.693*tau).toFixed(2)+' ms';
+  document.getElementById('r_5tau').textContent='5τ = '+(5*tau).toFixed(1)+' ms (0.7% V₀)';
+}
+
+function toPx_lin(t,v){
+  const tmax=7*tau;
+  const x=PAD.l+CW*(t/tmax);
+  const y=PAD.t+CH*(1-v/(v0*1.05));
+  return[x,y];
+}
+function toPx_log(t,v){
+  const tmax=7*tau;
+  const lnv=Math.log(Math.max(v,0.001));
+  const lnv0=Math.log(v0);
+  const lnvmin=lnv0-8;
+  const x=PAD.l+CW*(t/tmax);
+  const y=PAD.t+CH*(1-(lnv-lnvmin)/(lnv0-lnvmin));
+  return[x,y];
+}
+function toPx(t,v){return mode==='lin'?toPx_lin(t,v):toPx_log(t,v);}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const tmax=7*tau;
+  // Grid
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=7;i++){const x=PAD.l+CW*(i/7);ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=PAD.t+CH*(i/5);ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+CW,y);ctx.stroke();}
+  // Axes
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+CH);ctx.moveTo(PAD.l,PAD.t+CH);ctx.lineTo(PAD.l+CW,PAD.t+CH);ctx.stroke();
+  // t axis labels
+  ctx.fillStyle='#888';ctx.font='11px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=7;i++){const t=tmax*i/7;const x=PAD.l+CW*(i/7);ctx.fillText(t.toFixed(1)+'ms',x,PAD.t+CH+14);}
+  // V axis labels
+  ctx.textAlign='right';
+  if(mode==='lin'){
+    for(let i=0;i<=5;i++){const v=v0*1.05*(1-i/5);const y=PAD.t+CH*(i/5);ctx.fillText(v.toFixed(2)+'V',PAD.l-4,y+4);}
+  } else {
+    const lnv0=Math.log(v0),lnvmin=lnv0-8;
+    for(let i=0;i<=5;i++){
+      const lnv=lnvmin+(lnv0-lnvmin)*(1-i/5);
+      const y=PAD.t+CH*(i/5);
+      ctx.fillText('ln(V)='+(lnv).toFixed(1),PAD.l-4,y+4);
+    }
+    // slope annotation
+    ctx.fillStyle='#ffaa00';ctx.textAlign='left';ctx.font='11px Courier New';
+    ctx.fillText('Slope = −1/τ = −'+(1/tau).toFixed(1)+' /ms',PAD.l+6,PAD.t+16);
+  }
+  ctx.save();ctx.translate(14,PAD.t+CH/2);ctx.rotate(-Math.PI/2);
+  ctx.textAlign='center';ctx.fillStyle='#888';ctx.fillText(mode==='lin'?'Voltage (V)':'ln(V)',0,0);ctx.restore();
+  // Waveform
+  ctx.strokeStyle='#00aaff';ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=800;i++){
+    const t=tmax*i/800;
+    const v=v0*Math.exp(-t/tau);
+    const[x,y]=toPx(t,v);
+    if(y>PAD.t-5&&y<PAD.t+CH+5){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  }
+  ctx.stroke();
+  // Markers
+  if(markers.m37){
+    const t37=tau,v37=0.368*v0;
+    const[x37,y37]=toPx(t37,v37);
+    ctx.strokeStyle='#ff6600';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+    ctx.beginPath();ctx.moveTo(PAD.l,y37);ctx.lineTo(x37,y37);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x37,y37);ctx.lineTo(x37,PAD.t+CH);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#ff6600';ctx.beginPath();ctx.arc(x37,y37,5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#ff6600';ctx.font='bold 11px Courier New';ctx.textAlign='left';
+    ctx.fillText('36.8% → τ = '+tau.toFixed(1)+'ms',x37+8,y37-6);
+    ctx.textAlign='right';ctx.fillText(v37.toFixed(3)+'V',PAD.l-4,y37+4);
+  }
+  if(markers.mhalf){
+    const thalf=0.693*tau,vhalf=v0*0.5;
+    const[xh,yh]=toPx(thalf,vhalf);
+    ctx.strokeStyle='#aa44ff';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(PAD.l,yh);ctx.lineTo(xh,yh);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(xh,yh);ctx.lineTo(xh,PAD.t+CH);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#aa44ff';ctx.beginPath();ctx.arc(xh,yh,5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#aa44ff';ctx.font='bold 11px Courier New';ctx.textAlign='left';
+    ctx.fillText('t₁/₂ = '+(thalf).toFixed(2)+'ms (50%)',xh+8,yh-6);
+  }
+  if(mode==='log'){
+    // Straight line annotation
+    const[x0,y0p]=toPx(0,v0);const[xt,yt]=toPx(tmax,v0*Math.exp(-tmax/tau));
+    ctx.strokeStyle='#ffaa00';ctx.lineWidth=1;ctx.setLineDash([6,3]);
+    ctx.beginPath();ctx.moveTo(x0,y0p);ctx.lineTo(xt,yt);ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  updateR();
+}
+updateR();draw();
+</script>
+</body>
+</html>

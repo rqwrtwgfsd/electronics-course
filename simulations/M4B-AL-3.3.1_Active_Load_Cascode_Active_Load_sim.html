@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-AL-3.3.1 — Cascode Active Load</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-AL-3.3.1</div>
+  <h1>Active Load — Cascode Active Load</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Cascode Load Parameters</h2>
+      <label>g_m,n (mA/V): <b id="gmn_l">2.0</b> <input type="range" id="gmn" min="0.1" max="10" value="2.0" step="0.1"></label>
+      <label>g_m,p (mA/V): <b id="gmp_l">1.0</b> <input type="range" id="gmp" min="0.1" max="10" value="1.0" step="0.1"></label>
+      <label>λ_n (V⁻¹): <b id="lamn_l">0.08</b> <input type="range" id="lamn" min="0.01" max="0.5" value="0.08" step="0.01"></label>
+      <label>λ_p (V⁻¹): <b id="lamp_l">0.10</b> <input type="range" id="lamp" min="0.01" max="0.5" value="0.10" step="0.01"></label>
+      <label>I_D (μA): <b id="id_l">100</b> μA <input type="range" id="id" min="5" max="500" value="100" step="5"></label>
+      <label>Gain-boost A (×): <b id="gb_l">1</b> <input type="range" id="gb" min="1" max="50" value="1" step="1"></label>
+
+      <div class="ro">r_out simple (kΩ): <span id="rs_d">--</span></div>
+      <div class="ro" style="margin-top:4px">r_out cascode (GΩ): <span id="rc_d">--</span></div>
+      <div class="ro" style="margin-top:4px">r_out gain-boosted (GΩ): <span id="rgb_d">--</span></div>
+      <div class="ro g" style="margin-top:4px">A_v cascode (dB): <span id="avc_d">--</span></div>
+      <div class="insight">
+        Cascode r_out = g_m,p × r_o,p² (PMOS) in parallel with g_m,n × r_o,n² (NMOS). Gain-boost multiplies each by A_boost. The log-log plot shows how r_out scales with I_D for each topology.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>r_out vs I_D: Topology Comparison</h2>
+      <canvas id="cv" height="300"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const gmn=+document.getElementById('gmn').value*1e-3;
+    const gmp=+document.getElementById('gmp').value*1e-3;
+    const lamn=+document.getElementById('lamn').value;
+    const lamp=+document.getElementById('lamp').value;
+    const ID=+document.getElementById('id').value*1e-6;
+    const gb=+document.getElementById('gb').value;
+
+    document.getElementById('gmn_l').textContent=(gmn*1e3).toFixed(1);
+    document.getElementById('gmp_l').textContent=(gmp*1e3).toFixed(1);
+    document.getElementById('lamn_l').textContent=lamn.toFixed(2);
+    document.getElementById('lamp_l').textContent=lamp.toFixed(2);
+    document.getElementById('id_l').textContent=(ID*1e6).toFixed(0);
+    document.getElementById('gb_l').textContent=gb.toFixed(0);
+
+    const ron=1/(lamn*ID);
+    const rop=1/(lamp*ID);
+    const Rout_simple=ron*rop/(ron+rop);
+    const Rout_n_cas=gmn*ron*ron;
+    const Rout_p_cas=gmp*rop*rop;
+    const Rout_cas=Rout_n_cas*Rout_p_cas/(Rout_n_cas+Rout_p_cas);
+    const Rout_gb=gb*Rout_cas;
+
+    document.getElementById('rs_d').textContent=(Rout_simple/1e3).toFixed(0);
+    document.getElementById('rc_d').textContent=(Rout_cas/1e9).toFixed(3);
+    document.getElementById('rgb_d').textContent=(Rout_gb/1e9).toFixed(3);
+    document.getElementById('avc_d').textContent=(20*Math.log10(gmn*Rout_cas)).toFixed(1);
+
+    draw(lamn, lamp, gmn/ID*1e6, gmp/ID*1e6, ID*1e6, gb);
+  }
+
+  function draw(lamn, lamp, gm_n_ratio, gm_p_ratio, ID_uA, gb){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=300;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,300);
+    const pL=55,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=300-pT-pB;
+
+    // Log-log: I_D (x) vs r_out (y)
+    const IDmin=1e-6, IDmax=1e-3;
+    const rMin=1e3, rMax=1e14;
+    const logIDmin=Math.log10(IDmin), logIDmax=Math.log10(IDmax);
+    const logRmin=Math.log10(rMin), logRmax=Math.log10(rMax);
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText('r_out (Ω)', 2, pT+ph/2);
+    ctx.fillText('I_D (A)', pL+pw/2-14, 300-4);
+
+    ['1k','1M','1G','1T'].forEach((lbl,i)=>{
+      const db=(3+i*3); // 10^3, 10^6, 10^9, 10^12
+      const y=pT+ph-((db+3-Math.log10(rMin))/(Math.log10(rMax)-Math.log10(rMin)))*ph;
+      if(y>=pT&&y<=pT+ph){
+        ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText(lbl, 2, y+4);
+        ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+      }
+    });
+    ['1μ','10μ','100μ','1m'].forEach((lbl,i)=>{
+      const logv=-6+i;
+      const x=pL+((logv-logIDmin)/(logIDmax-logIDmin))*pw;
+      if(x>=pL&&x<=pL+pw) ctx.fillStyle='#8888aa', ctx.font='9px system-ui', ctx.fillText(lbl, x-10, pT+ph+14);
+    });
+
+    const drawLine=(fn,color,dash)=>{
+      ctx.strokeStyle=color; ctx.lineWidth=2; ctx.setLineDash(dash||[]);
+      ctx.beginPath(); let first=true;
+      for(let px=0;px<=pw;px++){
+        const logID=logIDmin+(px/pw)*(logIDmax-logIDmin);
+        const ID=Math.pow(10, logID);
+        const r=fn(ID);
+        if(r<=0) continue;
+        const logR=Math.log10(r);
+        const y=pT+ph-((logR-logRmin)/(logRmax-logRmin))*ph;
+        if(y<pT||y>pT+ph) continue;
+        if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+      }
+      ctx.stroke(); ctx.setLineDash([]);
+    };
+
+    // Simple
+    drawLine(ID=>{
+      const ron=1/(lamn*ID); const rop=1/(lamp*ID);
+      return ron*rop/(ron+rop);
+    }, '#0066cc', [5,4]);
+
+    // Cascode
+    drawLine(ID=>{
+      const ron=1/(lamn*ID); const rop=1/(lamp*ID);
+      const gmn_v=gm_n_ratio*ID; const gmp_v=gm_p_ratio*ID;
+      const rn=gmn_v*ron*ron; const rp=gmp_v*rop*rop;
+      return rn*rp/(rn+rp);
+    }, '#00994d', []);
+
+    // Gain-boosted
+    drawLine(ID=>{
+      const ron=1/(lamn*ID); const rop=1/(lamp*ID);
+      const gmn_v=gm_n_ratio*ID; const gmp_v=gm_p_ratio*ID;
+      const rn=gmn_v*ron*ron; const rp=gmp_v*rop*rop;
+      return gb*rn*rp/(rn+rp);
+    }, '#ff8800', [4,3]);
+
+    // Op point marker
+    const ID_op=ID_uA*1e-6;
+    const ron_op=1/(lamn*ID_op); const rop_op=1/(lamp*ID_op);
+    const gmn_op=gm_n_ratio*ID_op; const gmp_op=gm_p_ratio*ID_op;
+    const rn_op=gmn_op*ron_op*ron_op; const rp_op=gmp_op*rop_op*rop_op;
+    const rc_op=rn_op*rp_op/(rn_op+rp_op);
+    const xop=pL+((Math.log10(ID_op)-logIDmin)/(logIDmax-logIDmin))*pw;
+    const yop=pT+ph-((Math.log10(rc_op)-logRmin)/(logRmax-logRmin))*ph;
+    ctx.fillStyle='#00994d';
+    ctx.beginPath(); ctx.arc(xop,yop,6,0,2*Math.PI); ctx.fill();
+
+    const items=[{c:'#0066cc',lbl:'Simple r_o∥r_o',d:[5,4]},{c:'#00994d',lbl:'Cascode g_m r_o²',d:[]},{c:'#ff8800',lbl:'Gain-boosted ×'+gb,d:[4,3]}];
+    items.forEach(({c,lbl,d},i)=>{
+      ctx.strokeStyle=c; ctx.lineWidth=1.8; ctx.setLineDash(d);
+      ctx.beginPath(); ctx.moveTo(pL+pw-140, pT+12+14*i); ctx.lineTo(pL+pw-120, pT+12+14*i); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle='#8888aa'; ctx.font='10px system-ui'; ctx.fillText(lbl, pL+pw-116, pT+16+14*i);
+    });
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

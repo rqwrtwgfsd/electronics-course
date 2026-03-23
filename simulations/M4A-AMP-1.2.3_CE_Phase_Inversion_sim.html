@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.2.3 — CE Phase Inversion</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;align-items:baseline;gap:16px;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:250px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:14px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.2.3</div>
+  <div class="topic">CE Amplifier Phase Inversion — 180° Phase Shift Demonstration</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>Amplifier</h3>
+      <label>Stages (1–3 CE): <b id="stages_lbl">1</b></label>
+      <input type="range" id="stages" min="1" max="3" value="1" step="1">
+      <label>|Av| per stage: <b id="av_lbl">50 V/V</b></label>
+      <input type="range" id="av" min="2" max="200" value="50" step="1">
+      <label>Input amplitude (mV): <b id="vin_lbl">20 mV</b></label>
+      <input type="range" id="vin" min="1" max="100" value="20" step="1">
+      <label>Frequency: <b id="freq_lbl">1 kHz</b></label>
+      <input type="range" id="freq" min="100" max="20000" value="1000" step="100">
+    </div>
+    <div class="cg">
+      <h3>Phase Analysis</h3>
+      <div class="rd">Stages: <span id="r_stages">1</span></div>
+      <div class="rd">Total phase shift: <span id="r_phase">–180°</span></div>
+      <div class="rd">Output polarity: <span id="r_polarity">INVERTED</span></div>
+      <div class="rd">Total |Av|: <span id="r_av">50</span> V/V</div>
+      <div class="rd">Vout peak: <span id="r_vout">1.00</span> V</div>
+    </div>
+    <div class="cg">
+      <h3>RC Oscillator</h3>
+      <label>R_phase (kΩ): <b id="rph_lbl">10 kΩ</b></label>
+      <input type="range" id="rph" min="1000" max="100000" value="10000" step="1000">
+      <label>C_phase (nF): <b id="cph_lbl">10 nF</b></label>
+      <input type="range" id="cph" min="1" max="100" value="10" step="1">
+      <div class="rd">fosc: <span id="r_fosc">650</span> Hz</div>
+      <div class="rd">Min |Av| needed: <span id="r_minav">29</span></div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_stages">1</div><div class="l">CE Stages</div></div>
+      <div class="met"><div class="v" id="m_phase">–180°</div><div class="l">Phase Shift</div></div>
+      <div class="met"><div class="v" id="m_av">50</div><div class="l">Total |Av|</div></div>
+      <div class="met"><div class="v" id="m_pol">INV</div><div class="l">Polarity</div></div>
+    </div>
+    <div>
+      <div class="pl">Input (blue) vs Output (orange) — phase inversion demonstration</div>
+      <canvas id="waveCanvas" height="220"></canvas>
+    </div>
+    <div>
+      <div class="pl">Bode Phase Plot — CE stage cascade (mid-band to high freq)</div>
+      <canvas id="phaseCanvas" height="180"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+function update(){
+  const stages=parseInt(document.getElementById('stages').value);
+  const av_per=parseFloat(document.getElementById('av').value);
+  const vin=parseFloat(document.getElementById('vin').value)*1e-3;
+  const freq=parseFloat(document.getElementById('freq').value);
+  const rph=parseFloat(document.getElementById('rph').value);
+  const cph=parseFloat(document.getElementById('cph').value)*1e-9;
+
+  document.getElementById('stages_lbl').textContent=stages;
+  document.getElementById('av_lbl').textContent=av_per+' V/V';
+  document.getElementById('vin_lbl').textContent=(vin*1000).toFixed(0)+' mV';
+  document.getElementById('freq_lbl').textContent=freq>=1000?(freq/1000).toFixed(1)+'kHz':freq+'Hz';
+  document.getElementById('rph_lbl').textContent=(rph/1000).toFixed(0)+' kΩ';
+  document.getElementById('cph_lbl').textContent=(cph*1e9).toFixed(0)+' nF';
+
+  const phase = -stages * 180;
+  const polarity = stages%2===0 ? 'NON-INVERTED' : 'INVERTED';
+  const total_av = Math.pow(av_per, stages);
+  const vout = total_av * vin;
+  const fosc = 1/(2*Math.PI*rph*cph*Math.sqrt(6));
+
+  document.getElementById('r_stages').textContent=stages;
+  document.getElementById('r_phase').textContent=phase+'°';
+  document.getElementById('r_polarity').textContent=polarity;
+  document.getElementById('r_av').textContent=total_av>=1000?(total_av/1000).toFixed(1)+'k':total_av.toFixed(0);
+  document.getElementById('r_vout').textContent=vout.toFixed(3);
+  document.getElementById('r_fosc').textContent=fosc.toFixed(0);
+  document.getElementById('r_minav').textContent='29';
+
+  document.getElementById('m_stages').textContent=stages;
+  document.getElementById('m_phase').textContent=phase+'°';
+  document.getElementById('m_av').textContent=total_av>=1000?(total_av/1000).toFixed(1)+'k':total_av.toFixed(0);
+  document.getElementById('m_pol').textContent=stages%2===0?'NONINV':'INV';
+
+  drawWave(stages, av_per, vin, freq);
+  drawPhase(stages);
+}
+
+function drawWave(stages, av_per, vin, freq){
+  const canvas=document.getElementById('waveCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;
+  const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const total_av=Math.pow(av_per,stages);
+  const vout=total_av*vin;
+  const scale=Math.max(vout,vin*2)*1.3/(H/2-15);
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  for(let i=0;i<=8;i++){const y=i/8*H;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  for(let i=0;i<=10;i++){const x=i/10*W;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  ctx.strokeStyle=cs.getPropertyValue('--fg').trim();ctx.lineWidth=0.5;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(0,H/2);ctx.lineTo(W,H/2);ctx.stroke();ctx.setLineDash([]);
+
+  // Input
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=1.5;
+  ctx.beginPath();
+  for(let px=0;px<W;px++){
+    const t=px/W*2;
+    const v=vin*Math.sin(2*Math.PI*t);
+    const y=H/2-v/scale;
+    if(px===0)ctx.moveTo(px,y);else ctx.lineTo(px,y);
+  }
+  ctx.stroke();
+
+  // Output — inversion depends on stage count
+  const sign = stages%2===0 ? 1 : -1;
+  ctx.strokeStyle='#ff8800';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<W;px++){
+    const t=px/W*2;
+    let v=sign*vout*Math.sin(2*Math.PI*t);
+    // cap at reasonable display range
+    v=Math.max(-12,Math.min(12,v));
+    const y=H/2-v/scale;
+    if(px===0)ctx.moveTo(px,y);else ctx.lineTo(px,y);
+  }
+  ctx.stroke();
+
+  // Phase annotation
+  const midX=W/2;
+  ctx.strokeStyle='#cccccc';ctx.lineWidth=1;ctx.setLineDash([2,4]);
+  ctx.beginPath();ctx.moveTo(midX,0);ctx.lineTo(midX,H);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='11px Courier New';
+  ctx.fillText('Phase: '+(-stages*180)+'°',midX-50,20);
+  ctx.fillStyle='#0066cc';ctx.fillText('── Vin (input)',W-190,18);
+  ctx.fillStyle='#ff8800';ctx.fillText('── Vout ('+stages+' stage'+(stages>1?'s':'')+')',W-190,32);
+  ctx.fillStyle=stages%2===0?'#006600':'#cc0000';
+  ctx.fillText(stages%2===0?'NON-INVERTED':'INVERTED',10,20);
+}
+
+function drawPhase(stages){
+  const canvas=document.getElementById('phaseCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;
+  const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:50,r:10,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const F_MAX=100e6;
+  const PHASE_MIN=-stages*180-90-10;
+  const PHASE_MAX=0;
+  function xOf(f){return pad.l+(Math.log10(f)-Math.log10(10))/(Math.log10(F_MAX)-Math.log10(10))*pw;}
+  function yOf(p){return pad.t+ph-(p-PHASE_MIN)/(PHASE_MAX-PHASE_MIN)*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [10,100,1000,10000,100000,1000000,10000000,100000000].forEach(f=>{
+    const x=xOf(f);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';
+    const lbl=f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f;
+    ctx.fillText(lbl,x-8,H-4);
+  });
+
+  const colors=['#0066cc','#cc6600','#006633'];
+  for(let s=1;s<=stages;s++){
+    ctx.strokeStyle=colors[s-1];ctx.lineWidth=1.5+(s===stages?0.5:0);
+    ctx.beginPath();
+    const f_pole=10e6;
+    for(let px=0;px<=pw;px++){
+      const logf=Math.log10(10)+px/pw*(Math.log10(F_MAX)-Math.log10(10));
+      const f=Math.pow(10,logf);
+      const ph=-s*180-s*Math.atan(f/f_pole)*180/Math.PI;
+      const y=yOf(Math.max(ph,PHASE_MIN));
+      if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+    }
+    ctx.stroke();
+  }
+
+  // Phase labels
+  for(let deg=0;deg>=PHASE_MIN;deg-=90){
+    const y=yOf(deg);
+    if(y>pad.t && y<pad.t+ph){
+      ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+      ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+      ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+      ctx.fillText(deg+'°',2,y+3);
+    }
+  }
+
+  ctx.font='9px Courier New';
+  colors.slice(0,stages).forEach((c,i)=>{
+    ctx.fillStyle=c;
+    ctx.fillText('── '+(i+1)+' stage'+(i>0?'s':''),W-130,14+i*12);
+  });
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();
+  ctx.fillText('Frequency →',W/2-30,H-1);
+}
+
+['stages','av','vin','freq','rph','cph'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

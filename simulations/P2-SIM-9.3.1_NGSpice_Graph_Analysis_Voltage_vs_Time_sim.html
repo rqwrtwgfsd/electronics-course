@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-SIM-9.3.1 Voltage vs Time Analysis</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:10px;padding:10px}
+canvas{background:#0a0a1a;border:1px solid #333;cursor:crosshair}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:230px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.cursor-info{background:#050510;border:1px solid #0066cc;padding:8px;margin-top:8px;font-size:11px;line-height:1.7}
+.formula{color:#ffaa00;font-size:11px;margin-top:8px;line-height:1.6}
+.btn{margin-top:5px;padding:4px 8px;background:#1a1a3a;border:1px solid #0066cc;color:#0066cc;cursor:pointer;font-family:inherit;font-size:10px;border-radius:3px}
+.btn.active{background:#0066cc;color:#fff}
+</style>
+</head>
+<body>
+<h1>P2-SIM-9.3.1 — Voltage vs Time: NGSpice-Style Oscilloscope with Cursors</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="580" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>RC Circuit</h2>
+<label>R (kΩ)
+<input type="range" id="R" min="1" max="100" step="1" value="10">
+<div class="readout" id="R_v">R = 10 kΩ</div>
+</label>
+<label>C (nF)
+<input type="range" id="C" min="1" max="10000" step="1" value="100">
+<div class="readout" id="C_v">C = 100 nF</div>
+</label>
+<label>V_step (V)
+<input type="range" id="Vin" min="1" max="10" step="0.5" value="5">
+<div class="readout" id="Vin_v">V_in = 5 V</div>
+</label>
+<h2 style="margin-top:8px">Cursors</h2>
+<button class="btn active" id="b_c1" onclick="activeCursor=1;updateBtnState()">Cursor 1 (red)</button>
+<button class="btn" id="b_c2" onclick="activeCursor=2;updateBtnState()">Cursor 2 (blue)</button>
+<div class="cursor-info" id="cursor_info">Click on the waveform to place cursors.</div>
+<h2 style="margin-top:8px">Measurements</h2>
+<div class="readout" id="m_tau">τ (63.2%): —</div>
+<div class="readout" id="m_tr">t_rise: —</div>
+<div class="readout" id="m_vfin">V_final: —</div>
+<div class="formula">Click canvas to place cursors<br>Cursor 1=t1,V1 | 2=t2,V2<br>Δt = t2−t1, ΔV = V2−V1</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let R=10,C=100,Vin=5;
+let cursors=[null,null];
+let activeCursor=1;
+const pd={l:60,r:20,t:25,b:35};
+const W=580,H=380,CW=W-pd.l-pd.r,CH=H-pd.t-pd.b;
+
+function updateBtnState(){
+  [1,2].forEach(i=>document.getElementById('b_c'+i).classList.toggle('active',activeCursor===i));
+  draw();
+}
+
+['R','C','Vin'].forEach(id=>{
+  document.getElementById(id).oninput=function(){
+    const v=parseFloat(this.value);
+    if(id==='R'){R=v;document.getElementById('R_v').textContent='R = '+v+' kΩ';}
+    if(id==='C'){C=v;document.getElementById('C_v').textContent='C = '+v+' nF';}
+    if(id==='Vin'){Vin=v;document.getElementById('Vin_v').textContent='V_in = '+v+' V';}
+    draw();
+  };
+});
+
+let tau_ms=1,tmax_ms=6;
+
+cv.onclick=function(e){
+  const rect=cv.getBoundingClientRect();
+  const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+  if(mx<pd.l||mx>pd.l+CW)return;
+  const t=(mx-pd.l)/CW*tmax_ms;
+  const v=tau_ms>0?Vin*(1-Math.exp(-t/tau_ms)):0;
+  cursors[activeCursor-1]={t,v,x:mx,y:pd.t+CH*(1-v/(Vin*1.1))};
+  updateCursorInfo();draw();
+};
+
+function updateCursorInfo(){
+  const c1=cursors[0],c2=cursors[1];
+  let html='';
+  if(c1)html+='<span style="color:#ff4444">C1:</span> t='+c1.t.toFixed(3)+'ms V='+c1.v.toFixed(4)+'V<br>';
+  if(c2)html+='<span style="color:#4488ff">C2:</span> t='+c2.t.toFixed(3)+'ms V='+c2.v.toFixed(4)+'V<br>';
+  if(c1&&c2){
+    const dt=c2.t-c1.t,dv=c2.v-c1.v;
+    html+='<span style="color:#ffaa00">Δt='+dt.toFixed(3)+'ms ΔV='+dv.toFixed(4)+'V</span>';
+  }
+  document.getElementById('cursor_info').innerHTML=html||'Click on the waveform to place cursors.';
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  tau_ms=R*1e3*C*1e-9*1000;
+  tmax_ms=6*tau_ms;
+  function toPx(t,v){return[pd.l+CW*(t/tmax_ms),pd.t+CH*(1-v/(Vin*1.1))];}
+  // Grid
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=6;i++){const x=pd.l+CW*(i/6);ctx.beginPath();ctx.moveTo(x,pd.t);ctx.lineTo(x,pd.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=pd.t+CH*(i/5);ctx.beginPath();ctx.moveTo(pd.l,y);ctx.lineTo(pd.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pd.l,pd.t);ctx.lineTo(pd.l,pd.t+CH);ctx.moveTo(pd.l,pd.t+CH);ctx.lineTo(pd.l+CW,pd.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=6;i++){const t=tmax_ms*i/6;ctx.fillText(t.toFixed(2)+'ms',pd.l+CW*(i/6),pd.t+CH+18);}
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){const v=Vin*1.1*(1-i/5);ctx.fillText(v.toFixed(2)+'V',pd.l-4,pd.t+CH*(i/5)+4);}
+  // Waveform
+  ctx.strokeStyle='#00ff88';ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=600;i++){const t=tmax_ms*i/600;const v=Vin*(1-Math.exp(-t/tau_ms));const[x,y]=toPx(t,v);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  // Auto-measurements
+  const v63=0.632*Vin,v10=0.1*Vin,v90=0.9*Vin;
+  const t63=tau_ms,t10=-tau_ms*Math.log(1-0.1),t90=-tau_ms*Math.log(1-0.9);
+  document.getElementById('m_tau').textContent='τ (63.2%) = '+t63.toFixed(3)+' ms at V='+v63.toFixed(3)+'V';
+  document.getElementById('m_tr').textContent='t_rise(10-90%) = '+(t90-t10).toFixed(3)+' ms';
+  document.getElementById('m_vfin').textContent='V_final ≈ '+Vin.toFixed(2)+'V (at 5τ = '+(5*tau_ms).toFixed(2)+'ms)';
+  // Cursors
+  const cur_cols=['#ff4444','#4488ff'];
+  cursors.forEach((c,i)=>{
+    if(!c)return;
+    const x=pd.l+CW*(c.t/tmax_ms);
+    const y=pd.t+CH*(1-c.v/(Vin*1.1));
+    ctx.strokeStyle=cur_cols[i];ctx.lineWidth=1;ctx.setLineDash([3,2]);
+    ctx.beginPath();ctx.moveTo(x,pd.t);ctx.lineTo(x,pd.t+CH);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(pd.l,y);ctx.lineTo(pd.l+CW,y);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=cur_cols[i];ctx.beginPath();ctx.arc(x,y,4,0,Math.PI*2);ctx.fill();
+    ctx.font='10px Courier New';ctx.textAlign='left';
+    ctx.fillText('C'+(i+1)+': t='+c.t.toFixed(2)+'ms V='+c.v.toFixed(3)+'V',x+5,y-5);
+  });
+  // Delta annotation
+  if(cursors[0]&&cursors[1]){
+    const c1=cursors[0],c2=cursors[1];
+    const x1=pd.l+CW*(c1.t/tmax_ms),x2=pd.l+CW*(c2.t/tmax_ms);
+    const ym=pd.t+CH*0.85;
+    ctx.strokeStyle='#ffaa00';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(x1,ym);ctx.lineTo(x2,ym);ctx.stroke();
+    ctx.fillStyle='#ffaa00';ctx.textAlign='center';
+    ctx.fillText('Δt='+(c2.t-c1.t).toFixed(3)+'ms',(x1+x2)/2,ym-5);
+  }
+  ctx.fillStyle='#00ff88';ctx.font='11px Courier New';ctx.textAlign='left';
+  ctx.fillText('V(out): RC charge, τ='+tau_ms.toFixed(3)+'ms',pd.l+4,pd.t+12);
+}
+draw();
+</script>
+</body>
+</html>

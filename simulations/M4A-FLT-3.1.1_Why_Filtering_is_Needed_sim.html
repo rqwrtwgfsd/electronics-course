@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-FLT-3.1.1 Why Filtering is Needed</title>
+<style>
+  :root {
+    --bg:#f5f5f5;--panel:#fff;--text:#1a1a1a;--muted:#666;--border:#ddd;
+    --accent:#2563eb;--accent2:#16a34a;--accent3:#dc2626;--accent4:#9333ea;
+    --accent5:#ea580c;--canvas-bg:#fafafa;--grid:#e5e7eb;--hi:#fef9c3;--tb:#bfdbfe;
+  }
+  @media(prefers-color-scheme:dark){:root{
+    --bg:#0f1117;--panel:#1e2130;--text:#e8eaf0;--muted:#8892a4;--border:#2d3348;
+    --accent:#60a5fa;--accent2:#4ade80;--accent3:#f87171;--accent4:#c084fc;
+    --accent5:#fb923c;--canvas-bg:#161926;--grid:#2d3348;--hi:#2d2a0f;--tb:#3b82f6;
+  }}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px;}
+  h1{font-size:16px;font-weight:700;padding:12px 18px;border-bottom:1px solid var(--border);background:var(--panel);}
+  h1 span{color:var(--muted);font-size:13px;font-weight:400;margin-left:8px;}
+  .layout{display:flex;height:calc(100vh - 47px);}
+  .left{width:290px;background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
+  .right{flex:1;display:flex;flex-direction:column;padding:10px;gap:8px;overflow:hidden;}
+  .sec{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:10px;}
+  .sec h3{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;}
+  label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:3px;}
+  label span{font-weight:600;color:var(--accent);font-size:12px;}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;margin-bottom:5px;}
+  select{width:100%;padding:5px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);font-size:12px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+  .card{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;}
+  .card .lb{font-size:10px;color:var(--muted);text-transform:uppercase;}
+  .card .vl{font-size:13px;font-weight:700;font-family:monospace;color:var(--accent);margin-top:2px;}
+  .card.g .vl{color:var(--accent2);}
+  .card.r .vl{color:var(--accent3);}
+  .card.p .vl{color:var(--accent4);}
+  canvas{display:block;border-radius:6px;background:var(--canvas-bg);border:1px solid var(--border);width:100%;}
+  .tip{background:var(--hi);border:1px solid var(--tb);border-radius:6px;padding:8px;font-size:11px;line-height:1.5;}
+  .legend-row{display:flex;gap:6px;align-items:center;font-size:11px;padding:2px 0;}
+  .dot{width:12px;height:3px;border-radius:2px;flex-shrink:0;}
+</style>
+</head>
+<body>
+<h1>M4A-FLT-3.1.1 — Why Filtering is Needed <span>Visualize signal vs noise separation in frequency domain</span></h1>
+<div class="layout">
+<div class="left">
+
+  <div class="sec">
+    <h3>Application Scenario</h3>
+    <select id="scenario" onchange="applyScenario()">
+      <option value="audio">Audio Preamp (20 Hz–20 kHz)</option>
+      <option value="ecg">ECG Monitor (0.05–150 Hz)</option>
+      <option value="motor">Motor Current Sensor</option>
+      <option value="adc">ADC Anti-Aliasing (10 kSPS)</option>
+      <option value="rf">RF Channel Select (10 MHz)</option>
+    </select>
+  </div>
+
+  <div class="sec">
+    <h3>Signal Band</h3>
+    <label>Signal f_low (Hz) <span id="lbl_slo">20</span></label>
+    <input type="range" id="sig_lo" min="0" max="5" value="1.3" step="0.05" oninput="update()">
+    <label>Signal f_high (Hz) <span id="lbl_shi">20000</span></label>
+    <input type="range" id="sig_hi" min="0" max="7" value="4.3" step="0.05" oninput="update()">
+  </div>
+
+  <div class="sec">
+    <h3>Noise Source</h3>
+    <select id="noise_type" onchange="update()">
+      <option value="hf">High-Freq Interference</option>
+      <option value="hum">Power-Line Hum (50/60 Hz)</option>
+      <option value="lf">Low-Freq Drift</option>
+      <option value="white">Broadband White Noise</option>
+    </select>
+    <label style="margin-top:6px;">Noise Center (log Hz) <span id="lbl_nc">4.5</span></label>
+    <input type="range" id="noise_ctr" min="0" max="7" value="4.5" step="0.1" oninput="update()">
+    <label>Noise Level (dB) <span id="lbl_nl">20</span></label>
+    <input type="range" id="noise_lvl" min="5" max="40" value="20" step="1" oninput="update()">
+  </div>
+
+  <div class="sec">
+    <h3>Filter</h3>
+    <select id="filt_type" onchange="update()">
+      <option value="lp">Low-Pass</option>
+      <option value="hp">High-Pass</option>
+      <option value="bp">Bandpass</option>
+      <option value="notch">Notch</option>
+    </select>
+    <label style="margin-top:6px;">Filter Corner (log Hz) <span id="lbl_fc">4.3</span></label>
+    <input type="range" id="filt_corner" min="0" max="7" value="4.3" step="0.05" oninput="update()">
+    <label>Filter Order <span id="lbl_fo">2</span></label>
+    <input type="range" id="filt_order" min="1" max="6" value="2" step="1" oninput="update()">
+  </div>
+
+  <div class="sec">
+    <h3>Measurements</h3>
+    <div class="grid2">
+      <div class="card"><div class="lb">Signal Pass</div><div class="vl" id="r_sp">—</div></div>
+      <div class="card r"><div class="lb">Noise Reject</div><div class="vl" id="r_nr">—</div></div>
+      <div class="card g"><div class="lb">Filter Corner</div><div class="vl" id="r_fc">—</div></div>
+      <div class="card p"><div class="lb">Attenuation</div><div class="vl" id="r_att">—</div></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3>Legend</h3>
+    <div class="legend-row"><div class="dot" style="background:#60a5fa;height:3px;width:16px;"></div> Filter frequency response</div>
+    <div class="legend-row"><div class="dot" style="background:#4ade80;height:8px;width:16px;border-radius:3px;opacity:.7;"></div> Signal band</div>
+    <div class="legend-row"><div class="dot" style="background:#f87171;height:8px;width:16px;border-radius:3px;opacity:.7;"></div> Noise band</div>
+  </div>
+
+  <div class="tip" id="tip">Select a scenario to see why a filter is needed and what it accomplishes.</div>
+
+</div>
+<div class="right">
+  <canvas id="c_freq" style="flex:3;"></canvas>
+  <canvas id="c_time" style="flex:2;"></canvas>
+</div>
+</div>
+<script>
+function applyScenario() {
+  const s = document.getElementById('scenario').value;
+  const map = {
+    audio:  {slo:1.3, shi:4.3, nc:4.8, nl:18, ft:'lp', fc:4.35, fo:2, nt:'hf'},
+    ecg:    {slo:-1.3, shi:2.18, nc:1.7, nl:25, ft:'bp', fc:2.1, fo:3, nt:'hum'},
+    motor:  {slo:1.0, shi:3.4, nc:4.5, nl:22, ft:'lp', fc:3.5, fo:2, nt:'hf'},
+    adc:    {slo:0.5, shi:3.7, nc:4.2, nl:20, ft:'lp', fc:3.7, fo:4, nt:'hf'},
+    rf:     {slo:6.5, shi:7.0, nc:6.2, nl:30, ft:'hp', fc:6.5, fo:3, nt:'hf'},
+  };
+  const c = map[s];
+  document.getElementById('sig_lo').value = Math.max(0,c.slo+1.3);
+  document.getElementById('sig_hi').value = c.shi;
+  document.getElementById('noise_ctr').value = c.nc;
+  document.getElementById('noise_lvl').value = c.nl;
+  document.getElementById('filt_type').value = c.ft;
+  document.getElementById('filt_corner').value = c.fc;
+  document.getElementById('filt_order').value = c.fo;
+  document.getElementById('noise_type').value = c.nt;
+  update();
+}
+
+function hzFromSlider(v) { return Math.pow(10, parseFloat(v)-1.3); }
+function sliderToHz(v) { return Math.pow(10, parseFloat(v)); }
+function fmtHz(f) {
+  if(f>=1e6) return (f/1e6).toFixed(2)+' MHz';
+  if(f>=1e3) return (f/1e3).toFixed(f>1e5?0:1)+' kHz';
+  return f.toFixed(f>100?0:2)+' Hz';
+}
+
+function filterResponse(f, type, fc, order) {
+  switch(type) {
+    case 'lp': return -order*10*Math.log10(1+(f/fc)**(2));
+    case 'hp': return -order*10*Math.log10(1+(fc/f)**(2));
+    case 'bp': {
+      const bw=fc*0.5;
+      const flo=fc-bw, fhi=fc+bw;
+      return Math.min(filterResponse(f,'hp',flo,order), filterResponse(f,'lp',fhi,order));
+    }
+    case 'notch': {
+      const delta=f-fc;
+      const q=10;
+      const norm=Math.abs(delta/fc)*q;
+      return -20*Math.log10(1+1/Math.max(norm,0.001));
+    }
+  }
+  return 0;
+}
+
+function update() {
+  const slo_s = parseFloat(document.getElementById('sig_lo').value);
+  const shi_s = parseFloat(document.getElementById('sig_hi').value);
+  const nc_s  = parseFloat(document.getElementById('noise_ctr').value);
+  const nl    = parseFloat(document.getElementById('noise_lvl').value);
+  const ft    = document.getElementById('filt_type').value;
+  const fc_s  = parseFloat(document.getElementById('filt_corner').value);
+  const fo    = parseInt(document.getElementById('filt_order').value);
+  const nt    = document.getElementById('noise_type').value;
+
+  const sig_lo = Math.pow(10, slo_s);
+  const sig_hi = Math.pow(10, shi_s);
+  const noise_c = Math.pow(10, nc_s);
+  const fc = Math.pow(10, fc_s);
+
+  document.getElementById('lbl_slo').textContent = fmtHz(sig_lo);
+  document.getElementById('lbl_shi').textContent = fmtHz(sig_hi);
+  document.getElementById('lbl_nc').textContent = fmtHz(noise_c);
+  document.getElementById('lbl_nl').textContent = nl;
+  document.getElementById('lbl_fc').textContent = fmtHz(fc);
+  document.getElementById('lbl_fo').textContent = fo;
+
+  // Signal pass: average filter response in signal band
+  let sig_sum=0, n_sig=0;
+  for(let lf=Math.log10(sig_lo);lf<=Math.log10(sig_hi);lf+=0.05) {
+    sig_sum+=filterResponse(Math.pow(10,lf),ft,fc,fo); n_sig++;
+  }
+  const sig_pass = n_sig>0?sig_sum/n_sig:0;
+  // Noise rejection: filter response at noise center
+  const noise_rej = filterResponse(noise_c, ft, fc, fo);
+  const attenuation = Math.abs(noise_rej - sig_pass);
+
+  document.getElementById('r_sp').textContent = sig_pass.toFixed(1)+' dB';
+  document.getElementById('r_nr').textContent = noise_rej.toFixed(1)+' dB';
+  document.getElementById('r_fc').textContent = fmtHz(fc);
+  document.getElementById('r_att').textContent = attenuation.toFixed(1)+' dB';
+
+  const good = attenuation > 20;
+  document.getElementById('tip').textContent = good
+    ? `Filter provides ${attenuation.toFixed(0)} dB separation between signal and noise — adequate rejection.`
+    : `Only ${attenuation.toFixed(0)} dB separation. Increase order, move corner, or pick a different filter type.`;
+
+  drawFreq(sig_lo, sig_hi, noise_c, nl, ft, fc, fo, nt);
+  drawTime(sig_lo, sig_hi, noise_c, nl, ft, fc, fo);
+}
+
+function cv(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+
+function getCtx(id){
+  const c=document.getElementById(id);
+  c.width=c.offsetWidth*devicePixelRatio;
+  c.height=c.offsetHeight*devicePixelRatio;
+  const ctx=c.getContext('2d');
+  ctx.scale(devicePixelRatio,devicePixelRatio);
+  ctx.W=c.offsetWidth;ctx.H=c.offsetHeight;
+  return ctx;
+}
+
+function drawFreq(sig_lo, sig_hi, noise_c, nl, ft, fc, fo, nt) {
+  const ctx=getCtx('c_freq');
+  const W=ctx.W,H=ctx.H,pl=55,pr=18,pt=28,pb=34;
+  const pw=W-pl-pr,ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  const fMin=0.01, fMax=1e7;
+  const lMin=Math.log10(fMin), lMax=Math.log10(fMax);
+  const dbMin=-80, dbMax=10;
+  const fx=f=>pl+(Math.log10(f)-lMin)/(lMax-lMin)*pw;
+  const fy=db=>pt+(1-(db-dbMin)/(dbMax-dbMin))*ph;
+
+  // Grid
+  ctx.strokeStyle=cv('--grid');ctx.lineWidth=0.7;
+  for(let d=-2;d<=7;d++){
+    const x=fx(Math.pow(10,d));
+    ctx.beginPath();ctx.moveTo(x,pt);ctx.lineTo(x,pt+ph);ctx.stroke();
+  }
+  [-80,-60,-40,-20,0].forEach(db=>{
+    const y=fy(db);
+    ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+pw,y);ctx.stroke();
+    ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';ctx.fillText(db,2,y+4);
+  });
+
+  // Signal band shading
+  const xslo=fx(sig_lo), xshi=fx(sig_hi);
+  ctx.fillStyle=cv('--accent2')+'33';
+  ctx.fillRect(xslo,pt,xshi-xslo,ph);
+  ctx.fillStyle=cv('--accent2');ctx.font='10px system-ui';
+  ctx.fillText('Signal',Math.min(xslo+3,pl+pw-50),pt+14);
+
+  // Noise band shading
+  let xnlo,xnhi;
+  if(nt==='hum') { xnlo=fx(45);xnhi=fx(70); }
+  else if(nt==='lf') { xnlo=fx(0.01);xnhi=fx(noise_c*2); }
+  else if(nt==='white') { xnlo=pl;xnhi=pl+pw; }
+  else { xnlo=fx(noise_c/2);xnhi=Math.min(fx(noise_c*5),pl+pw); }
+  ctx.fillStyle=cv('--accent3')+'33';
+  ctx.fillRect(Math.max(xnlo,pl),pt,Math.min(xnhi,pl+pw)-Math.max(xnlo,pl),ph);
+  ctx.fillStyle=cv('--accent3');ctx.font='10px system-ui';
+  ctx.fillText('Noise',Math.min(Math.max(xnlo+3,pl),pl+pw-50),pt+24);
+
+  // Noise amplitude bump
+  ctx.strokeStyle=cv('--accent3');ctx.lineWidth=1.5;
+  ctx.beginPath();
+  for(let i=0;i<=300;i++){
+    const lf=lMin+i/300*(lMax-lMin);
+    const f=Math.pow(10,lf);
+    let amp;
+    if(nt==='white') { amp=-20+nl/4; }
+    else if(nt==='hum') { const d=Math.abs(f-60)/(10);amp=-20-d*d*3+nl; }
+    else { const d=(Math.log10(f)-Math.log10(noise_c));amp=nl-d*d*20; }
+    const x=pl+i/300*pw,y=fy(Math.min(dbMax,Math.max(dbMin,amp)));
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Filter response
+  ctx.strokeStyle=cv('--accent');ctx.lineWidth=2.5;
+  ctx.beginPath();let first=true;
+  for(let i=0;i<=600;i++){
+    const lf=lMin+i/600*(lMax-lMin);
+    const f=Math.pow(10,lf);
+    const db=filterResponse(f,ft,fc,fo);
+    const x=pl+i/600*pw,y=fy(Math.max(dbMin,Math.min(dbMax,db)));
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Axes
+  ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';
+  [0.01,0.1,1,10,100,1e3,1e4,1e5,1e6,1e7].forEach(f=>{
+    const x=fx(f);
+    if(x>=pl&&x<=pl+pw){
+      const l=f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f;
+      ctx.fillText(l,x-6,pt+ph+14);
+    }
+  });
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('dB',4,pt-8);
+  ctx.fillText('Frequency (Hz)',pl+pw/2-50,H-2);
+  ctx.fillText('Frequency Response & Signal/Noise Bands',pl+10,pt-10);
+}
+
+function drawTime(sig_lo, sig_hi, noise_c, nl, ft, fc, fo) {
+  const ctx=getCtx('c_time');
+  const W=ctx.W,H=ctx.H,pl=50,pr=18,pt=28,pb=28;
+  const pw=W-pl-pr,ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Time Domain: Before Filter (red+blue) vs After Filter (blue only)',pl,pt-10);
+
+  const T=1/(sig_lo*2)*3; // show 3 cycles of lowest signal freq
+  const N=600;
+  const amp_sig=0.6, amp_noise=amp_sig*(Math.pow(10,nl/40));
+
+  // Sample signal + noise
+  function sample(t,filtered){
+    const sig=amp_sig*Math.sin(2*Math.PI*sig_hi*0.3*t)+amp_sig*0.5*Math.sin(2*Math.PI*sig_lo*t);
+    let noise=amp_noise*Math.sin(2*Math.PI*noise_c*t)*0.5;
+    if(filtered){
+      const atten=Math.pow(10,filterResponse(noise_c,ft,fc,fo)/20);
+      noise*=atten;
+    }
+    return sig+noise;
+  }
+
+  const ym=pt+ph/2;
+  const amp_scale=ph*0.4;
+  const t2x=t=>pl+t/T*pw;
+
+  // Before filter (red)
+  ctx.strokeStyle=cv('--accent3');ctx.lineWidth=1.5;ctx.setLineDash([]);
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){
+    const t=i/N*T;
+    const y=ym-sample(t,false)*amp_scale;
+    if(i===0)ctx.moveTo(t2x(t),y);else ctx.lineTo(t2x(t),y);
+  }
+  ctx.stroke();
+
+  // After filter (blue)
+  ctx.strokeStyle=cv('--accent');ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){
+    const t=i/N*T;
+    const y=ym-sample(t,true)*amp_scale;
+    if(i===0)ctx.moveTo(t2x(t),y);else ctx.lineTo(t2x(t),y);
+  }
+  ctx.stroke();
+
+  // Zero line
+  ctx.strokeStyle=cv('--grid');ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pl,ym);ctx.lineTo(pl+pw,ym);ctx.stroke();
+
+  // Legend
+  ctx.fillStyle=cv('--accent3');ctx.font='10px system-ui';
+  ctx.fillText('Before filter',pl+4,pt+14);
+  ctx.fillStyle=cv('--accent');
+  ctx.fillText('After filter',pl+4,pt+26);
+}
+
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

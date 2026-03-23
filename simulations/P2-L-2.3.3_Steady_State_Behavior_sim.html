@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-L-2.3.3 — Steady State Behavior</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+h1 { color: #0066cc; font-size: 1.3em; margin-bottom: 4px; }
+.subtitle { color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }
+.layout { display: flex; gap: 20px; flex-wrap: wrap; }
+.panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+.controls { width: 280px; flex-shrink: 0; }
+.viz { flex: 1; min-width: 360px; }
+label { display: block; color: #8b949e; font-size: 0.8em; margin-bottom: 4px; margin-top: 12px; }
+input[type=range] { width: 100%; accent-color: #0066cc; }
+.val { color: #0066cc; font-weight: bold; }
+canvas { background: #0d1117; border-radius: 6px; display: block; }
+.readouts { margin-top: 14px; }
+.readout-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #21262d; font-size: 0.82em; }
+.readout-label { color: #8b949e; }
+.readout-val { color: #39d353; font-weight: bold; font-family: monospace; }
+.eq { background: #21262d; border-left: 3px solid #0066cc; padding: 10px 12px; border-radius: 4px; margin-top: 14px; font-family: monospace; font-size: 0.82em; color: #a5d6ff; }
+@media (prefers-color-scheme: light) {
+  body { background: #f6f8fa; color: #24292f; }
+  .panel { background: #fff; border-color: #d0d7de; }
+  canvas { background: #f6f8fa; }
+  .eq { background: #eef2ff; }
+}
+</style>
+</head>
+<body>
+<h1>P2-L-2.3.3 — Steady State Behavior</h1>
+<div class="subtitle">Z_L = jωL vs frequency · inductor short at DC · capacitor open at DC · live impedance readout</div>
+<div class="layout">
+  <div class="panel controls">
+    <label>Inductance L (µH): <span class="val" id="lLbl">100 µH</span></label>
+    <input type="range" id="lSlider" min="1" max="10000" value="100" step="1">
+    <label>Capacitance C (µF): <span class="val" id="cLbl">10 µF</span></label>
+    <input type="range" id="cSlider" min="1" max="1000" value="10" step="1">
+    <label>Frequency cursor (Hz): <span class="val" id="fLbl">1 kHz</span></label>
+    <input type="range" id="fSlider" min="0" max="300" value="150" step="1">
+    <div class="readouts">
+      <div class="readout-row"><span class="readout-label">Cursor frequency</span><span class="readout-val" id="fcur">—</span></div>
+      <div class="readout-row"><span class="readout-label">Z_L at cursor</span><span class="readout-val" id="zL">—</span></div>
+      <div class="readout-row"><span class="readout-label">Z_C at cursor</span><span class="readout-val" id="zC">—</span></div>
+      <div class="readout-row"><span class="readout-label">Resonance f_res</span><span class="readout-val" id="fres">—</span></div>
+      <div class="readout-row"><span class="readout-label">Z at DC (L)</span><span class="readout-val" id="zdcL">0 Ω (short)</span></div>
+      <div class="readout-row"><span class="readout-label">Z at DC (C)</span><span class="readout-val" id="zdcC">∞ Ω (open)</span></div>
+    </div>
+    <div class="eq">Z_L = jωL = j×2πf×L<br>Z_C = 1/(jωC) = 1/(j×2πf×C)<br>At DC (f=0): Z_L=0, Z_C=∞</div>
+  </div>
+  <div class="panel viz">
+    <canvas id="cv" width="580" height="420"></canvas>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const W = 580, H = 420;
+
+function getP() {
+  const L = parseFloat(document.getElementById('lSlider').value) * 1e-6;
+  const C = parseFloat(document.getElementById('cSlider').value) * 1e-6;
+  const fExp = parseFloat(document.getElementById('fSlider').value) / 100; // 0-3 → 1Hz to 1GHz
+  return { L, C, fExp };
+}
+
+function expToF(e) { return Math.pow(10, e); }
+
+function fmtF(f) {
+  if (f >= 1e9) return (f / 1e9).toFixed(2) + ' GHz';
+  if (f >= 1e6) return (f / 1e6).toFixed(2) + ' MHz';
+  if (f >= 1e3) return (f / 1e3).toFixed(2) + ' kHz';
+  return f.toFixed(1) + ' Hz';
+}
+function fmtZ(z) {
+  if (z >= 1e6) return (z / 1e6).toFixed(2) + ' MΩ';
+  if (z >= 1e3) return (z / 1e3).toFixed(2) + ' kΩ';
+  if (z >= 1) return z.toFixed(2) + ' Ω';
+  return (z * 1000).toFixed(2) + ' mΩ';
+}
+
+function draw() {
+  const p = getP();
+  const fCursor = expToF(p.fExp);
+  const fRes = 1 / (2 * Math.PI * Math.sqrt(p.L * p.C));
+  const ZL_cursor = 2 * Math.PI * fCursor * p.L;
+  const ZC_cursor = fCursor > 0 ? 1 / (2 * Math.PI * fCursor * p.C) : Infinity;
+
+  document.getElementById('lLbl').textContent = (p.L >= 1e-3 ? (p.L * 1000).toFixed(1) + ' mH' : (p.L * 1e6).toFixed(0) + ' µH');
+  document.getElementById('cLbl').textContent = (p.C * 1e6).toFixed(0) + ' µF';
+  document.getElementById('fLbl').textContent = fmtF(fCursor);
+  document.getElementById('fcur').textContent = fmtF(fCursor);
+  document.getElementById('zL').textContent = fmtZ(ZL_cursor);
+  document.getElementById('zC').textContent = ZC_cursor < 1e9 ? fmtZ(ZC_cursor) : '∞ (open)';
+  document.getElementById('fres').textContent = fmtF(fRes);
+
+  ctx.clearRect(0, 0, W, H);
+
+  const pad = { l: 70, r: 20, t: 35, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  const fMin_exp = 0; // 1 Hz
+  const fMax_exp = 8; // 100 MHz
+  const ZMin_db = -20; // 0.1 Ω
+  const ZMax_db = 80;  // 100 MΩ
+
+  function tx(fe) { return pad.l + ((fe - fMin_exp) / (fMax_exp - fMin_exp)) * pw; }
+  function ty(z_lin) {
+    const db = 20 * Math.log10(Math.max(z_lin, 1e-4));
+    return pad.t + ph - ((db - ZMin_db) / (ZMax_db - ZMin_db)) * ph;
+  }
+
+  // Grid
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let db = ZMin_db; db <= ZMax_db; db += 20) {
+    const yi = pad.t + ph - ((db - ZMin_db) / (ZMax_db - ZMin_db)) * ph;
+    ctx.beginPath(); ctx.moveTo(pad.l, yi); ctx.lineTo(pad.l + pw, yi); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    const zLin = Math.pow(10, db / 20);
+    ctx.fillText(fmtZ(zLin), pad.l - 4, yi + 4);
+  }
+  for (let fe = fMin_exp; fe <= fMax_exp; fe++) {
+    const xi = tx(fe);
+    ctx.beginPath(); ctx.moveTo(xi, pad.t); ctx.lineTo(xi, pad.t + ph); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(fmtF(Math.pow(10, fe)), xi, pad.t + ph + 16);
+  }
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t + ph); ctx.lineTo(pad.l + pw, pad.t + ph); ctx.stroke();
+
+  // Z_L curve (blue)
+  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let px = 0; px <= pw; px++) {
+    const fe = fMin_exp + (px / pw) * (fMax_exp - fMin_exp);
+    const f = Math.pow(10, fe);
+    const zL = 2 * Math.PI * f * p.L;
+    const y = ty(zL);
+    if (y > pad.t - 5 && y < pad.t + ph + 5) {
+      if (px === 0) ctx.moveTo(pad.l + px, y); else ctx.lineTo(pad.l + px, y);
+    } else { ctx.moveTo(pad.l + px, Math.max(pad.t, Math.min(pad.t + ph, y))); }
+  }
+  ctx.stroke();
+
+  // Z_C curve (yellow)
+  ctx.strokeStyle = '#e3b341'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  let zc_started = false;
+  for (let px = 0; px <= pw; px++) {
+    const fe = fMin_exp + (px / pw) * (fMax_exp - fMin_exp);
+    const f = Math.pow(10, fe);
+    const zC = 1 / (2 * Math.PI * f * p.C);
+    const y = ty(zC);
+    if (y > pad.t - 5 && y < pad.t + ph + 5) {
+      if (!zc_started) { ctx.moveTo(pad.l + px, y); zc_started = true; }
+      else ctx.lineTo(pad.l + px, y);
+    }
+  }
+  ctx.stroke();
+
+  // Resonance vertical line
+  const fRes_exp = Math.log10(fRes);
+  if (fRes_exp >= fMin_exp && fRes_exp <= fMax_exp) {
+    ctx.strokeStyle = '#39d353'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(tx(fRes_exp), pad.t); ctx.lineTo(tx(fRes_exp), pad.t + ph); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#39d353'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('f_res = ' + fmtF(fRes), tx(fRes_exp), pad.t + 14);
+    // Z at resonance: Z_L = Z_C = sqrt(L/C)
+    const Z_res = Math.sqrt(p.L / p.C);
+    ctx.fillStyle = '#39d353'; ctx.font = '10px sans-serif';
+    ctx.fillText('Z = √(L/C) = ' + fmtZ(Z_res), tx(fRes_exp), pad.t + 28);
+  }
+
+  // Cursor
+  const fcExp = Math.log10(Math.max(fCursor, 1));
+  if (fcExp >= fMin_exp && fcExp <= fMax_exp) {
+    ctx.strokeStyle = '#ff7b72'; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(tx(fcExp), pad.t); ctx.lineTo(tx(fcExp), pad.t + ph); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#0066cc'; ctx.beginPath(); ctx.arc(tx(fcExp), ty(ZL_cursor), 5, 0, Math.PI * 2); ctx.fill();
+    if (ZC_cursor < 1e9) {
+      ctx.fillStyle = '#e3b341'; ctx.beginPath(); ctx.arc(tx(fcExp), ty(ZC_cursor), 5, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // DC arrow annotation
+  ctx.fillStyle = '#0066cc'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('↓ L: Z→0 (short)', pad.l + 4, ty(2 * Math.PI * 1 * p.L) + 14);
+  ctx.fillStyle = '#e3b341';
+  ctx.fillText('↑ C: Z→∞ (open)', pad.l + 4, ty(1 / (2 * Math.PI * 1 * p.C)) - 6);
+
+  // Legend
+  ctx.fillStyle = '#0066cc'; ctx.font = '11px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('Z_L = 2πfL (inductor)', pad.l + pw - 4, pad.t + 20);
+  ctx.fillStyle = '#e3b341';
+  ctx.fillText('Z_C = 1/(2πfC) (capacitor)', pad.l + pw - 4, pad.t + 36);
+
+  ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Frequency (log scale)', pad.l + pw / 2, H - 8);
+  ctx.save(); ctx.translate(16, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Impedance (log scale)', 0, 0); ctx.restore();
+  ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Inductor and Capacitor Impedance vs Frequency', W / 2, 20);
+}
+
+['lSlider', 'cSlider', 'fSlider'].forEach(id =>
+  document.getElementById(id).addEventListener('input', draw));
+draw();
+</script>
+</body>
+</html>

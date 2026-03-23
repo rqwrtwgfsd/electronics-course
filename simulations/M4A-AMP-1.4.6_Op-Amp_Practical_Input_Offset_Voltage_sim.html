@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.4.6 — Op-Amp Practical: Input Offset Voltage</title>
+<style>
+  :root{--bg:#f5f5f5;--card:#fff;--text:#1a1a1a;--subtext:#555;--accent:#0066cc;--accent2:#cc3300;--accent3:#007744;--accent4:#aa5500;--border:#ccc;--grid:#ddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--card:#242424;--text:#e8e8e8;--subtext:#aaa;--accent:#4da6ff;--accent2:#ff6644;--accent3:#44cc88;--accent4:#ffaa44;--border:#444;--grid:#333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;line-height:1.6;}
+  header{background:var(--card);border-bottom:2px solid var(--accent);padding:18px 28px;}
+  header h1{font-size:1.2rem;font-weight:700;color:var(--accent);}
+  header p{font-size:0.85rem;color:var(--subtext);margin-top:3px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:20px;padding:20px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px;}
+  .card h2{font-size:0.95rem;font-weight:600;margin-bottom:4px;}
+  .card p.desc{font-size:0.80rem;color:var(--subtext);margin-bottom:10px;line-height:1.4;}
+  canvas{display:block;width:100%;border-radius:4px;}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;}
+  .ctrl{display:flex;flex-direction:column;font-size:0.78rem;color:var(--subtext);min-width:140px;}
+  .ctrl label{margin-bottom:3px;}
+  input[type=range]{accent-color:var(--accent);width:100%;}
+  .readout{font-size:0.82rem;color:var(--accent);font-weight:600;margin-top:2px;}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:0.78rem;}
+  .leg{display:flex;align-items:center;gap:5px;}
+  .leg-dot{width:20px;height:3px;border-radius:2px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>M4A-AMP-1.4.6 — Op-Amp Practical: Input Offset Voltage</h1>
+  <p>How Vos propagates through gain, drifts with temperature, and ruins integrators</p>
+</header>
+<div class="grid">
+
+  <!-- Plot 1: Output offset vs noise gain for several Vos values -->
+  <div class="card">
+    <h2>Output Offset vs Noise Gain</h2>
+    <p class="desc">Vout_offset = Vos × noise_gain = Vos × (1 + Rf/Rin). Each curve is a different Vos spec. The markers show at what gain the offset hits 10 mV and 100 mV — typical problem thresholds.</p>
+    <canvas id="c1" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>Your Vos (µV): <span id="v1a" class="readout">500</span></label>
+        <input type="range" id="s1a" min="1" max="10000" value="500" step="1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Vos=1µV (auto-zero)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> Vos=100µV (precision)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3)"></div> Vos=1mV (general)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent4)"></div> Vos=10mV (budget)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--text);opacity:0.6"></div> Your Vos</div>
+    </div>
+  </div>
+
+  <!-- Plot 2: Vos budget over temperature (initial + drift) -->
+  <div class="card">
+    <h2>Vos Budget vs Temperature</h2>
+    <p class="desc">Total Vos(T) = Vos_25 + TCVos × (T – 25). The shaded band shows the range from min to max spec. Output offset at gain = noise_gain × Vos(T).</p>
+    <canvas id="c2" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>Vos at 25°C (µV): <span id="v2a" class="readout">500</span></label>
+        <input type="range" id="s2a" min="1" max="5000" value="500" step="1">
+      </div>
+      <div class="ctrl">
+        <label>TCVos (µV/°C): <span id="v2b" class="readout">5</span></label>
+        <input type="range" id="s2b" min="0" max="50" value="5" step="0.5">
+      </div>
+      <div class="ctrl">
+        <label>Noise gain: <span id="v2c" class="readout">100</span></label>
+        <input type="range" id="s2c" min="1" max="1000" value="100" step="1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Vos at input (µV)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> Output offset (mV)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3);opacity:0.3;height:8px;border-radius:2px"></div> ΔVos drift band</div>
+    </div>
+  </div>
+
+  <!-- Plot 3: Integrator ramp — Vout(t) for various Vos values -->
+  <div class="card">
+    <h2>Integrator Output Drift vs Time</h2>
+    <p class="desc">dVout/dt = Vos / (R×C). Each curve shows a different Vos. The rails are shown at ±Vsupply. Without reset, the output saturates in seconds to minutes depending on Vos and RC.</p>
+    <canvas id="c3" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>R (kΩ): <span id="v3a" class="readout">100</span></label>
+        <input type="range" id="s3a" min="1" max="1000" value="100" step="1">
+      </div>
+      <div class="ctrl">
+        <label>C (µF): <span id="v3b" class="readout">1.0</span></label>
+        <input type="range" id="s3b" min="0.01" max="100" value="1" step="0.01">
+      </div>
+      <div class="ctrl">
+        <label>±V<sub>supply</sub> (V): <span id="v3c" class="readout">15</span></label>
+        <input type="range" id="s3c" min="1" max="18" value="15" step="0.5">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Vos=10µV</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> Vos=1mV</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3)"></div> Vos=10mV</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent4);opacity:0.5"></div> Rail ±Vsupply</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function sc(id){const c=document.getElementById(id);const dpr=window.devicePixelRatio||1;return{canvas:c,resize:()=>{const w=c.clientWidth,h=c.clientHeight;c.width=w*dpr;c.height=h*dpr;const ctx=c.getContext('2d');ctx.scale(dpr,dpr);return{ctx,w,h};}};}
+
+function axes(ctx,w,h,pad,xLab,yLab,xTicks,yTicks){
+  ctx.clearRect(0,0,w,h);ctx.fillStyle=css('--card');ctx.fillRect(0,0,w,h);
+  const pw=w-pad.l-pad.r,ph=h-pad.t-pad.b;
+  ctx.strokeStyle=css('--grid');ctx.lineWidth=0.7;
+  xTicks.forEach(t=>{const x=pad.l+t.px*pw;ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();});
+  yTicks.forEach(t=>{const y=pad.t+ph-t.py*ph;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();});
+  ctx.strokeStyle=css('--text');ctx.lineWidth=1.5;ctx.strokeRect(pad.l,pad.t,pw,ph);
+  ctx.fillStyle=css('--subtext');ctx.font='10px system-ui';
+  ctx.textAlign='center';xTicks.forEach(t=>ctx.fillText(t.label,pad.l+t.px*pw,pad.t+ph+13));
+  ctx.textAlign='right';yTicks.forEach(t=>ctx.fillText(t.label,pad.l-4,pad.t+ph-t.py*ph+3.5));
+  ctx.fillStyle=css('--text');ctx.font='11px system-ui';ctx.textAlign='center';
+  ctx.fillText(xLab,pad.l+pw/2,h-2);
+  ctx.save();ctx.translate(11,pad.t+ph/2);ctx.rotate(-Math.PI/2);ctx.fillText(yLab,0,0);ctx.restore();
+  return{pw,ph};
+}
+
+// ─── Plot 1 ───────────────────────────────────────────────────────────────────
+const p1=sc('c1');
+function draw1(){
+  const {ctx,w,h}=p1.resize();
+  const myVos=parseFloat(document.getElementById('s1a').value)*1e-6;
+  document.getElementById('v1a').textContent=document.getElementById('s1a').value;
+  const pad={l:60,r:16,t:18,b:36};
+  const ngMin=1,ngMax=10000,voMin=1e-6,voMax=100;
+  const xTicks=[{v:1,px:0,label:'1'},{v:10,px:1/4,label:'10'},{v:100,px:2/4,label:'100'},{v:1e3,px:3/4,label:'1k'},{v:1e4,px:4/4,label:'10k'}];
+  const yTicks=[{v:1e-6,py:0,label:'1µV'},{v:1e-5,py:1/8,label:'10µV'},{v:1e-4,py:2/8,label:'100µV'},{v:1e-3,py:3/8,label:'1mV'},{v:0.01,py:4/8,label:'10mV'},{v:0.1,py:5/8,label:'100mV'},{v:1,py:6/8,label:'1V'},{v:10,py:7/8,label:'10V'},{v:100,py:8/8,label:'100V'}];
+  const {pw,ph}=axes(ctx,w,h,pad,'Noise gain','Output offset',xTicks,yTicks);
+  const xp=ng=>pad.l+Math.log10(ng)/Math.log10(ngMax)*pw;
+  const yp=vo=>pad.t+ph-Math.log10(Math.max(vo,voMin)/voMin)/Math.log10(voMax/voMin)*ph;
+
+  const curves=[{vos:1e-6,c:'--accent'},{vos:100e-6,c:'--accent2'},{vos:1e-3,c:'--accent3'},{vos:10e-3,c:'--accent4'}];
+  curves.forEach(cv=>{
+    ctx.strokeStyle=css(cv.c);ctx.lineWidth=2;
+    ctx.beginPath();let f=true;
+    for(let i=0;i<=200;i++){
+      const ng=Math.pow(ngMax,i/200);
+      const vo=cv.vos*ng;
+      if(vo<voMin||vo>voMax){f=true;continue;}
+      const x=xp(ng),y=yp(vo);
+      if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  });
+
+  // Your Vos curve
+  ctx.strokeStyle=css('--text');ctx.lineWidth=2.5;ctx.setLineDash([4,3]);
+  ctx.beginPath();let f=true;
+  for(let i=0;i<=200;i++){
+    const ng=Math.pow(ngMax,i/200);
+    const vo=myVos*ng;
+    if(vo<voMin||vo>voMax){f=true;continue;}
+    const x=xp(ng),y=yp(vo);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();ctx.setLineDash([]);
+
+  // 10mV and 100mV threshold lines
+  [0.01,0.1].forEach(lim=>{
+    ctx.strokeStyle=css('--subtext');ctx.lineWidth=0.8;ctx.globalAlpha=0.5;ctx.setLineDash([2,3]);
+    ctx.beginPath();ctx.moveTo(pad.l,yp(lim));ctx.lineTo(pad.l+pw,yp(lim));ctx.stroke();
+    ctx.setLineDash([]);ctx.globalAlpha=1;
+    ctx.fillStyle=css('--subtext');ctx.font='9px system-ui';ctx.textAlign='left';
+    ctx.fillText(lim>=0.1?'100mV':'10mV',pad.l+3,yp(lim)-3);
+  });
+}
+
+// ─── Plot 2 ───────────────────────────────────────────────────────────────────
+const p2=sc('c2');
+function draw2(){
+  const {ctx,w,h}=p2.resize();
+  const Vos25=parseFloat(document.getElementById('s2a').value);
+  const TCVos=parseFloat(document.getElementById('s2b').value);
+  const NG=parseFloat(document.getElementById('s2c').value);
+  document.getElementById('v2a').textContent=Vos25;
+  document.getElementById('v2b').textContent=TCVos.toFixed(1);
+  document.getElementById('v2c').textContent=NG;
+
+  const pad={l:60,r:16,t:18,b:36};
+  const Tmin=-40,Tmax=125;
+  const VosMin_uV=0,VosMax_uV=Math.max(Vos25+TCVos*(125-25)*1.2,100);
+  const VoutMax_mV=VosMax_uV*NG/1000;
+
+  const xTicks=[{v:-40,px:0,label:'-40°C'},{v:0,px:(0-Tmin)/(Tmax-Tmin),label:'0°C'},{v:25,px:(25-Tmin)/(Tmax-Tmin),label:'25°C'},{v:85,px:(85-Tmin)/(Tmax-Tmin),label:'85°C'},{v:125,px:(125-Tmin)/(Tmax-Tmin),label:'125°C'}];
+  const numY=5;
+  const yTicks=Array.from({length:numY+1},(_,i)=>({py:i/numY,label:((VosMax_uV*i/numY)).toFixed(0)+'µV'}));
+
+  const {pw,ph}=axes(ctx,w,h,pad,'Temperature','Vos (µV)',xTicks,yTicks);
+  const xp=T=>pad.l+(T-Tmin)/(Tmax-Tmin)*pw;
+  const yp=vos=>pad.t+ph-(vos/VosMax_uV)*ph;
+
+  // Drift band shading
+  ctx.fillStyle=css('--accent3');ctx.globalAlpha=0.12;
+  ctx.beginPath();
+  ctx.moveTo(xp(Tmin),yp(Math.max(0,Vos25+TCVos*(Tmin-25))));
+  for(let T=Tmin;T<=Tmax;T+=1) ctx.lineTo(xp(T),yp(Math.max(0,Vos25+TCVos*(T-25))));
+  ctx.lineTo(xp(Tmax),yp(0)); ctx.lineTo(xp(Tmin),yp(0));
+  ctx.closePath();ctx.fill();ctx.globalAlpha=1;
+
+  // Vos curve
+  ctx.strokeStyle=css('--accent');ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let T=Tmin;T<=Tmax;T+=2){
+    const vos=Math.max(0,Vos25+TCVos*(T-25));
+    const x=xp(T),y=yp(vos);
+    if(T===Tmin)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Output offset curve (secondary axis)
+  ctx.strokeStyle=css('--accent2');ctx.lineWidth=2;ctx.setLineDash([5,4]);
+  ctx.beginPath();
+  for(let T=Tmin;T<=Tmax;T+=2){
+    const vos=Math.max(0,Vos25+TCVos*(T-25));
+    const vout_uV=vos*NG;
+    const y=yp(vout_uV/NG); // rescale to same axis
+    const x=xp(T);
+    if(T===Tmin)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();ctx.setLineDash([]);
+
+  // 25°C marker
+  ctx.fillStyle=css('--accent');
+  ctx.beginPath();ctx.arc(xp(25),yp(Vos25),4,0,2*Math.PI);ctx.fill();
+
+  // Annotation
+  const VosMax_hot=Vos25+TCVos*(125-25);
+  const VoutMV=(VosMax_hot*NG/1000).toFixed(1);
+  ctx.fillStyle=css('--accent2');ctx.font='bold 9px system-ui';ctx.textAlign='left';
+  ctx.fillText(`Max Vout_offset @ 125°C: ${VoutMV}mV  (gain=${NG})`,pad.l+4,pad.t+14);
+  ctx.fillStyle=css('--accent');
+  ctx.fillText(`Vos_max @ 125°C: ${VosMax_hot.toFixed(0)}µV`,pad.l+4,pad.t+27);
+}
+
+// ─── Plot 3 ───────────────────────────────────────────────────────────────────
+const p3=sc('c3');
+function draw3(){
+  const {ctx,w,h}=p3.resize();
+  const R=parseFloat(document.getElementById('s3a').value)*1e3;
+  const C=parseFloat(document.getElementById('s3b').value)*1e-6;
+  const Vsup=parseFloat(document.getElementById('s3c').value);
+  document.getElementById('v3a').textContent=document.getElementById('s3a').value;
+  document.getElementById('v3b').textContent=parseFloat(document.getElementById('s3b').value).toFixed(2);
+  document.getElementById('v3c').textContent=Vsup;
+
+  const RC=R*C;
+  const vosValues=[10e-6,1e-3,10e-3];
+  const colors=['--accent','--accent2','--accent3'];
+
+  // Time to rail for max Vos = Vsup / (Vos/RC) = Vsup*RC/Vos
+  const tMax=Math.max(Vsup*RC/10e-6 * 1.1, 1e-3);
+  const tMin=0;
+
+  const pad={l:60,r:16,t:18,b:36};
+  const numXT=5;
+  const xTicks=Array.from({length:numXT+1},(_,i)=>{
+    const t=i/numXT*tMax;
+    const ts=t>=1?t.toFixed(1)+'s':t>=1e-3?(t*1e3).toFixed(1)+'ms':(t*1e6).toFixed(0)+'µs';
+    return{px:i/numXT,label:ts};
+  });
+  const yTicks=[{py:0,label:(-Vsup).toFixed(0)+'V'},{py:0.25,label:(-Vsup/2).toFixed(1)+'V'},{py:0.5,label:'0V'},{py:0.75,label:(Vsup/2).toFixed(1)+'V'},{py:1.0,label:Vsup.toFixed(0)+'V'}];
+
+  const {pw,ph}=axes(ctx,w,h,pad,'Time','Integrator Output',xTicks,yTicks);
+  const xp=t=>pad.l+t/tMax*pw;
+  const yp=v=>pad.t+ph-((v+Vsup)/(2*Vsup))*ph;
+
+  // Rail lines
+  ctx.strokeStyle=css('--accent4');ctx.lineWidth=1;ctx.globalAlpha=0.5;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,yp(Vsup));ctx.lineTo(pad.l+pw,yp(Vsup));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(pad.l,yp(-Vsup));ctx.lineTo(pad.l+pw,yp(-Vsup));ctx.stroke();
+  ctx.setLineDash([]);ctx.globalAlpha=1;
+
+  // Zero line
+  ctx.strokeStyle=css('--subtext');ctx.lineWidth=0.8;ctx.globalAlpha=0.4;
+  ctx.beginPath();ctx.moveTo(pad.l,yp(0));ctx.lineTo(pad.l+pw,yp(0));ctx.stroke();
+  ctx.globalAlpha=1;
+
+  // Ramp curves
+  const N=300;
+  vosValues.forEach((vos,idx)=>{
+    const slope=vos/RC; // V/s
+    ctx.strokeStyle=css(colors[idx]);ctx.lineWidth=2.2;
+    ctx.beginPath();
+    for(let i=0;i<=N;i++){
+      const t=i/N*tMax;
+      const v=Math.min(Vsup,slope*t);
+      const x=xp(t),y=yp(v);
+      if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    // Time to rail annotation
+    const t_rail=Vsup/slope;
+    if(t_rail<=tMax){
+      ctx.fillStyle=css(colors[idx]);ctx.font='9px system-ui';ctx.textAlign='left';
+      const ts=t_rail>=1?t_rail.toFixed(2)+'s':t_rail>=1e-3?(t_rail*1e3).toFixed(1)+'ms':(t_rail*1e6).toFixed(0)+'µs';
+      const vosStr=vos>=1e-3?(vos*1e3).toFixed(0)+'mV':(vos*1e6).toFixed(0)+'µV';
+      ctx.fillText(vosStr+' → rail in '+ts, xp(t_rail)+4, yp(Vsup*0.9)-idx*11);
+    }
+  });
+}
+
+['s1a'].forEach(id=>document.getElementById(id).addEventListener('input',draw1));
+['s2a','s2b','s2c'].forEach(id=>document.getElementById(id).addEventListener('input',draw2));
+['s3a','s3b','s3c'].forEach(id=>document.getElementById(id).addEventListener('input',draw3));
+window.addEventListener('resize',()=>{draw1();draw2();draw3();});
+draw1();draw2();draw3();
+</script>
+</body>
+</html>

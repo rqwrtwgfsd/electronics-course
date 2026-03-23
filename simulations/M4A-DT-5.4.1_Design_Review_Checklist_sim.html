@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-DT-5.4.1 Design Review Checklist</title>
+<style>
+  :root {
+    --bg: #f5f5f5; --panel: #ffffff; --border: #d0d0d0;
+    --text: #1a1a1a; --muted: #666; --accent: #1a6eb5;
+    --pass: #2d7a2d; --fail: #b52a2a; --warn: #b57a00;
+    --pass-bg: #e8f5e8; --fail-bg: #fde8e8; --warn-bg: #fff3cd;
+    --canvas-bg: #fafafa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a; --panel: #242424; --border: #3a3a3a;
+      --text: #e8e8e8; --muted: #999; --accent: #4da3f5;
+      --pass: #4caf50; --fail: #ef5350; --warn: #ffb300;
+      --pass-bg: #1a2e1a; --fail-bg: #2e1a1a; --warn-bg: #2e2200;
+      --canvas-bg: #1e1e1e;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; padding: 16px; }
+  h1 { font-size: 1.2em; color: var(--accent); margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 0.85em; margin-bottom: 16px; }
+  .layout { display: grid; grid-template-columns: 300px 1fr; gap: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .panel h3 { font-size: 0.9em; color: var(--accent); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .slider-row { margin-bottom: 9px; }
+  .slider-row label { display: flex; justify-content: space-between; font-size: 0.82em; color: var(--muted); margin-bottom: 3px; }
+  .slider-row label span { color: var(--text); font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .right-col { display: flex; flex-direction: column; gap: 14px; }
+  canvas { width: 100%; display: block; background: var(--canvas-bg); border-radius: 6px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.78em; font-weight: 700; }
+  .badge.pass { background: var(--pass-bg); color: var(--pass); }
+  .badge.fail { background: var(--fail-bg); color: var(--fail); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  .checklist { width: 100%; border-collapse: collapse; font-size: 0.82em; }
+  .checklist th { background: var(--border); padding: 5px 8px; text-align: left; font-size: 0.85em; }
+  .checklist td { padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .section-divider { font-size: 0.75em; color: var(--muted); margin: 8px 0 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .readout-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .readout { flex: 1; min-width: 90px; background: var(--canvas-bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; text-align: center; }
+  .readout .val { font-size: 1.1em; font-weight: 700; }
+  .readout .lbl { font-size: 0.72em; color: var(--muted); margin-top: 2px; }
+  .score-bar { height: 8px; border-radius: 4px; background: var(--border); overflow: hidden; margin-top: 8px; }
+  .score-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+  @media (max-width: 720px) { .layout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<h1>M4A-DT-5.4.1 — Design Review Checklist</h1>
+<p class="subtitle">Interactive design review: adjust circuit parameters and see which checklist items pass or fail in real time</p>
+
+<div class="layout">
+<div>
+  <div class="panel" style="margin-bottom:12px">
+    <h3>Circuit Under Review</h3>
+    <div class="section-divider">Amplifier</div>
+    <div class="slider-row">
+      <label>Closed-loop gain <span id="lbl-gain">10</span></label>
+      <input type="range" id="sl-gain" min="1" max="100" step="1" value="10" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>GBW (MHz) <span id="lbl-gbw">10</span></label>
+      <input type="range" id="sl-gbw" min="0.1" max="100" step="0.1" value="10" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Extra pole fp2 (MHz) <span id="lbl-fp2">50</span></label>
+      <input type="range" id="sl-fp2" min="0.5" max="200" step="0.5" value="50" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Slew rate (V/µs) <span id="lbl-sr">10</span></label>
+      <input type="range" id="sl-sr" min="0.1" max="100" step="0.1" value="10" oninput="update()">
+    </div>
+    <div class="section-divider">Passive Components</div>
+    <div class="slider-row">
+      <label>R1 (kΩ) <span id="lbl-r1">10</span></label>
+      <input type="range" id="sl-r1" min="0.1" max="1000" step="0.1" value="10" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Resistor TC (ppm/°C) <span id="lbl-rtc">100</span></label>
+      <input type="range" id="sl-rtc" min="0.2" max="500" step="0.2" value="100" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Resistor tolerance (%) <span id="lbl-rtol">1</span></label>
+      <input type="range" id="sl-rtol" min="0.005" max="5" step="0.005" value="1" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Cap voltage rating (V) <span id="lbl-cvr">10</span></label>
+      <input type="range" id="sl-cvr" min="4" max="50" step="2" value="10" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Supply voltage (V) <span id="lbl-vcc">5</span></label>
+      <input type="range" id="sl-vcc" min="1.8" max="24" step="0.1" value="5" oninput="update()">
+    </div>
+    <div class="section-divider">Op-amp</div>
+    <div class="slider-row">
+      <label>Vos (µV) <span id="lbl-vos">500</span></label>
+      <input type="range" id="sl-vos" min="1" max="5000" step="1" value="500" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Bias current Ib (nA) <span id="lbl-ib">50</span></label>
+      <input type="range" id="sl-ib" min="0.001" max="1000" step="0.1" value="50" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>en (nV/√Hz) <span id="lbl-en">5</span></label>
+      <input type="range" id="sl-en" min="0.3" max="50" step="0.1" value="5" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Capacitive load (pF) <span id="lbl-cload">10</span></label>
+      <input type="range" id="sl-cload" min="0" max="1000" step="5" value="10" oninput="update()">
+    </div>
+    <div class="section-divider">Specifications</div>
+    <div class="slider-row">
+      <label>BW spec (kHz) <span id="lbl-bwspec">50</span></label>
+      <input type="range" id="sl-bwspec" min="1" max="2000" step="1" value="50" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Gain accuracy spec (%) <span id="lbl-gspec">2</span></label>
+      <input type="range" id="sl-gspec" min="0.1" max="10" step="0.1" value="2" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Noise spec output (µV rms) <span id="lbl-nspec">100</span></label>
+      <input type="range" id="sl-nspec" min="1" max="2000" step="1" value="100" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Max Vout offset (mV) <span id="lbl-ospec">5</span></label>
+      <input type="range" id="sl-ospec" min="0.1" max="100" step="0.1" value="5" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Resistor power (mW actual) <span id="lbl-rpow">50</span></label>
+      <input type="range" id="sl-rpow" min="1" max="500" step="1" value="50" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Resistor rating (mW) <span id="lbl-rrating">100</span></label>
+      <input type="range" id="sl-rrating" min="25" max="2000" step="25" value="100" oninput="update()">
+    </div>
+  </div>
+</div>
+
+<div class="right-col">
+  <div class="panel">
+    <div class="readout-row" id="score-row">
+      <div class="readout"><div class="val" id="score-val" style="color:var(--accent)">0/10</div><div class="lbl">Items Passing</div></div>
+      <div class="readout"><div class="val" id="score-pct" style="color:var(--accent)">0%</div><div class="lbl">Score</div></div>
+      <div class="readout"><div class="val" id="score-fail" style="color:var(--fail)">0</div><div class="lbl">Failing</div></div>
+      <div class="readout"><div class="val" id="score-warn" style="color:var(--warn)">0</div><div class="lbl">Warnings</div></div>
+    </div>
+    <div class="score-bar" style="margin:8px 0">
+      <div class="score-fill" id="score-bar-fill" style="width:0%;background:var(--fail)"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>Design Review Checklist</h3>
+    <table class="checklist" id="checklist-table">
+      <thead><tr><th>Category</th><th>Item</th><th>Calculated</th><th>Spec</th><th>Status</th></tr></thead>
+      <tbody id="checklist-body"></tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h3>Review Scorecard — Spider Chart</h3>
+    <canvas id="c1" height="220"></canvas>
+  </div>
+  <div class="panel">
+    <h3>Margin Waterfall — Distance to Limit</h3>
+    <canvas id="c2" height="180"></canvas>
+  </div>
+</div>
+</div>
+
+<script>
+function v(id) { return parseFloat(document.getElementById(id).value); }
+function lbl(id, val, dec) { const el = document.getElementById(id); if(el) el.textContent = typeof val==='number' ? val.toFixed(dec!==undefined?dec:1) : val; }
+function getColors() {
+  const s = getComputedStyle(document.documentElement);
+  return ['--text','--muted','--accent','--pass','--fail','--warn','--border','--canvas-bg'].reduce((o,k)=>{o[k.slice(2)]=s.getPropertyValue(k).trim();return o;},{});
+}
+function getCtx(id) {
+  const c = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  const rect = c.getBoundingClientRect();
+  if (c._lw !== rect.width || c._lh !== rect.height) {
+    c.width = rect.width * dpr; c.height = rect.height * dpr;
+    c._lw = rect.width; c._lh = rect.height;
+  }
+  const ctx = c.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return [ctx, rect.width, rect.height];
+}
+
+function loopPM(gbw, gain, fp2, cload) {
+  const fud = gbw * 1e6;
+  const fp2Hz = fp2 * 1e6;
+  const noise_gain = 1 + gain;
+  // Load pole from Rout (approx 50Ω) and cload
+  const rout = 50;
+  const fpLoad = cload > 0 ? 1 / (2 * Math.PI * rout * cload * 1e-12) : Infinity;
+
+  let prevMag = Infinity, pm = 90;
+  for (let fi = 1e3; fi <= 1e9; fi *= 1.03) {
+    const aol_mag = fud / Math.sqrt(1 + (fi/fud)**2);
+    const beta = 1 / noise_gain;
+    const p2 = 1 / Math.sqrt(1 + (fi/fp2Hz)**2);
+    const pLoad = cload > 0 ? 1 / Math.sqrt(1 + (fi/fpLoad)**2) : 1;
+    const t_mag = aol_mag * beta * p2 * pLoad;
+    if (t_mag <= 1 && prevMag > 1) {
+      const ph1 = -Math.atan(fi/fud) * 180/Math.PI;
+      const ph2 = -Math.atan(fi/fp2Hz) * 180/Math.PI;
+      const ph3 = cload > 0 ? -Math.atan(fi/fpLoad) * 180/Math.PI : 0;
+      pm = 180 + ph1 + ph2 + ph3;
+      break;
+    }
+    prevMag = t_mag;
+  }
+  return pm;
+}
+
+function update() {
+  const gain = v('sl-gain');
+  const gbw = v('sl-gbw');
+  const fp2 = v('sl-fp2');
+  const sr = v('sl-sr');
+  const r1 = v('sl-r1') * 1e3;
+  const rtc = v('sl-rtc');
+  const rtol = v('sl-rtol');
+  const cvr = v('sl-cvr');
+  const vcc = v('sl-vcc');
+  const vos = v('sl-vos') * 1e-6;
+  const ib = v('sl-ib') * 1e-9;
+  const en = v('sl-en') * 1e-9;
+  const cload = v('sl-cload');
+  const bwspec = v('sl-bwspec') * 1e3;
+  const gspec = v('sl-gspec') / 100;
+  const nspec = v('sl-nspec') * 1e-6;
+  const ospec = v('sl-ospec') * 1e-3;
+  const rpow = v('sl-rpow');
+  const rrating = v('sl-rrating');
+
+  lbl('lbl-gain', gain, 0);
+  lbl('lbl-gbw', gbw, 1);
+  lbl('lbl-fp2', fp2, 0);
+  lbl('lbl-sr', sr, 1);
+  lbl('lbl-r1', v('sl-r1'), 1);
+  lbl('lbl-rtc', rtc, 0);
+  lbl('lbl-rtol', rtol, 3);
+  lbl('lbl-cvr', cvr, 0);
+  lbl('lbl-vcc', vcc, 1);
+  lbl('lbl-vos', v('sl-vos'), 0);
+  lbl('lbl-ib', v('sl-ib'), 1);
+  lbl('lbl-en', v('sl-en'), 1);
+  lbl('lbl-cload', cload, 0);
+  lbl('lbl-bwspec', v('sl-bwspec'), 0);
+  lbl('lbl-gspec', v('sl-gspec'), 1);
+  lbl('lbl-nspec', v('sl-nspec'), 0);
+  lbl('lbl-ospec', v('sl-ospec'), 1);
+  lbl('lbl-rpow', rpow, 0);
+  lbl('lbl-rrating', rrating, 0);
+
+  const cl_bw = gbw * 1e6 / (1 + gain);
+  const rf = r1 * gain;
+  const k = 1.38e-23, T_k = 298;
+  const ng = 1 + gain;
+
+  // Compute checklist values
+  const pm = loopPM(gbw, gain, fp2, cload);
+  const pm_noload = loopPM(gbw, gain, fp2, 0);
+
+  // Gain error over 125°C
+  const tc_drift = rtc * 1e-6 * 125;
+  const gain_error_eva = (rtol/100 + tc_drift) * 2; // two resistors
+
+  // Output offset
+  const out_offset = vos * ng + ib * rf;
+
+  // Noise
+  const en_out = Math.sqrt((en * ng)**2 + 4*k*T_k*r1*ng**2 + 4*k*T_k*rf);
+  const noise_integrated = en_out * Math.sqrt(cl_bw) * 1e6; // µV
+
+  // Slew rate demand at BW spec
+  const sr_demand = 2 * Math.PI * bwspec * vcc / 2;  // conservative: full swing at BW
+  const sr_actual = sr * 1e6;
+
+  // Capacitor voltage margin
+  const cap_margin = cvr / vcc;
+
+  // Resistor power derating
+  const power_derating = rrating / rpow;
+
+  const items = [
+    { cat: 'Frequency', item: 'Bandwidth ≥ spec', val: (cl_bw/1e3).toFixed(1)+' kHz', spec: '≥ '+v('sl-bwspec')+' kHz', pass: cl_bw >= bwspec, margin: cl_bw/bwspec - 1 },
+    { cat: 'Stability', item: 'Phase margin ≥ 45° (no load)', val: pm_noload.toFixed(1)+'°', spec: '≥ 45°', pass: pm_noload >= 45, margin: (pm_noload - 45)/45 },
+    { cat: 'Stability', item: 'PM ≥ 45° with CL = '+cload+' pF', val: pm.toFixed(1)+'°', spec: '≥ 45°', pass: pm >= 45, margin: (pm - 45)/45 },
+    { cat: 'Accuracy', item: 'Gain error EVA (125°C range)', val: (gain_error_eva*100).toFixed(2)+'%', spec: '≤ '+v('sl-gspec')+'%', pass: gain_error_eva <= gspec, margin: gspec/gain_error_eva - 1 },
+    { cat: 'Offset', item: 'Output offset (output-referred)', val: (out_offset*1000).toFixed(2)+' mV', spec: '≤ '+v('sl-ospec')+' mV', pass: out_offset <= ospec, margin: ospec/out_offset - 1 },
+    { cat: 'Noise', item: 'Integrated output noise', val: noise_integrated.toFixed(1)+' µV', spec: '≤ '+v('sl-nspec')+' µV', pass: noise_integrated <= nspec*1e6, margin: nspec*1e6/noise_integrated - 1 },
+    { cat: 'Slew Rate', item: 'SR adequate for BW×Vswing', val: (sr_actual*1e-6).toFixed(1)+' V/µs', spec: '≥ '+(sr_demand*1e-6).toFixed(2)+' V/µs', pass: sr_actual >= sr_demand, margin: sr_actual/sr_demand - 1 },
+    { cat: 'Cap Rating', item: 'Cap voltage ≥ 2× supply', val: cvr+'V rated', spec: '≥ '+(2*vcc).toFixed(0)+'V', pass: cvr >= 2*vcc, margin: cvr/(2*vcc) - 1 },
+    { cat: 'Resistor', item: 'Power derating ≥ 3×', val: power_derating.toFixed(2)+'×', spec: '≥ 3×', pass: power_derating >= 3, margin: power_derating/3 - 1 },
+    { cat: 'DC Bias', item: 'Output swing headroom', val: (vcc/2 - gain * vcc * 0.05).toFixed(2)+'V margin', spec: '> 0.5V', pass: (vcc/2 - gain * vcc * 0.05) > 0.5, margin: (vcc/2 - gain * vcc * 0.05) / 0.5 - 1 },
+  ];
+
+  const passing = items.filter(i => i.pass).length;
+  const failing = items.filter(i => !i.pass).length;
+  const warnings = items.filter(i => i.pass && i.margin < 0.2).length;
+  const pct = Math.round(passing / items.length * 100);
+
+  document.getElementById('score-val').textContent = passing + '/' + items.length;
+  document.getElementById('score-pct').textContent = pct + '%';
+  document.getElementById('score-fail').textContent = failing;
+  document.getElementById('score-warn').textContent = warnings;
+  document.getElementById('score-val').style.color = pct === 100 ? 'var(--pass)' : pct >= 70 ? 'var(--warn)' : 'var(--fail)';
+  const bar = document.getElementById('score-bar-fill');
+  bar.style.width = pct + '%';
+  bar.style.background = pct === 100 ? 'var(--pass)' : pct >= 70 ? 'var(--warn)' : 'var(--fail)';
+
+  document.getElementById('checklist-body').innerHTML = items.map(item => {
+    const cls = item.pass ? (item.margin < 0.2 ? 'warn' : 'pass') : 'fail';
+    const statusText = item.pass ? (item.margin < 0.2 ? 'MARGIN LOW' : 'PASS') : 'FAIL';
+    const marginPct = item.margin >= 0 ? '+'+Math.round(item.margin*100)+'%' : Math.round(item.margin*100)+'%';
+    return `<tr><td style="color:var(--muted)">${item.cat}</td><td>${item.item}</td><td>${item.val}</td><td>${item.spec}</td>` +
+      `<td><span class="badge ${cls}">${statusText}</span> <span style="font-size:0.75em;color:var(--muted)">${marginPct}</span></td></tr>`;
+  }).join('');
+
+  drawSpider(items);
+  drawWaterfall(items);
+}
+
+function drawSpider(items) {
+  const [ctx, W, H] = getCtx('c1');
+  const C = getColors();
+  ctx.clearRect(0, 0, W, H);
+
+  const cx = W / 2, cy = H / 2;
+  const R = Math.min(W, H) / 2 - 40;
+  const N = items.length;
+
+  function angle(i) { return -Math.PI/2 + (i / N) * 2 * Math.PI; }
+  function pt(i, r) { return [cx + r * Math.cos(angle(i)), cy + r * Math.sin(angle(i))]; }
+
+  // Background rings
+  ctx.strokeStyle = C.border; ctx.lineWidth = 0.5;
+  [0.25, 0.5, 0.75, 1.0].forEach(frac => {
+    ctx.beginPath();
+    for (let i = 0; i <= N; i++) {
+      const [x, y] = pt(i % N, R * frac);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  });
+
+  // Spokes
+  for (let i = 0; i < N; i++) {
+    const [x, y] = pt(i, R);
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(x, y); ctx.stroke();
+  }
+
+  // Score polygon — use margin to determine radius
+  ctx.fillStyle = 'rgba(74, 163, 245, 0.2)';
+  ctx.strokeStyle = C.accent; ctx.lineWidth = 2;
+  ctx.beginPath();
+  items.forEach((item, i) => {
+    const score = item.pass ? Math.min(1, 0.6 + item.margin * 0.4) : Math.max(0.05, 0.3 + item.margin * 0.3);
+    const [x, y] = pt(i, R * score);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+
+  // Labels
+  ctx.font = '10px system-ui';
+  items.forEach((item, i) => {
+    const [x, y] = pt(i, R + 16);
+    ctx.fillStyle = item.pass ? (item.margin < 0.2 ? C.warn : C.pass) : C.fail;
+    ctx.textAlign = x < cx - 5 ? 'right' : x > cx + 5 ? 'left' : 'center';
+    const shortLabel = item.cat;
+    ctx.fillText(shortLabel, x, y + 4);
+  });
+
+  // Pass rate circle
+  ctx.fillStyle = C.text; ctx.textAlign = 'center'; ctx.font = 'bold 14px system-ui';
+  ctx.fillText(items.filter(i=>i.pass).length+'/'+items.length, cx, cy + 5);
+}
+
+function drawWaterfall(items) {
+  const [ctx, W, H] = getCtx('c2');
+  const C = getColors();
+  ctx.clearRect(0, 0, W, H);
+
+  const PAD = { l: 120, r: 20, t: 20, b: 30 };
+  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+  ctx.fillStyle = C['canvas-bg'];
+  ctx.fillRect(PAD.l, PAD.t, cW, cH);
+
+  const margins = items.map(i => Math.max(-1, Math.min(2, i.margin)));
+  const barH = cH / items.length - 2;
+
+  function xp(m) { return PAD.l + (m + 1) / 3 * cW; }
+
+  // Zero line
+  const x0 = xp(0);
+  ctx.strokeStyle = C.fail; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(x0, PAD.t); ctx.lineTo(x0, PAD.t + cH); ctx.stroke();
+  ctx.fillStyle = C.fail; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Limit', x0, PAD.t + 8);
+
+  // 20% margin line
+  const x20 = xp(0.2);
+  ctx.strokeStyle = C.warn; ctx.lineWidth = 1; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(x20, PAD.t); ctx.lineTo(x20, PAD.t + cH); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = C.warn; ctx.fillText('+20%', x20, PAD.t + 8);
+
+  items.forEach((item, i) => {
+    const m = margins[i];
+    const y = PAD.t + i * (barH + 2);
+    const barW = (m / 3) * cW;
+    const x = m >= 0 ? x0 : xp(m);
+    const color = item.pass ? (m < 0.2 ? C.warn : C.pass) : C.fail;
+
+    ctx.fillStyle = color + '99';
+    ctx.fillRect(m >= 0 ? x0 : xp(m), y, Math.abs(barW), barH);
+    ctx.strokeStyle = color; ctx.lineWidth = 1;
+    ctx.strokeRect(m >= 0 ? x0 : xp(m), y, Math.abs(barW), barH);
+
+    ctx.fillStyle = C.text; ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+    ctx.fillText(item.cat, PAD.l - 5, y + barH/2 + 4);
+
+    // Margin label
+    const marginPct = (m * 100).toFixed(0) + '%';
+    ctx.fillStyle = color; ctx.textAlign = m >= 0 ? 'left' : 'right';
+    ctx.fillText(marginPct, xp(m) + (m >= 0 ? 4 : -4), y + barH/2 + 4);
+  });
+
+  ctx.strokeStyle = C.border; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t); ctx.lineTo(PAD.l, PAD.t+cH); ctx.lineTo(PAD.l+cW, PAD.t+cH); ctx.stroke();
+  ctx.fillStyle = C.muted; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Margin to Specification Limit (negative = failing)', PAD.l + cW/2, H - 4);
+}
+
+window.addEventListener('resize', update);
+update();
+</script>
+</body>
+</html>

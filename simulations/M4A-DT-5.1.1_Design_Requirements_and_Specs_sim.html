@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-DT-5.1.1 — Design Requirements and Specifications</title>
+<style>
+:root{--bg:#f5f5f5;--panel:#fff;--border:#d0d0d0;--text:#1a1a1a;--text2:#555;--accent:#1a6fc4;--green:#2a9d2a;--orange:#e07b00;--red:#c42a2a;--grid:#e0e0e0;}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--panel:#252525;--border:#404040;--text:#e8e8e8;--text2:#aaa;--accent:#4a9fe8;--green:#4acd4a;--orange:#f0a030;--red:#e85050;--grid:#333;}}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px;}
+h1{font-size:1.1rem;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--border);}
+h1 span{color:var(--text2);font-weight:normal;font-size:.85rem;}
+.main{display:grid;grid-template-columns:1fr 1fr;gap:0;height:calc(100vh - 44px);}
+.left{background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:16px;}
+.right{display:grid;grid-template-rows:1fr 1fr;overflow:hidden;}
+.plot-wrap{position:relative;background:var(--bg);border-bottom:1px solid var(--border);}
+.plot-wrap:last-child{border-bottom:none;}
+canvas{display:block;width:100%;height:100%;}
+.section{margin-bottom:16px;}
+.section-title{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:4px;}
+.spec-row{display:grid;grid-template-columns:160px 1fr 80px 80px;gap:4px;align-items:center;margin-bottom:6px;font-size:.8rem;}
+.spec-row .param{font-weight:600;}
+.spec-row .limit{font-family:monospace;font-size:.78rem;color:var(--text2);}
+.spec-row input[type=number]{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:2px 6px;color:var(--text);font-size:.78rem;font-family:monospace;}
+.badge{display:inline-block;padding:2px 7px;border-radius:10px;font-size:.72rem;font-weight:700;}
+.badge.pass{background:#2a9d2a33;color:var(--green);}
+.badge.fail{background:#c42a2a33;color:var(--red);}
+.badge.warn{background:#e07b0033;color:var(--orange);}
+.badge.na{background:var(--grid);color:var(--text2);}
+.header-row{display:grid;grid-template-columns:160px 1fr 80px 80px;gap:4px;font-size:.72rem;font-weight:700;color:var(--text2);margin-bottom:4px;text-transform:uppercase;}
+.ctrl{margin-bottom:8px;}
+.ctrl label{display:flex;justify-content:space-between;font-size:.8rem;margin-bottom:3px;}
+.ctrl label span{color:var(--accent);font-weight:600;font-family:monospace;}
+input[type=range]{width:100%;accent-color:var(--accent);}
+.summary-bar{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;}
+.sum-item{text-align:center;}
+.sum-label{font-size:.68rem;color:var(--text2);}
+.sum-val{font-size:1.1rem;font-weight:700;}
+.plot-label{position:absolute;top:6px;left:10px;font-size:.75rem;color:var(--text2);pointer-events:none;}
+</style>
+</head>
+<body>
+<h1>M4A-DT-5.1.1 — Design Requirements and Specifications <span>| Spec Compliance Checker</span></h1>
+<div class="main">
+  <div class="left">
+
+    <div class="section">
+      <div class="section-title">Circuit Under Specification</div>
+      <div class="ctrl">
+        <label>GBW (op-amp) <span id="val-gbw">10 MHz</span></label>
+        <input type="range" id="sl-gbw" min="0.1" max="200" step="0.1" value="10">
+      </div>
+      <div class="ctrl">
+        <label>Closed-Loop Gain <span id="val-gain">10×</span></label>
+        <input type="range" id="sl-gain" min="1" max="100" step="1" value="10">
+      </div>
+      <div class="ctrl">
+        <label>Resistor Tolerance <span id="val-rtol">1%</span></label>
+        <input type="range" id="sl-rtol" min="0.01" max="20" step="0.01" value="1">
+      </div>
+      <div class="ctrl">
+        <label>Resistor TC <span id="val-tc">50 ppm/°C</span></label>
+        <input type="range" id="sl-tc" min="1" max="500" step="1" value="50">
+      </div>
+      <div class="ctrl">
+        <label>Op-Amp Vos <span id="val-vos">0.5 mV</span></label>
+        <input type="range" id="sl-vos" min="0.001" max="10" step="0.001" value="0.5">
+      </div>
+      <div class="ctrl">
+        <label>Op-Amp en <span id="val-en">5 nV/√Hz</span></label>
+        <input type="range" id="sl-en" min="0.5" max="50" step="0.5" value="5">
+      </div>
+      <div class="ctrl">
+        <label>Supply Voltage Vcc <span id="val-vcc">5 V</span></label>
+        <input type="range" id="sl-vcc" min="1.8" max="36" step="0.1" value="5">
+      </div>
+      <div class="ctrl">
+        <label>Load Resistance RL <span id="val-rl">10 kΩ</span></label>
+        <input type="range" id="sl-rl" min="100" max="100000" step="100" value="10000">
+      </div>
+      <div class="ctrl">
+        <label>Load Capacitance CL <span id="val-cl">100 pF</span></label>
+        <input type="range" id="sl-cl" min="0" max="10000" step="10" value="100">
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Specification Requirements</div>
+      <div class="summary-bar">
+        <div class="sum-item"><div class="sum-label">PASS</div><div class="sum-val ok" id="cnt-pass">—</div></div>
+        <div class="sum-item"><div class="sum-label">WARN</div><div class="sum-val warn" id="cnt-warn">—</div></div>
+        <div class="sum-item"><div class="sum-label">FAIL</div><div class="sum-val bad" id="cnt-fail">—</div></div>
+        <div class="sum-item"><div class="sum-label">Total</div><div class="sum-val" id="cnt-total">—</div></div>
+      </div>
+      <div class="header-row">
+        <span>Parameter</span><span>Specification</span><span>Actual</span><span>Status</span>
+      </div>
+      <div id="spec-rows"></div>
+    </div>
+
+  </div>
+
+  <div class="right">
+    <div class="plot-wrap">
+      <div class="plot-label">Gain Tolerance vs. Temperature (Nominal to Worst-Case)</div>
+      <canvas id="gain-canvas"></canvas>
+    </div>
+    <div class="plot-wrap">
+      <div class="plot-label">Bandwidth vs. Closed-Loop Gain (GBW Product)</div>
+      <canvas id="bw-canvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+function getParams(){
+  return{
+    gbw:  +document.getElementById('sl-gbw').value*1e6,
+    gain: +document.getElementById('sl-gain').value,
+    rtol: +document.getElementById('sl-rtol').value/100,
+    tc:   +document.getElementById('sl-tc').value*1e-6,
+    vos:  +document.getElementById('sl-vos').value*1e-3,
+    en:   +document.getElementById('sl-en').value*1e-9,
+    vcc:  +document.getElementById('sl-vcc').value,
+    rl:   +document.getElementById('sl-rl').value,
+    cl:   +document.getElementById('sl-cl').value*1e-12,
+  };
+}
+
+// Compute derived quantities
+function compute(p){
+  const bw3db = p.gbw / (p.gain+1); // -3dB bandwidth (noise gain crossover)
+  const gainTolNom = 100*p.rtol; // % gain error from resistor tolerance
+  const gainTolTemp = 100*p.tc*125; // % gain error over 125°C range
+  const gainTolTotal = Math.sqrt(gainTolNom*gainTolNom*4 + gainTolTemp*gainTolTemp); // RSS
+  const outputOffset = p.vos * (p.gain+1); // V
+  const outputNoise20k = p.en * Math.sqrt(bw3db*Math.min(1,20e3/bw3db)); // rough
+  const snr = p.vcc*0.4; // rough signal level
+  const snrDb = 20*Math.log10(snr/Math.max(outputNoise20k*Math.sqrt(20000),1e-10));
+  // Phase margin rough estimate
+  const fpl = p.cl>0 ? 1/(2*Math.PI*100*p.cl) : Infinity; // load pole at 100 Ω Rout
+  const phaseAtCrossover = -90 - (180/Math.PI)*Math.atan2(bw3db, fpl);
+  const pm = 180 + phaseAtCrossover;
+  // Power: rough op-amp power (assume 5mA IQ)
+  const iq = 5e-3;
+  const powerMW = iq*p.vcc*1000;
+
+  return{bw3db, gainTolTotal, gainTolNom, gainTolTemp, outputOffset, outputNoise20k, snrDb, pm, powerMW};
+}
+
+const SPECS = [
+  {id:'bw',     name:'Bandwidth (−3dB)', req:'≥ 10 kHz',  limit:10e3,  dir:'gte', unit:'Hz',  fn:c=>c.bw3db},
+  {id:'gtol',   name:'Gain tolerance',   req:'< 2%',       limit:2,     dir:'lt',  unit:'%',   fn:c=>c.gainTolTotal},
+  {id:'vos_out',name:'Output offset',    req:'< 50 mV',    limit:0.05,  dir:'lt',  unit:'V',   fn:c=>c.outputOffset},
+  {id:'snr',    name:'SNR (A-wtd)',      req:'> 80 dB',    limit:80,    dir:'gte', unit:'dB',  fn:c=>c.snrDb},
+  {id:'pm',     name:'Phase margin',     req:'> 45°',      limit:45,    dir:'gte', unit:'°',   fn:c=>c.pm},
+  {id:'power',  name:'Power (quiescent)',req:'< 50 mW',    limit:50,    dir:'lt',  unit:'mW',  fn:c=>c.powerMW},
+];
+
+function fmtVal(v, unit){
+  if(unit==='Hz'){
+    if(v>=1e6) return (v/1e6).toFixed(2)+'MHz';
+    if(v>=1e3) return (v/1e3).toFixed(1)+'kHz';
+    return v.toFixed(0)+'Hz';
+  }
+  if(unit==='%') return v.toFixed(2)+'%';
+  if(unit==='V') return v>=1?v.toFixed(3)+'V':(v*1000).toFixed(2)+'mV';
+  if(unit==='dB') return v.toFixed(1)+'dB';
+  if(unit==='°') return v.toFixed(1)+'°';
+  if(unit==='mW') return v.toFixed(1)+'mW';
+  return v.toFixed(3)+unit;
+}
+
+function getStatus(actual, spec){
+  const ok=spec.dir==='gte'?actual>=spec.limit:actual<spec.limit;
+  const warn=spec.dir==='gte'?actual>=spec.limit*0.8&&actual<spec.limit:actual<spec.limit*1.2&&actual>=spec.limit;
+  if(ok&&!warn) return 'pass';
+  if(warn) return 'warn';
+  return 'fail';
+}
+
+function renderSpecs(){
+  const p=getParams();
+  const c=compute(p);
+  const container=document.getElementById('spec-rows');
+  container.innerHTML='';
+  let pass=0,warn=0,fail=0;
+  SPECS.forEach(spec=>{
+    const actual=spec.fn(c);
+    const status=getStatus(actual,spec);
+    if(status==='pass')pass++;
+    else if(status==='warn')warn++;
+    else fail++;
+    const row=document.createElement('div');
+    row.className='spec-row';
+    row.innerHTML=`
+      <span class="param">${spec.name}</span>
+      <span class="limit">${spec.req}</span>
+      <span style="font-family:monospace;font-size:.78rem">${fmtVal(actual,spec.unit)}</span>
+      <span><span class="badge ${status}">${status.toUpperCase()}</span></span>
+    `;
+    container.appendChild(row);
+  });
+  document.getElementById('cnt-pass').textContent=pass;
+  document.getElementById('cnt-warn').textContent=warn;
+  document.getElementById('cnt-fail').textContent=fail;
+  document.getElementById('cnt-total').textContent=SPECS.length;
+}
+
+function getColors(){
+  const s=getComputedStyle(document.documentElement);
+  return['--bg','--text','--text2','--grid','--accent','--green','--orange','--red','--border']
+    .reduce((o,k)=>{o[k.slice(2)]=s.getPropertyValue(k).trim();return o;},{});
+}
+
+function drawGain(canvas){
+  const W=canvas.offsetWidth*devicePixelRatio,H=canvas.offsetHeight*devicePixelRatio;
+  canvas.width=W;canvas.height=H;
+  const ctx=canvas.getContext('2d');
+  const C=getColors();
+  const p=getParams();
+  const PAD={l:55*devicePixelRatio,r:20*devicePixelRatio,t:20*devicePixelRatio,b:30*devicePixelRatio};
+  const pW=W-PAD.l-PAD.r,pH=H-PAD.t-PAD.b;
+  ctx.fillStyle=C.bg;ctx.fillRect(0,0,W,H);
+
+  const tMin=-40,tMax=125;
+  const gainNom=p.gain;
+  // Gain error as function of temperature
+  function gainAtT(t){
+    const drift=(t-25)*p.tc;
+    const rTol=p.rtol;
+    // nominal gain + drift + random tolerance
+    const gainLo=gainNom*(1-2*rTol)*(1-Math.abs(drift));
+    const gainHi=gainNom*(1+2*rTol)*(1+Math.abs(drift));
+    const gainNomT=gainNom*(1+(t-25)*p.tc*0.1); // slight temp drift of gain
+    return{lo:gainLo,hi:gainHi,nom:gainNomT};
+  }
+
+  const gLo=gainAtT(tMin).lo, gHi=gainAtT(tMax).hi;
+  const gRange=gHi-gLo, gMid=(gHi+gLo)/2;
+  const yMin=gMid-gRange*0.7, yMax=gMid+gRange*0.7;
+  function tX(t){return PAD.l+pW*(t-tMin)/(tMax-tMin);}
+  function gY(g){return PAD.t+pH*(1-(g-yMin)/(yMax-yMin));}
+
+  // Grid
+  const gStep=(yMax-yMin)/5;
+  for(let i=0;i<=5;i++){
+    const g=yMin+i*gStep;
+    const y=gY(g);
+    ctx.strokeStyle=C.grid;ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(W-PAD.r,y);ctx.stroke();
+    ctx.fillStyle=C.text2;ctx.font=`${9*devicePixelRatio}px monospace`;ctx.textAlign='right';
+    ctx.fillText(g.toFixed(1)+'×',PAD.l-4,y+3);
+  }
+  [-40,-20,0,25,85,125].forEach(t=>{
+    const x=tX(t);
+    ctx.strokeStyle=C.grid;ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,H-PAD.b);ctx.stroke();
+    ctx.fillStyle=C.text2;ctx.font=`${8*devicePixelRatio}px monospace`;ctx.textAlign='center';
+    ctx.fillText(t+'°C',x,H-PAD.b+12*devicePixelRatio);
+  });
+
+  // Tolerance band
+  ctx.fillStyle=C.accent+'20';
+  ctx.beginPath();
+  ctx.moveTo(tX(tMin),gY(gainAtT(tMin).hi));
+  for(let t=tMin;t<=tMax;t+=2) ctx.lineTo(tX(t),gY(gainAtT(t).hi));
+  for(let t=tMax;t>=tMin;t-=2) ctx.lineTo(tX(t),gY(gainAtT(t).lo));
+  ctx.closePath();ctx.fill();
+
+  // Nominal curve
+  ctx.strokeStyle=C.accent;ctx.lineWidth=2*devicePixelRatio;ctx.beginPath();
+  let first=true;
+  for(let t=tMin;t<=tMax;t+=2){
+    const {nom}=gainAtT(t);
+    const x=tX(t),y=gY(nom);
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Spec limit lines: ±2% of nominal
+  const gSpecHi=gainNom*1.02, gSpecLo=gainNom*0.98;
+  [gSpecHi,gSpecLo].forEach(g=>{
+    const y=gY(g);
+    if(y<PAD.t||y>H-PAD.b)return;
+    ctx.strokeStyle=C.red;ctx.lineWidth=1.5;ctx.setLineDash([5,4]);
+    ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(W-PAD.r,y);ctx.stroke();
+  });
+  ctx.setLineDash([]);
+  ctx.fillStyle=C.red;ctx.font=`${8*devicePixelRatio}px sans-serif`;ctx.textAlign='right';
+  ctx.fillText('Spec: ±2%',W-PAD.r-2,gY(gSpecHi)-3);
+}
+
+function drawBW(canvas){
+  const W=canvas.offsetWidth*devicePixelRatio,H=canvas.offsetHeight*devicePixelRatio;
+  canvas.width=W;canvas.height=H;
+  const ctx=canvas.getContext('2d');
+  const C=getColors();
+  const p=getParams();
+  const PAD={l:55*devicePixelRatio,r:20*devicePixelRatio,t:20*devicePixelRatio,b:30*devicePixelRatio};
+  const pW=W-PAD.l-PAD.r,pH=H-PAD.t-PAD.b;
+  ctx.fillStyle=C.bg;ctx.fillRect(0,0,W,H);
+
+  const gLo=1,gHi=100;
+  function gainX(g){return PAD.l+pW*(Math.log10(g)-Math.log10(gLo))/(Math.log10(gHi)-Math.log10(gLo));}
+  const bwMin=1e3,bwMax=p.gbw;
+  function bwY(bw){return PAD.t+pH*(1-(Math.log10(bw)-Math.log10(bwMin))/(Math.log10(bwMax)-Math.log10(bwMin)));}
+
+  [1,2,5,10,20,50,100].forEach(g=>{
+    const x=gainX(g);
+    ctx.strokeStyle=C.grid;ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,H-PAD.b);ctx.stroke();
+    ctx.fillStyle=C.text2;ctx.font=`${8*devicePixelRatio}px monospace`;ctx.textAlign='center';
+    ctx.fillText(g+'×',x,H-PAD.b+12*devicePixelRatio);
+  });
+  [1e3,10e3,100e3,1e6,10e6].forEach(bw=>{
+    if(bw<bwMin||bw>bwMax)return;
+    const y=bwY(bw);
+    ctx.strokeStyle=C.grid;ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(W-PAD.r,y);ctx.stroke();
+    ctx.fillStyle=C.text2;ctx.font=`${9*devicePixelRatio}px monospace`;ctx.textAlign='right';
+    const lbl=bw>=1e6?(bw/1e6).toFixed(0)+'M':bw>=1e3?(bw/1e3).toFixed(0)+'k':bw+'';
+    ctx.fillText(lbl+'Hz',PAD.l-4,y+3);
+  });
+
+  // GBW hyperbola: BW = GBW/(G+1)
+  ctx.strokeStyle=C.accent;ctx.lineWidth=2.5*devicePixelRatio;ctx.beginPath();
+  let first=true;
+  for(let i=0;i<=300;i++){
+    const g=Math.pow(10,Math.log10(gLo)+(Math.log10(gHi)-Math.log10(gLo))*i/300);
+    const bw=p.gbw/(g+1);
+    if(bw<bwMin||bw>bwMax){first=true;continue;}
+    const x=gainX(g),y=bwY(bw);
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // 10 kHz spec line
+  const ySpec=bwY(10e3);
+  if(ySpec>=PAD.t&&ySpec<=H-PAD.b){
+    ctx.strokeStyle=C.red;ctx.lineWidth=1.5;ctx.setLineDash([5,4]);
+    ctx.beginPath();ctx.moveTo(PAD.l,ySpec);ctx.lineTo(W-PAD.r,ySpec);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=C.red;ctx.font=`${8*devicePixelRatio}px sans-serif`;ctx.textAlign='left';
+    ctx.fillText('Spec: BW ≥ 10kHz',PAD.l+4,ySpec-3);
+  }
+
+  // Max gain to meet spec
+  const gMaxSpec=p.gbw/10e3-1;
+  if(gMaxSpec>=gLo&&gMaxSpec<=gHi){
+    const x=gainX(gMaxSpec);
+    ctx.strokeStyle=C.orange;ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,H-PAD.b);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=C.orange;ctx.font=`${8*devicePixelRatio}px sans-serif`;ctx.textAlign='center';
+    ctx.fillText('Max G='+gMaxSpec.toFixed(0)+'×',x,PAD.t+12*devicePixelRatio);
+  }
+
+  // Current operating point
+  const curBW=p.gbw/(p.gain+1);
+  if(curBW>=bwMin&&curBW<=bwMax){
+    ctx.fillStyle=C.green;
+    ctx.beginPath();ctx.arc(gainX(p.gain),bwY(curBW),6*devicePixelRatio,0,2*Math.PI);ctx.fill();
+    ctx.fillStyle=C.green;ctx.font=`${8*devicePixelRatio}px sans-serif`;ctx.textAlign='left';
+    ctx.fillText(`G=${p.gain}× → BW=${(curBW/1e3).toFixed(1)}kHz`,gainX(p.gain)+8,bwY(curBW));
+  }
+
+  ctx.fillStyle=C.text2;ctx.font=`${8*devicePixelRatio}px sans-serif`;ctx.textAlign='center';
+  ctx.fillText('Closed-Loop Gain (×)',PAD.l+pW/2,H-2*devicePixelRatio);
+}
+
+function updateLabels(){
+  const p=getParams();
+  document.getElementById('val-gbw').textContent=(p.gbw/1e6).toFixed(1)+'MHz';
+  document.getElementById('val-gain').textContent=p.gain+'×';
+  document.getElementById('val-rtol').textContent=(p.rtol*100).toFixed(2)+'%';
+  document.getElementById('val-tc').textContent=(p.tc*1e6).toFixed(0)+'ppm/°C';
+  document.getElementById('val-vos').textContent=(p.vos*1e3).toFixed(3)+'mV';
+  document.getElementById('val-en').textContent=(p.en/1e-9).toFixed(1)+'nV/√Hz';
+  document.getElementById('val-vcc').textContent=p.vcc.toFixed(1)+'V';
+  document.getElementById('val-rl').textContent=p.rl>=1e3?(p.rl/1e3).toFixed(0)+'kΩ':p.rl+'Ω';
+  document.getElementById('val-cl').textContent=(p.cl/1e-12).toFixed(0)+'pF';
+}
+
+function redraw(){
+  updateLabels();
+  renderSpecs();
+  drawGain(document.getElementById('gain-canvas'));
+  drawBW(document.getElementById('bw-canvas'));
+}
+
+['sl-gbw','sl-gain','sl-rtol','sl-tc','sl-vos','sl-en','sl-vcc','sl-rl','sl-cl'].forEach(id=>{
+  document.getElementById(id).addEventListener('input',redraw);
+});
+
+const ro=new ResizeObserver(redraw);
+ro.observe(document.getElementById('gain-canvas').parentElement);
+ro.observe(document.getElementById('bw-canvas').parentElement);
+redraw();
+</script>
+</body>
+</html>

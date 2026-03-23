@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M3-DS-4.1 BJT vs MOSFET Comparison</title>
+<style>
+:root{--bg:#ffffff;--surface:#f5f5f5;--border:#cccccc;--text:#111111;--accent:#0066cc;--accent2:#0066cc;}
+@media(prefers-color-scheme:dark){:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--accent:#0066cc;--accent2:#58a6ff;}}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;padding:16px;max-width:860px;margin:0 auto;}
+h1{font-size:1.2rem;color:var(--accent2);margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:8px;}
+.note{font-size:0.85rem;color:var(--text);opacity:0.7;margin-bottom:12px;}
+canvas{width:100%;height:260px;display:block;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:12px;}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;}
+.ctrl{display:flex;flex-direction:column;gap:3px;font-size:0.82rem;}
+.ctrl label{color:var(--text);opacity:0.8;}
+input[type=range]{width:160px;accent-color:var(--accent);}
+.readouts{display:flex;flex-wrap:wrap;gap:12px;font-size:0.85rem;font-family:monospace;}
+.ro{background:var(--surface);border:1px solid var(--border);padding:4px 10px;border-radius:4px;color:var(--accent2);}
+</style></head><body>
+<h1>M3-DS-4.1 — BJT vs MOSFET: Transconductance and Gain Comparison</h1>
+<p class="note">Compare BJT and MOSFET performance at the same bias current. See why BJT has higher g_m per mA.</p>
+<canvas id="cv"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>I_bias (mA): <span id="ibv">1</span></label><input type="range" id="ib" min="0.01" max="10" value="1" step="0.01" oninput="sv('ibv',parseFloat(this.value).toFixed(2));draw();"></div>
+  <div class="ctrl"><label>V_overdrive MOSFET (V): <span id="vodv">0.5</span></label><input type="range" id="vod" min="0.05" max="3" value="0.5" step="0.05" oninput="sv('vodv',parseFloat(this.value).toFixed(2));draw();"></div>
+  <div class="ctrl"><label>R_load (kΩ): <span id="rlv">2.2</span></label><input type="range" id="rl" min="0.1" max="20" value="2.2" step="0.1" oninput="sv('rlv',parseFloat(this.value).toFixed(1));draw();"></div>
+</div>
+<div class="readouts">
+  <div class="ro">BJT g_m: <span id="gm_bjt">0</span> mA/V</div>
+  <div class="ro">MOSFET g_m: <span id="gm_mos">0</span> mA/V</div>
+  <div class="ro">BJT |A_v|: <span id="av_bjt">0</span></div>
+  <div class="ro">MOSFET |A_v|: <span id="av_mos">0</span></div>
+  <div class="ro">g_m ratio: <span id="ratio">0</span>x</div>
+</div>
+<script>
+
+const isDark=()=>window.matchMedia('(prefers-color-scheme:dark)').matches;
+function gs(id){return parseFloat(document.getElementById(id).value);}
+function sv(id,val){document.getElementById(id).textContent=val;}
+function resize(cv,draw){
+  cv.width=cv.offsetWidth*devicePixelRatio;
+  cv.height=260*devicePixelRatio;
+  cv.style.height='260px';
+  draw();
+}
+function drawAxes(ctx,W,H,pad,xl,yl,color){
+  ctx.strokeStyle=color;ctx.lineWidth=1;ctx.fillStyle=color;ctx.font=`${11*devicePixelRatio}px system-ui`;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  ctx.fillText(xl,W-pad-30,H-pad+14*devicePixelRatio);
+  ctx.save();ctx.translate(pad-14*devicePixelRatio,pad+30);ctx.rotate(-Math.PI/2);ctx.fillText(yl,0,0);ctx.restore();
+}
+
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+window.addEventListener('resize',()=>resize(cv,draw));
+
+function draw(){
+  const dpr=devicePixelRatio;
+  cv.width=cv.offsetWidth*dpr; cv.height=260*dpr;
+  const W=cv.width,H=cv.height,pad=55*dpr;
+  const dark=isDark();
+  const bg=dark?'#161b22':'#f5f5f5';
+  const fg=dark?'#e6edf3':'#111111';
+  const acc=dark?'#58a6ff':'#0066cc';
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  const IC=gs('ib')/1000; // A
+  const VOD=gs('vod');
+  const RL=gs('rl')*1000;
+
+  const gm_bjt=IC/0.026; // BJT: I_C/V_T
+  const gm_mos=2*IC/VOD; // MOSFET: 2I_D/V_OD
+  const Av_bjt=gm_bjt*RL;
+  const Av_mos=gm_mos*RL;
+  const ratio=gm_bjt/gm_mos;
+
+  sv('gm_bjt',(gm_bjt*1000).toFixed(1));
+  sv('gm_mos',(gm_mos*1000).toFixed(1));
+  sv('av_bjt',Av_bjt.toFixed(1));
+  sv('av_mos',Av_mos.toFixed(1));
+  sv('ratio',ratio.toFixed(1));
+
+  // Bar chart: BJT vs MOSFET g_m and gain
+  const metrics=[
+    [gm_bjt*1000, gm_mos*1000, 'g_m (mA/V)'],
+    [Av_bjt, Av_mos, '|A_v|'],
+  ];
+  const maxV=Math.max(gm_bjt*1000, gm_mos*1000, Av_bjt, Av_mos)*1.2+1;
+  const bW=(W-2*pad)/6;
+  const ys=(H-2*pad)/maxV;
+  ctx.font=`${10*dpr}px system-ui`; ctx.fillStyle=fg;
+
+  for(let i=0;i<=5;i++){
+    const y=H-pad-i/5*maxV*ys;
+    ctx.fillText((i/5*maxV).toFixed(0),pad-30*dpr,y+4);
+    ctx.beginPath();ctx.strokeStyle=dark?'#30363d':'#dddddd';ctx.lineWidth=0.5;
+    ctx.moveTo(pad,y);ctx.lineTo(W-pad,y);ctx.stroke();
+  }
+
+  metrics.forEach(([bjt,mos,label],mi)=>{
+    const cx1=pad+(mi*3+1)*bW, cx2=pad+(mi*3+2)*bW;
+    const h1=Math.min(bjt*ys,H-2*pad), h2=Math.min(mos*ys,H-2*pad);
+    ctx.fillStyle=acc;
+    ctx.fillRect(cx1-bW/3,H-pad-h1,bW*0.66,h1);
+    ctx.fillStyle='#ff6b6b';
+    ctx.fillRect(cx2-bW/3,H-pad-h2,bW*0.66,h2);
+    ctx.fillStyle=fg; ctx.font=`${9*dpr}px system-ui`;
+    ctx.fillText('BJT',cx1-10*dpr,H-pad+13*dpr);
+    ctx.fillText('MOS',cx2-10*dpr,H-pad+13*dpr);
+    ctx.fillText(label,pad+(mi*3+1.5)*bW-20*dpr,H-pad+25*dpr);
+    ctx.fillStyle=acc; ctx.fillText(bjt.toFixed(0),cx1-10*dpr,H-pad-h1-5*dpr);
+    ctx.fillStyle='#ff6b6b'; ctx.fillText(mos.toFixed(0),cx2-10*dpr,H-pad-h2-5*dpr);
+  });
+
+  ctx.fillStyle=fg; ctx.font=`${11*dpr}px system-ui`;
+  ctx.fillText(`At I=${(IC*1000).toFixed(2)}mA: BJT g_m=${(gm_bjt*1000).toFixed(1)}mA/V vs MOSFET=${(gm_mos*1000).toFixed(1)}mA/V (${ratio.toFixed(1)}x difference)`,pad,pad-8*dpr);
+}
+draw();
+</script></body></html>

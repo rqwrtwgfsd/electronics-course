@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-MS-5.5.1 — Optimize: Increase Gain</title>
+<style>
+  :root { --bg:#ffffff; --bg2:#f5f5f5; --text:#1a1a1a; --text2:#555; --border:#ddd; --accent:#0066cc; --green:#00994d; --canvas-bg:#fafafa; --warn:#cc4400; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1a1a1a; --bg2:#242424; --text:#e8e8e8; --text2:#aaa; --border:#444; --canvas-bg:#1f1f1f; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); font-size:14px; }
+  header { background:var(--bg2); border-bottom:2px solid var(--accent); padding:12px 20px; }
+  header .id { font-family:monospace; font-size:12px; color:var(--accent); font-weight:700; }
+  header h1 { font-size:16px; margin-top:2px; }
+  .container { display:flex; gap:16px; padding:16px; flex-wrap:wrap; }
+  .panel { background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:14px; }
+  .sim-panel { flex:1; min-width:380px; }
+  .ctrl-panel { width:260px; min-width:240px; }
+  canvas { background:var(--canvas-bg); border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .readouts { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+  .readout { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 10px; }
+  .readout label { font-size:11px; color:var(--text2); display:block; }
+  .readout .val { font-family:monospace; font-size:14px; font-weight:700; color:var(--accent); }
+  .ctrl { margin-bottom:12px; }
+  .ctrl label { display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px; }
+  .ctrl label span { font-family:monospace; color:var(--accent); font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .section-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text2); margin-bottom:8px; }
+  .insight { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 12px; margin-top:10px; font-size:12px; color:var(--text2); line-height:1.5; }
+  .tabs { display:flex; gap:4px; margin-bottom:10px; }
+  .tab { padding:5px 10px; border:1px solid var(--border); border-radius:4px; font-size:11px; cursor:pointer; background:var(--bg); color:var(--text); }
+  .tab.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4B-MS-5.5.1</div>
+  <h1>Multi-Stage Optimize — Increase Gain</h1>
+</header>
+<div class="container">
+  <div class="panel sim-panel">
+    <div class="tabs">
+      <button class="tab active" onclick="setTab('levers')">Gain Levers</button>
+      <button class="tab" onclick="setTab('compare')">Technique Comparison</button>
+    </div>
+    <canvas id="cv" height="300"></canvas>
+    <div class="readouts">
+      <div class="readout"><label>gm (mA/V)</label><span class="val" id="r-gm">—</span></div>
+      <div class="readout"><label>ro (kΩ)</label><span class="val" id="r-ro">—</span></div>
+      <div class="readout"><label>A_v per stage (dB)</label><span class="val" id="r-av">—</span></div>
+      <div class="readout"><label>Total A_OL (dB)</label><span class="val" id="r-total">—</span></div>
+    </div>
+    <div class="insight" id="ins">Adjust controls to explore gain optimization levers.</div>
+  </div>
+  <div class="panel ctrl-panel">
+    <div class="section-title">Base Parameters (TSMC 180nm)</div>
+    <div class="ctrl">
+      <label>Channel L (×Lmin) <span id="lbl-l">1</span></label>
+      <input type="range" id="sl-l" min="1" max="10" step="0.5" value="1" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>V_ov (mV) <span id="lbl-vov">150</span></label>
+      <input type="range" id="sl-vov" min="50" max="400" value="150" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>Bias I_D (µA) <span id="lbl-id">100</span></label>
+      <input type="range" id="sl-id" min="10" max="500" value="100" oninput="update()">
+    </div>
+    <div class="section-title" style="margin-top:8px">Optimization Technique</div>
+    <div class="ctrl">
+      <label style="align-items:center">Use Cascode <span id="lbl-casc">NO</span>
+        <input type="checkbox" id="chk-casc" onchange="update()" style="width:auto;margin-left:8px">
+      </label>
+    </div>
+    <div class="ctrl">
+      <label>Num Stages <span id="lbl-stages">2</span></label>
+      <input type="range" id="sl-stages" min="1" max="3" step="1" value="2" oninput="update()">
+    </div>
+    <div class="section-title" style="margin-top:8px">Target</div>
+    <div class="ctrl">
+      <label>Min Gain (dB) <span id="lbl-req">70</span></label>
+      <input type="range" id="sl-req" min="40" max="120" step="2" value="70" oninput="update()">
+    </div>
+  </div>
+</div>
+<script>
+let tab='levers';
+function setTab(t){tab=t;document.querySelectorAll('.tab').forEach((el,i)=>el.classList.toggle('active',(i===0&&t==='levers')||(i===1&&t==='compare')));update();}
+
+function calcGain(l_mult, vov_mv, id_ua, cascode, stages) {
+  const lmin=0.18e-6, lam0=0.12; // at Lmin
+  const L=l_mult*lmin;
+  const lam=lam0/l_mult; // λ ∝ 1/L
+  const vov=vov_mv/1000;
+  const id=id_ua*1e-6;
+  const gm=2*id/vov;
+  const ro=1/(lam*id);
+  let av_per_stage=gm*ro;
+  if(cascode) av_per_stage=av_per_stage*av_per_stage*0.001; // practical: ~1/1000 of theoretical, limited
+  av_per_stage=Math.min(av_per_stage,100000); // practical cap
+  const av_total=Math.pow(av_per_stage,stages);
+  const db_per_stage=20*Math.log10(av_per_stage);
+  const db_total=20*Math.log10(av_total);
+  return {gm,ro,av_per_stage,db_per_stage,av_total,db_total,lam,L};
+}
+
+function update() {
+  const lm=parseFloat(document.getElementById('sl-l').value);
+  const vov=parseFloat(document.getElementById('sl-vov').value);
+  const id=parseFloat(document.getElementById('sl-id').value);
+  const casc=document.getElementById('chk-casc').checked;
+  const stages=parseInt(document.getElementById('sl-stages').value);
+  const req=parseFloat(document.getElementById('sl-req').value);
+
+  document.getElementById('lbl-l').textContent=lm.toFixed(1)+'× ('+(lm*0.18).toFixed(2)+'µm)';
+  document.getElementById('lbl-vov').textContent=vov;
+  document.getElementById('lbl-id').textContent=id;
+  document.getElementById('lbl-casc').textContent=casc?'YES':'NO';
+  document.getElementById('lbl-stages').textContent=stages;
+  document.getElementById('lbl-req').textContent=req;
+
+  const r=calcGain(lm,vov,id,casc,stages);
+  document.getElementById('r-gm').textContent=(r.gm*1000).toFixed(2);
+  document.getElementById('r-ro').textContent=(r.ro/1000).toFixed(1);
+  const avEl=document.getElementById('r-av');
+  avEl.textContent=r.db_per_stage.toFixed(1);
+  const totEl=document.getElementById('r-total');
+  totEl.textContent=r.db_total.toFixed(1)+' dB';
+  totEl.style.color=r.db_total>=req?'var(--green)':'var(--warn)';
+
+  let ins=`λ=${r.lam.toFixed(3)}V⁻¹, gm=${(r.gm*1000).toFixed(2)}mA/V, ro=${(r.ro/1000).toFixed(0)}kΩ. `;
+  ins+=`gm×ro=${(r.av_per_stage).toFixed(0)}V/V=${r.db_per_stage.toFixed(1)}dB/stage. `;
+  if(casc) ins+='Cascode active — practical gain ~60×above single stage. ';
+  ins+=`${stages} stage(s): total=${r.db_total.toFixed(1)}dB. `;
+  ins+=r.db_total>=req?`MEETS ${req}dB spec with ${(r.db_total-req).toFixed(1)}dB margin.`:`NEEDS ${(req-r.db_total).toFixed(1)}dB more.`;
+  document.getElementById('ins').textContent=ins;
+
+  if(tab==='levers') drawLevers(lm,vov,id,casc,stages,req,r);
+  else drawCompare(vov,id,req);
+}
+
+function drawLevers(lm,vov,id,casc,stages,req,r) {
+  const canvas=document.getElementById('cv');
+  const W=canvas.offsetWidth||500; canvas.width=W; canvas.height=300;
+  const ctx=canvas.getContext('2d');
+  const pad={l:50,r:15,t:25,b:40};
+  const pw=W-pad.l-pad.r, ph=300-pad.t-pad.b;
+  ctx.fillStyle='var(--canvas-bg)'; ctx.fillRect(0,0,W,300);
+
+  // Sweep L and plot gain
+  const lArr=[], gainArr=[];
+  for(let l=1;l<=10;l+=0.2){
+    lArr.push(l);
+    const rr=calcGain(l,vov,id,casc,stages);
+    gainArr.push(rr.db_total);
+  }
+  const yMin=0,yMax=120;
+  ctx.strokeStyle='var(--border)';ctx.lineWidth=0.8;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,pad.t+ph);ctx.lineTo(pad.l+pw,pad.t+ph);ctx.stroke();
+  for(let y=0;y<=120;y+=20){
+    const yp=pad.t+ph-(y/120)*ph;
+    ctx.beginPath();ctx.moveTo(pad.l,yp);ctx.lineTo(pad.l+pw,yp);ctx.stroke();
+    ctx.fillStyle='var(--text)';ctx.font='9px monospace';ctx.textAlign='right';ctx.fillText(y+'dB',pad.l-3,yp+3);
+  }
+  for(let l=2;l<=10;l+=2){
+    const xp=pad.l+((l-1)/9)*pw;
+    ctx.fillStyle='var(--text)';ctx.font='9px monospace';ctx.textAlign='center';ctx.fillText(l+'×L',xp,pad.t+ph+14);
+  }
+
+  // Gain vs L curve
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2.5;ctx.beginPath();let first=true;
+  lArr.forEach((l,i)=>{
+    const xp=pad.l+((l-1)/9)*pw;
+    const yp=pad.t+ph-(gainArr[i]/120)*ph;
+    first?ctx.moveTo(xp,yp):ctx.lineTo(xp,yp);first=false;
+  });
+  ctx.stroke();
+
+  // Current point
+  const xcur=pad.l+((lm-1)/9)*pw;
+  const ycur=pad.t+ph-(r.db_total/120)*ph;
+  ctx.fillStyle='#0066cc';ctx.beginPath();ctx.arc(xcur,ycur,6,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='var(--text)';ctx.font='bold 10px monospace';ctx.textAlign='left';
+  ctx.fillText(r.db_total.toFixed(0)+'dB',xcur+8,ycur+4);
+
+  // Req line
+  const yReq=pad.t+ph-(req/120)*ph;
+  ctx.strokeStyle='#cc4400';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,yReq);ctx.lineTo(pad.l+pw,yReq);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#cc4400';ctx.font='10px monospace';ctx.textAlign='right';
+  ctx.fillText('Req: '+req+'dB',pad.l+pw-2,yReq-4);
+
+  ctx.fillStyle='var(--text)';ctx.font='bold 11px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Total Gain vs Channel Length (L multiplier)',pad.l+pw/2,pad.t+ph+28);
+}
+
+function drawCompare(vov,id,req) {
+  const canvas=document.getElementById('cv');
+  const W=canvas.offsetWidth||500; canvas.width=W; canvas.height=300;
+  const ctx=canvas.getContext('2d');
+  const pad={l:50,r:15,t:25,b:50};
+  const pw=W-pad.l-pad.r, ph=300-pad.t-pad.b;
+  ctx.fillStyle='var(--canvas-bg)'; ctx.fillRect(0,0,W,300);
+
+  const techniques=[
+    {label:'Base\n1stage', fn:()=>calcGain(1,vov,id,false,1).db_total, color:'#aaa'},
+    {label:'2 stage\nbase',  fn:()=>calcGain(1,vov,id,false,2).db_total, color:'#0066cc'},
+    {label:'3× L\n2 stage', fn:()=>calcGain(3,vov,id,false,2).db_total, color:'#4499dd'},
+    {label:'Cascode\n1 stage', fn:()=>calcGain(1,vov,id,true,1).db_total, color:'#00994d'},
+    {label:'V_ov\n÷2 1stg', fn:()=>calcGain(1,vov/2,id,false,1).db_total, color:'#cc8800'},
+  ];
+  const vals=techniques.map(t=>t.fn());
+  const yMax=120;
+
+  ctx.strokeStyle='var(--border)';ctx.lineWidth=0.8;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,pad.t+ph);ctx.lineTo(pad.l+pw,pad.t+ph);ctx.stroke();
+  for(let y=0;y<=120;y+=20){
+    const yp=pad.t+ph-(y/120)*ph;
+    ctx.beginPath();ctx.moveTo(pad.l,yp);ctx.lineTo(pad.l+pw,yp);ctx.stroke();
+    ctx.fillStyle='var(--text)';ctx.font='9px monospace';ctx.textAlign='right';ctx.fillText(y+'dB',pad.l-3,yp+3);
+  }
+
+  const barW=pw/(techniques.length+1);
+  techniques.forEach((t,i)=>{
+    const bx=pad.l+(i+0.3)*barW;
+    const bw=barW*0.7;
+    const bh=(Math.max(0,vals[i])/yMax)*ph;
+    const by=pad.t+ph-bh;
+    ctx.fillStyle=t.color; ctx.fillRect(bx,by,bw,bh);
+    ctx.fillStyle='var(--text)';ctx.font='bold 9px monospace';ctx.textAlign='center';
+    ctx.fillText(vals[i].toFixed(0)+'dB',bx+bw/2,by-4);
+    const lines=t.label.split('\n');
+    lines.forEach((ln,li)=>ctx.fillText(ln,bx+bw/2,pad.t+ph+14+li*13));
+  });
+
+  const yReq=pad.t+ph-(req/120)*ph;
+  ctx.strokeStyle='#cc4400';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,yReq);ctx.lineTo(pad.l+pw,yReq);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#cc4400';ctx.font='10px monospace';ctx.textAlign='right';ctx.fillText('Req: '+req+'dB',pad.l+pw-2,yReq-4);
+
+  ctx.fillStyle='var(--text)';ctx.font='bold 11px sans-serif';ctx.textAlign='center';
+  ctx.fillText('Gain Optimization Technique Comparison',pad.l+pw/2,pad.t+14);
+}
+update();
+</script>
+</body>
+</html>

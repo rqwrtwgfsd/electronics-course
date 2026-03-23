@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>M4B-2OTA-8.1.2 — Miller Compensation Detail Simulator</title>
+<style>
+  body { font-family: 'Courier New', monospace; background: #0a0a0a; color: #e0e0e0; margin: 0; padding: 20px; }
+  h1 { color: #00bcd4; font-size: 1.1em; margin-bottom: 4px; }
+  .subtitle { color: #888; font-size: 0.85em; margin-bottom: 20px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .tab { padding: 8px 16px; background: #1a1a1a; border: 1px solid #333; cursor: pointer; font-family: inherit; font-size: 0.85em; color: #aaa; }
+  .tab.active { background: #00bcd4; color: #000; border-color: #00bcd4; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  canvas { background: #111; border: 1px solid #333; display: block; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+  .ctrl { background: #1a1a1a; border: 1px solid #333; padding: 8px 12px; min-width: 180px; }
+  .ctrl label { display: block; color: #aaa; font-size: 0.78em; margin-bottom: 4px; }
+  .ctrl input[type=range] { width: 100%; accent-color: #00bcd4; }
+  .ctrl .val { color: #00bcd4; font-size: 0.85em; }
+  .readouts { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .ro { background: #1a1a1a; border: 1px solid #444; padding: 6px 12px; font-size: 0.82em; }
+  .ro span { color: #00bcd4; }
+  .ro .pass { color: #4caf50; }
+  .ro .fail { color: #f44336; }
+  .ro .warn { color: #ffeb3b; }
+  .note { color: #888; font-size: 0.8em; margin: 6px 0; }
+</style>
+</head>
+<body>
+<h1>M4B-2OTA-8.1.2 — Miller Compensation: RHP Zero, Nulling Rs, Sizing</h1>
+<div class="subtitle">Interactive analysis of compensation capacitor, RHP zero, and nulling resistor effects</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab(0)">Bode with Rs</div>
+  <div class="tab" onclick="switchTab(1)">Zero Locus vs Rs</div>
+  <div class="tab" onclick="switchTab(2)">Sizing Helper</div>
+</div>
+
+<!-- TAB 0: Bode Plot with Rs control -->
+<div class="panel active" id="tab0">
+  <div class="controls">
+    <div class="ctrl">
+      <label>gm1 (mA/V): <span class="val" id="g1_v">0.5</span></label>
+      <input type="range" id="g1" min="0.05" max="5" step="0.05" value="0.5" oninput="draw0()">
+    </div>
+    <div class="ctrl">
+      <label>gm2 (mA/V): <span class="val" id="g2_v">2.0</span></label>
+      <input type="range" id="g2" min="0.1" max="20" step="0.1" value="2.0" oninput="draw0()">
+    </div>
+    <div class="ctrl">
+      <label>Cc (pF): <span class="val" id="cc0_v">1.6</span></label>
+      <input type="range" id="cc0" min="0.1" max="10" step="0.05" value="1.6" oninput="draw0()">
+    </div>
+    <div class="ctrl">
+      <label>CL (pF): <span class="val" id="cl0_v">5.0</span></label>
+      <input type="range" id="cl0" min="0.5" max="30" step="0.1" value="5.0" oninput="draw0()">
+    </div>
+    <div class="ctrl">
+      <label>Rout1 (MΩ): <span class="val" id="r1_v">80</span></label>
+      <input type="range" id="r1" min="1" max="500" step="1" value="80" oninput="draw0()">
+    </div>
+    <div class="ctrl">
+      <label>Rout2 (kΩ): <span class="val" id="r2_v">4</span></label>
+      <input type="range" id="r2" min="0.5" max="100" step="0.5" value="4" oninput="draw0()">
+    </div>
+    <div class="ctrl">
+      <label>Rs (× 1/gm2): <span class="val" id="rs0_v">0.00</span></label>
+      <input type="range" id="rs0" min="0" max="3" step="0.05" value="0" oninput="draw0()">
+    </div>
+    <div class="ctrl">
+      <label>Cint (fF): <span class="val" id="ci0_v">100</span></label>
+      <input type="range" id="ci0" min="10" max="500" step="10" value="100" oninput="draw0()">
+    </div>
+  </div>
+  <canvas id="bode0" width="860" height="420"></canvas>
+  <div class="readouts" id="ro0"></div>
+  <div class="note">Blue=magnitude with Rs. Green=phase with Rs. Red dashed=magnitude without Rs. The RHP zero (Rs=0) causes phase to drop past −270°. As Rs approaches 1/gm2, the zero moves to infinity and the phase recovers. Rs > 1/gm2 creates a LHP zero (phase boost).</div>
+</div>
+
+<!-- TAB 1: Zero Locus vs Rs -->
+<div class="panel" id="tab1">
+  <div class="controls">
+    <div class="ctrl">
+      <label>gm2 (mA/V): <span class="val" id="g2b_v">2.0</span></label>
+      <input type="range" id="g2b" min="0.1" max="10" step="0.1" value="2.0" oninput="draw1()">
+    </div>
+    <div class="ctrl">
+      <label>Cc (pF): <span class="val" id="ccb_v">1.6</span></label>
+      <input type="range" id="ccb" min="0.1" max="10" step="0.05" value="1.6" oninput="draw1()">
+    </div>
+  </div>
+  <canvas id="chart1" width="860" height="360"></canvas>
+  <div class="note">Zero frequency vs Rs (normalized to 1/gm2). At Rs=0: RHP zero at gm2/(2πCc). At Rs=1/gm2: zero moves to ∞. At Rs>1/gm2: LHP zero reappears, moving lower as Rs increases. Crossing Rs=1/gm2 is the transition from RHP to LHP.</div>
+</div>
+
+<!-- TAB 2: Sizing Helper -->
+<div class="panel" id="tab2">
+  <div class="controls">
+    <div class="ctrl">
+      <label>GBW target (MHz): <span class="val" id="gbw_t_v">50</span></label>
+      <input type="range" id="gbw_t" min="1" max="2000" step="1" value="50" oninput="draw2()">
+    </div>
+    <div class="ctrl">
+      <label>CL (pF): <span class="val" id="cl_t_v">5.0</span></label>
+      <input type="range" id="cl_t" min="0.1" max="30" step="0.1" value="5.0" oninput="draw2()">
+    </div>
+    <div class="ctrl">
+      <label>PM target (°): <span class="val" id="pm_t_v">60</span></label>
+      <input type="range" id="pm_t" min="30" max="85" step="1" value="60" oninput="draw2()">
+    </div>
+    <div class="ctrl">
+      <label>Vov input pair (V): <span class="val" id="vov_t_v">0.15</span></label>
+      <input type="range" id="vov_t" min="0.05" max="0.35" step="0.01" value="0.15" oninput="draw2()">
+    </div>
+    <div class="ctrl">
+      <label>Process: </label>
+      <select id="proc_t" onchange="draw2()" style="background:#222;color:#e0e0e0;border:1px solid #444;padding:4px;font-family:inherit;width:100%">
+        <option value="180">TSMC 180nm</option>
+        <option value="65">TSMC 65nm</option>
+        <option value="28">TSMC 28nm</option>
+      </select>
+    </div>
+  </div>
+  <canvas id="chart2" width="860" height="320"></canvas>
+  <div class="readouts" id="ro2"></div>
+</div>
+
+<script>
+const M = { top: 40, bottom: 50, left: 75, right: 75 };
+const PROC_DATA = {
+  '180': { unCox: 270e-6, L: 0.5e-6 },
+  '65':  { unCox: 500e-6, L: 0.12e-6 },
+  '28':  { unCox: 650e-6, L: 0.08e-6 }
+};
+
+function updateSlider(id, decimals) {
+  const v = parseFloat(document.getElementById(id).value);
+  document.getElementById(id + '_v').textContent = v.toFixed(decimals);
+  return v;
+}
+
+function computeResponse(f, gm1, gm2, ro1, ro2, cc, cl, cint, rs) {
+  const fp1 = 1 / (2 * Math.PI * (gm2 * ro1 * ro2 * cc + ro1 * cint + ro2 * cl));
+  const fp2 = gm2 / (2 * Math.PI * cl);
+  const Adc = gm1 * gm2 * ro1 * ro2;
+  const inv_gm2 = 1 / gm2;
+  const rzero = inv_gm2 - rs; // positive → RHP, negative → LHP
+  let fz;
+  if (Math.abs(rzero) < 1e-6) fz = Infinity;
+  else fz = 1 / (2 * Math.PI * cc * Math.abs(rzero));
+  const fz_sign = rzero > 0 ? 'RHP' : 'LHP';
+
+  const mag_dc = 20 * Math.log10(Adc);
+  const mag_p1 = -10 * Math.log10(1 + (f / fp1) ** 2);
+  const mag_p2 = -10 * Math.log10(1 + (f / fp2) ** 2);
+  const mag_z  = isFinite(fz) ? 10 * Math.log10(1 + (f / fz) ** 2) : 0;
+  const mag    = mag_dc + mag_p1 + mag_p2 + mag_z;
+
+  const ph_p1 = -Math.atan(f / fp1) * 180 / Math.PI;
+  const ph_p2 = -Math.atan(f / fp2) * 180 / Math.PI;
+  let ph_z;
+  if (!isFinite(fz)) ph_z = 0;
+  else if (fz_sign === 'LHP') ph_z = +Math.atan(f / fz) * 180 / Math.PI;
+  else ph_z = -Math.atan(f / fz) * 180 / Math.PI;
+  const phase = -180 + ph_p1 + ph_p2 + ph_z;
+
+  return { mag, phase, fp1, fp2, fz, fz_sign, Adc };
+}
+
+function drawBodeOnCtx(ctx, W, H, freqs, responses, noRsResp, showAnnotations) {
+  const pw = W - M.left - M.right, ph_h = (H - M.top - M.bottom) / 2;
+  const magMin = -20, magMax = 140, phMin = -270, phMax = 90;
+  function xC(f) { return M.left + (Math.log10(f) - 2) / (11 - 2) * pw; }
+  function yM(db) { return M.top + (1 - (db - magMin) / (magMax - magMin)) * ph_h; }
+  function yP(deg) { return M.top + ph_h + (1 - (deg - phMin) / (phMax - phMin)) * ph_h; }
+
+  // Grid
+  [3,4,5,6,7,8,9,10].forEach(e => {
+    [1,2,3,4,5,6,7,8,9].forEach(m => {
+      const x = xC(m * 10**e);
+      ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, M.top); ctx.lineTo(x, H - M.bottom); ctx.stroke();
+    });
+  });
+  [-20,0,20,40,60,80,100,120,140].forEach(db => {
+    const y = yM(db); ctx.strokeStyle = db===0?'#333':'#1a1a1a'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(M.left,y); ctx.lineTo(M.left+pw,y); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px Courier New'; ctx.textAlign='right'; ctx.fillText(db+'dB',M.left-4,y+3);
+  });
+  [-270,-180,-90,0].forEach(deg => {
+    const y = yP(deg); ctx.strokeStyle=deg===-180?'#333':'#1a1a1a'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(M.left,y); ctx.lineTo(M.left+pw,y); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px Courier New'; ctx.textAlign='left'; ctx.fillText(deg+'°',M.left+pw+4,y+3);
+  });
+  ctx.strokeStyle='#333'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(M.left, M.top+ph_h); ctx.lineTo(M.left+pw, M.top+ph_h); ctx.stroke();
+
+  // No-Rs magnitude (dashed red)
+  if (noRsResp) {
+    ctx.strokeStyle='#f44336'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+    ctx.beginPath();
+    noRsResp.forEach((r,i)=>{ i===0?ctx.moveTo(xC(freqs[i]),yM(r.mag)):ctx.lineTo(xC(freqs[i]),yM(r.mag)); });
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // Main magnitude
+  ctx.strokeStyle='#2196f3'; ctx.lineWidth=2.5; ctx.beginPath();
+  responses.forEach((r,i)=>{ i===0?ctx.moveTo(xC(freqs[i]),yM(r.mag)):ctx.lineTo(xC(freqs[i]),yM(r.mag)); });
+  ctx.stroke();
+
+  // Phase
+  ctx.strokeStyle='#4caf50'; ctx.lineWidth=2; ctx.beginPath();
+  responses.forEach((r,i)=>{ i===0?ctx.moveTo(xC(freqs[i]),yP(r.phase)):ctx.lineTo(xC(freqs[i]),yP(r.phase)); });
+  ctx.stroke();
+
+  // X-axis labels
+  [1e3,1e4,1e5,1e6,1e7,1e8,1e9,1e10].forEach(f => {
+    const x = xC(f); ctx.fillStyle='#555'; ctx.font='9px Courier New'; ctx.textAlign='center';
+    const lab = f>=1e9?(f/1e9)+'GHz':f>=1e6?(f/1e6)+'MHz':f>=1e3?(f/1e3)+'kHz':f+'Hz';
+    ctx.fillText(lab, x, H-M.bottom+14);
+  });
+}
+
+function draw0() {
+  const g1  = updateSlider('g1',  1) * 1e-3;
+  const g2  = updateSlider('g2',  1) * 1e-3;
+  const cc  = updateSlider('cc0', 2) * 1e-12;
+  const cl  = updateSlider('cl0', 1) * 1e-12;
+  const r1  = updateSlider('r1',  0) * 1e6;
+  const r2  = updateSlider('r2',  1) * 1e3;
+  const rsMul = updateSlider('rs0', 2);
+  const cint = updateSlider('ci0', 0) * 1e-15;
+  const rs  = rsMul / g2; // Rs in Ω
+
+  const canvas = document.getElementById('bode0');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const N = 400, fmin = 1e2, fmax = 1e11;
+  const freqs = Array.from({length:N}, (_,i) => Math.pow(10, Math.log10(fmin) + i*(Math.log10(fmax)-Math.log10(fmin))/(N-1)));
+  const resp    = freqs.map(f => computeResponse(f, g1, g2, r1, r2, cc, cl, cint, rs));
+  const noRsResp = freqs.map(f => computeResponse(f, g1, g2, r1, r2, cc, cl, cint, 0));
+
+  drawBodeOnCtx(ctx, W, H, freqs, resp, noRsResp, true);
+
+  // Find GBW and PM
+  let gbw = 0, pm = 0;
+  for (let i = 1; i < resp.length; i++) {
+    if (resp[i].mag <= 0 && resp[i-1].mag >= 0) { gbw = freqs[i]; pm = resp[i].phase + 180; break; }
+  }
+  const fmtF = f => f>1e9?(f/1e9).toFixed(2)+'GHz':f>1e6?(f/1e6).toFixed(1)+'MHz':f>1e3?(f/1e3).toFixed(0)+'kHz':f.toFixed(0)+'Hz';
+  const fzInfo = resp[0];
+  const pmC = pm>=60?'pass':pm>=45?'warn':'fail';
+  document.getElementById('ro0').innerHTML = `
+    <div class="ro">GBW: <span>${fmtF(gbw)}</span></div>
+    <div class="ro">PM: <span class="${pmC}">${pm.toFixed(1)}°</span></div>
+    <div class="ro">fp1: <span>${fmtF(fzInfo.fp1)}</span></div>
+    <div class="ro">fp2: <span>${fmtF(fzInfo.fp2)}</span></div>
+    <div class="ro">fz (${fzInfo.fz_sign}): <span>${isFinite(fzInfo.fz)?fmtF(fzInfo.fz):'∞'}</span></div>
+    <div class="ro">Rs/Rz: <span>${rsMul.toFixed(2)}×</span></div>
+    <div class="ro">DC Gain: <span>${(20*Math.log10(fzInfo.Adc)).toFixed(0)} dB</span></div>`;
+}
+
+function draw1() {
+  const g2  = updateSlider('g2b', 1) * 1e-3;
+  const cc  = updateSlider('ccb', 2) * 1e-12;
+
+  const canvas = document.getElementById('chart1');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const pw = W - M.left - M.right, ph = H - M.top - M.bottom;
+  const N = 200;
+  // Rs from 0 to 3/gm2
+  const inv_gm2 = 1 / g2;
+  const rss = Array.from({length:N}, (_,i) => i / (N-1) * 3 * inv_gm2);
+
+  const fzs = rss.map(rs => {
+    const rzero = inv_gm2 - rs;
+    if (Math.abs(rzero) < 1e-9) return { fz: 1e15, sign: 'INF' };
+    const fz = 1 / (2 * Math.PI * cc * Math.abs(rzero));
+    return { fz, sign: rzero > 0 ? 'RHP' : 'LHP' };
+  });
+
+  const maxFz = Math.min(1e11, Math.max(...fzs.filter(z=>isFinite(z.fz)).map(z=>z.fz)) * 1.5);
+  const minFz = 1e6;
+
+  function xCoord(rs) { return M.left + (rs / inv_gm2) / 3 * pw; }
+  function yCoord(fz) {
+    if (!isFinite(fz) || fz > maxFz) return M.top;
+    return M.top + (1 - (Math.log10(fz) - Math.log10(minFz)) / (Math.log10(maxFz) - Math.log10(minFz))) * ph;
+  }
+
+  // Grid
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+  [1e6,1e7,1e8,1e9,1e10,1e11].forEach(f => {
+    const y = yCoord(f);
+    ctx.beginPath(); ctx.moveTo(M.left, y); ctx.lineTo(M.left+pw, y); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px Courier New'; ctx.textAlign='right';
+    const lab = f>=1e9?(f/1e9)+'GHz':f>=1e6?(f/1e6)+'MHz':'';
+    ctx.fillText(lab, M.left-4, y+3);
+  });
+
+  // RHP segment (Rs < 1/gm2)
+  ctx.strokeStyle = '#f44336'; ctx.lineWidth = 2.5; ctx.beginPath();
+  let started = false;
+  fzs.forEach((z, i) => {
+    if (z.sign !== 'RHP' || !isFinite(z.fz)) return;
+    const x = xCoord(rss[i]), y = yCoord(z.fz);
+    started ? ctx.lineTo(x,y) : (ctx.moveTo(x,y), started=true);
+  });
+  ctx.stroke();
+
+  // LHP segment (Rs > 1/gm2)
+  ctx.strokeStyle = '#4caf50'; ctx.lineWidth = 2.5; ctx.beginPath();
+  started = false;
+  fzs.forEach((z, i) => {
+    if (z.sign !== 'LHP' || !isFinite(z.fz)) return;
+    const x = xCoord(rss[i]), y = yCoord(z.fz);
+    started ? ctx.lineTo(x,y) : (ctx.moveTo(x,y), started=true);
+  });
+  ctx.stroke();
+
+  // Rs = 1/gm2 vertical line
+  const xNull = xCoord(inv_gm2);
+  ctx.strokeStyle = '#ffeb3b'; ctx.lineWidth = 1.5; ctx.setLineDash([4,2]);
+  ctx.beginPath(); ctx.moveTo(xNull, M.top); ctx.lineTo(xNull, H-M.bottom); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#ffeb3b'; ctx.font = '9px Courier New'; ctx.textAlign = 'center';
+  ctx.fillText('Rs = 1/gm2', xNull, M.top-6);
+  ctx.fillText('(zero → ∞)', xNull, M.top+6);
+
+  // Legend
+  ctx.fillStyle='#f44336'; ctx.fillRect(M.left+10,M.top+10,14,3);
+  ctx.fillStyle='#aaa'; ctx.font='9px Courier New'; ctx.textAlign='left'; ctx.fillText('RHP zero (phase lag)', M.left+28, M.top+15);
+  ctx.fillStyle='#4caf50'; ctx.fillRect(M.left+10,M.top+25,14,3);
+  ctx.fillText('LHP zero (phase boost)', M.left+28, M.top+30);
+
+  // X-axis labels
+  ctx.strokeStyle='#333'; ctx.strokeRect(M.left,M.top,pw,ph);
+  ctx.fillStyle='#555'; ctx.font='9px Courier New'; ctx.textAlign='center';
+  [0,0.5,1.0,1.5,2.0,2.5,3.0].forEach(v => {
+    const x = M.left + v/3*pw;
+    ctx.fillText(v.toFixed(1)+'×', x, H-M.bottom+14);
+  });
+  ctx.fillStyle='#555'; ctx.font='10px Courier New';
+  ctx.fillText('Rs / (1/gm2)  — normalized', M.left+pw/2, H-8);
+  ctx.fillText('|fz| (Hz) — log scale', 14, M.top + ph/2, 90);
+}
+
+function draw2() {
+  const gbw_t = updateSlider('gbw_t', 0) * 1e6;
+  const cl_t  = updateSlider('cl_t',  1) * 1e-12;
+  const pm_t  = updateSlider('pm_t',  0);
+  const vov_t = updateSlider('vov_t', 2);
+  const proc  = document.getElementById('proc_t').value;
+  const P     = PROC_DATA[proc];
+
+  // Step-by-step sizing
+  const gm1   = gbw_t * 2 * Math.PI * cl_t;
+  const cc    = gm1 / (2 * Math.PI * gbw_t);  // = CL trivially here? No: cc = gm1/(2pi*GBW)
+  // For PM ≥ pm_t: need fp2/GBW ≥ tan(90-pm_t in radians... no: PM = 90 - arctan(GBW/fp2)
+  // → arctan(GBW/fp2) = 90-pm_t → GBW/fp2 = tan(90-pm_t) = cot(pm_t) → fp2 = GBW×tan(pm_t)
+  const tanPM = Math.tan(pm_t * Math.PI / 180);
+  const fp2_min = gbw_t * tanPM;
+  const gm2_min = fp2_min * 2 * Math.PI * cl_t;
+  const id1   = gm1 * vov_t / 2;
+  const iss   = 2 * id1;
+  const id2   = gm2_min * vov_t / 2;
+  const wl1   = 2 * id1 / (P.unCox * vov_t ** 2);
+  const wl2   = 2 * id2 / (P.unCox * vov_t ** 2);
+  const rs_val = 1 / gm2_min;
+  const fz_lhp = 1 / (2 * Math.PI * cc * Math.abs(rs_val - 1/gm2_min)); // = infinity if rs=1/gm2
+
+  const canvas = document.getElementById('chart2');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // Draw a visual sizing summary as a bar chart
+  const items = [
+    { label: 'gm1', val: gm1*1000, unit:'mA/V', maxV: 10,  color:'#2196f3' },
+    { label: 'gm2_min', val: gm2_min*1000, unit:'mA/V', maxV: 50,  color:'#ff9800' },
+    { label: 'ISS', val: iss*1e6, unit:'µA', maxV: 2000, color:'#4caf50' },
+    { label: 'ID2', val: id2*1e6, unit:'µA', maxV: 5000, color:'#9c27b0' },
+    { label: 'Cc', val: cc*1e12, unit:'pF', maxV: 50,  color:'#00bcd4' },
+    { label: 'W/L M1', val: wl1, unit:'', maxV: 500,  color:'#ffeb3b' },
+    { label: 'W/L M6', val: wl2, unit:'', maxV: 2000, color:'#f44336' }
+  ];
+
+  const bw = (W - M.left - M.right) / items.length;
+  items.forEach((it, i) => {
+    const bH = Math.max(2, (it.val / it.maxV) * (H - M.top - M.bottom - 30));
+    const bx = M.left + i * bw + bw * 0.15;
+    const by = H - M.bottom - 30 - bH;
+    ctx.fillStyle = it.color;
+    ctx.globalAlpha = 0.8;
+    ctx.fillRect(bx, by, bw * 0.7, bH);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#ccc'; ctx.font = '9px Courier New'; ctx.textAlign = 'center';
+    const valStr = it.val > 100 ? it.val.toFixed(0) : it.val.toFixed(2);
+    ctx.fillText(valStr + (it.unit ? ' ' + it.unit : ''), bx + bw*0.35, by - 3);
+    ctx.fillStyle = '#888'; ctx.font = '9px Courier New';
+    ctx.fillText(it.label, bx + bw*0.35, H - M.bottom - 16);
+  });
+
+  ctx.fillStyle = '#888'; ctx.font = '10px Courier New'; ctx.textAlign = 'center';
+  ctx.fillText(`Two-Stage OTA Sizing — GBW=${(gbw_t/1e6).toFixed(0)}MHz, CL=${(cl_t*1e12).toFixed(1)}pF, PM≥${pm_t}°, ${proc}nm`, W/2, M.top - 10);
+
+  const fmtF = f => f>1e9?(f/1e9).toFixed(2)+'GHz':f>1e6?(f/1e6).toFixed(1)+'MHz':f>1e3?(f/1e3).toFixed(0)+'kHz':f.toFixed(0)+'Hz';
+  document.getElementById('ro2').innerHTML = `
+    <div class="ro">gm1: <span>${(gm1*1000).toFixed(3)} mA/V</span></div>
+    <div class="ro">gm2_min: <span>${(gm2_min*1000).toFixed(2)} mA/V</span></div>
+    <div class="ro">Cc: <span>${(cc*1e12).toFixed(2)} pF</span></div>
+    <div class="ro">ISS: <span>${(iss*1e6).toFixed(1)} µA</span></div>
+    <div class="ro">ID2: <span>${(id2*1e6).toFixed(1)} µA</span></div>
+    <div class="ro">gm2/gm1: <span class="${gm2_min/gm1 >= 1.73 ? 'pass' : 'fail'}">${(gm2_min/gm1).toFixed(2)}</span></div>
+    <div class="ro">Rs = 1/gm2: <span>${(rs_val*1000).toFixed(0)} Ω</span></div>`;
+}
+
+function switchTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===n));
+  document.querySelectorAll('.panel').forEach((p,i) => p.classList.toggle('active', i===n));
+  if (n===0) draw0();
+  if (n===1) draw1();
+  if (n===2) draw2();
+}
+draw0();
+</script>
+</body>
+</html>

@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-SIM-9.2.1 Parameter Sweep R</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:10px;padding:10px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:230px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.cb-row{display:flex;align-items:center;gap:6px;margin-top:4px}
+.cb-row label{margin:0;color:#ccc;font-size:11px}
+.cb-row input{accent-color:#0066cc;width:14px;height:14px}
+.netlist{background:#050510;border:1px solid #334;padding:8px;margin-top:6px;font-size:10px;line-height:1.7;color:#99bbdd;border-radius:3px}
+.hl{color:#ffaa00}
+</style>
+</head>
+<body>
+<h1>P2-SIM-9.2.1 — Parameter Sweep: R Variation (5 Values)</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="560" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>Fixed Parameters</h2>
+<label>C (nF)
+<input type="range" id="C" min="1" max="10000" step="1" value="100">
+<div class="readout" id="C_v">C = 100 nF</div>
+</label>
+<label>V_step (V)
+<input type="range" id="Vin" min="1" max="10" step="0.5" value="5">
+<div class="readout" id="Vin_v">V_in = 5 V</div>
+</label>
+<h2 style="margin-top:8px">Toggle Curves</h2>
+<div id="toggles"></div>
+<h2 style="margin-top:8px">NGSpice .step Command</h2>
+<div class="netlist" id="netlist"></div>
+<h2 style="margin-top:6px">τ Values</h2>
+<div id="tau_table" style="font-size:10px;line-height:1.7;margin-top:4px"></div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let C=100,Vin=5;
+const R_vals=[100,1000,10000,100000,1000000]; // Ω
+const cols=['#ff4444','#ffaa00','#00ff88','#00aaff','#aa44ff'];
+const labels=['100Ω','1kΩ','10kΩ','100kΩ','1MΩ'];
+let show=[true,true,true,true,true];
+const W=560,H=380,pd={l:60,r:15,t:25,b=35};
+const pdd={l:60,r:15,t:25,b:35};
+const CW=W-pdd.l-pdd.r,CH=H-pdd.t-pdd.b;
+
+// Build toggles
+const tog=document.getElementById('toggles');
+R_vals.forEach((r,i)=>{
+  const d=document.createElement('div');d.className='cb-row';
+  const inp=document.createElement('input');inp.type='checkbox';inp.checked=true;inp.id='cb'+i;
+  inp.onchange=function(){show[i]=this.checked;draw();};
+  const lbl=document.createElement('label');lbl.htmlFor='cb'+i;lbl.textContent=labels[i];lbl.style.color=cols[i];
+  d.appendChild(inp);d.appendChild(lbl);
+  const tspan=document.createElement('span');tspan.id='tspan'+i;tspan.style.color='#888';tspan.style.fontSize='10px';tspan.style.marginLeft='4px';
+  d.appendChild(tspan);tog.appendChild(d);
+});
+
+['C','Vin'].forEach(id=>{
+  document.getElementById(id).oninput=function(){
+    const v=parseFloat(this.value);
+    if(id==='C'){C=v;document.getElementById('C_v').textContent='C = '+v+' nF';}
+    if(id==='Vin'){Vin=v;document.getElementById('Vin_v').textContent='V_in = '+v+' V';}
+    draw();
+  };
+});
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const Cf=C*1e-9;
+  const taus=R_vals.map(r=>r*Cf*1000); // ms
+  const tmax=Math.max(...taus)*3;
+  function toPx(t,v){return[pdd.l+CW*(t/tmax),pdd.t+CH*(1-v/(Vin*1.05))];}
+  // Grid
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=8;i++){const x=pdd.l+CW*(i/8);ctx.beginPath();ctx.moveTo(x,pdd.t);ctx.lineTo(x,pdd.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=pdd.t+CH*(i/5);ctx.beginPath();ctx.moveTo(pdd.l,y);ctx.lineTo(pdd.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pdd.l,pdd.t);ctx.lineTo(pdd.l,pdd.t+CH);ctx.moveTo(pdd.l,pdd.t+CH);ctx.lineTo(pdd.l+CW,pdd.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=8;i++){const t=tmax*i/8;ctx.fillText(t>=1?t.toFixed(0)+'ms':(t*1000).toFixed(0)+'μs',pdd.l+CW*(i/8),pdd.t+CH+18);}
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){const v=Vin*1.05*(1-i/5);ctx.fillText(v.toFixed(1)+'V',pdd.l-4,pdd.t+CH*(i/5)+4);}
+  // Final value line
+  const[,yvf]=toPx(0,Vin);ctx.strokeStyle='#222';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(pdd.l,yvf);ctx.lineTo(pdd.l+CW,yvf);ctx.stroke();ctx.setLineDash([]);
+  // Waveforms
+  taus.forEach((tau,i)=>{
+    if(!show[i])return;
+    ctx.strokeStyle=cols[i];ctx.lineWidth=2;
+    ctx.beginPath();
+    for(let j=0;j<=500;j++){const t=tmax*j/500;const v=Vin*(1-Math.exp(-t/tau));const[x,y]=toPx(t,v);j===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+    ctx.stroke();
+    // τ dot
+    const[xt,yt]=toPx(tau,0.632*Vin);
+    ctx.fillStyle=cols[i];ctx.beginPath();ctx.arc(xt,yt,3,0,Math.PI*2);ctx.fill();
+    // Label at end
+    const[xe,ye]=toPx(tmax,Vin*(1-Math.exp(-tmax/tau)));
+    ctx.font='10px Courier New';ctx.textAlign='right';
+    ctx.fillText(labels[i],pdd.l+CW-2,ye+3);
+  });
+  // Update τ spans
+  taus.forEach((tau,i)=>{
+    document.getElementById('tspan'+i).textContent=' τ='+(tau>=1?tau.toFixed(1)+'ms':(tau*1000).toFixed(1)+'μs');
+  });
+  // Netlist
+  const C_str=C>=1000?(C/1000).toFixed(0)+'u':C+'n';
+  document.getElementById('netlist').innerHTML=
+    '<span style="color:#555">* RC R-sweep, C='+C+'nF</span>\n'+
+    '<span class="hl">.param</span> Rval = 10k\n'+
+    'Vin  1  0  PULSE(0 '+Vin+' 0 1n 1n 10m 20m)\n'+
+    'R1   1  2  <span class="hl">{Rval}</span>\n'+
+    'C1   2  0  '+C_str+'  IC=0\n'+
+    '.tran 1u 5m UIC\n'+
+    '<span class="hl">.step param Rval list 100 1k 10k 100k 1meg</span>\n'+
+    '.end';
+  // τ table
+  let tbl='';taus.forEach((tau,i)=>tbl+='<span style="color:'+cols[i]+'">'+labels[i]+'</span>: τ='+(tau>=1?tau.toFixed(2)+'ms':(tau*1000).toFixed(1)+'μs')+' f_c='+(1000/(2*Math.PI*tau)).toFixed(0)+'Hz<br>');
+  document.getElementById('tau_table').innerHTML=tbl;
+}
+draw();
+</script>
+</body>
+</html>

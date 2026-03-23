@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-FO-3.2.2 — Impulse Response</title>
+<style>
+  :root { --accent: #0066cc; --bg: #1a1a1a; --panel: #242424; --border: #333; --text: #e0e0e0; --muted: #888; }
+  @media (prefers-color-scheme: light) { :root { --bg: #f4f4f4; --panel: #fff; --border: #ccc; --text: #1a1a1a; --muted: #555; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+  h1 { font-size: 1.1rem; color: var(--accent); padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .subtitle { font-size: 0.8rem; color: var(--muted); padding: 0 16px 8px; }
+  .layout { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; }
+  .controls { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px; min-width: 220px; flex: 0 0 220px; }
+  .ctrl-group { margin-bottom: 14px; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .val { font-weight: bold; color: var(--accent); }
+  .readout { margin-top: 12px; display: grid; grid-template-columns: 1fr; gap: 6px; }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; }
+  .card-label { font-size: 0.7rem; color: var(--muted); }
+  .card-val { font-size: 0.88rem; font-weight: bold; color: var(--accent); }
+  .canvases { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 300px; }
+  canvas { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: block; }
+</style>
+</head>
+<body>
+<h1>P2-FO-3.2.2 — Impulse Response</h1>
+<p class="subtitle">h(t) = (K/τ)·e^(−t/τ) &nbsp;|&nbsp; impulse = derivative of step &nbsp;|&nbsp; area = K</p>
+<div class="layout">
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>Time constant τ (ms): <span class="val" id="vTau">10.0</span></label>
+      <input type="range" id="sTau" min="1" max="40" step="0.5" value="10">
+    </div>
+    <div class="ctrl-group">
+      <label>DC gain K: <span class="val" id="vK">1.0</span></label>
+      <input type="range" id="sK" min="0.2" max="5" step="0.1" value="1">
+    </div>
+    <div class="readout">
+      <div class="card"><div class="card-label">h(0⁺) = K/τ</div><div class="card-val" id="rH0">100 s⁻¹</div></div>
+      <div class="card"><div class="card-label">Area ∫h dt = K</div><div class="card-val" id="rArea">1.000</div></div>
+      <div class="card"><div class="card-label">h(τ) = K/(eτ)</div><div class="card-val" id="rHtau">36.8 s⁻¹</div></div>
+      <div class="card"><div class="card-label">Half-value time</div><div class="card-val" id="rHalf">6.93 ms</div></div>
+    </div>
+    <div style="margin-top:12px;font-size:0.78rem;color:var(--muted);line-height:1.6;">
+      Blue: step response<br>
+      Orange: impulse response<br>
+      Impulse = d(step)/dt<br>
+      Shaded area = K
+    </div>
+  </div>
+  <div class="canvases">
+    <canvas id="cvStep" width="540" height="200"></canvas>
+    <canvas id="cvImp" width="540" height="200"></canvas>
+  </div>
+</div>
+<script>
+function getColors() {
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  return {
+    bg: isDark ? '#242424' : '#fff',
+    grid: isDark ? '#2e2e2e' : '#e8e8e8',
+    text: isDark ? '#e0e0e0' : '#1a1a1a',
+    mut: isDark ? '#888' : '#555',
+  };
+}
+
+function drawCanvas(cv, tau, K, isStep) {
+  const ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  const padL = 55, padR = 15, padT = 22, padB = 36;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const tMax = 5 * tau;
+  const c = getColors();
+
+  ctx.fillStyle = c.bg; ctx.fillRect(0, 0, W, H);
+
+  const tx = t => padL + (t / tMax) * plotW;
+
+  if (isStep) {
+    const yMax = K * 1.15;
+    const ty = y => padT + (1 - y / yMax) * plotH;
+
+    ctx.strokeStyle = c.grid; ctx.lineWidth = 1;
+    for (let i = 0; i <= 5; i++) { ctx.beginPath(); ctx.moveTo(tx(i * tMax / 5), padT); ctx.lineTo(tx(i * tMax / 5), padT + plotH); ctx.stroke(); }
+    for (let i = 0; i <= 4; i++) { ctx.beginPath(); ctx.moveTo(padL, padT + i * plotH / 4); ctx.lineTo(padL + plotW, padT + i * plotH / 4); ctx.stroke(); }
+
+    ctx.setLineDash([4, 3]); ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(padL, ty(K)); ctx.lineTo(padL + plotW, ty(K)); ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i <= 400; i++) {
+      const t = i / 400 * tMax;
+      const y = K * (1 - Math.exp(-t / tau));
+      if (i === 0) ctx.moveTo(tx(t), ty(y)); else ctx.lineTo(tx(t), ty(y));
+    }
+    ctx.stroke();
+
+    ctx.fillStyle = c.mut; ctx.font = '10px sans-serif';
+    ctx.fillText('Step response y(t)', padL + 4, padT + 12);
+    ctx.fillStyle = '#0066cc'; ctx.font = '10px monospace';
+    ctx.fillText(`K=${K.toFixed(1)}`, padL + plotW - 50, ty(K) - 5);
+
+    ctx.fillStyle = c.mut; ctx.font = '10px sans-serif';
+    for (let i = 0; i <= 5; i++) ctx.fillText((i * tMax / 5).toFixed(0), tx(i * tMax / 5) - 8, padT + plotH + 16);
+    ctx.fillText('t (ms)', padL + plotW / 2 - 15, padT + plotH + 30);
+
+  } else {
+    const hMax = K / tau * 1.2;
+    const ty = y => padT + (1 - y / hMax) * plotH;
+
+    ctx.strokeStyle = c.grid; ctx.lineWidth = 1;
+    for (let i = 0; i <= 5; i++) { ctx.beginPath(); ctx.moveTo(tx(i * tMax / 5), padT); ctx.lineTo(tx(i * tMax / 5), padT + plotH); ctx.stroke(); }
+
+    // Shaded area
+    ctx.fillStyle = 'rgba(255,136,68,0.18)';
+    ctx.beginPath(); ctx.moveTo(tx(0), padT + plotH);
+    for (let i = 0; i <= 400; i++) {
+      const t = i / 400 * tMax;
+      const h = (K / tau) * Math.exp(-t / tau);
+      ctx.lineTo(tx(t), ty(h));
+    }
+    ctx.lineTo(padL + plotW, padT + plotH); ctx.closePath(); ctx.fill();
+
+    ctx.strokeStyle = '#ff8844'; ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i <= 400; i++) {
+      const t = i / 400 * tMax;
+      const h = (K / tau) * Math.exp(-t / tau);
+      if (i === 0) ctx.moveTo(tx(t), ty(h)); else ctx.lineTo(tx(t), ty(h));
+    }
+    ctx.stroke();
+
+    ctx.fillStyle = c.mut; ctx.font = '10px sans-serif';
+    ctx.fillText('Impulse response h(t) = (K/τ)e^(−t/τ)', padL + 4, padT + 12);
+    ctx.fillStyle = '#ff8844';
+    ctx.fillText(`Area = K = ${K.toFixed(2)}`, padL + plotW / 2 - 30, padT + plotH - 20);
+
+    ctx.fillStyle = c.mut; ctx.font = '10px sans-serif';
+    for (let i = 0; i <= 5; i++) ctx.fillText((i * tMax / 5).toFixed(0), tx(i * tMax / 5) - 8, padT + plotH + 16);
+    ctx.fillText('t (ms)', padL + plotW / 2 - 15, padT + plotH + 30);
+    ctx.fillText(`h(0⁺) = K/τ = ${(K / tau * 1000).toFixed(1)} s⁻¹`, padL + 60, padT + 12);
+  }
+}
+
+function draw() {
+  const tau = parseFloat(document.getElementById('sTau').value);
+  const K = parseFloat(document.getElementById('sK').value);
+  document.getElementById('vTau').textContent = tau.toFixed(1);
+  document.getElementById('vK').textContent = K.toFixed(1);
+  document.getElementById('rH0').textContent = (K / tau * 1000).toFixed(1) + ' s⁻¹';
+  document.getElementById('rArea').textContent = K.toFixed(3);
+  document.getElementById('rHtau').textContent = (K / (tau * Math.E) * 1000).toFixed(2) + ' s⁻¹';
+  document.getElementById('rHalf').textContent = (tau * Math.LN2).toFixed(2) + ' ms';
+  drawCanvas(document.getElementById('cvStep'), tau, K, true);
+  drawCanvas(document.getElementById('cvImp'), tau, K, false);
+}
+
+['sTau','sK'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+draw();
+</script>
+</body>
+</html>

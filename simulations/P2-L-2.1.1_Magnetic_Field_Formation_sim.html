@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-L-2.1.1 — Magnetic Field Formation</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+  h1 { color: #0066cc; font-size: 1.3em; margin-bottom: 4px; }
+  .subtitle { color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }
+  .layout { display: flex; gap: 20px; flex-wrap: wrap; }
+  .panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+  .controls { width: 280px; flex-shrink: 0; }
+  .viz { flex: 1; min-width: 360px; }
+  label { display: block; color: #8b949e; font-size: 0.8em; margin-bottom: 4px; margin-top: 12px; }
+  input[type=range] { width: 100%; accent-color: #0066cc; }
+  select { width: 100%; background: #21262d; border: 1px solid #30363d; color: #e6edf3; padding: 6px; border-radius: 4px; margin-top: 4px; }
+  .val { color: #0066cc; font-weight: bold; }
+  canvas { background: #0d1117; border-radius: 6px; display: block; }
+  .readouts { margin-top: 14px; }
+  .readout-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #21262d; font-size: 0.82em; }
+  .readout-label { color: #8b949e; }
+  .readout-val { color: #39d353; font-weight: bold; font-family: monospace; }
+  .eq { background: #21262d; border-left: 3px solid #0066cc; padding: 10px 12px; border-radius: 4px; margin-top: 14px; font-family: monospace; font-size: 0.82em; color: #a5d6ff; }
+</style>
+</head>
+<body>
+<h1>P2-L-2.1.1 — Magnetic Field Formation</h1>
+<div class="subtitle">Coil animation · adjustable turns N and current I · B field visualization · live L and B readouts</div>
+<div class="layout">
+  <div class="panel controls">
+    <label>Turns N: <span class="val" id="nLabel">20</span></label>
+    <input type="range" id="nSlider" min="1" max="100" value="20" step="1">
+    <label>Current I: <span class="val" id="iLabel">1.0 A</span></label>
+    <input type="range" id="iSlider" min="1" max="100" value="20" step="1">
+    <label>Coil length l (mm): <span class="val" id="lLabel">20 mm</span></label>
+    <input type="range" id="lSlider" min="5" max="100" value="20" step="1">
+    <label>Core material:</label>
+    <select id="matSelect">
+      <option value="1">Air core (µᵣ = 1)</option>
+      <option value="125">MPP powder (µᵣ = 125)</option>
+      <option value="500" selected>Gapped ferrite (µᵣ = 500)</option>
+      <option value="3000">MnZn ferrite (µᵣ = 3000)</option>
+      <option value="8000">Silicon steel (µᵣ = 8000)</option>
+    </select>
+    <div class="readouts">
+      <div class="readout-row"><span class="readout-label">H = NI/l</span><span class="readout-val" id="H">—</span></div>
+      <div class="readout-row"><span class="readout-label">B = µ₀µᵣH</span><span class="readout-val" id="B">—</span></div>
+      <div class="readout-row"><span class="readout-label">Flux Φ (A = 5mm²)</span><span class="readout-val" id="Phi">—</span></div>
+      <div class="readout-row"><span class="readout-label">Flux linkage Ψ = NΦ</span><span class="readout-val" id="Psi">—</span></div>
+      <div class="readout-row"><span class="readout-label">Inductance L = µ₀µᵣN²A/l</span><span class="readout-val" id="Lval">—</span></div>
+    </div>
+    <div class="eq">L = µ₀µᵣN²A / l<br>B = µ₀µᵣ × N×I / l<br>V = N × dΦ/dt = L × dI/dt</div>
+  </div>
+  <div class="panel viz">
+    <canvas id="cv" width="560" height="420"></canvas>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'); const ctx=cv.getContext('2d');
+const W=560, H=420;
+const mu0=4*Math.PI*1e-7;
+const A=5e-6; // 5 mm² cross-section
+
+function getP(){
+  const N=parseInt(document.getElementById('nSlider').value);
+  const I=parseFloat(document.getElementById('iSlider').value)/20;
+  const l=parseFloat(document.getElementById('lSlider').value)*1e-3;
+  const mur=parseFloat(document.getElementById('matSelect').value);
+  return {N,I,l,mur};
+}
+
+function fmtB(b){ return b>=1?b.toFixed(2)+'T':b>=1e-3?(b*1000).toFixed(2)+'mT':(b*1e6).toFixed(1)+'µT'; }
+function fmtL(l){ return l>=1?l.toFixed(3)+'H':l>=1e-3?(l*1000).toFixed(2)+'mH':l>=1e-6?(l*1e6).toFixed(2)+'µH':(l*1e9).toFixed(1)+'nH'; }
+function fmtPhi(p){ return p>=1e-3?(p*1000).toFixed(3)+'mWb':p>=1e-6?(p*1e6).toFixed(2)+'µWb':(p*1e9).toFixed(1)+'nWb'; }
+
+function draw(){
+  const p=getP();
+  const H_field=p.N*p.I/p.l;
+  const B=mu0*p.mur*H_field;
+  const Phi=B*A;
+  const Psi=p.N*Phi;
+  const L=mu0*p.mur*p.N*p.N*A/p.l;
+
+  document.getElementById('nLabel').textContent=p.N;
+  document.getElementById('iLabel').textContent=p.I.toFixed(2)+' A';
+  document.getElementById('lLabel').textContent=(p.l*1000).toFixed(0)+' mm';
+  document.getElementById('H').textContent=H_field.toFixed(0)+' A/m';
+  document.getElementById('B').textContent=fmtB(B);
+  document.getElementById('Phi').textContent=fmtPhi(Phi);
+  document.getElementById('Psi').textContent=fmtPhi(Psi);
+  document.getElementById('Lval').textContent=fmtL(L);
+
+  ctx.clearRect(0,0,W,H);
+
+  const CX=W/2, CY=H/2-20;
+  const coilW=220, coilH=80;
+  const coilX=CX-coilW/2, coilY=CY-coilH/2;
+
+  // Background field region (color intensity proportional to B)
+  const Bmax=2.0; const Bnorm=Math.min(1, B/Bmax);
+  const fieldAlpha=Bnorm*0.35;
+  ctx.fillStyle=`rgba(0,102,204,${fieldAlpha})`;
+  ctx.fillRect(coilX, coilY-30, coilW, coilH+60);
+
+  // Core rectangle (shaded by material)
+  const coreColors=['transparent','#1a1a2e','#1a2020','#1e2415','#1a1a18'];
+  const matIdx=[1,125,500,3000,8000].indexOf(p.mur);
+  if(matIdx>0){
+    ctx.fillStyle=['#1a1a2e','#1e2e2e','#1a2e14','#2e2e1a'][matIdx-1];
+    ctx.strokeStyle='#30363d'; ctx.lineWidth=1;
+    ctx.fillRect(coilX+10, coilY-10, coilW-20, coilH+20);
+    ctx.strokeRect(coilX+10, coilY-10, coilW-20, coilH+20);
+  }
+
+  // Field lines inside coil (horizontal lines, density proportional to B)
+  const nLines=Math.max(2,Math.round(6*Bnorm+2));
+  for(let li=0;li<nLines;li++){
+    const ly=coilY + (li/(nLines-1))*(coilH);
+    const alpha=0.3+0.6*Bnorm;
+    ctx.strokeStyle=`rgba(0,200,255,${alpha})`; ctx.lineWidth=1.5;
+    ctx.beginPath();
+    ctx.moveTo(coilX+16, ly);
+    ctx.lineTo(coilX+coilW-16, ly);
+    // arrows
+    const ax=coilX+coilW/2; ctx.lineTo(ax,ly);
+    ctx.stroke();
+    // arrowhead
+    ctx.fillStyle=`rgba(0,200,255,${alpha})`;
+    ctx.beginPath(); ctx.moveTo(ax+8,ly); ctx.lineTo(ax+2,ly-4); ctx.lineTo(ax+2,ly+4); ctx.closePath(); ctx.fill();
+  }
+
+  // External field lines (return path, arcing over coil)
+  const extLines=Math.max(1,Math.round(3*Bnorm+1));
+  for(let ei=0;ei<extLines;ei++){
+    const spread=(ei+1)*40;
+    const alpha=(0.15+0.25*Bnorm)/(ei+1);
+    ctx.strokeStyle=`rgba(0,180,255,${alpha})`; ctx.lineWidth=1;
+    ctx.beginPath();
+    ctx.moveTo(coilX+coilW-8, CY);
+    ctx.bezierCurveTo(coilX+coilW+spread, CY-coilH/2-spread, coilX-spread, CY-coilH/2-spread, coilX+8, CY);
+    ctx.stroke();
+    // Bottom return
+    ctx.beginPath();
+    ctx.moveTo(coilX+coilW-8, CY);
+    ctx.bezierCurveTo(coilX+coilW+spread, CY+coilH/2+spread, coilX-spread, CY+coilH/2+spread, coilX+8, CY);
+    ctx.stroke();
+  }
+
+  // Coil turns (zig-zag representation)
+  ctx.strokeStyle='#e3b341'; ctx.lineWidth=2.5;
+  const nVisible=Math.min(p.N, 20);
+  const turnSpacing=coilW/nVisible;
+  ctx.beginPath();
+  for(let ti=0;ti<nVisible;ti++){
+    const x0=coilX+ti*turnSpacing;
+    const x1=x0+turnSpacing;
+    const xm=x0+turnSpacing/2;
+    if(ti===0) ctx.moveTo(x0,coilY);
+    ctx.bezierCurveTo(xm,coilY-25, xm,coilY-25, x1,coilY);
+  }
+  ctx.stroke();
+  ctx.beginPath();
+  for(let ti=0;ti<nVisible;ti++){
+    const x0=coilX+ti*turnSpacing;
+    const x1=x0+turnSpacing;
+    const xm=x0+turnSpacing/2;
+    if(ti===0) ctx.moveTo(x0,coilY+coilH);
+    ctx.bezierCurveTo(xm,coilY+coilH+25, xm,coilY+coilH+25, x1,coilY+coilH);
+  }
+  ctx.stroke();
+  // Vertical connections
+  ctx.beginPath();ctx.moveTo(coilX,coilY);ctx.lineTo(coilX,coilY+coilH);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(coilX+coilW,coilY);ctx.lineTo(coilX+coilW,coilY+coilH);ctx.stroke();
+  // Current arrows on wire
+  ctx.fillStyle='#e3b341'; ctx.font='12px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('I = '+p.I.toFixed(2)+'A →', coilX-60, coilY-10);
+  ctx.fillText('← return', coilX-60, coilY+coilH+15);
+
+  // B field strength arrow (right side)
+  const arrowLen=Math.min(160, Bnorm*160+10);
+  ctx.strokeStyle='#39d353'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.moveTo(CX+coilW/2+30, CY); ctx.lineTo(CX+coilW/2+30+arrowLen, CY); ctx.stroke();
+  ctx.fillStyle='#39d353'; ctx.beginPath();
+  ctx.moveTo(CX+coilW/2+30+arrowLen+8,CY);
+  ctx.lineTo(CX+coilW/2+30+arrowLen,CY-6);
+  ctx.lineTo(CX+coilW/2+30+arrowLen,CY+6);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle='#39d353'; ctx.font='bold 12px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('B = '+fmtB(B), CX+coilW/2+32, CY-12);
+
+  // N and I annotation
+  ctx.fillStyle='#8b949e'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('N = '+p.N+' turns', CX, coilY-48);
+  ctx.fillText('l = '+(p.l*1000).toFixed(0)+'mm', CX, coilY+coilH+50);
+  const matNames={1:'Air core',125:'MPP powder',500:'Gapped ferrite',3000:'MnZn ferrite',8000:'Silicon steel'};
+  ctx.fillText('Core: '+matNames[p.mur]+' (µᵣ = '+p.mur+')', CX, H-16);
+
+  // L bar indicator
+  const Lmax=mu0*8000*100*100*A/0.005;
+  const Lnorm=Math.min(1,L/Lmax);
+  ctx.fillStyle='#21262d'; ctx.fillRect(40,H-38,200,12);
+  ctx.fillStyle='#0066cc'; ctx.fillRect(40,H-38,Lnorm*200,12);
+  ctx.fillStyle='#e6edf3'; ctx.font='11px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('L = '+fmtL(L), 250, H-28);
+  ctx.fillStyle='#8b949e'; ctx.fillText('Inductance ↑', 40, H-42);
+}
+
+['nSlider','iSlider','lSlider','matSelect'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+draw();
+</script>
+</body>
+</html>

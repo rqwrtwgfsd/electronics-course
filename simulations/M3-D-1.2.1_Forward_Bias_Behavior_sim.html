@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M3-D-1.2.1 Forward Bias Simulator</title>
+<style>
+  :root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--accent:#0066cc;--accent2:#58a6ff;--text:#e6edf3;--subtext:#8b949e;--green:#3fb950;--red:#f85149;--orange:#d29922;}
+  @media(prefers-color-scheme:light){:root{--bg:#fff;--surface:#f6f8fa;--border:#d0d7de;--accent:#0066cc;--accent2:#0969da;--text:#24292f;--subtext:#57606a;--green:#1a7f37;--red:#d1242f;--orange:#9a6700;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;padding:20px;}
+  h1{color:var(--accent2);font-size:1.3rem;margin-bottom:4px;}
+  .subtitle{color:var(--subtext);font-size:0.85rem;margin-bottom:16px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;}
+  h2{font-size:0.95rem;color:var(--accent2);margin-bottom:12px;}
+  canvas{display:block;width:100%;}
+  .controls{display:flex;flex-direction:column;gap:10px;}
+  label{font-size:0.82rem;color:var(--subtext);}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .readout{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;font-family:monospace;font-size:0.83rem;}
+  .ro{display:flex;justify-content:space-between;margin-bottom:5px;}
+  .ro span:last-child{color:var(--accent2);font-weight:bold;}
+  .hl{color:var(--green)!important;}
+  .toggle-row{display:flex;gap:8px;margin-bottom:8px;}
+  button{background:var(--accent);color:#fff;border:none;border-radius:4px;padding:5px 12px;cursor:pointer;font-size:0.82rem;}
+  button.active{background:var(--green);}
+</style>
+</head>
+<body>
+<h1>M3-D-1.2.1 — Forward Bias I-V Curve</h1>
+<p class="subtitle">Shockley equation: I = I_s(e^(V/V_T) − 1). Toggle linear/log scale.</p>
+<div class="grid">
+  <div class="card">
+    <h2>I-V Characteristic</h2>
+    <div class="toggle-row">
+      <button id="btnLin" class="active" onclick="setScale('lin')">Linear</button>
+      <button id="btnLog" onclick="setScale('log')">Log Scale</button>
+    </div>
+    <canvas id="ivCanvas" height="220"></canvas>
+  </div>
+  <div class="card">
+    <h2>Controls</h2>
+    <div class="controls">
+      <div><label>Forward Voltage V_F (V): <strong id="vfLbl">0.65</strong></label><input type="range" id="vfS" min="0" max="0.9" value="0.65" step="0.01"></div>
+      <div><label>Temperature T (K): <strong id="tLbl">300 K</strong></label><input type="range" id="tS" min="250" max="400" value="300" step="5"></div>
+      <div><label>Saturation current I_s (×10⁻¹² A): <strong id="isLbl">1.00</strong></label><input type="range" id="isS" min="0.01" max="100" value="1" step="0.01"></div>
+      <div><label>Series resistance r_s (Ω): <strong id="rsLbl">1.0</strong></label><input type="range" id="rsS" min="0" max="50" value="1" step="0.5"></div>
+    </div>
+    <div class="readout" style="margin-top:12px">
+      <div class="ro"><span>Applied V_F</span><span id="ro_vf">—</span></div>
+      <div class="ro"><span>V_T = kT/q</span><span id="ro_vt">—</span></div>
+      <div class="ro"><span>I_s</span><span id="ro_is">—</span></div>
+      <div class="ro hl"><span>Diode Current I_D</span><span id="ro_id" class="hl">—</span></div>
+      <div class="ro"><span>V_D (across junction)</span><span id="ro_vd">—</span></div>
+      <div class="ro hl"><span>r_d = V_T/I_D</span><span id="ro_rd" class="hl">—</span></div>
+      <div class="ro"><span>Power P = V_F × I_D</span><span id="ro_p">—</span></div>
+    </div>
+  </div>
+</div>
+<script>
+const c=document.getElementById('ivCanvas');
+const ctx=c.getContext('2d');
+let scale='lin';
+
+function setScale(s){ scale=s; document.getElementById('btnLin').className=s==='lin'?'active':''; document.getElementById('btnLog').className=s==='log'?'active':''; draw(); }
+
+function resize(){ c.width=c.offsetWidth*devicePixelRatio; c.height=220*devicePixelRatio; ctx.scale(devicePixelRatio,devicePixelRatio); draw(); }
+
+function ni_si(T){ return 1.5e10*Math.pow(T/300,1.5)*Math.exp(-1.12*1.602e-23/(2*1.381e-23)*(1/T-1/300)); }
+// simpler: I_s scales with ni^2 ~ T^3 * exp(-Eg/kT)
+function Is_T(Is0,T){ return Is0*Math.pow(T/300,3)*Math.exp(-1.12*1.602e-19/(1.381e-23)*(1/T-1/300)); }
+
+function draw(){
+  const VF=parseFloat(document.getElementById('vfS').value);
+  const T=parseFloat(document.getElementById('tS').value);
+  const Is0=parseFloat(document.getElementById('isS').value)*1e-12;
+  const rs=parseFloat(document.getElementById('rsS').value);
+  const k=1.381e-23, q=1.602e-19;
+  const VT=k*T/q;
+  const Is=Is_T(Is0,T);
+
+  // Solve V_junction = VF - I*rs using Newton's method
+  let I=1e-6;
+  for(let iter=0;iter<50;iter++){
+    const Vj=VF-I*rs;
+    const Inew=Is*(Math.exp(Vj/VT)-1);
+    if(Math.abs(Inew-I)<1e-15) break;
+    I=0.5*I+0.5*Inew;
+  }
+  const I_D=Math.max(I,1e-20);
+  const Vj=VF-I_D*rs;
+  const rd=VT/Math.max(I_D,1e-20);
+
+  // Update labels
+  document.getElementById('vfLbl').textContent=VF.toFixed(2);
+  document.getElementById('tLbl').textContent=T+' K';
+  document.getElementById('isLbl').textContent=(Is0*1e12).toFixed(2);
+  document.getElementById('rsLbl').textContent=parseFloat(document.getElementById('rsS').value).toFixed(1);
+  document.getElementById('ro_vf').textContent=VF.toFixed(3)+' V';
+  document.getElementById('ro_vt').textContent=(VT*1000).toFixed(2)+' mV';
+  document.getElementById('ro_is').textContent=fmtCurrent(Is);
+  document.getElementById('ro_id').textContent=fmtCurrent(I_D);
+  document.getElementById('ro_vd').textContent=Vj.toFixed(3)+' V';
+  document.getElementById('ro_rd').textContent=rd>1000?(rd/1000).toFixed(2)+' kΩ':rd.toFixed(1)+' Ω';
+  document.getElementById('ro_p').textContent=(VF*I_D*1000).toFixed(3)+' mW';
+
+  // Draw IV curve
+  const W=c.width/devicePixelRatio, H=220;
+  ctx.clearRect(0,0,W,H);
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const pad={l:50,r:15,t:15,b:35};
+  const pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
+
+  const Vmax=0.9, Imax_lin=0.1; // 100 mA max linear
+  ctx.strokeStyle=isDark?'#333':'#ddd'; ctx.lineWidth=1;
+  ctx.strokeRect(pad.l,pad.t,pw,ph);
+  for(let i=1;i<5;i++){
+    ctx.beginPath(); ctx.moveTo(pad.l+pw*i/5,pad.t); ctx.lineTo(pad.l+pw*i/5,pad.t+ph);
+    ctx.strokeStyle=isDark?'#222':'#eee'; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(pad.l,pad.t+ph*i/5); ctx.lineTo(pad.l+pw,pad.t+ph*i/5); ctx.stroke();
+  }
+
+  if(scale==='lin'){
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2.5; ctx.beginPath();
+    let first=true;
+    for(let px=0;px<=pw;px++){
+      const V=Vmax*px/pw;
+      let Ij=1e-6;
+      for(let iter=0;iter<40;iter++){
+        const Vj=V-Ij*rs;
+        const In=Is*(Math.exp(Vj/VT)-1);
+        if(Math.abs(In-Ij)<1e-15) break;
+        Ij=0.5*Ij+0.5*In;
+      }
+      const y=pad.t+ph*(1-Math.min(Ij/Imax_lin,1));
+      if(first){ctx.moveTo(pad.l+px,y);first=false;}else ctx.lineTo(pad.l+px,y);
+    }
+    ctx.stroke();
+    // Axis labels
+    ctx.fillStyle=isDark?'#888':'#666'; ctx.font='10px system-ui';
+    ctx.textAlign='center'; ctx.fillText('V_F (V)',pad.l+pw/2,H-4);
+    ctx.textAlign='right'; ctx.fillText('0',pad.l-3,pad.t+ph);
+    ctx.fillText('100mA',pad.l-3,pad.t+3);
+    ctx.textAlign='center'; ctx.fillText('0',pad.l,pad.t+ph+12); ctx.fillText('0.9V',pad.l+pw,pad.t+ph+12);
+  } else {
+    // Log scale
+    const I_min=-15, I_max=0; // 10^-15 to 10^0 A
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2.5; ctx.beginPath();
+    let first=true;
+    for(let px=0;px<=pw;px++){
+      const V=Vmax*px/pw;
+      let Ij=1e-15;
+      for(let iter=0;iter<50;iter++){
+        const Vj=V-Ij*rs;
+        const In=Math.max(Is*(Math.exp(Math.min(Vj/VT,40))-1),1e-30);
+        if(Math.abs(In-Ij)/Math.max(In,1e-30)<1e-6) break;
+        Ij=0.5*Ij+0.5*In;
+      }
+      const logI=Math.log10(Math.max(Ij,1e-30));
+      const y=pad.t+ph*(1-(logI-I_min)/(I_max-I_min));
+      if(y<pad.t||y>pad.t+ph){first=true;continue;}
+      if(first){ctx.moveTo(pad.l+px,y);first=false;}else ctx.lineTo(pad.l+px,y);
+    }
+    ctx.stroke();
+    ctx.fillStyle=isDark?'#888':'#666'; ctx.font='10px system-ui';
+    ctx.textAlign='center'; ctx.fillText('V_F (V)',pad.l+pw/2,H-4);
+    ctx.textAlign='right'; ctx.fillText('1A',pad.l-3,pad.t+3); ctx.fillText('1pA',pad.l-3,pad.t+ph);
+    ctx.textAlign='center'; ctx.fillText('0',pad.l,pad.t+ph+12); ctx.fillText('0.9V',pad.l+pw,pad.t+ph+12);
+    ctx.fillStyle='#58a6ff'; ctx.fillText('log I',pad.l+2,pad.t+12);
+  }
+
+  // Operating point
+  let Iop=I_D;
+  const xop=pad.l+VF/Vmax*pw;
+  let yop;
+  if(scale==='lin') yop=pad.t+ph*(1-Math.min(Iop/Imax_lin,1));
+  else { const logI=Math.log10(Math.max(Iop,1e-30)); yop=pad.t+ph*(1-(logI-(-15))/(15)); }
+  if(yop>pad.t&&yop<pad.t+ph){
+    ctx.fillStyle='#f85149'; ctx.beginPath(); ctx.arc(xop,yop,5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#f85149'; ctx.font='10px monospace'; ctx.textAlign='left';
+    ctx.fillText(fmtCurrent(Iop),xop+7,yop);
+  }
+
+  // Tangent line showing r_d
+  const slope=1/(Is*Math.exp(Vj/VT)/VT+1/rs);
+  if(scale==='lin'){
+    const dI=Imax_lin*0.15;
+    const x1=pad.l+(VF-dI*slope)/Vmax*pw;
+    const x2=pad.l+(VF+dI*slope)/Vmax*pw;
+    const y1=yop+ph*dI/Imax_lin;
+    const y2=yop-ph*dI/Imax_lin;
+    ctx.strokeStyle='#3fb950'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+function fmtCurrent(I){
+  if(I>=1) return I.toFixed(2)+' A';
+  if(I>=1e-3) return (I*1e3).toFixed(2)+' mA';
+  if(I>=1e-6) return (I*1e6).toFixed(2)+' µA';
+  if(I>=1e-9) return (I*1e9).toFixed(2)+' nA';
+  return (I*1e12).toFixed(2)+' pA';
+}
+
+document.querySelectorAll('input[type=range]').forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',resize);
+resize();
+</script>
+</body>
+</html>

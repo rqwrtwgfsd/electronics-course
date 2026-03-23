@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-AL-3.4.1 — Output Resistance and Gain</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-AL-3.4.1</div>
+  <h1>Active Load — Output Resistance and Gain</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>R_out and Gain Controls</h2>
+      <label>g_m (mA/V): <b id="gm_l">2.0</b> <input type="range" id="gm" min="0.1" max="20" value="2.0" step="0.1"></label>
+      <label>λ_n (V⁻¹): <b id="lamn_l">0.08</b> <input type="range" id="lamn" min="0.01" max="0.5" value="0.08" step="0.01"></label>
+      <label>λ_p (V⁻¹): <b id="lamp_l">0.10</b> <input type="range" id="lamp" min="0.01" max="0.5" value="0.10" step="0.01"></label>
+      <label>I_D (μA): <b id="id_l">100</b> μA <input type="range" id="id" min="5" max="500" value="100" step="5"></label>
+      <label>C_L (pF): <b id="cl_l">2</b> pF <input type="range" id="cl" min="0.1" max="20" value="2" step="0.1"></label>
+      <label>Topology: cascode ON: <b id="cas_l">OFF</b> <input type="range" id="cas" min="0" max="1" value="0" step="1"></label>
+
+      <div class="ro">R_out (kΩ / GΩ): <span id="rout_d">--</span></div>
+      <div class="ro g" style="margin-top:4px">A_v (dB): <span id="av_d">--</span></div>
+      <div class="ro" style="margin-top:4px">f_p1 (Hz): <span id="fp1_d">--</span></div>
+      <div class="ro" style="margin-top:4px">GBW (MHz): <span id="gbw_d">--</span></div>
+      <div class="insight">
+        A_v = g_m × R_out. GBW = g_m/(2π C_L). f_p1 = GBW/A_v. Moving R_out up (cascode) raises gain and lowers f_p1 proportionally — GBW is unchanged. The gain-bandwidth product is fixed by g_m and C_L.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Gain × Bandwidth Tradeoff (Bode)</h2>
+      <canvas id="cv" height="300"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const gm=+document.getElementById('gm').value*1e-3;
+    const lamn=+document.getElementById('lamn').value;
+    const lamp=+document.getElementById('lamp').value;
+    const ID=+document.getElementById('id').value*1e-6;
+    const CL=+document.getElementById('cl').value*1e-12;
+    const cas=+document.getElementById('cas').value;
+
+    document.getElementById('gm_l').textContent=(gm*1e3).toFixed(1);
+    document.getElementById('lamn_l').textContent=lamn.toFixed(2);
+    document.getElementById('lamp_l').textContent=lamp.toFixed(2);
+    document.getElementById('id_l').textContent=(ID*1e6).toFixed(0);
+    document.getElementById('cl_l').textContent=(CL*1e12).toFixed(1);
+    document.getElementById('cas_l').textContent=cas?'ON':'OFF';
+
+    const ron=1/(lamn*ID);
+    const rop=1/(lamp*ID);
+    let Rout;
+    if(cas){
+      Rout=(gm*ron*ron)*(gm*rop*rop)/((gm*ron*ron)+(gm*rop*rop));
+    } else {
+      Rout=ron*rop/(ron+rop);
+    }
+    const Av=gm*Rout;
+    const GBW=gm/(2*Math.PI*CL);
+    const fp1=GBW/Av;
+
+    document.getElementById('rout_d').textContent=Rout>1e6?(Rout/1e9).toFixed(3)+' GΩ':(Rout/1e3).toFixed(0)+' kΩ';
+    document.getElementById('av_d').textContent=(20*Math.log10(Av)).toFixed(1);
+    document.getElementById('fp1_d').textContent=fp1<1?(fp1*1000).toFixed(1)+' mHz':fp1.toFixed(1)+' Hz';
+    document.getElementById('gbw_d').textContent=(GBW/1e6).toFixed(1);
+
+    draw(Av, GBW, fp1);
+  }
+
+  function draw(Av, GBW, fp1){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=300;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,300);
+    const pL=55,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=300-pT-pB;
+
+    const fmin=Math.min(fp1*0.01, 1e-3);
+    const fmax=GBW*100;
+    const logFmin=Math.log10(fmin), logFmax=Math.log10(fmax);
+    const AvMax_dB=20*Math.log10(Av)+8;
+    const AvMin_dB=-15;
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText('|A_v|(dB)', 2, pT+ph/2);
+
+    for(let db=0;db<=Math.ceil(AvMax_dB/20)*20;db+=20){
+      const y=pT+ph-((db-AvMin_dB)/(AvMax_dB-AvMin_dB))*ph;
+      if(y<pT||y>pT+ph) continue;
+      ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText(db, 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+
+    // Gain curve
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+    ctx.beginPath(); let first=true;
+    for(let px=0;px<=pw;px++){
+      const f=Math.pow(10, logFmin+(px/pw)*(logFmax-logFmin));
+      const A=Av/Math.sqrt(1+(f/fp1)**2);
+      const dB=20*Math.log10(Math.max(A,1e-9));
+      const y=pT+ph-((dB-AvMin_dB)/(AvMax_dB-AvMin_dB))*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // 0 dB line
+    const y0=pT+ph-((0-AvMin_dB)/(AvMax_dB-AvMin_dB))*ph;
+    ctx.strokeStyle='#44444444'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(pL,y0); ctx.lineTo(pL+pw,y0); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // fp1 marker
+    if(fp1>=fmin&&fp1<=fmax){
+      const xfp1=pL+((Math.log10(fp1)-logFmin)/(logFmax-logFmin))*pw;
+      ctx.strokeStyle='#ff880066'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(xfp1,pT); ctx.lineTo(xfp1,pT+ph); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle='#ff8800'; ctx.font='8px system-ui';
+      let f1lbl=fp1<1?(fp1*1000).toFixed(1)+'mHz':fp1<1000?fp1.toFixed(1)+'Hz':(fp1/1000).toFixed(1)+'kHz';
+      ctx.fillText('f_p1='+f1lbl, xfp1+2, pT+9);
+    }
+
+    // GBW marker
+    if(GBW>=fmin&&GBW<=fmax){
+      const xgbw=pL+((Math.log10(GBW)-logFmin)/(logFmax-logFmin))*pw;
+      ctx.strokeStyle='#00994d66'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(xgbw,pT); ctx.lineTo(xgbw,pT+ph); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle='#00994d'; ctx.font='8px system-ui';
+      ctx.fillText('GBW='+(GBW/1e6).toFixed(0)+'MHz', xgbw+2, pT+9);
+    }
+
+    // X labels
+    const freqs=[fmin];
+    for(let f=fmin*10;f<=fmax*2;f*=10) freqs.push(f);
+    freqs.filter(f=>f<=fmax).forEach(f=>{
+      const x=pL+((Math.log10(f)-logFmin)/(logFmax-logFmin))*pw;
+      let lbl=f>=1e9?'GHz'+(f/1e9).toFixed(0):f>=1e6?'MHz'+(f/1e6).toFixed(0):f>=1e3?'kHz'+(f/1e3).toFixed(0):f>=1?'Hz'+f.toFixed(0):'mHz'+(f*1000).toFixed(0);
+      ctx.fillStyle='#8888aa'; ctx.font='8px system-ui'; ctx.fillText(lbl, x-12, pT+ph+14);
+    });
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

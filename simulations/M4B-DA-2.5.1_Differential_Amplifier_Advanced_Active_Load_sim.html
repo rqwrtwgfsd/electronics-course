@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-DA-2.5.1 — Active Load (PMOS Mirror)</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-DA-2.5.1</div>
+  <h1>Differential Amplifier — Advanced: Active Load (PMOS Mirror)</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Active Load Parameters</h2>
+      <label>I_SS (μA): <b id="iss_l">200</b> μA <input type="range" id="iss" min="10" max="1000" value="200" step="10"></label>
+      <label>V_ov,n (mV): <b id="vovn_l">200</b> mV <input type="range" id="vovn" min="50" max="400" value="200" step="10"></label>
+      <label>λ_n (V⁻¹): <b id="lamn_l">0.08</b> <input type="range" id="lamn" min="0.01" max="0.5" value="0.08" step="0.01"></label>
+      <label>|V_ov,p| (mV): <b id="vovp_l">200</b> mV <input type="range" id="vovp" min="50" max="400" value="200" step="10"></label>
+      <label>λ_p (V⁻¹): <b id="lamp_l">0.10</b> <input type="range" id="lamp" min="0.01" max="0.5" value="0.10" step="0.01"></label>
+      <label>C_mirror (fF): <b id="cm_l">80</b> fF <input type="range" id="cm" min="5" max="1000" value="80" step="5"></label>
+      <label>Cascode: <b id="cas_l">OFF</b> <input type="range" id="cas" min="0" max="1" value="0" step="1"></label>
+
+      <div class="ro">g_m,n (mA/V): <span id="gmn_d">--</span></div>
+      <div class="ro" style="margin-top:4px">r_o,n / r_o,p (kΩ): <span id="ro_d">--</span></div>
+      <div class="ro g" style="margin-top:4px">A_v with active load (dB): <span id="av_d">--</span></div>
+      <div class="ro" style="margin-top:4px">Mirror pole f_mirror (GHz): <span id="fm_d">--</span></div>
+      <div class="ro" style="margin-top:4px">Output swing (mV): <span id="swing_d">--</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Gain vs I_SS: Load Comparison</h2>
+      <canvas id="cv" height="280"></canvas>
+      <div class="insight">
+        Blue: resistive load (R_D = r_o,p). Green: active mirror load. Orange: cascode active load. The active load provides dramatically higher gain at low I_SS due to higher r_o. Cascode pushes gain even higher.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const ISS=+document.getElementById('iss').value*1e-6;
+    const vovn=+document.getElementById('vovn').value/1000;
+    const lamn=+document.getElementById('lamn').value;
+    const vovp=+document.getElementById('vovp').value/1000;
+    const lamp=+document.getElementById('lamp').value;
+    const Cm=+document.getElementById('cm').value*1e-15;
+    const cas=+document.getElementById('cas').value;
+
+    document.getElementById('iss_l').textContent=(ISS*1e6).toFixed(0);
+    document.getElementById('vovn_l').textContent=(vovn*1000).toFixed(0);
+    document.getElementById('lamn_l').textContent=lamn.toFixed(2);
+    document.getElementById('vovp_l').textContent=(vovp*1000).toFixed(0);
+    document.getElementById('lamp_l').textContent=lamp.toFixed(2);
+    document.getElementById('cm_l').textContent=(Cm*1e15).toFixed(0);
+    document.getElementById('cas_l').textContent=cas?'ON':'OFF';
+
+    const ID=ISS/2;
+    const gmn=2*ID/vovn;
+    const gmp=2*ID/vovp;
+    const ron=1/(lamn*ID);
+    const rop=1/(lamp*ID);
+
+    const RL=ron*rop/(ron+rop);
+    const Av_simple=gmn*RL;
+    const rcas_n=gmn*ron*ron;
+    const rcas_p=gmp*rop*rop;
+    const RL_cas=rcas_n*rcas_p/(rcas_n+rcas_p);
+    const Av_cas=gmn*RL_cas;
+    const Av=cas?Av_cas:Av_simple;
+    const fm=gmp/(2*Math.PI*Cm);
+
+    const vcomp_n=vovn*1000+(cas?vovn*1000:0);
+    const vcomp_p=vovp*1000+(cas?vovp*1000:0);
+    const swing=Math.max(0,1800-vcomp_n-vcomp_p);
+
+    document.getElementById('gmn_d').textContent=(gmn*1e3).toFixed(3);
+    document.getElementById('ro_d').textContent=(ron/1e3).toFixed(0)+' / '+(rop/1e3).toFixed(0);
+    document.getElementById('av_d').textContent=(20*Math.log10(Av)).toFixed(1);
+    document.getElementById('fm_d').textContent=(fm/1e9).toFixed(2);
+    document.getElementById('swing_d').textContent=swing.toFixed(0);
+
+    draw(lamn,lamp,vovn,vovp,ISS*1e6);
+  }
+
+  function draw(lamn,lamp,vovn,vovp,ISS_op){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=280;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,280);
+    const pL=55,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=280-pT-pB;
+
+    const ISSmin=10, ISSmax=1000;
+    const AvMax=100, AvMin=0;
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='10px system-ui';
+    ctx.fillText('|A_v| (dB)', 2, pT+ph/2);
+    ctx.fillText('I_SS (μA)', pL+pw/2-14, 280-4);
+
+    for(let db=AvMin;db<=AvMax;db+=20){
+      const y=pT+ph-((db-AvMin)/(AvMax-AvMin))*ph;
+      ctx.fillStyle='#8888aa'; ctx.fillText(db, 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+    [10,100,200,500,1000].forEach(i=>{
+      const x=pL+((i-ISSmin)/(ISSmax-ISSmin))*pw;
+      ctx.fillStyle='#8888aa'; ctx.fillText(i, x-10, pT+ph+14);
+    });
+
+    const drawC=(fn,color,dash)=>{
+      ctx.strokeStyle=color; ctx.lineWidth=2; ctx.setLineDash(dash||[]);
+      ctx.beginPath(); let first=true;
+      for(let px=0;px<=pw;px++){
+        const ISS=(ISSmin+(px/pw)*(ISSmax-ISSmin))*1e-6;
+        const ID=ISS/2;
+        const gmn=2*ID/vovn; const gmp=2*ID/vovp;
+        const ron=1/(lamn*ID); const rop=1/(lamp*ID);
+        const v=fn(gmn,gmp,ron,rop);
+        if(v<=0) continue;
+        const dB=20*Math.log10(v);
+        const y=pT+ph-((Math.min(dB,AvMax)-AvMin)/(AvMax-AvMin))*ph;
+        if(y<pT||y>pT+ph) continue;
+        if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    };
+
+    // Resistive (R_D = r_o,p)
+    drawC((gmn,gmp,ron,rop)=>gmn*rop,'#0066cc',[5,4]);
+    // Active
+    drawC((gmn,gmp,ron,rop)=>gmn*(ron*rop/(ron+rop)),'#00994d',[]);
+    // Cascode active
+    drawC((gmn,gmp,ron,rop)=>{const rcn=gmn*ron*ron;const rcp=gmp*rop*rop;return gmn*(rcn*rcp/(rcn+rcp));},'#ff8800',[4,3]);
+
+    // Op point
+    const ID_op=ISS_op/2*1e-6;
+    const gmn_op=2*ID_op/vovn;
+    const ron_op=1/(lamn*ID_op);
+    const rop_op=1/(lamp*ID_op);
+    const Av_op=gmn_op*(ron_op*rop_op/(ron_op+rop_op));
+    const xop=pL+((ISS_op-ISSmin)/(ISSmax-ISSmin))*pw;
+    const yop=pT+ph-((20*Math.log10(Av_op)-AvMin)/(AvMax-AvMin))*ph;
+    ctx.fillStyle='#ff8800'; ctx.beginPath(); ctx.arc(xop,yop,6,0,2*Math.PI); ctx.fill();
+
+    const items=[{c:'#0066cc',lbl:'Resistive',d:[5,4]},{c:'#00994d',lbl:'Active',d:[]},{c:'#ff8800',lbl:'Cascode active',d:[4,3]}];
+    items.forEach(({c,lbl,d},i)=>{
+      ctx.strokeStyle=c; ctx.lineWidth=1.8; ctx.setLineDash(d);
+      ctx.beginPath(); ctx.moveTo(pL+pw-100,pT+12+14*i); ctx.lineTo(pL+pw-80,pT+12+14*i); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle='#8888aa'; ctx.font='10px system-ui'; ctx.fillText(lbl, pL+pw-76, pT+16+14*i);
+    });
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

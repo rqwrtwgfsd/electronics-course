@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M3-D-1.7.1 — Positive Clamper</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--text2:#8b949e;--accent:#0066cc;--accent2:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922}
+@media(prefers-color-scheme:light){:root{--bg:#ffffff;--surface:#f6f8fa;--border:#d0d7de;--text:#24292f;--text2:#656d76;--accent:#0066cc;--accent2:#0969da;--green:#2da44e;--red:#cf222e;--yellow:#9a6700}}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;font-size:14px;padding:16px}
+h2{color:var(--accent2);font-size:16px;margin-bottom:12px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px}
+canvas{width:100%;border-radius:6px;background:var(--bg);display:block}
+.controls{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px}
+.ctrl{flex:1;min-width:180px}
+label{display:block;color:var(--text2);font-size:12px;margin-bottom:4px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.readout{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.ro{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;font-size:12px;font-family:monospace}
+.ro span{color:var(--accent2);font-weight:bold}
+.note{color:var(--text2);font-size:12px;margin-top:8px;line-height:1.5}
+</style></head>
+<body>
+<h2>M3-D-1.7.1 — Positive Clamper</h2>
+<div class="panel">
+<canvas id="cv" height="260"></canvas>
+<div class="controls">
+
+  <div class="ctrl"><label>V_in amplitude (V): <b id="lVa">3</b></label>
+    <input type="range" id="Va" min="0.5" max="10" step="0.1" value="3"></div>
+  <div class="ctrl"><label>V_F (V): <b id="lVf">0.7</b></label>
+    <input type="range" id="Vf" min="0.1" max="0.7" step="0.05" value="0.7"></div>
+  <div class="ctrl"><label>V_ref (V): <b id="lVref">0</b></label>
+    <input type="range" id="Vref" min="-5" max="5" step="0.1" value="0"></div>
+
+</div>
+<div class="readout">
+  <div class="ro">V_cap (V): <span id="r1">0</span></div>
+  <div class="ro">V_out_min (V): <span id="r2">0</span></div>
+  <div class="ro">V_out_max (V): <span id="r3">0</span></div>
+  <div class="ro">Peak-to-peak out (V): <span id="r4">0</span></div>
+</div>
+<p class="note">Shifts waveform upward so minimum = +V_F. Capacitor charges to |V_in_min| − V_F.</p>
+</div>
+<script>
+
+const isDark=()=>window.matchMedia('(prefers-color-scheme:dark)').matches;
+function gs(id){return parseFloat(document.getElementById(id).value);}
+function sv(id,val){document.getElementById(id).textContent=val;}
+function resize(cv,draw){cv.width=cv.offsetWidth*devicePixelRatio;cv.height=260*devicePixelRatio;cv.getContext('2d').scale(devicePixelRatio,devicePixelRatio);draw();}
+function drawAxes(ctx,W,H,pad,xl,yl,color){
+  ctx.strokeStyle=color;ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  ctx.fillStyle=color;ctx.font='11px system-ui';
+  ctx.fillText(yl,pad+4,pad+12);ctx.fillText(xl,W-pad-2,H-pad-4);
+}
+
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+function draw(){
+
+  const va=gs('Va'),vf=gs('Vf'),vref=gs('Vref');
+  document.getElementById('lVa').textContent=va.toFixed(1);
+  document.getElementById('lVf').textContent=vf.toFixed(2);
+  document.getElementById('lVref').textContent=vref.toFixed(1);
+  const vcap=va-vf+vref;
+  const vout_min=vf+vref,vout_max=2*va-vf+vref;
+  sv('r1',vcap.toFixed(2));sv('r2',vout_min.toFixed(2));sv('r3',vout_max.toFixed(2));sv('r4',(2*va).toFixed(2));
+
+  const W=cv.offsetWidth,H=260,pad=40;
+  const bg=isDark()?'#0d1117':'#fff',fg=isDark()?'#8b949e':'#656d76';
+  ctx.clearRect(0,0,W,H);ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  drawAxes(ctx,W,H,pad,'t →','V ↑',fg);
+  const maxV=vout_max+1,yc=H-pad-5,ysc=(H-2*pad-10)/maxV;
+  ctx.setLineDash([4,4]);ctx.strokeStyle=fg;ctx.globalAlpha=0.3;
+  const y0=yc-0*ysc;
+  ctx.beginPath();ctx.moveTo(pad,y0);ctx.lineTo(W-pad,y0);ctx.stroke();
+  ctx.globalAlpha=1;ctx.setLineDash([]);
+  ctx.strokeStyle='#58a6ff';ctx.lineWidth=1.5;ctx.beginPath();
+  for(let i=0;i<W-2*pad;i++){{const t=i/(W-2*pad)*4*Math.PI;const v=va*Math.sin(t);const x=pad+i,y=yc-v*ysc;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}}
+  ctx.stroke();
+  ctx.strokeStyle='#3fb950';ctx.lineWidth=2;ctx.beginPath();
+  for(let i=0;i<W-2*pad;i++){{const t=i/(W-2*pad)*4*Math.PI;const v=va*Math.sin(t)+vcap;const x=pad+i,y=yc-v*ysc;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}}
+  ctx.stroke();
+  ctx.strokeStyle='#f85149';ctx.lineWidth=1;ctx.setLineDash([6,3]);
+  ctx.beginPath();ctx.moveTo(pad,yc-vout_min*ysc);ctx.lineTo(W-pad,yc-vout_min*ysc);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#f85149';ctx.font='11px system-ui';ctx.fillText('V_min='+vout_min.toFixed(2)+'V (=V_F)',pad+5,yc-vout_min*ysc-4);
+  ctx.fillStyle='#58a6ff';ctx.fillText('Input (centered 0)',pad+5,pad+10);ctx.fillStyle='#3fb950';ctx.fillText('Output (clamped up)',pad+5,pad+24);
+
+}
+document.querySelectorAll('input[type=range],select').forEach(e=>e.addEventListener('input',draw));
+window.addEventListener('resize',()=>resize(cv,draw));
+resize(cv,draw);
+</script>
+</body></html>

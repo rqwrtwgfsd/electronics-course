@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CAS-4.2.1 — Telescopic Cascode</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#4d9fff;--green:#00cc66;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  .ro.warn span{color:#cc4400;}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CAS-4.2.1</div>
+  <h1>Cascode — Telescopic Cascode OTA</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>OTA Design Parameters</h2>
+      <label>V_DD (V): <b id="vdd_l">1.8</b> <input type="range" id="vdd" min="0.6" max="3.3" value="1.8" step="0.1"></label>
+      <label>V_ov per device (mV): <b id="vov_l">200</b> <input type="range" id="vov" min="50" max="400" value="200" step="10"></label>
+      <label>g_m,M1 (mA/V): <b id="gm1_l">2.0</b> <input type="range" id="gm1" min="0.5" max="10" value="2.0" step="0.1"></label>
+      <label>r_o per device (kΩ): <b id="ro_l">300</b> <input type="range" id="ro" min="20" max="2000" value="300" step="10"></label>
+      <label>C_L (pF): <b id="cl_l">2.0</b> <input type="range" id="cl" min="0.1" max="20" value="2.0" step="0.1"></label>
+      <label>I_SS (μA): <b id="iss_l">200</b> <input type="range" id="iss" min="10" max="1000" value="200" step="10"></label>
+
+      <div class="ro">V_out swing: <span id="swing">--</span> V</div>
+      <div class="ro g">A_v (open loop): <span id="av">--</span> dB</div>
+      <div class="ro">GBW: <span id="gbw">--</span> MHz</div>
+      <div class="ro">f_p1: <span id="fp1">--</span> kHz</div>
+      <div class="ro">Slew rate: <span id="sr">--</span> V/μs</div>
+      <div class="ro" id="headroom_ro">V_DD,min: <span id="vddmin">--</span> V</div>
+
+      <div class="insight" id="insight_box">Adjust parameters to explore the telescopic OTA.</div>
+    </div>
+
+    <div class="card">
+      <h2>Headroom Budget (Voltage Stack)</h2>
+      <canvas id="cv" height="340"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const VDD  = +document.getElementById('vdd').value;
+    const Vov  = +document.getElementById('vov').value / 1000;
+    const gm1  = +document.getElementById('gm1').value * 1e-3;
+    const ro   = +document.getElementById('ro').value * 1e3;
+    const CL   = +document.getElementById('cl').value * 1e-12;
+    const ISS  = +document.getElementById('iss').value * 1e-6;
+
+    document.getElementById('vdd_l').textContent  = VDD.toFixed(1);
+    document.getElementById('vov_l').textContent  = (Vov*1000).toFixed(0);
+    document.getElementById('gm1_l').textContent  = (gm1*1e3).toFixed(1);
+    document.getElementById('ro_l').textContent   = (ro/1e3).toFixed(0);
+    document.getElementById('cl_l').textContent   = (CL/1e-12).toFixed(1);
+    document.getElementById('iss_l').textContent  = (ISS/1e-6).toFixed(0);
+
+    // Headroom: tail(Vov) + M1(Vov) + M3 NMOS cascode(Vov) | M7 PMOS(Vov) + M5 PMOS cascode(Vov)
+    const nmos_stack = 3 * Vov; // tail + pair + NMOS cascode
+    const pmos_stack = 2 * Vov; // PMOS mirror + PMOS cascode
+    const VDD_min    = nmos_stack + pmos_stack;
+    const swing      = VDD - nmos_stack - pmos_stack;
+
+    // Output resistance: cascode on each side
+    const r_out_n = ro * ro * gm1; // g_m,M3 * ro,M3 * ro,M1 (use same gm1 for simplicity)
+    const r_out_p = r_out_n; // symmetric
+    const r_out   = (r_out_n * r_out_p) / (r_out_n + r_out_p);
+
+    const Av    = gm1 * r_out;
+    const GBW   = gm1 / (2 * Math.PI * CL);
+    const fp1   = GBW / Av;
+    const SR    = ISS / CL;
+
+    document.getElementById('swing').textContent   = Math.max(0, swing).toFixed(3);
+    document.getElementById('av').textContent      = (20*Math.log10(Av)).toFixed(1);
+    document.getElementById('gbw').textContent     = (GBW/1e6).toFixed(1);
+    document.getElementById('fp1').textContent     = (fp1/1e3).toFixed(2);
+    document.getElementById('sr').textContent      = (SR/1e6).toFixed(1);
+    document.getElementById('vddmin').textContent  = VDD_min.toFixed(2);
+
+    const swingOK = swing > 0.2;
+    const swingRo = document.getElementById('headroom_ro');
+    swingRo.className = swingOK ? 'ro' : 'ro warn';
+
+    document.getElementById('insight_box').textContent =
+      (swing <= 0 ? 'WARNING: No headroom! V_DD < 5×V_ov. Increase V_DD or reduce V_ov. ' : '') +
+      'Stack: ' + (nmos_stack*1000).toFixed(0) + ' mV NMOS (tail+pair+cascode) + ' +
+      (pmos_stack*1000).toFixed(0) + ' mV PMOS (mirror+cascode). Swing = ' +
+      (Math.max(0,swing)*1000).toFixed(0) + ' mV. A_v = ' + (20*Math.log10(Av)).toFixed(1) + ' dB. ' +
+      'GBW = ' + (GBW/1e6).toFixed(1) + ' MHz.';
+
+    draw(VDD, Vov, nmos_stack, pmos_stack, swing);
+  }
+
+  function draw(VDD, Vov, nmos_stack, pmos_stack, swing){
+    const cv  = document.getElementById('cv');
+    const W   = cv.parentElement.clientWidth - 36;
+    cv.width = W; cv.height = 340;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, W, 340);
+
+    const isDark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+    const axCol  = isDark ? '#8899bb' : '#8888aa';
+
+    // Draw the voltage stack bar
+    const barX  = W/2 - 40;
+    const barW  = 80;
+    const barH  = 280;
+    const baseY = 310;
+
+    // Background bar (V_DD)
+    ctx.fillStyle = isDark ? '#333344' : '#eeeef8';
+    ctx.fillRect(barX, baseY - barH, barW, barH);
+    ctx.strokeStyle = axCol;
+    ctx.strokeRect(barX, baseY - barH, barW, barH);
+
+    function voltY(v){ return baseY - (v / VDD) * barH; }
+
+    // NMOS stack (bottom): tail + pair + NMOS cascode
+    const labels_n = ['M0 tail V_ov', 'M1 pair V_ov', 'M3 cas V_ov'];
+    const n_colors = ['#884400', '#cc4400', '#ff6622'];
+    for(let i = 0; i < 3; i++){
+      const vbot = i * Vov;
+      const vtop = (i+1) * Vov;
+      const y1 = voltY(vtop);
+      const y2 = voltY(vbot);
+      ctx.fillStyle = n_colors[i] + 'cc';
+      ctx.fillRect(barX, y1, barW, y2 - y1);
+      ctx.strokeStyle = '#fff4';
+      ctx.strokeRect(barX, y1, barW, y2 - y1);
+      ctx.fillStyle = '#fff'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+      if(y2 - y1 > 12) ctx.fillText(labels_n[i], barX + barW/2, (y1+y2)/2 + 4);
+    }
+
+    // PMOS stack (top): PMOS mirror + PMOS cascode
+    const labels_p = ['M7 PMOS V_ov', 'M5 cas V_ov'];
+    const p_colors = ['#004488', '#0066cc'];
+    for(let i = 0; i < 2; i++){
+      const vtop = VDD - i * Vov;
+      const vbot = VDD - (i+1) * Vov;
+      const y1 = voltY(vtop);
+      const y2 = voltY(vbot);
+      ctx.fillStyle = p_colors[i] + 'cc';
+      ctx.fillRect(barX, y1, barW, y2 - y1);
+      ctx.strokeStyle = '#fff4';
+      ctx.strokeRect(barX, y1, barW, y2 - y1);
+      ctx.fillStyle = '#fff'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+      if(y2 - y1 > 12) ctx.fillText(labels_p[i], barX + barW/2, (y1+y2)/2 + 4);
+    }
+
+    // Swing region
+    if(swing > 0){
+      const ySwingBot = voltY(nmos_stack);
+      const ySwingTop = voltY(VDD - pmos_stack);
+      ctx.fillStyle = '#00994d55';
+      ctx.fillRect(barX, ySwingTop, barW, ySwingBot - ySwingTop);
+      ctx.fillStyle = '#00994d'; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center';
+      if(ySwingBot - ySwingTop > 14)
+        ctx.fillText('swing ' + (swing*1000).toFixed(0) + ' mV', barX+barW/2, (ySwingTop+ySwingBot)/2+4);
+    } else {
+      ctx.fillStyle = '#cc000055';
+      ctx.fillRect(barX, baseY - barH, barW, barH);
+      ctx.fillStyle = '#cc0000'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center';
+      ctx.fillText('NO SWING', barX+barW/2, baseY-barH/2);
+    }
+
+    // Labels on left side
+    ctx.fillStyle = axCol; ctx.font = '9px system-ui'; ctx.textAlign = 'right';
+    ctx.fillText('V_DD = '+VDD.toFixed(1)+'V', barX-4, voltY(VDD)+4);
+    ctx.fillText('0V', barX-4, baseY);
+    ctx.fillText((nmos_stack*1000).toFixed(0)+'mV', barX-4, voltY(nmos_stack)+4);
+    ctx.fillText((( VDD-pmos_stack)*1000).toFixed(0)+'mV', barX-4, voltY(VDD-pmos_stack)+4);
+
+    // Scale line
+    ctx.strokeStyle = axCol; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(barX-2, baseY-barH); ctx.lineTo(barX-2, baseY); ctx.stroke();
+    // Tick marks
+    [0, nmos_stack, VDD-pmos_stack, VDD].forEach(v=>{
+      const y = voltY(v);
+      ctx.beginPath(); ctx.moveTo(barX-6, y); ctx.lineTo(barX-2, y); ctx.stroke();
+    });
+
+    // Legend
+    ctx.fillStyle = '#cc4400cc'; ctx.fillRect(barX+barW+10, baseY-barH+10, 12, 12);
+    ctx.fillStyle = axCol; ctx.font = '9px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('NMOS stack (3×V_ov)', barX+barW+26, baseY-barH+20);
+    ctx.fillStyle = '#0066cccc'; ctx.fillRect(barX+barW+10, baseY-barH+28, 12, 12);
+    ctx.fillText('PMOS stack (2×V_ov)', barX+barW+26, baseY-barH+38);
+    ctx.fillStyle = '#00994d55'; ctx.fillRect(barX+barW+10, baseY-barH+46, 12, 12);
+    ctx.fillText('Output swing', barX+barW+26, baseY-barH+56);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = axCol; ctx.font = 'bold 11px system-ui';
+    ctx.fillText('Telescopic OTA Headroom', W/2, 16);
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e => e.addEventListener('input', compute));
+  compute();
+  window.addEventListener('resize', compute);
+</script>
+</body>
+</html>

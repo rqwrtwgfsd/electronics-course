@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-GB-2.6.1 — AC Analysis Setup</title>
+<style>
+  :root{--bg:#ffffff;--surface:#f5f5f5;--border:#dddddd;--text:#1a1a1a;--accent:#0066cc;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Arial,sans-serif;font-size:14px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;display:flex;align-items:baseline;gap:16px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}
+  h1{font-size:17px;font-weight:600;}
+  .main{display:grid;grid-template-columns:290px 1fr;height:calc(100vh - 48px);}
+  .ctrl{background:var(--surface);border-right:1px solid var(--border);padding:18px;overflow-y:auto;}
+  .ctrl h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin-bottom:10px;margin-top:14px;}
+  .cg{margin-bottom:12px;}
+  .cg label{display:block;font-size:12px;margin-bottom:3px;}
+  .val{font-weight:700;color:var(--accent);}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  select{background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 6px;font-size:12px;width:100%;}
+  .rbox{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:8px;margin-bottom:7px;}
+  .rl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;opacity:.7;margin-bottom:2px;}
+  .rv{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .rv.err{color:#cc0000;} .rv.ok{color:#007700;}
+  @media(prefers-color-scheme:dark){.rv.err{color:#ff5555;}.rv.ok{color:#44bb44;}}
+  .carea{padding:16px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;}
+  canvas{border:1px solid var(--border);border-radius:6px;display:block;}
+  .clabel{font-size:12px;font-weight:600;margin-bottom:4px;opacity:.8;}
+</style>
+</head>
+<body>
+<header>
+  <span class="mid">M4A-GB-2.6.1</span>
+  <h1>AC Analysis Setup — SPICE Workflow Simulator</h1>
+</header>
+<div class="main">
+  <div class="ctrl">
+    <h2>Circuit Under Test</h2>
+    <div class="cg"><label>Midband Gain (V/V): <span class="val" id="av-v">100</span></label><input type="range" id="av" min="1" max="1000" step="1" value="100"></div>
+    <div class="cg"><label>Lower Cutoff fL: <span class="val" id="fl-v">100 Hz</span></label><input type="range" id="fl" min="1" max="5" step="0.1" value="2"></div>
+    <div class="cg"><label>Upper Cutoff fH: <span class="val" id="fh-v">500 kHz</span></label><input type="range" id="fh" min="3" max="8" step="0.1" value="5.7"></div>
+
+    <h2>AC Sweep Setup</h2>
+    <div class="cg"><label>Source Amplitude: <span class="val" id="amp-v">1 V</span></label>
+      <select id="amp-sel">
+        <option value="1">1 V (correct)</option>
+        <option value="0">0 V (error: no AC)</option>
+        <option value="0.001">1 mA source (wrong type)</option>
+      </select>
+    </div>
+    <div class="cg"><label>Start Frequency: <span class="val" id="fstart-v">1 Hz</span></label><input type="range" id="fstart" min="-1" max="3" step="0.1" value="0"></div>
+    <div class="cg"><label>Stop Frequency: <span class="val" id="fstop-v">100 MHz</span></label><input type="range" id="fstop" min="4" max="10" step="0.1" value="8"></div>
+    <div class="cg"><label>Points per Decade: <span class="val" id="pts-v">20</span></label><input type="range" id="pts" min="2" max="100" step="1" value="20"></div>
+    <div class="cg"><label>Source Resistance RS: <span class="val" id="rs-v">0 Ω</span></label><input type="range" id="rs" min="0" max="5000" step="50" value="0"></div>
+
+    <h2>Analysis Quality</h2>
+    <div class="rbox"><div class="rl">Pole Coverage</div><div class="rv" id="cov-out">Good</div></div>
+    <div class="rbox"><div class="rl">Source Config</div><div class="rv" id="src-out">Correct</div></div>
+    <div class="rbox"><div class="rl">Resolution at fH</div><div class="rv" id="res-out">±2%</div></div>
+    <div class="rbox"><div class="rl">Actual -3dB (RS effect)</div><div class="rv" id="act-fh-out">500 kHz</div></div>
+  </div>
+
+  <div class="carea">
+    <div>
+      <div class="clabel">Simulated AC Response — Effect of Setup Parameters</div>
+      <canvas id="bodeCanvas" width="820" height="300"></canvas>
+    </div>
+    <div>
+      <div class="clabel">Setup Quality Indicators</div>
+      <canvas id="qualCanvas" width="820" height="140"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  function G(id){return document.getElementById(id);}
+  const avS=G('av'),flS=G('fl'),fhS=G('fh');
+  const ampSel=G('amp-sel'),fstartS=G('fstart'),fstopS=G('fstop'),ptsS=G('pts'),rsS=G('rs');
+
+  function getC(){
+    const dk=window.matchMedia('(prefers-color-scheme:dark)').matches;
+    return{bg:dk?'#1a1a1a':'#fff',grid:dk?'#2e2e2e':'#eee',text:dk?'#ccc':'#555',blue:dk?'#4499ff':'#0066cc',orange:dk?'#ff9944':'#cc6600',red:dk?'#ff5555':'#cc0000',green:dk?'#44bb44':'#007700'};
+  }
+  function fmtF(f){return f>=1e6?(f/1e6).toFixed(2)+'M':f>=1e3?(f/1e3).toFixed(1)+'k':f.toFixed(0);}
+
+  function update(){
+    const Av=parseFloat(avS.value);
+    const fL=Math.pow(10,parseFloat(flS.value));
+    const fH=Math.pow(10,parseFloat(fhS.value));
+    const amp=parseFloat(ampSel.value);
+    const fStart=Math.pow(10,parseFloat(fstartS.value));
+    const fStop=Math.pow(10,parseFloat(fstopS.value));
+    const pts=parseInt(ptsS.value);
+    const RS=parseFloat(rsS.value);
+
+    G('av-v').textContent=Av;
+    G('fl-v').textContent=fmtF(fL)+'Hz';
+    G('fh-v').textContent=fmtF(fH)+'Hz';
+    G('fstart-v').textContent=fmtF(fStart)+'Hz';
+    G('fstop-v').textContent=fmtF(fStop)+'Hz';
+    G('pts-v').textContent=pts;
+    G('rs-v').textContent=RS+' Ω';
+
+    // Quality checks
+    const coverOk=fStart<fL/5 && fStop>fH*10;
+    const srcOk=amp===1;
+    const resOk=pts>=20;
+    // RS effect on fH (RS creates a pole with input capacitance ~1pF typical)
+    const Cin=2e-12; // assumed 2pF input cap
+    const fH_RS=RS>0?Math.min(fH,1/(2*Math.PI*RS*Cin)):fH;
+
+    const covEl=G('cov-out'); covEl.textContent=coverOk?'Good':'Insufficient'; covEl.className='rv '+(coverOk?'ok':'err');
+    const srcEl=G('src-out'); srcEl.textContent=srcOk?'Correct':(amp===0?'AC=0 ERROR':'Wrong type'); srcEl.className='rv '+(srcOk?'ok':'err');
+    const resEl=G('res-out'); resEl.textContent=pts>=50?'±0.5%':pts>=20?'±2%':'±5%+'; resEl.className='rv '+(pts>=20?'ok':'err');
+    G('act-fh-out').textContent=fmtF(fH_RS)+'Hz'+(RS>0?' (RS limited)':'');
+
+    drawBode(Av,fL,fH,amp,fStart,fStop,pts,RS,fH_RS);
+    drawQual(coverOk,srcOk,resOk,fStart,fStop,fL,fH);
+  }
+
+  function gainAtF(f,Av,fL,fH,amp){
+    if(amp===0) return 0;
+    const hp=f/fL/Math.sqrt(1+(fL/f)**2)*Math.sqrt(1+(fL/f)**2)/Math.sqrt(1+(fL/f)**2);
+    const hpG=1/Math.sqrt(1+(fL/f)**2);
+    const lpG=1/Math.sqrt(1+(f/fH)**2);
+    return Av*hpG*lpG*amp;
+  }
+
+  function drawBode(Av,fL,fH,amp,fStart,fStop,pts,RS,fH_RS){
+    const cv=G('bodeCanvas');
+    const ctx=cv.getContext('2d');
+    const W=cv.width,H=cv.height;
+    const c=getC();
+    ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+    const pad={l:65,r:20,t:20,b:50};
+    const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+    const logMin=Math.log10(fStart),logMax=Math.log10(fStop);
+    const gainMax_dB=20*Math.log10(Av)+10;
+    const gainMin_dB=gainMax_dB-90;
+
+    function fX(f){return pad.l+(Math.log10(f)-logMin)/(logMax-logMin)*pw;}
+    function dY(db){return pad.t+ph-(db-gainMin_dB)/(gainMax_dB-gainMin_dB)*ph;}
+
+    ctx.strokeStyle=c.grid; ctx.lineWidth=1;
+    for(let lf=Math.ceil(logMin);lf<=Math.floor(logMax);lf++){
+      const x=fX(Math.pow(10,lf));
+      ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,pad.t+ph); ctx.stroke();
+      const f=Math.pow(10,lf);
+      ctx.fillStyle=c.text; ctx.font='9px monospace'; ctx.textAlign='center';
+      ctx.fillText(f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f,x,pad.t+ph+14);
+    }
+    for(let db=gainMin_dB;db<=gainMax_dB;db+=20){
+      const y=dY(db);
+      if(y<pad.t||y>pad.t+ph) continue;
+      ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+pw,y); ctx.stroke();
+      ctx.fillStyle=c.text; ctx.font='9px monospace'; ctx.textAlign='right';
+      ctx.fillText(db,pad.l-3,y+4);
+    }
+
+    // ideal continuous response
+    ctx.beginPath(); ctx.strokeStyle=c.grid; ctx.lineWidth=1.5; ctx.setLineDash([6,3]);
+    for(let px=0;px<=pw;px++){
+      const logF=logMin+(px/pw)*(logMax-logMin);
+      const f=Math.pow(10,logF);
+      const g=gainAtF(f,Av,fL,fH,1);
+      const db=g>0?20*Math.log10(g):gainMin_dB-5;
+      const x=pad.l+px,y=dY(db);
+      px===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+
+    // simulated points (discrete)
+    const totalDec=logMax-logMin;
+    const totalPts=Math.round(totalDec*pts);
+    const simPts=[];
+    for(let i=0;i<=totalPts;i++){
+      const logF=logMin+(i/totalPts)*(logMax-logMin);
+      const f=Math.pow(10,logF);
+      const g=gainAtF(f,Av,fL,fH_RS,amp);
+      const db=g>0?20*Math.log10(g):gainMin_dB-5;
+      simPts.push({f,db});
+    }
+
+    // draw simulated line
+    ctx.beginPath(); ctx.strokeStyle=c.blue; ctx.lineWidth=2;
+    simPts.forEach((pt,i)=>{
+      const x=fX(pt.f),y=dY(pt.db);
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+
+    // draw points
+    if(pts<=20){
+      for(const pt of simPts){
+        const x=fX(pt.f),y=dY(pt.db);
+        ctx.beginPath(); ctx.arc(x,y,2.5,0,2*Math.PI); ctx.fillStyle=c.blue; ctx.fill();
+      }
+    }
+
+    // markers
+    if(amp>0){
+      const xFL=fX(fL),xFH=fX(fH_RS);
+      const yM=dY(20*Math.log10(Av)-3);
+      [xFL,xFH].forEach(x=>{
+        if(x<pad.l||x>pad.l+pw) return;
+        ctx.beginPath(); ctx.arc(x,yM,6,0,2*Math.PI); ctx.fillStyle=c.orange; ctx.fill();
+      });
+    }
+
+    if(amp===0){
+      ctx.fillStyle=c.red; ctx.font='bold 16px sans-serif'; ctx.textAlign='center';
+      ctx.fillText('⚠ AC amplitude = 0 — simulation shows 0 everywhere',W/2,H/2);
+    }
+
+    ctx.fillStyle=c.text; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Frequency →',pad.l+pw/2,H-8);
+    ctx.save(); ctx.translate(14,pad.t+ph/2); ctx.rotate(-Math.PI/2); ctx.fillText('Gain (dB)',0,0); ctx.restore();
+
+    ctx.fillStyle=c.grid; ctx.font='11px monospace'; ctx.textAlign='left';
+    ctx.fillText('— Ideal',pad.l+5,pad.t+15);
+    ctx.fillStyle=c.blue;
+    ctx.fillText('— Simulated',pad.l+70,pad.t+15);
+  }
+
+  function drawQual(covOk,srcOk,resOk,fStart,fStop,fL,fH){
+    const cv=G('qualCanvas');
+    const ctx=cv.getContext('2d');
+    const W=cv.width,H=cv.height;
+    const c=getC();
+    ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+    const items=[
+      {label:'Frequency range covers fL/5 to fH×10',ok:covOk},
+      {label:'AC source amplitude = 1 V',ok:srcOk},
+      {label:'≥20 points per decade',ok:resOk},
+      {label:'Source resistance RS included (affects -3dB accuracy)',ok:parseFloat(rsS.value)>0}
+    ];
+    const bw=(W-40)/items.length;
+    items.forEach((item,i)=>{
+      const x=20+i*bw;
+      ctx.fillStyle=item.ok?c.green:c.red;
+      ctx.fillRect(x,20,bw-10,H-50);
+      ctx.fillStyle=c.bg; ctx.font='bold 12px sans-serif'; ctx.textAlign='center';
+      ctx.fillText(item.ok?'✓ PASS':'✗ FAIL',x+(bw-10)/2,H/2);
+      ctx.fillStyle=c.text; ctx.font='10px sans-serif'; ctx.textAlign='center';
+      const words=item.label.split(' ');
+      let line='', y=H-30;
+      words.reverse().forEach(w=>{
+        ctx.fillText(w,x+(bw-10)/2,y);
+        y-=13;
+      });
+    });
+  }
+
+  [avS,flS,fhS,ampSel,fstartS,fstopS,ptsS,rsS].forEach(e=>e.addEventListener('input',update));
+  window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',update);
+  update();
+})();
+</script>
+</body>
+</html>

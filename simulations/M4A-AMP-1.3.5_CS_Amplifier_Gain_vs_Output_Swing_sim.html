@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.3.5 — CS Gain vs Output Swing</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;gap:16px;align-items:baseline;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .warn{color:#cc4400;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:14px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.3.5</div>
+  <div class="topic">CS Gain vs Output Swing — Load Line, Active Load Comparison</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>MOSFET & Supply</h3>
+      <label>VDD (V): <b id="vdd_lbl">10</b></label>
+      <input type="range" id="vdd" min="1.8" max="24" value="10" step="0.1">
+      <label>K (mA/V²): <b id="k_lbl">2.0</b></label>
+      <input type="range" id="k" min="0.1" max="20" value="2" step="0.1">
+      <label>Vov (V): <b id="vov_lbl">1.0</b></label>
+      <input type="range" id="vov" min="0.1" max="3" value="1.0" step="0.05">
+    </div>
+    <div class="cg">
+      <h3>Resistive Load</h3>
+      <label>RD (kΩ): <b id="rd_lbl">4.0</b></label>
+      <input type="range" id="rd" min="0.1" max="30" value="4" step="0.1">
+      <label>RL (kΩ): <b id="rl_lbl">∞</b></label>
+      <input type="range" id="rl" min="1" max="200" value="200" step="1">
+    </div>
+    <div class="cg">
+      <h3>Active Load (ro)</h3>
+      <label>ro_n (kΩ): <b id="ron_lbl">20</b></label>
+      <input type="range" id="ron" min="1" max="200" value="20" step="1">
+      <label>ro_p (kΩ): <b id="rop_lbl">50</b></label>
+      <input type="range" id="rop" min="1" max="200" value="50" step="1">
+      <label>Vov_p (V): <b id="vovp_lbl">0.30</b></label>
+      <input type="range" id="vovp" min="0.05" max="1" value="0.3" step="0.05">
+    </div>
+    <div class="cg">
+      <h3>Readout</h3>
+      <div class="rd">gm: <span id="r_gm">—</span> mA/V</div>
+      <div class="rd">ID: <span id="r_id">—</span> mA</div>
+      <div class="rd">VDS (resistive): <span id="r_vds">—</span> V</div>
+      <div class="rd">Av (resistive): <span id="r_av_r">—</span> V/V</div>
+      <div class="rd">Swing (resistive): <span id="r_sw_r">—</span> Vpp</div>
+      <div class="rd">Av (active): <span id="r_av_a">—</span> V/V</div>
+      <div class="rd">Swing (active): <span id="r_sw_a">—</span> Vpp</div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_av_r">—</div><div class="l">Av Resistive</div></div>
+      <div class="met"><div class="v" id="m_av_a">—</div><div class="l">Av Active</div></div>
+      <div class="met"><div class="v" id="m_sw_r">—</div><div class="l">Swing R (Vpp)</div></div>
+      <div class="met"><div class="v" id="m_sw_a">—</div><div class="l">Swing A (Vpp)</div></div>
+    </div>
+    <div>
+      <div class="pl">|Av| vs RD — resistive (with ro) and active load comparison</div>
+      <canvas id="avCanvas" height="190"></canvas>
+    </div>
+    <div>
+      <div class="pl">Output swing vs RD — resistive vs active load</div>
+      <canvas id="swCanvas" height="160"></canvas>
+    </div>
+    <div>
+      <div class="pl">Gain × Swing product vs RD — figure of merit</div>
+      <canvas id="fomCanvas" height="140"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+function update(){
+  const vdd=parseFloat(document.getElementById('vdd').value);
+  const k=parseFloat(document.getElementById('k').value)*1e-3;
+  const vov=parseFloat(document.getElementById('vov').value);
+  const rd=parseFloat(document.getElementById('rd').value)*1e3;
+  const rl=parseFloat(document.getElementById('rl').value)*1e3;
+  const ron=parseFloat(document.getElementById('ron').value)*1e3;
+  const rop=parseFloat(document.getElementById('rop').value)*1e3;
+  const vovp=parseFloat(document.getElementById('vovp').value);
+
+  document.getElementById('vdd_lbl').textContent=vdd.toFixed(1);
+  document.getElementById('k_lbl').textContent=(k*1e3).toFixed(1);
+  document.getElementById('vov_lbl').textContent=vov.toFixed(2);
+  document.getElementById('rd_lbl').textContent=(rd/1e3).toFixed(1);
+  document.getElementById('rl_lbl').textContent=rl>=200e3?'∞':(rl/1e3).toFixed(0);
+  document.getElementById('ron_lbl').textContent=(ron/1e3).toFixed(0);
+  document.getElementById('rop_lbl').textContent=(rop/1e3).toFixed(0);
+  document.getElementById('vovp_lbl').textContent=vovp.toFixed(2);
+
+  const gm=2*k*vov;
+  const id=k*vov*vov;
+  const vds=vdd-id*rd;
+  const rdl=rl>=200e3?rd:(rd*rl/(rd+rl));
+  const eff_r=rdl*ron/(rdl+ron);
+  const av_r=gm*eff_r;
+  const swing_r=vds>vov?2*(vds-vov):0;
+  const av_a=gm*(ron*rop/(ron+rop));
+  const vds_a=vdd/2;
+  const swing_a=vdd>vov+vovp?vdd-vov-vovp:0;
+
+  document.getElementById('r_gm').textContent=(gm*1e3).toFixed(2);
+  document.getElementById('r_id').textContent=(id*1e3).toFixed(2);
+  const vds_el=document.getElementById('r_vds');
+  vds_el.textContent=vds.toFixed(2);
+  vds_el.className=vds<vov?'warn':'';
+  document.getElementById('r_av_r').textContent='-'+av_r.toFixed(1);
+  document.getElementById('r_sw_r').textContent=swing_r.toFixed(2);
+  document.getElementById('r_av_a').textContent='-'+av_a.toFixed(1);
+  document.getElementById('r_sw_a').textContent=swing_a.toFixed(2);
+
+  document.getElementById('m_av_r').textContent=av_r.toFixed(1);
+  document.getElementById('m_av_a').textContent=av_a.toFixed(1);
+  document.getElementById('m_sw_r').textContent=swing_r.toFixed(1);
+  document.getElementById('m_sw_a').textContent=swing_a.toFixed(1);
+
+  drawAv(vdd,k,vov,rd,rl,ron,rop);
+  drawSwing(vdd,k,vov,rd,rl,rop,vovp);
+  drawFOM(vdd,k,vov,rd,rl,ron,rop,vovp);
+}
+
+function drawAv(vdd,k,vov,rd_cur,rl,ron,rop){
+  const canvas=document.getElementById('avCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:45,r:15,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const RD_MAX=30e3,AV_MAX=100;
+  function xOf(r){return pad.l+r/RD_MAX*pw;}
+  function yOf(av){return pad.t+ph-Math.min(av,AV_MAX)/AV_MAX*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [0,25,50,75,100].forEach(av=>{
+    const y=yOf(av);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(av,0,y+3);
+  });
+
+  const gm=2*k*vov;
+  const id=k*vov*vov;
+  const rdl_fn=rd=>(rl>=200e3?rd:rd*rl/(rd+rl));
+
+  // Resistive with ro
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const rd=px/pw*RD_MAX;
+    const vds=vdd-id*rd;
+    if(vds<vov){ctx.stroke();ctx.beginPath();break;}
+    const rdl=rdl_fn(rd);
+    const eff=rdl*ron/(rdl+ron);
+    const av=gm*eff;
+    const y=yOf(av);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  // Active load (horizontal — doesn't depend on RD for AC gain with active load)
+  const av_a=gm*(ron*rop/(ron+rop));
+  ctx.strokeStyle='#006633';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,yOf(av_a));ctx.lineTo(pad.l+pw,yOf(av_a));ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Q-point
+  const vds_q=vdd-id*rd_cur;
+  if(vds_q>=vov){
+    const rdl_q=rdl_fn(rd_cur);
+    const eff_q=rdl_q*ron/(rdl_q+ron);
+    const av_q=gm*eff_q;
+    ctx.fillStyle='#ff8800';
+    ctx.beginPath();ctx.arc(xOf(rd_cur),yOf(av_q),5,0,2*Math.PI);ctx.fill();
+  }
+
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='8px Courier New';
+  ctx.fillText('── Resistive (cut off at VDS<Vov)',pad.l+5,pad.t+10);
+  ctx.fillStyle='#006633';ctx.fillText('-- Active load Av',pad.l+5,pad.t+22);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+  ctx.fillText('RD (Ω) →',W/2-20,H-1);
+  ctx.save();ctx.translate(10,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('|Av| (V/V)',0,0);ctx.restore();
+}
+
+function drawSwing(vdd,k,vov,rd_cur,rl,rop,vovp){
+  const canvas=document.getElementById('swCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:42,r:15,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const RD_MAX=30e3,SW_MAX=vdd;
+  function xOf(r){return pad.l+r/RD_MAX*pw;}
+  function yOf(sw){return pad.t+ph-Math.min(sw,SW_MAX)/SW_MAX*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const sw=SW_MAX*i/4;
+    const y=yOf(sw);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(sw.toFixed(1),0,y+3);
+  }
+
+  const id=k*vov*vov;
+
+  // Resistive swing
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const rd=px/pw*RD_MAX;
+    const vds=vdd-id*rd;
+    const sw=vds>vov?2*(vds-vov):0;
+    const y=yOf(sw);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  // Active load swing (constant)
+  const sw_a=vdd>vov+vovp?vdd-vov-vovp:0;
+  ctx.strokeStyle='#006633';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,yOf(sw_a));ctx.lineTo(pad.l+pw,yOf(sw_a));ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='8px Courier New';
+  ctx.fillText('── Resistive swing',pad.l+5,pad.t+10);
+  ctx.fillStyle='#006633';ctx.fillText('-- Active load swing',pad.l+5,pad.t+22);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+  ctx.fillText('RD (Ω) →',W/2-20,H-1);
+  ctx.save();ctx.translate(10,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('Swing (Vpp)',0,0);ctx.restore();
+}
+
+function drawFOM(vdd,k,vov,rd_cur,rl,ron,rop,vovp){
+  const canvas=document.getElementById('fomCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:45,r:15,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const RD_MAX=30e3;
+  const gm=2*k*vov;
+  const id=k*vov*vov;
+  const rdl_fn=rd=>(rl>=200e3?rd:rd*rl/(rd+rl));
+
+  // Find max FOM for axis scale
+  let FOM_MAX=0;
+  for(let px=0;px<=pw;px++){
+    const rd=px/pw*RD_MAX;
+    const vds=vdd-id*rd;
+    if(vds<vov)break;
+    const rdl=rdl_fn(rd);
+    const eff=rdl*ron/(rdl+ron);
+    const av=gm*eff;
+    const sw=2*(vds-vov);
+    FOM_MAX=Math.max(FOM_MAX,av*sw);
+  }
+  FOM_MAX*=1.1||100;
+  function xOf(r){return pad.l+r/RD_MAX*pw;}
+  function yOf(fom){return pad.t+ph-Math.min(fom,FOM_MAX)/FOM_MAX*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const fom=FOM_MAX*i/4;
+    const y=yOf(fom);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(fom.toFixed(0),0,y+3);
+  }
+
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const rd=px/pw*RD_MAX;
+    const vds=vdd-id*rd;
+    if(vds<vov){ctx.stroke();ctx.beginPath();break;}
+    const rdl=rdl_fn(rd);
+    const eff=rdl*ron/(rdl+ron);
+    const av=gm*eff;
+    const sw=2*(vds-vov);
+    const fom=av*sw;
+    const y=yOf(fom);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  // Active load FOM
+  const av_a=gm*(ron*rop/(ron+rop));
+  const sw_a=vdd>vov+vovp?vdd-vov-vovp:0;
+  const fom_a=av_a*sw_a;
+  ctx.strokeStyle='#006633';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,yOf(fom_a));ctx.lineTo(pad.l+pw,yOf(fom_a));ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='8px Courier New';
+  ctx.fillText('── Resistive FOM',pad.l+5,pad.t+10);
+  ctx.fillStyle='#006633';ctx.fillText('-- Active load FOM',pad.l+5,pad.t+22);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+  ctx.fillText('RD (Ω) →',W/2-20,H-1);
+  ctx.save();ctx.translate(10,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('|Av|×Swing',0,0);ctx.restore();
+}
+
+['vdd','k','vov','rd','rl','ron','rop','vovp'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

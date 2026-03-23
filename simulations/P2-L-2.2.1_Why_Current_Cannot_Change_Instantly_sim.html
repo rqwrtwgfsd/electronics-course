@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-L-2.2.1 — Why Current Cannot Change Instantly</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+h1 { color: #0066cc; font-size: 1.3em; margin-bottom: 4px; }
+.subtitle { color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }
+.layout { display: flex; gap: 20px; flex-wrap: wrap; }
+.panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+.controls { width: 280px; flex-shrink: 0; }
+.viz { flex: 1; min-width: 360px; }
+label { display: block; color: #8b949e; font-size: 0.8em; margin-bottom: 4px; margin-top: 12px; }
+input[type=range] { width: 100%; accent-color: #0066cc; }
+.val { color: #0066cc; font-weight: bold; }
+canvas { background: #0d1117; border-radius: 6px; display: block; }
+.readouts { margin-top: 14px; }
+.readout-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #21262d; font-size: 0.82em; }
+.readout-label { color: #8b949e; }
+.readout-val { color: #39d353; font-weight: bold; font-family: monospace; }
+.eq { background: #21262d; border-left: 3px solid #0066cc; padding: 10px 12px; border-radius: 4px; margin-top: 14px; font-family: monospace; font-size: 0.82em; color: #a5d6ff; }
+.btn { background: #21262d; border: 1px solid #30363d; color: #e6edf3; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 0.82em; margin-top: 8px; width: 100%; }
+.btn:hover { background: #0066cc; }
+@media (prefers-color-scheme: light) {
+  body { background: #f6f8fa; color: #24292f; }
+  .panel { background: #ffffff; border-color: #d0d7de; }
+  canvas { background: #f6f8fa; }
+  .eq { background: #eef2ff; }
+  .readout-row { border-color: #d0d7de; }
+  .btn { background: #e6edf3; border-color: #d0d7de; color: #24292f; }
+}
+</style>
+</head>
+<body>
+<h1>P2-L-2.2.1 — Why Current Cannot Change Instantly</h1>
+<div class="subtitle">RL step response · I_L(0+) = I_initial · exponential current rise · impossible instant-jump comparison</div>
+<div class="layout">
+  <div class="panel controls">
+    <label>Inductance L: <span class="val" id="lLbl">100 µH</span></label>
+    <input type="range" id="lSlider" min="1" max="500" value="100" step="1">
+    <label>Resistance R: <span class="val" id="rLbl">10 Ω</span></label>
+    <input type="range" id="rSlider" min="1" max="100" value="10" step="1">
+    <label>Supply Voltage V_s: <span class="val" id="vsLbl">12 V</span></label>
+    <input type="range" id="vsSlider" min="1" max="48" value="12" step="1">
+    <label>Initial Current I₀: <span class="val" id="i0Lbl">0.0 A</span></label>
+    <input type="range" id="i0Slider" min="0" max="100" value="0" step="1">
+    <button class="btn" id="toggleBtn">Show Impossible Jump Line</button>
+    <div class="readouts">
+      <div class="readout-row"><span class="readout-label">τ = L/R</span><span class="readout-val" id="tau">—</span></div>
+      <div class="readout-row"><span class="readout-label">I_final = V/R</span><span class="readout-val" id="ifinal">—</span></div>
+      <div class="readout-row"><span class="readout-label">I(0+) = I_initial</span><span class="readout-val" id="i0val">—</span></div>
+      <div class="readout-row"><span class="readout-label">I at 1τ (63.2%)</span><span class="readout-val" id="i1tau">—</span></div>
+      <div class="readout-row"><span class="readout-label">I at 5τ (99.3%)</span><span class="readout-val" id="i5tau">—</span></div>
+      <div class="readout-row"><span class="readout-label">Initial dI/dt</span><span class="readout-val" id="didt">—</span></div>
+    </div>
+    <div class="eq">I(t) = I_f + (I₀−I_f)·e^(−t/τ)<br>τ = L/R<br>I_L(0+) = I_L(0−)</div>
+  </div>
+  <div class="panel viz">
+    <canvas id="cv" width="580" height="420"></canvas>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const W = 580, H = 420;
+let showJump = false;
+
+document.getElementById('toggleBtn').addEventListener('click', () => {
+  showJump = !showJump;
+  document.getElementById('toggleBtn').textContent = showJump ? 'Hide Impossible Jump Line' : 'Show Impossible Jump Line';
+  draw();
+});
+
+function getP() {
+  const L = parseFloat(document.getElementById('lSlider').value) * 1e-6;
+  const R = parseFloat(document.getElementById('rSlider').value);
+  const Vs = parseFloat(document.getElementById('vsSlider').value);
+  const I0 = parseFloat(document.getElementById('i0Slider').value) / 100 * Vs / R;
+  return { L, R, Vs, I0 };
+}
+
+function fmt(v, unit) {
+  if (unit === 's') {
+    if (v >= 1e-3) return (v * 1000).toFixed(2) + ' ms';
+    if (v >= 1e-6) return (v * 1e6).toFixed(2) + ' µs';
+    return (v * 1e9).toFixed(1) + ' ns';
+  }
+  if (unit === 'A') {
+    if (Math.abs(v) >= 1) return v.toFixed(3) + ' A';
+    return (v * 1000).toFixed(2) + ' mA';
+  }
+  if (unit === 'As') {
+    if (Math.abs(v) >= 1000) return (v / 1000).toFixed(1) + ' kA/s';
+    return v.toFixed(1) + ' A/s';
+  }
+}
+
+function draw() {
+  const p = getP();
+  const tau = p.L / p.R;
+  const Ifinal = p.Vs / p.R;
+
+  document.getElementById('lLbl').textContent = (p.L * 1e6).toFixed(0) + ' µH';
+  document.getElementById('rLbl').textContent = p.R.toFixed(0) + ' Ω';
+  document.getElementById('vsLbl').textContent = p.Vs.toFixed(0) + ' V';
+  document.getElementById('i0Lbl').textContent = fmt(p.I0, 'A');
+  document.getElementById('tau').textContent = fmt(tau, 's');
+  document.getElementById('ifinal').textContent = fmt(Ifinal, 'A');
+  document.getElementById('i0val').textContent = fmt(p.I0, 'A');
+  document.getElementById('i1tau').textContent = fmt(Ifinal + (p.I0 - Ifinal) * Math.exp(-1), 'A');
+  document.getElementById('i5tau').textContent = fmt(Ifinal + (p.I0 - Ifinal) * Math.exp(-5), 'A');
+  document.getElementById('didt').textContent = fmt((p.Vs - p.I0 * p.R) / p.L, 'As');
+
+  ctx.clearRect(0, 0, W, H);
+
+  const pad = { l: 70, r: 20, t: 30, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  const tMax = 6 * tau;
+  const Imax = Math.max(Ifinal * 1.15, p.I0 * 1.1, 0.01);
+
+  function tx(t) { return pad.l + (t / tMax) * pw; }
+  function ty(i) { return pad.t + ph - (i / Imax) * ph; }
+
+  // Grid
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let g = 0; g <= 5; g++) {
+    const yi = ty(Imax * g / 5);
+    ctx.beginPath(); ctx.moveTo(pad.l, yi); ctx.lineTo(pad.l + pw, yi); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText((Imax * g / 5).toFixed(2) + ' A', pad.l - 4, yi + 4);
+  }
+  for (let g = 0; g <= 6; g++) {
+    const xi = tx(tMax * g / 6);
+    ctx.beginPath(); ctx.moveTo(xi, pad.t); ctx.lineTo(xi, pad.t + ph); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(fmt(tMax * g / 6, 's'), xi, pad.t + ph + 16);
+  }
+
+  // Axes
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t + ph); ctx.lineTo(pad.l + pw, pad.t + ph); ctx.stroke();
+
+  // Axis labels
+  ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Time', pad.l + pw / 2, H - 8);
+  ctx.save(); ctx.translate(16, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Current (A)', 0, 0); ctx.restore();
+
+  // Impossible jump (dashed red)
+  if (showJump) {
+    ctx.strokeStyle = '#f85149'; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(pad.l, ty(p.I0));
+    ctx.lineTo(pad.l, ty(Ifinal));
+    ctx.lineTo(pad.l + pw * 0.2, ty(Ifinal));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#f85149'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('Impossible jump (∞ voltage required)', tx(tMax * 0.05), ty(Ifinal) - 8);
+  }
+
+  // Initial tangent line
+  const slope = (p.Vs - p.I0 * p.R) / p.L;
+  ctx.strokeStyle = '#e3b341'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+  const tTangentEnd = (Ifinal - p.I0) / slope;
+  ctx.beginPath();
+  ctx.moveTo(pad.l, ty(p.I0));
+  ctx.lineTo(tx(Math.min(tTangentEnd * 1.1, tMax)), ty(p.I0 + slope * Math.min(tTangentEnd * 1.1, tMax)));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#e3b341'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('Initial tangent (slope = V/L)', tx(tMax * 0.02), ty(p.I0 + slope * tMax * 0.05) - 10);
+
+  // Final current line
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.moveTo(pad.l, ty(Ifinal)); ctx.lineTo(pad.l + pw, ty(Ifinal)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#8b949e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('I_final = ' + fmt(Ifinal, 'A'), pad.l + pw - 4, ty(Ifinal) - 6);
+
+  // Exponential curve
+  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let px = 0; px <= pw; px++) {
+    const t = (px / pw) * tMax;
+    const I = Ifinal + (p.I0 - Ifinal) * Math.exp(-t / tau);
+    if (px === 0) ctx.moveTo(pad.l + px, ty(I));
+    else ctx.lineTo(pad.l + px, ty(I));
+  }
+  ctx.stroke();
+
+  // Milestone markers
+  const milestones = [1, 2, 3, 5];
+  const mColors = ['#39d353', '#56d364', '#7ee787', '#c3e88d'];
+  milestones.forEach((m, idx) => {
+    const t = m * tau;
+    const I = Ifinal + (p.I0 - Ifinal) * Math.exp(-m);
+    const x = tx(t), y = ty(I);
+    ctx.fillStyle = mColors[idx];
+    ctx.beginPath(); ctx.arc(x, y, 5, 0, 2 * Math.PI); ctx.fill();
+    ctx.fillStyle = mColors[idx]; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'left';
+    const pct = (1 - Math.exp(-m)) * 100;
+    const label = m + 'τ: ' + (p.I0 < Ifinal ? pct.toFixed(1) : (100 - pct).toFixed(1)) + '%';
+    ctx.fillText(label, x + 6, y - 4);
+  });
+
+  // I(0+) marker
+  ctx.strokeStyle = '#ff7b72'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(pad.l - 8, ty(p.I0)); ctx.lineTo(pad.l + 8, ty(p.I0)); ctx.stroke();
+  ctx.fillStyle = '#ff7b72'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('I_L(0+) = ' + fmt(p.I0, 'A'), pad.l + 10, ty(p.I0) + 4);
+
+  // Title
+  ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('RL Circuit Current Response — Inductor Current is Continuous', W / 2, 18);
+}
+
+['lSlider', 'rSlider', 'vsSlider', 'i0Slider'].forEach(id =>
+  document.getElementById(id).addEventListener('input', draw));
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-FLT-3.3.1 Sallen-Key Topology</title>
+<style>
+  :root{--bg:#f5f5f5;--panel:#fff;--text:#1a1a1a;--muted:#666;--border:#ddd;
+    --a:#2563eb;--a2:#16a34a;--a3:#dc2626;--a4:#9333ea;--a5:#ea580c;
+    --cb:#fafafa;--gr:#e5e7eb;--hi:#fef9c3;--tb:#bfdbfe;}
+  @media(prefers-color-scheme:dark){:root{
+    --bg:#0f1117;--panel:#1e2130;--text:#e8eaf0;--muted:#8892a4;--border:#2d3348;
+    --a:#60a5fa;--a2:#4ade80;--a3:#f87171;--a4:#c084fc;--a5:#fb923c;
+    --cb:#161926;--gr:#2d3348;--hi:#2d2a0f;--tb:#3b82f6;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px;}
+  h1{font-size:16px;font-weight:700;padding:12px 18px;border-bottom:1px solid var(--border);background:var(--panel);}
+  h1 span{color:var(--muted);font-size:13px;font-weight:400;margin-left:8px;}
+  .layout{display:flex;height:calc(100vh - 47px);}
+  .left{width:290px;background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
+  .right{flex:1;display:flex;flex-direction:column;padding:10px;gap:8px;overflow:hidden;}
+  .sec{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:10px;}
+  .sec h3{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;}
+  label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:3px;}
+  label span{font-weight:600;color:var(--a);}
+  input[type=range]{width:100%;accent-color:var(--a);cursor:pointer;margin-bottom:5px;}
+  select{width:100%;padding:5px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);font-size:12px;margin-bottom:5px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+  .card{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;}
+  .card .lb{font-size:10px;color:var(--muted);text-transform:uppercase;}
+  .card .vl{font-size:13px;font-weight:700;font-family:monospace;color:var(--a);margin-top:2px;}
+  .card.g .vl{color:var(--a2);}
+  .card.r .vl{color:var(--a3);}
+  .card.p .vl{color:var(--a4);}
+  canvas{display:block;border-radius:6px;background:var(--cb);border:1px solid var(--border);width:100%;}
+  .tip{background:var(--hi);border:1px solid var(--tb);border-radius:6px;padding:8px;font-size:11px;line-height:1.5;}
+</style>
+</head>
+<body>
+<h1>M4A-FLT-3.3.1 — Sallen-Key Topology <span>ωn, Q, Butterworth design, op-amp GBW effects</span></h1>
+<div class="layout">
+<div class="left">
+
+  <div class="sec">
+    <h3>Design Preset</h3>
+    <select id="preset" onchange="applyPreset()">
+      <option value="equal">Equal R and C (Q=0.5)</option>
+      <option value="butter">Butterworth (Q=0.707)</option>
+      <option value="cheby">Chebyshev (Q=1.0)</option>
+      <option value="high_q">High-Q (Q=2.0)</option>
+      <option value="underdamp">Underdamped (Q=5)</option>
+    </select>
+  </div>
+
+  <div class="sec">
+    <h3>Component Values</h3>
+    <label>R1 (kΩ) <span id="lbl_r1">10</span></label>
+    <input type="range" id="r1" min="0.5" max="100" value="10" step="0.5" oninput="update()">
+    <label>R2 (kΩ) <span id="lbl_r2">10</span></label>
+    <input type="range" id="r2" min="0.5" max="100" value="10" step="0.5" oninput="update()">
+    <label>C1 (nF) <span id="lbl_c1">20</span></label>
+    <input type="range" id="c1" min="0.1" max="500" value="20" step="0.1" oninput="update()">
+    <label>C2 (nF) <span id="lbl_c2">10</span></label>
+    <input type="range" id="c2" min="0.1" max="500" value="10" step="0.1" oninput="update()">
+  </div>
+
+  <div class="sec">
+    <h3>Op-Amp</h3>
+    <label>GBW (MHz) <span id="lbl_gbw">10</span></label>
+    <input type="range" id="gbw" min="0.1" max="100" value="10" step="0.1" oninput="update()">
+  </div>
+
+  <div class="sec">
+    <h3>Computed Parameters</h3>
+    <div class="grid2">
+      <div class="card"><div class="lb">ωn (rad/s)</div><div class="vl" id="r_wn">—</div></div>
+      <div class="card g"><div class="lb">fp (-3 dB)</div><div class="vl" id="r_fp">—</div></div>
+      <div class="card p"><div class="lb">Q factor</div><div class="vl" id="r_q">—</div></div>
+      <div class="card r"><div class="lb">Peaking</div><div class="vl" id="r_peak">—</div></div>
+      <div class="card"><div class="lb">GBW/fp ratio</div><div class="vl" id="r_ratio">—</div></div>
+      <div class="card"><div class="lb">Response type</div><div class="vl" id="r_type">—</div></div>
+    </div>
+  </div>
+
+  <div class="tip" id="tip">Adjust components to see Q and natural frequency change.</div>
+
+</div>
+<div class="right">
+  <canvas id="c_mag" style="flex:3;"></canvas>
+  <canvas id="c_step" style="flex:2;"></canvas>
+</div>
+</div>
+<script>
+function applyPreset(){
+  const p=document.getElementById('preset').value;
+  const presets={
+    equal:    {r1:10,r2:10,c1:10,c2:10},
+    butter:   {r1:10,r2:10,c1:20,c2:10},
+    cheby:    {r1:10,r2:10,c1:28,c2:10},
+    high_q:   {r1:10,r2:10,c1:100,c2:10},
+    underdamp:{r1:10,r2:10,c1:600,c2:10},
+  };
+  const s=presets[p];
+  document.getElementById('r1').value=s.r1;
+  document.getElementById('r2').value=s.r2;
+  document.getElementById('c1').value=s.c1;
+  document.getElementById('c2').value=s.c2;
+  update();
+}
+
+function cv(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function getCtx(id){
+  const c=document.getElementById(id);
+  c.width=c.offsetWidth*devicePixelRatio;
+  c.height=c.offsetHeight*devicePixelRatio;
+  const ctx=c.getContext('2d');
+  ctx.scale(devicePixelRatio,devicePixelRatio);
+  ctx.W=c.offsetWidth;ctx.H=c.offsetHeight;
+  return ctx;
+}
+function fmtHz(f){
+  if(f>=1e6) return (f/1e6).toFixed(2)+' MHz';
+  if(f>=1e3) return (f/1e3).toFixed(1)+' kHz';
+  return f.toFixed(f>100?0:1)+' Hz';
+}
+
+function skGain(f, wn, Q) {
+  // H(jw) = wn^2 / (wn^2 - w^2 + j*w*wn/Q)
+  const w=2*Math.PI*f;
+  const re=wn*wn-w*w;
+  const im=w*wn/Q;
+  const mag=wn*wn/Math.sqrt(re*re+im*im);
+  return 20*Math.log10(Math.max(mag,1e-10));
+}
+
+function skGainWithGBW(f, wn, Q, gbw_hz) {
+  // Op-amp gain rolls off: A(f) = gbw_hz/f
+  // Modified unity gain K approaches gbw_hz/f instead of 1
+  const w=2*Math.PI*f;
+  const Aol=Math.max(gbw_hz/Math.max(f,1), 1);
+  const K=Aol/(1+Aol); // closed-loop gain of unity-gain buffer
+  // Approximate: reduce effective wn² by K
+  const wneff=wn*Math.sqrt(K);
+  const re=wneff*wneff-w*w;
+  const im=w*wneff/Q;
+  const mag=wneff*wneff/Math.sqrt(re*re+im*im)*K;
+  return 20*Math.log10(Math.max(mag,1e-10));
+}
+
+function update(){
+  const R1=parseFloat(document.getElementById('r1').value)*1e3;
+  const R2=parseFloat(document.getElementById('r2').value)*1e3;
+  const C1=parseFloat(document.getElementById('c1').value)*1e-9;
+  const C2=parseFloat(document.getElementById('c2').value)*1e-9;
+  const gbw=parseFloat(document.getElementById('gbw').value)*1e6;
+
+  document.getElementById('lbl_r1').textContent=document.getElementById('r1').value;
+  document.getElementById('lbl_r2').textContent=document.getElementById('r2').value;
+  document.getElementById('lbl_c1').textContent=parseFloat(document.getElementById('c1').value).toFixed(1);
+  document.getElementById('lbl_c2').textContent=parseFloat(document.getElementById('c2').value).toFixed(1);
+  document.getElementById('lbl_gbw').textContent=parseFloat(document.getElementById('gbw').value).toFixed(1);
+
+  const wn=1/Math.sqrt(R1*R2*C1*C2);
+  const Q=Math.sqrt(R1*R2*C1*C2)/(C2*(R1+R2));
+  const fn=wn/(2*Math.PI);
+
+  // -3 dB frequency for 2nd order
+  // |H(jw)|² = 1/2 → solve numerically
+  let f3db=fn;
+  let lo=fn*0.01,hi=fn*10;
+  for(let i=0;i<60;i++){
+    const m=Math.sqrt(lo*hi);
+    if(skGain(m,wn,Q)>-3) lo=m; else hi=m;
+  }
+  f3db=Math.sqrt(lo*hi);
+
+  // Peak gain
+  let peak_db=0;
+  for(let lf=Math.log10(fn*0.01);lf<=Math.log10(fn*10);lf+=0.02){
+    const g=skGain(Math.pow(10,lf),wn,Q);
+    if(g>peak_db) peak_db=g;
+  }
+
+  const gbw_ratio=gbw/fn;
+  const type=Q<0.5?'Overdamped':Q<0.71?'Near-Butter':Q<1.2?'Underdamped':'High-Q Peak';
+
+  document.getElementById('r_wn').textContent=(wn/1000).toFixed(1)+'k';
+  document.getElementById('r_fp').textContent=fmtHz(f3db);
+  document.getElementById('r_q').textContent=Q.toFixed(3);
+  document.getElementById('r_peak').textContent=peak_db<0.05?'None':'+'+peak_db.toFixed(1)+' dB';
+  document.getElementById('r_ratio').textContent=gbw_ratio.toFixed(0)+'×';
+  document.getElementById('r_type').textContent=type;
+
+  const warn_gbw=gbw_ratio<50;
+  document.getElementById('tip').textContent=
+    warn_gbw
+    ?`Warning: GBW/fp = ${gbw_ratio.toFixed(0)}× is below 50×. Op-amp gain deviation will shift the pole location and distort Q.`
+    :Q>0.700&&Q<0.715
+    ?`Q = ${Q.toFixed(3)} — Butterworth (maximally flat). -3 dB at fp = ${fmtHz(f3db)}.`
+    :Q>0.5
+    ?`Q = ${Q.toFixed(3)} — ${type}. Peak = ${peak_db.toFixed(1)} dB above 0 dB. Check stability.`
+    :`Q = ${Q.toFixed(3)} — ${type}. No peaking, but rolloff is slower than Butterworth.`;
+
+  drawMag(wn,Q,fn,gbw,f3db);
+  drawStep(wn,Q);
+}
+
+function drawMag(wn,Q,fn,gbw,f3db){
+  const ctx=getCtx('c_mag');
+  const W=ctx.W,H=ctx.H,pl=55,pr=18,pt=28,pb=34;
+  const pw=W-pl-pr,ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  const fMin=fn*0.01,fMax=fn*100;
+  const lMin=Math.log10(fMin),lMax=Math.log10(fMax);
+  const dbMin=-60,dbMax=15;
+  const fx=f=>pl+(Math.log10(f)-lMin)/(lMax-lMin)*pw;
+  const fy=db=>pt+(1-(db-dbMin)/(dbMax-dbMin))*ph;
+
+  ctx.strokeStyle=cv('--gr');ctx.lineWidth=0.7;
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    if(x>=pl&&x<=pl+pw){ctx.beginPath();ctx.moveTo(x,pt);ctx.lineTo(x,pt+ph);ctx.stroke();}
+  }
+  [-60,-40,-20,0].forEach(db=>{
+    const y=fy(db);
+    ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+pw,y);ctx.stroke();
+    ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';ctx.fillText(db,2,y+4);
+  });
+
+  // Ideal Sallen-Key
+  ctx.strokeStyle=cv('--a');ctx.lineWidth=2.5;
+  ctx.beginPath();let first=true;
+  for(let i=0;i<=600;i++){
+    const lf=lMin+i/600*(lMax-lMin);
+    const f=Math.pow(10,lf);
+    const db=skGain(f,wn,Q);
+    const x=pl+i/600*pw,y=fy(Math.max(dbMin,Math.min(dbMax,db)));
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // With GBW effect
+  ctx.strokeStyle=cv('--a5');ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();first=true;
+  for(let i=0;i<=600;i++){
+    const lf=lMin+i/600*(lMax-lMin);
+    const f=Math.pow(10,lf);
+    const db=skGainWithGBW(f,wn,Q,gbw);
+    const x=pl+i/600*pw,y=fy(Math.max(dbMin,Math.min(dbMax,db)));
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();ctx.setLineDash([]);
+
+  // -3 dB reference
+  ctx.strokeStyle=cv('--a3');ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pl,fy(-3));ctx.lineTo(pl+pw,fy(-3));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=cv('--a3');ctx.font='10px system-ui';ctx.fillText('-3 dB',pl+2,fy(-3)-3);
+
+  // fn marker
+  const xfn=fx(fn);
+  ctx.strokeStyle=cv('--a2');ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(xfn,pt);ctx.lineTo(xfn,pt+ph);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=cv('--a2');ctx.font='10px system-ui';ctx.fillText('fn='+fmtHz(fn),xfn+3,pt+12);
+
+  // -3 dB point marker
+  if(f3db>fMin&&f3db<fMax){
+    const xf3=fx(f3db);
+    ctx.fillStyle=cv('--a3');ctx.beginPath();ctx.arc(xf3,fy(-3),5,0,2*Math.PI);ctx.fill();
+    ctx.font='10px system-ui';ctx.fillText(fmtHz(f3db),xf3+4,fy(-3)-6);
+  }
+
+  // Axes
+  ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    const f=Math.pow(10,d);
+    const l=f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f;
+    if(x>=pl&&x<=pl+pw)ctx.fillText(l,x-6,pt+ph+14);
+  }
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Gain (dB)',4,pt-8);
+  ctx.fillText('Frequency',pl+pw/2-30,H-2);
+  ctx.fillText('Sallen-Key LP: Q='+parseFloat(document.getElementById('r_q').textContent).toFixed(3)+', fn='+fmtHz(fn),pl+4,pt-10);
+
+  ctx.font='10px system-ui';
+  ctx.fillStyle=cv('--a');ctx.fillText('Ideal (infinite GBW)',pl+pw-130,pt+14);
+  ctx.fillStyle=cv('--a5');ctx.fillText('With GBW='+parseFloat(document.getElementById('gbw').value).toFixed(1)+'MHz',pl+pw-130,pt+26);
+}
+
+function drawStep(wn,Q){
+  const ctx=getCtx('c_step');
+  const W=ctx.W,H=ctx.H,pl=50,pr=18,pt=26,pb=28;
+  const pw=W-pl-pr,ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Step Response',pl+4,pt-8);
+
+  const fn=wn/(2*Math.PI);
+  const T=5/fn;
+  const N=600;
+  const tx=t=>pl+t/T*pw;
+  const vy=v=>pt+(1-v)*ph*0.8+ph*0.1;
+
+  // Grid
+  ctx.strokeStyle=cv('--gr');ctx.lineWidth=0.7;
+  [0,0.5,1.0,1.5].forEach(v=>{
+    const y=vy(v);
+    if(y>pt&&y<pt+ph){
+      ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+pw,y);ctx.stroke();
+      ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';ctx.fillText(v.toFixed(1),2,y+4);
+    }
+  });
+
+  // 2nd order step response: analytic
+  function stepResponse(t, wn, Q) {
+    const zeta=1/(2*Q);
+    if(zeta>=1){
+      // Overdamped
+      const r1=-zeta*wn+wn*Math.sqrt(zeta*zeta-1);
+      const r2=-zeta*wn-wn*Math.sqrt(zeta*zeta-1);
+      return 1+(r2*Math.exp(r1*t)-r1*Math.exp(r2*t))/(r1-r2);
+    } else {
+      // Underdamped
+      const wd=wn*Math.sqrt(1-zeta*zeta);
+      return 1-Math.exp(-zeta*wn*t)*(Math.cos(wd*t)+zeta/Math.sqrt(1-zeta*zeta)*Math.sin(wd*t));
+    }
+  }
+
+  // Step response
+  ctx.strokeStyle=cv('--a');ctx.lineWidth=2.5;
+  ctx.beginPath();let first=true;
+  for(let i=0;i<=N;i++){
+    const t=i/N*T;
+    const v=stepResponse(t,wn,Q);
+    const x=tx(t),y=vy(Math.max(-0.3,Math.min(1.8,v)));
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Unity line
+  ctx.strokeStyle=cv('--a3');ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pl,vy(1));ctx.lineTo(pl+pw,vy(1));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=cv('--a3');ctx.font='10px system-ui';ctx.fillText('1.0',pl+pw-24,vy(1)-3);
+
+  // Time axis
+  ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';
+  [1,2,3,4,5].forEach(k=>{
+    const t=k/fn, x=tx(t);
+    if(x>pl&&x<pl+pw){
+      ctx.beginPath();ctx.moveTo(x,pt+ph);ctx.lineTo(x,pt+ph+4);ctx.stroke();
+      ctx.fillText(k+'/fn',x-10,pt+ph+14);
+    }
+  });
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Amplitude',4,pt-4);
+  ctx.fillText('Time',pl+pw/2-15,H-2);
+}
+
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

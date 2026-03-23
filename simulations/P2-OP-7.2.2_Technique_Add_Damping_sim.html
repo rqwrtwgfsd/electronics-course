@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-OP-7.2.2 Add Damping</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:10px;padding:10px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:230px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.opt{color:#ffaa00;font-size:11px;margin-top:4px}
+.formula{color:#ffaa00;font-size:11px;margin-top:8px;line-height:1.6}
+.btn{display:block;width:100%;margin-top:4px;padding:5px;background:#1a1a3a;border:1px solid #334;color:#ccc;cursor:pointer;font-family:inherit;font-size:11px;border-radius:3px}
+.btn.active{background:#003366;border-color:#0066cc;color:#00aaff}
+</style>
+</head>
+<body>
+<h1>P2-OP-7.2.2 — Add Damping: Series vs Parallel RLC</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="580" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>LC Parameters</h2>
+<label>Inductance L (μH)
+<input type="range" id="L" min="1" max="1000" step="1" value="100">
+<div class="readout" id="L_v">L = 100 μH</div>
+</label>
+<label>Capacitance C (nF)
+<input type="range" id="C" min="1" max="10000" step="10" value="100">
+<div class="readout" id="C_v">C = 100 nF</div>
+</label>
+<label>Series Resistance R (Ω)
+<input type="range" id="R" min="0" max="500" step="1" value="10">
+<div class="readout" id="R_v">R = 10 Ω</div>
+</label>
+<h2 style="margin-top:8px">Configuration</h2>
+<button class="btn active" id="b_ser" onclick="setConf('ser')">Series RLC (R in series)</button>
+<button class="btn" id="b_snub" onclick="setConf('snub')">RC Snubber (R+C in parallel)</button>
+<h2 style="margin-top:8px">Derived Values</h2>
+<div class="readout" id="Z0_v">Z₀ = √(L/C) = —</div>
+<div class="readout" id="zeta_v">ζ = —</div>
+<div class="readout" id="R_opt">R_optimal (ζ=0.7) = —</div>
+<div class="readout" id="f0_v">f₀ = —</div>
+<div class="readout" id="os_v">Overshoot: —</div>
+<div class="opt" id="opt_msg"></div>
+<div class="formula">Series: ζ = R/(2√(L/C))<br>R_opt = 1.4×√(L/C)<br>Snubber: R_s = √(L/C)</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let L=100,C=100,R=10,conf='ser';
+const W=580,H=380,PAD={l:60,r:20,t:30,b:40};
+const CW=W-PAD.l-PAD.r,CH=H-PAD.t-PAD.b;
+const Vin=5;
+
+function setConf(c){conf=c;['ser','snub'].forEach(k=>document.getElementById('b_'+k).classList.toggle('active',k===c));draw();}
+['L','C','R'].forEach(id=>{
+  document.getElementById(id).oninput=function(){
+    if(id==='L'){L=parseFloat(this.value);document.getElementById('L_v').textContent='L = '+L+' μH';}
+    if(id==='C'){C=parseFloat(this.value);document.getElementById('C_v').textContent='C = '+C+' nF';}
+    if(id==='R'){R=parseFloat(this.value);document.getElementById('R_v').textContent='R = '+R+' Ω';}
+    draw();
+  };
+});
+
+function vt_series(t,R_val){
+  const Lh=L*1e-6,Ch=C*1e-9;
+  const w0=1/Math.sqrt(Lh*Ch);
+  const alpha=R_val/(2*Lh);
+  const zeta=R_val/(2*Math.sqrt(Lh/Ch));
+  if(zeta>=1){
+    const q=Math.sqrt(alpha*alpha-w0*w0);
+    const r1=-alpha+q,r2=-alpha-q;
+    return Vin*(1-(r2*Math.exp(r1*t)-r1*Math.exp(r2*t))/(r2-r1));
+  }
+  const wd=w0*Math.sqrt(1-zeta*zeta);
+  return Vin*(1-Math.exp(-alpha*t)*(Math.cos(wd*t)+alpha/wd*Math.sin(wd*t)));
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const Lh=L*1e-6,Ch=C*1e-9;
+  const w0=1/Math.sqrt(Lh*Ch);
+  const Z0=Math.sqrt(Lh/Ch);
+  const zeta_val=R/(2*Z0);
+  const R_opt=1.4*Z0;
+  const f0=w0/(2*Math.PI);
+  const os=zeta_val<1?Math.exp(-Math.PI*zeta_val/Math.sqrt(1-zeta_val*zeta_val))*100:0;
+  const alpha=zeta_val*w0;
+  const tmax=Math.max(10*2*Math.PI/w0,8/(alpha+w0*0.01))*1e6; // μs
+  const vmax=Vin*(1+Math.max(os/100,0)*1.2);
+  function toPx(t,v){return[PAD.l+CW*(t/tmax),PAD.t+CH*(1-v/(vmax+0.5))];}
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=8;i++){const x=PAD.l+CW*(i/8);ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=PAD.t+CH*(i/5);ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+CH);ctx.moveTo(PAD.l,PAD.t+CH);ctx.lineTo(PAD.l+CW,PAD.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=8;i++){const t=tmax*i/8;ctx.fillText(t.toFixed(1)+'μs',PAD.l+CW*(i/8),PAD.t+CH+14);}
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){const v=(vmax+0.5)*(1-i/5);ctx.fillText(v.toFixed(1)+'V',PAD.l-4,PAD.t+CH*(i/5)+4);}
+  // Undamped (R=0)
+  ctx.strokeStyle='#ff444455';ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
+  ctx.beginPath();for(let i=0;i<=600;i++){const t=tmax*i/600*1e-6;const v=vt_series(t,0.001);const[x,y]=toPx(tmax*i/600,v);if(y>PAD.t-10&&y<PAD.t+CH+10){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}}ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#ff4444';ctx.textAlign='left';ctx.font='10px Courier New';ctx.fillText('R=0 (undamped)',PAD.l+4,PAD.t+14);
+  // Optimal (R_opt)
+  ctx.strokeStyle='#0066cc55';ctx.lineWidth=1.5;ctx.setLineDash([4,2]);
+  ctx.beginPath();for(let i=0;i<=600;i++){const t=tmax*i/600*1e-6;const v=vt_series(t,R_opt);const[x,y]=toPx(tmax*i/600,v);if(y>PAD.t-10&&y<PAD.t+CH+10){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}}ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#0066cc';ctx.fillText('R_opt='+R_opt.toFixed(0)+'Ω (ζ=0.7)',PAD.l+4,PAD.t+28);
+  // Current R
+  const col=Math.abs(zeta_val-0.7)<0.1?'#00ff88':(zeta_val<0.5?'#ff4444':'#ffaa00');
+  ctx.strokeStyle=col;ctx.lineWidth=2.5;
+  ctx.beginPath();for(let i=0;i<=800;i++){const t=tmax*i/800*1e-6;const v=vt_series(t,R);const[x,y]=toPx(tmax*i/800,v);if(y>PAD.t-10&&y<PAD.t+CH+10){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}}ctx.stroke();
+  ctx.fillStyle=col;ctx.fillText('R='+R+'Ω (ζ='+zeta_val.toFixed(2)+')',PAD.l+4,PAD.t+42);
+  // Readouts
+  document.getElementById('Z0_v').textContent='Z₀ = '+Z0.toFixed(1)+' Ω';
+  document.getElementById('zeta_v').textContent='ζ = '+zeta_val.toFixed(3);
+  document.getElementById('R_opt').textContent='R_opt (ζ=0.7) = '+R_opt.toFixed(1)+' Ω';
+  document.getElementById('f0_v').textContent='f₀ = '+(f0/1e3).toFixed(2)+' kHz';
+  document.getElementById('os_v').textContent='Overshoot: '+os.toFixed(1)+'%';
+  const opt=document.getElementById('opt_msg');
+  if(Math.abs(zeta_val-0.7)<0.05)opt.textContent='Optimal damping! ζ≈0.7';
+  else if(zeta_val<0.5)opt.textContent='Underdamped. Need R≥'+R_opt.toFixed(0)+'Ω';
+  else if(zeta_val>1.2)opt.textContent='Overdamped. Reduce R toward '+R_opt.toFixed(0)+'Ω';
+  else opt.textContent='';
+}
+draw();
+</script>
+</body>
+</html>

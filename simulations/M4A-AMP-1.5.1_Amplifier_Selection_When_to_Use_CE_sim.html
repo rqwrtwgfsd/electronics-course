@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.5.1 — When to Use Common-Emitter</title>
+<style>
+  :root{--bg:#f5f5f5;--card:#fff;--text:#1a1a1a;--subtext:#555;--accent:#0066cc;--accent2:#cc3300;--accent3:#007744;--accent4:#aa5500;--border:#ccc;--grid:#ddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--card:#242424;--text:#e8e8e8;--subtext:#aaa;--accent:#4da6ff;--accent2:#ff6644;--accent3:#44cc88;--accent4:#ffaa44;--border:#444;--grid:#333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;line-height:1.6;}
+  header{background:var(--card);border-bottom:2px solid var(--accent);padding:18px 28px;}
+  header h1{font-size:1.2rem;font-weight:700;color:var(--accent);}
+  header p{font-size:0.85rem;color:var(--subtext);margin-top:3px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:20px;padding:20px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px;}
+  .card h2{font-size:0.95rem;font-weight:600;margin-bottom:4px;}
+  .card p.desc{font-size:0.80rem;color:var(--subtext);margin-bottom:10px;line-height:1.4;}
+  canvas{display:block;width:100%;border-radius:4px;}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;}
+  .ctrl{display:flex;flex-direction:column;font-size:0.78rem;color:var(--subtext);min-width:140px;}
+  .ctrl label{margin-bottom:3px;}
+  input[type=range]{accent-color:var(--accent);width:100%;}
+  .readout{font-size:0.82rem;color:var(--accent);font-weight:600;margin-top:2px;}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:0.78rem;}
+  .leg{display:flex;align-items:center;gap:5px;}
+  .leg-dot{width:20px;height:3px;border-radius:2px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>M4A-AMP-1.5.1 — Amplifier Selection: When to Use Common-Emitter</h1>
+  <p>CE vs op-amp decision: noise figure, bandwidth, gain accuracy, input impedance — where CE wins</p>
+</header>
+<div class="grid">
+
+  <!-- Plot 1: NF vs IC for CE at different source impedances -->
+  <div class="card">
+    <h2>Noise Figure vs Collector Current (CE Stage)</h2>
+    <p class="desc">NF = 1 + (Rb + re/2)/Rs + gm×Rs/(2β). There is an optimal IC that minimizes NF for a given Rs. High IC → high shot noise (last term); low IC → high Johnson noise (middle term).</p>
+    <canvas id="c1" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>R_b (Ω): <span id="v1a" class="readout">30</span></label>
+        <input type="range" id="s1a" min="1" max="300" value="30" step="1">
+      </div>
+      <div class="ctrl">
+        <label>β: <span id="v1b" class="readout">100</span></label>
+        <input type="range" id="s1b" min="30" max="500" value="100" step="5">
+      </div>
+      <div class="ctrl">
+        <label>R_s (Ω): <span id="v1c" class="readout">50</span></label>
+        <input type="range" id="s1c" min="10" max="1000" value="50" step="5">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Total NF</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> Johnson term (Rb+re/2)/Rs</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3)"></div> Shot noise term gm·Rs/(2β)</div>
+    </div>
+  </div>
+
+  <!-- Plot 2: Gain accuracy CE vs op-amp over temperature -->
+  <div class="card">
+    <h2>Gain Accuracy: CE (without degeneration) vs Op-Amp</h2>
+    <p class="desc">CE gain = gm×RC ∝ IC/T_abs. Without degeneration, gain drifts –0.3%/°C with temperature. Op-amp gain is set by resistor ratios: < 10 ppm/°C with precision parts. The gap is 300–1000×.</p>
+    <canvas id="c2" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>IC (mA): <span id="v2a" class="readout">1.0</span></label>
+        <input type="range" id="s2a" min="0.1" max="10" value="1" step="0.1">
+      </div>
+      <div class="ctrl">
+        <label>RC (kΩ): <span id="v2b" class="readout">5</span></label>
+        <input type="range" id="s2b" min="0.1" max="50" value="5" step="0.1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> CE gain (no degen) vs T°C</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> CE gain (with RE) vs T°C</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3)"></div> Op-amp (precision resistors)</div>
+    </div>
+  </div>
+
+  <!-- Plot 3: CE vs op-amp decision map: frequency vs gain -->
+  <div class="card">
+    <h2>CE vs Op-Amp Selection Map: Frequency vs Gain</h2>
+    <p class="desc">In the green region, the CE amplifier is the natural choice (high freq, moderate gain). In the blue region, op-amp feedback circuits win (low freq, precision gain). In between, either works.</p>
+    <canvas id="c3" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>Op-amp GBW (MHz): <span id="v3a" class="readout">10</span></label>
+        <input type="range" id="s3a" min="1" max="500" value="10" step="1">
+      </div>
+      <div class="ctrl">
+        <label>CE fT (GHz): <span id="v3b" class="readout">5</span></label>
+        <input type="range" id="s3b" min="0.1" max="100" value="5" step="0.1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3);opacity:0.5;height:8px"></div> CE preferred</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent);opacity:0.5;height:8px"></div> Op-amp preferred</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent4);opacity:0.5;height:8px"></div> Overlap / either</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function sc(id){const c=document.getElementById(id);const dpr=window.devicePixelRatio||1;return{canvas:c,resize:()=>{const w=c.clientWidth,h=c.clientHeight;c.width=w*dpr;c.height=h*dpr;const ctx=c.getContext('2d');ctx.scale(dpr,dpr);return{ctx,w,h};}};}
+
+function axes(ctx,w,h,pad,xL,yL,xT,yT){
+  ctx.clearRect(0,0,w,h);ctx.fillStyle=css('--card');ctx.fillRect(0,0,w,h);
+  const pw=w-pad.l-pad.r,ph=h-pad.t-pad.b;
+  ctx.strokeStyle=css('--grid');ctx.lineWidth=0.7;
+  xT.forEach(t=>{const x=pad.l+t.px*pw;ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();});
+  yT.forEach(t=>{const y=pad.t+ph-t.py*ph;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();});
+  ctx.strokeStyle=css('--text');ctx.lineWidth=1.5;ctx.strokeRect(pad.l,pad.t,pw,ph);
+  ctx.fillStyle=css('--subtext');ctx.font='10px system-ui';
+  ctx.textAlign='center';xT.forEach(t=>ctx.fillText(t.label,pad.l+t.px*pw,pad.t+ph+13));
+  ctx.textAlign='right';yT.forEach(t=>ctx.fillText(t.label,pad.l-4,pad.t+ph-t.py*ph+3.5));
+  ctx.fillStyle=css('--text');ctx.font='11px system-ui';ctx.textAlign='center';
+  ctx.fillText(xL,pad.l+pw/2,h-2);
+  ctx.save();ctx.translate(11,pad.t+ph/2);ctx.rotate(-Math.PI/2);ctx.fillText(yL,0,0);ctx.restore();
+  return{pw,ph};
+}
+
+// ─── Plot 1: NF vs IC ─────────────────────────────────────────────────────────
+const p1=sc('c1');
+function draw1(){
+  const {ctx,w,h}=p1.resize();
+  const Rb=parseFloat(document.getElementById('s1a').value);
+  const beta=parseFloat(document.getElementById('s1b').value);
+  const Rs=parseFloat(document.getElementById('s1c').value);
+  document.getElementById('v1a').textContent=Rb;
+  document.getElementById('v1b').textContent=beta;
+  document.getElementById('v1c').textContent=Rs;
+
+  const pad={l:52,r:16,t:18,b:36};
+  const ICmin=0.01e-3,ICmax=20e-3;
+  const NFmin=0,NFmax=20;
+
+  const xTicks=[{v:0.01e-3,px:0,label:'0.01'},{v:0.1e-3,px:1/3,label:'0.1'},{v:1e-3,px:2/3,label:'1'},{v:10e-3,px:1,label:'10'}];
+  const yTicks=[{py:0,label:'0dB'},{py:1/4,label:'5dB'},{py:2/4,label:'10dB'},{py:3/4,label:'15dB'},{py:4/4,label:'20dB'}];
+  const {pw,ph}=axes(ctx,w,h,pad,'IC (mA)','Noise Figure (dB)',xTicks,yTicks);
+  const xp=IC=>pad.l+Math.log10(IC/ICmin)/Math.log10(ICmax/ICmin)*pw;
+  const yp=nf=>pad.t+ph-(Math.max(0,Math.min(NFmax,nf))/NFmax)*ph;
+
+  // Find optimal IC
+  let IC_opt=1e-3,NF_opt=100;
+  for(let IC=ICmin;IC<=ICmax;IC*=1.05){
+    const gm=IC/(26e-3);const re=1/gm;
+    const nf=1+(Rb+re/2)/Rs+gm*Rs/(2*beta);
+    if(nf<NF_opt){NF_opt=nf;IC_opt=IC;}
+  }
+
+  // Component curves
+  ctx.strokeStyle=css('--accent2');ctx.lineWidth=1.5;
+  ctx.beginPath();let f=true;
+  for(let i=0;i<=200;i++){
+    const IC=ICmin*Math.pow(ICmax/ICmin,i/200);
+    const gm=IC/26e-3;const re=1/gm;
+    const comp=(Rb+re/2)/Rs;
+    const nf_dB=10*Math.log10(1+comp);
+    const x=xp(IC),y=yp(nf_dB);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle=css('--accent3');ctx.lineWidth=1.5;
+  ctx.beginPath();f=true;
+  for(let i=0;i<=200;i++){
+    const IC=ICmin*Math.pow(ICmax/ICmin,i/200);
+    const gm=IC/26e-3;
+    const comp=gm*Rs/(2*beta);
+    const nf_dB=10*Math.log10(1+comp);
+    const x=xp(IC),y=yp(nf_dB);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Total NF
+  ctx.strokeStyle=css('--accent');ctx.lineWidth=2.5;
+  ctx.beginPath();f=true;
+  for(let i=0;i<=200;i++){
+    const IC=ICmin*Math.pow(ICmax/ICmin,i/200);
+    const gm=IC/26e-3;const re=1/gm;
+    const nf=1+(Rb+re/2)/Rs+gm*Rs/(2*beta);
+    const nf_dB=10*Math.log10(nf);
+    const x=xp(IC),y=yp(nf_dB);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Optimal marker
+  ctx.fillStyle=css('--accent');
+  ctx.beginPath();ctx.arc(xp(IC_opt),yp(10*Math.log10(NF_opt)),5,0,2*Math.PI);ctx.fill();
+  const optStr=(IC_opt*1e3).toFixed(2)+'mA → NF_min='+(10*Math.log10(NF_opt)).toFixed(1)+'dB';
+  ctx.font='bold 9px system-ui';ctx.textAlign='left';ctx.fillText(optStr,pad.l+4,pad.t+14);
+}
+
+// ─── Plot 2: Gain vs temperature ──────────────────────────────────────────────
+const p2=sc('c2');
+function draw2(){
+  const {ctx,w,h}=p2.resize();
+  const IC=parseFloat(document.getElementById('s2a').value)*1e-3;
+  const RC=parseFloat(document.getElementById('s2b').value)*1e3;
+  document.getElementById('v2a').textContent=parseFloat(document.getElementById('s2a').value).toFixed(1);
+  document.getElementById('v2b').textContent=parseFloat(document.getElementById('s2b').value).toFixed(1);
+
+  // CE gain at T: gm = IC/(kT/q) = IC*q/(k*T), Av = gm*RC
+  // At 25°C: gm25 = IC/26e-3, Av25 = gm25*RC
+  const Av25=(IC/26e-3)*RC;
+  // With RE = RC/Av25 → Av_degen ≈ RC/RE
+  const RE=RC/Av25; // RE that sets gain = Av25 at 25°C (so degenerated gain ≈ same at 25°C)
+
+  const pad={l:56,r:16,t:18,b:36};
+  const Tmin=-40,Tmax=125;
+  // Gain range for plot
+  const Av_max=Av25*1.5;
+  const xTicks=[{v:-40,px:0,label:'-40°'},{v:0,px:(40)/(165),label:'0°'},{v:25,px:(65)/(165),label:'25°'},{v:85,px:(125)/(165),label:'85°'},{v:125,px:1,label:'125°'}];
+  const numY=5;
+  const yTicks=Array.from({length:numY+1},(_,i)=>({py:i/numY,label:((Av_max*i/numY)).toFixed(0)}));
+
+  const {pw,ph}=axes(ctx,w,h,pad,'Temperature (°C)','Voltage Gain |Av|',xTicks,yTicks);
+  const xp=T=>pad.l+(T-Tmin)/(Tmax-Tmin)*pw;
+  const yp=av=>pad.t+ph-(Math.min(av,Av_max)/Av_max)*ph;
+
+  // Op-amp (flat, precision resistors, < 10 ppm/°C drift)
+  ctx.strokeStyle=css('--accent3');ctx.lineWidth=1.5;ctx.globalAlpha=0.7;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(xp(Tmin),yp(Av25));ctx.lineTo(xp(Tmax),yp(Av25));ctx.stroke();
+  ctx.setLineDash([]);ctx.globalAlpha=1;
+  ctx.fillStyle=css('--accent3');ctx.font='9px system-ui';ctx.textAlign='right';
+  ctx.fillText('Op-amp (precision)',pad.l+pw-3,yp(Av25)-4);
+
+  // CE with degeneration (RC/RE ≈ stable)
+  ctx.strokeStyle=css('--accent');ctx.lineWidth=2;
+  ctx.beginPath();let first=true;
+  for(let T=Tmin;T<=Tmax;T+=2){
+    const TK=T+273.15;
+    const gm_T=IC/(1.38e-23*TK/1.6e-19);
+    const Av_degen=RC/(RE+(1/gm_T)); // degenerated
+    const x=xp(T),y=yp(Av_degen);
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // CE without degeneration
+  ctx.strokeStyle=css('--accent2');ctx.lineWidth=2;
+  ctx.beginPath();first=true;
+  for(let T=Tmin;T<=Tmax;T+=2){
+    const TK=T+273.15;
+    const gm_T=IC/(1.38e-23*TK/1.6e-19);
+    const Av=gm_T*RC;
+    const x=xp(T),y=yp(Math.min(Av,Av_max));
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle=css('--accent2');ctx.font='bold 9px system-ui';ctx.textAlign='left';
+  const Av_85=(IC/(1.38e-23*358/1.6e-19))*RC;
+  const Av_m40=(IC/(1.38e-23*233/1.6e-19))*RC;
+  ctx.fillText('CE no-degen: '+Av_m40.toFixed(0)+' @ –40°C, '+Av_85.toFixed(0)+' @ 85°C',pad.l+4,pad.t+14);
+}
+
+// ─── Plot 3: Selection map ────────────────────────────────────────────────────
+const p3=sc('c3');
+function draw3(){
+  const {ctx,w,h}=p3.resize();
+  const GBW_op=parseFloat(document.getElementById('s3a').value)*1e6;
+  const fT_CE=parseFloat(document.getElementById('s3b').value)*1e9;
+  document.getElementById('v3a').textContent=document.getElementById('s3a').value;
+  document.getElementById('v3b').textContent=parseFloat(document.getElementById('s3b').value).toFixed(1);
+
+  const pad={l:56,r:16,t:18,b:36};
+  const fMin=1e3,fMax=fT_CE;
+  const GMin=1,GMax=1000;
+
+  const xDec=[1e3,1e4,1e5,1e6,1e7,1e8,1e9,1e10,1e11].filter(f=>f>=fMin&&f<=fMax);
+  const xTicks=xDec.map(f=>{const e=Math.round(Math.log10(f));const l={3:'1k',4:'10k',5:'100k',6:'1M',7:'10M',8:'100M',9:'1G',10:'10G',11:'100G'};return{px:Math.log10(f/fMin)/Math.log10(fMax/fMin),label:l[e]||f};});
+  const yTicks=[{py:0,label:'1'},{py:1/3,label:'10'},{py:2/3,label:'100'},{py:1,label:'1000'}];
+
+  const {pw,ph}=axes(ctx,w,h,pad,'Frequency (Hz)','Gain (V/V)',xTicks,yTicks);
+  const xp=f=>pad.l+Math.log10(f/fMin)/Math.log10(fMax/fMin)*pw;
+  const yp=g=>pad.t+ph-Math.log10(g/GMin)/Math.log10(GMax/GMin)*ph;
+
+  // CE region: works for f < fT/gain and f > ~GBW_op
+  // Op-amp region: f < GBW_op/gain
+  const NX=200,NY=100;
+  for(let ix=0;ix<NX;ix++){
+    for(let iy=0;iy<NY;iy++){
+      const f=fMin*Math.pow(fMax/fMin,(ix+0.5)/NX);
+      const g=GMin*Math.pow(GMax/GMin,(iy+0.5)/NY);
+      const op_can=f<GBW_op/g;     // op-amp can provide this gain at this freq
+      const ce_can=f<fT_CE/g*0.3;  // CE can achieve: rough BW = fT/(gain*10) for stability margin
+      const x0=pad.l+Math.log10(f/fMin)/Math.log10(fMax/fMin)*pw;
+      const y0=pad.t+ph-Math.log10(g/GMin)/Math.log10(GMax/GMin)*ph;
+      const dx=pw/NX,dy=ph/NY;
+      if(op_can&&!ce_can){ctx.fillStyle=css('--accent');ctx.globalAlpha=0.22;}
+      else if(ce_can&&!op_can){ctx.fillStyle=css('--accent3');ctx.globalAlpha=0.22;}
+      else if(op_can&&ce_can){ctx.fillStyle=css('--accent4');ctx.globalAlpha=0.22;}
+      else{ctx.fillStyle='transparent';ctx.globalAlpha=0;}
+      ctx.fillRect(x0-dx/2,y0-dy/2,dx,dy);
+    }
+  }
+  ctx.globalAlpha=1;
+
+  // Boundary lines
+  // Op-amp limit: f = GBW/gain → line on log-log
+  ctx.strokeStyle=css('--accent');ctx.lineWidth=2;
+  ctx.beginPath();let f=true;
+  for(let i=0;i<=200;i++){
+    const g=GMin*Math.pow(GMax/GMin,i/200);
+    const freq=GBW_op/g;
+    if(freq<fMin||freq>fMax){f=true;continue;}
+    const x=xp(freq),y=yp(g);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // CE limit
+  ctx.strokeStyle=css('--accent3');ctx.lineWidth=2;
+  ctx.beginPath();f=true;
+  for(let i=0;i<=200;i++){
+    const g=GMin*Math.pow(GMax/GMin,i/200);
+    const freq=fT_CE/g*0.3;
+    if(freq<fMin||freq>fMax){f=true;continue;}
+    const x=xp(freq),y=yp(g);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle=css('--accent');ctx.font='bold 9px system-ui';ctx.textAlign='left';
+  ctx.fillText('Op-amp GBW limit',pad.l+4,pad.t+14);
+  ctx.fillStyle=css('--accent3');
+  ctx.fillText('CE fT limit',pad.l+4,pad.t+27);
+}
+
+['s1a','s1b','s1c'].forEach(id=>document.getElementById(id).addEventListener('input',draw1));
+['s2a','s2b'].forEach(id=>document.getElementById(id).addEventListener('input',draw2));
+['s3a','s3b'].forEach(id=>document.getElementById(id).addEventListener('input',draw3));
+window.addEventListener('resize',()=>{draw1();draw2();draw3();});
+draw1();draw2();draw3();
+</script>
+</body>
+</html>

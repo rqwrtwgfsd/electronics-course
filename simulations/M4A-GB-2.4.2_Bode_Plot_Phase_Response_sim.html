@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-GB-2.4.2 — Bode Plot: Phase Response</title>
+<style>
+  :root{--bg:#ffffff;--surface:#f5f5f5;--border:#dddddd;--text:#1a1a1a;--accent:#0066cc;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Arial,sans-serif;font-size:14px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;display:flex;align-items:baseline;gap:16px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}
+  h1{font-size:17px;font-weight:600;}
+  .main{display:grid;grid-template-columns:280px 1fr;height:calc(100vh - 48px);}
+  .ctrl{background:var(--surface);border-right:1px solid var(--border);padding:18px;overflow-y:auto;}
+  .ctrl h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin-bottom:10px;margin-top:14px;}
+  .cg{margin-bottom:13px;}
+  .cg label{display:block;font-size:12px;margin-bottom:4px;}
+  .val{font-weight:700;color:var(--accent);}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rbox{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:8px;margin-bottom:8px;}
+  .rl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;opacity:.7;margin-bottom:2px;}
+  .rv{font-size:17px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .rv.bad{color:#cc0000;} .rv.ok{color:#007700;} .rv.warn{color:#cc8800;}
+  @media(prefers-color-scheme:dark){.rv.bad{color:#ff5555;}.rv.ok{color:#44bb44;}.rv.warn{color:#ffaa44;}}
+  .carea{padding:16px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;}
+  canvas{border:1px solid var(--border);border-radius:6px;display:block;}
+  .clabel{font-size:12px;font-weight:600;margin-bottom:4px;opacity:.8;}
+</style>
+</head>
+<body>
+<header>
+  <span class="mid">M4A-GB-2.4.2</span>
+  <h1>Bode Phase Response — Phase Margin & Stability Explorer</h1>
+</header>
+<div class="main">
+  <div class="ctrl">
+    <h2>Open-Loop System</h2>
+    <div class="cg"><label>DC Gain (dB): <span class="val" id="k-v">80 dB</span></label><input type="range" id="k-s" min="20" max="120" step="1" value="80"></div>
+    <div class="cg"><label>Dominant Pole fp1 (Hz): <span class="val" id="p1-v">10 Hz</span></label><input type="range" id="p1-s" min="0" max="4" step="0.1" value="1"></div>
+    <div class="cg"><label>Second Pole fp2: <span class="val" id="p2-v">5 MHz</span></label><input type="range" id="p2-s" min="4" max="8" step="0.1" value="6.7"></div>
+
+    <h2>Closed-Loop Gain</h2>
+    <div class="cg"><label>CL Gain |Acl| (V/V): <span class="val" id="acl-v">10</span></label><input type="range" id="acl-s" min="1" max="1000" step="1" value="10"></div>
+
+    <h2>Readouts</h2>
+    <div class="rbox"><div class="rl">GBW (Unity-Gain Crossover)</div><div class="rv" id="gbw-out">10 MHz</div></div>
+    <div class="rbox"><div class="rl">CL Bandwidth</div><div class="rv" id="bw-out">1 MHz</div></div>
+    <div class="rbox"><div class="rl">Phase at GBW</div><div class="rv" id="ph-out">-97°</div></div>
+    <div class="rbox"><div class="rl">Phase Margin</div><div class="rv" id="pm-out" class="rv ok">83°</div></div>
+    <div class="rbox"><div class="rl">Stability</div><div class="rv" id="stab-out">STABLE</div></div>
+    <div class="rbox"><div class="rl">Step Overshoot</div><div class="rv" id="overshoot-out">1%</div></div>
+  </div>
+
+  <div class="carea">
+    <div>
+      <div class="clabel">Bode Magnitude + Phase — Open Loop (drag to inspect)</div>
+      <canvas id="bodeCanvas" width="820" height="380"></canvas>
+    </div>
+    <div>
+      <div class="clabel">Step Response Preview (Closed-Loop)</div>
+      <canvas id="stepCanvas" width="820" height="160"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  function G(id){return document.getElementById(id);}
+  const kS=G('k-s'),p1S=G('p1-s'),p2S=G('p2-s'),aclS=G('acl-s');
+
+  function getC(){
+    const dk=window.matchMedia('(prefers-color-scheme:dark)').matches;
+    return{bg:dk?'#1a1a1a':'#fff',grid:dk?'#2e2e2e':'#eee',text:dk?'#ccc':'#555',blue:dk?'#4499ff':'#0066cc',orange:dk?'#ff9944':'#cc6600',red:dk?'#ff5555':'#cc0000',green:dk?'#44bb44':'#007700',purple:dk?'#bb88ff':'#7700cc'};
+  }
+  function fmtF(f){return f>=1e6?(f/1e6).toFixed(2)+'M':f>=1e3?(f/1e3).toFixed(1)+'k':f.toFixed(0);}
+
+  function phase(f,fp1,fp2){
+    return -Math.atan(f/fp1)*180/Math.PI - Math.atan(f/fp2)*180/Math.PI;
+  }
+  function gain_dB(f,K_dB,fp1,fp2){
+    return K_dB - 20*Math.log10(Math.sqrt(1+(f/fp1)**2)) - 20*Math.log10(Math.sqrt(1+(f/fp2)**2));
+  }
+
+  function update(){
+    const K_dB=parseFloat(kS.value);
+    const fp1=Math.pow(10,parseFloat(p1S.value));
+    const fp2=Math.pow(10,parseFloat(p2S.value));
+    const Acl=parseFloat(aclS.value);
+    const Acl_dB=20*Math.log10(Acl);
+
+    G('k-v').textContent=K_dB+' dB';
+    G('p1-v').textContent=fmtF(fp1)+'Hz';
+    G('p2-v').textContent=fmtF(fp2)+'Hz';
+    G('acl-v').textContent=Acl;
+
+    // find GBW (0 dB crossing of open-loop)
+    let fGBW=fp1;
+    for(let lf=Math.log10(fp1);lf<9;lf+=0.001){
+      const f=Math.pow(10,lf);
+      if(gain_dB(f,K_dB,fp1,fp2)<=0){fGBW=f;break;}
+    }
+    const bw=fGBW/Acl;
+    const ph_at_gbw=phase(fGBW,fp1,fp2);
+    const PM=180+ph_at_gbw;
+
+    G('gbw-out').textContent=fmtF(fGBW)+'Hz';
+    G('bw-out').textContent=fmtF(bw)+'Hz';
+    G('ph-out').textContent=ph_at_gbw.toFixed(1)+'°';
+    const pmEl=G('pm-out');
+    pmEl.textContent=PM.toFixed(1)+'°';
+    pmEl.className='rv '+(PM<30?'bad':PM<60?'warn':'ok');
+    G('stab-out').textContent=PM>0?(PM>60?'STABLE':'MARGINAL'):'UNSTABLE';
+    G('stab-out').className='rv '+(PM>60?'ok':PM>0?'warn':'bad');
+
+    // step overshoot from PM
+    const zeta=Math.max(0.01,Math.min(0.99,PM/100));
+    const overshoot=PM>0?Math.exp(-Math.PI*zeta/Math.sqrt(1-zeta*zeta))*100:100;
+    G('overshoot-out').textContent=overshoot.toFixed(1)+'%';
+
+    drawBode(K_dB,fp1,fp2,Acl_dB,fGBW,ph_at_gbw);
+    drawStep(PM);
+  }
+
+  function drawBode(K_dB,fp1,fp2,Acl_dB,fGBW,ph_at_gbw){
+    const cv=G('bodeCanvas');
+    const ctx=cv.getContext('2d');
+    const W=cv.width,H=cv.height;
+    const c=getC();
+    ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+
+    const halfH=H/2;
+    const fMin=fp1/100, fMax=Math.max(fp2,fGBW)*100;
+    const logMin=Math.log10(fMin), logMax=Math.log10(fMax);
+    const pad={l:65,r:20,t:15,b:15};
+    const pw=W-pad.l-pad.r;
+    const phH=halfH-30; // phase plot height
+    const magH=halfH-30; // magnitude plot height
+    const magTop=pad.t;
+    const phTop=halfH+15;
+
+    function fX(f){return pad.l+(Math.log10(f)-logMin)/(logMax-logMin)*pw;}
+
+    // Magnitude plot
+    const magMin=-80, magMax=K_dB+10;
+    function dY_mag(db){return magTop+magH-(db-magMin)/(magMax-magMin)*magH;}
+
+    ctx.strokeStyle=c.grid; ctx.lineWidth=1;
+    for(let db=-60;db<=K_dB+5;db+=20){
+      const y=dY_mag(db);
+      if(y<magTop||y>magTop+magH) continue;
+      ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+pw,y); ctx.stroke();
+      ctx.fillStyle=c.text; ctx.font='10px monospace'; ctx.textAlign='right';
+      ctx.fillText(db,pad.l-3,y+4);
+    }
+
+    // mag curve
+    ctx.beginPath(); ctx.strokeStyle=c.blue; ctx.lineWidth=2.5;
+    for(let px=0;px<=pw;px++){
+      const f=Math.pow(10,logMin+(px/pw)*(logMax-logMin));
+      const db=gain_dB(f,K_dB,fp1,fp2);
+      const x=pad.l+px, y=dY_mag(db);
+      px===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    // CL gain line
+    const yclg=dY_mag(Acl_dB);
+    ctx.beginPath(); ctx.strokeStyle=c.orange; ctx.lineWidth=1.5; ctx.setLineDash([5,3]);
+    ctx.moveTo(pad.l,yclg); ctx.lineTo(pad.l+pw,yclg); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=c.orange; ctx.font='10px monospace'; ctx.textAlign='left';
+    ctx.fillText('CL gain = '+Acl_dB.toFixed(0)+'dB',pad.l+4,yclg-4);
+
+    // GBW crossover marker
+    const xGBW=fX(fGBW);
+    ctx.beginPath(); ctx.strokeStyle=c.red; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+    ctx.moveTo(xGBW,magTop); ctx.lineTo(xGBW,magTop+magH); ctx.stroke(); ctx.setLineDash([]);
+
+    ctx.fillStyle=c.text; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Magnitude',pad.l+pw/2,magTop+magH+12);
+
+    // Phase plot
+    function phY(ph){return phTop+phH-(ph-(-200))/220*phH;}
+    ctx.strokeStyle=c.grid; ctx.lineWidth=1;
+    [-180,-135,-90,-45,0].forEach(ph=>{
+      const y=phY(ph);
+      ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+pw,y); ctx.stroke();
+      ctx.fillStyle=c.text; ctx.font='10px monospace'; ctx.textAlign='right';
+      ctx.fillText(ph+'°',pad.l-3,y+4);
+    });
+
+    // -180° bold line
+    const y180=phY(-180);
+    ctx.beginPath(); ctx.strokeStyle=c.red; ctx.lineWidth=2; ctx.setLineDash([8,3]);
+    ctx.moveTo(pad.l,y180); ctx.lineTo(pad.l+pw,y180); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=c.red; ctx.font='bold 10px monospace'; ctx.textAlign='left';
+    ctx.fillText('-180° (oscillation boundary)',pad.l+4,y180-4);
+
+    // phase curve
+    ctx.beginPath(); ctx.strokeStyle=c.purple; ctx.lineWidth=2.5;
+    for(let px=0;px<=pw;px++){
+      const f=Math.pow(10,logMin+(px/pw)*(logMax-logMin));
+      const ph=phase(f,fp1,fp2);
+      const x=pad.l+px, y=phY(ph);
+      px===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    // phase at GBW crossover
+    const yPH=phY(ph_at_gbw);
+    ctx.beginPath(); ctx.arc(xGBW,yPH,7,0,2*Math.PI); ctx.fillStyle=c.red; ctx.fill();
+    ctx.fillStyle=c.red; ctx.font='bold 11px monospace'; ctx.textAlign='left';
+    ctx.fillText('PM='+(180+ph_at_gbw).toFixed(0)+'°',xGBW+8,yPH-8);
+
+    // PM arrow
+    ctx.strokeStyle=c.green; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(xGBW+30,y180); ctx.lineTo(xGBW+30,yPH); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(xGBW+25,y180+6); ctx.lineTo(xGBW+30,y180); ctx.lineTo(xGBW+35,y180+6); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(xGBW+25,yPH-6); ctx.lineTo(xGBW+30,yPH); ctx.lineTo(xGBW+35,yPH-6); ctx.stroke();
+
+    ctx.fillStyle=c.text; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Phase',pad.l+pw/2,phTop+phH+12);
+
+    // frequency labels
+    for(let lf=Math.ceil(logMin);lf<=Math.floor(logMax);lf++){
+      const x=fX(Math.pow(10,lf));
+      ctx.fillStyle=c.text; ctx.font='9px monospace'; ctx.textAlign='center';
+      const f=Math.pow(10,lf);
+      ctx.fillText(f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f,x,phTop+phH+12);
+    }
+  }
+
+  function drawStep(PM){
+    const cv=G('stepCanvas');
+    const ctx=cv.getContext('2d');
+    const W=cv.width,H=cv.height;
+    const c=getC();
+    ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+
+    const pad={l:40,r:20,t:20,b:30};
+    const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+    const zeta=Math.max(0.01,Math.min(2,PM/100));
+    const wn=2*Math.PI*100;
+
+    function stepResponse(t){
+      if(PM<=0) return 1+Math.sin(wn*t);
+      if(zeta>=1) return 1-Math.exp(-wn*zeta*t)*(1+wn*zeta*t);
+      const wd=wn*Math.sqrt(Math.max(0.001,1-zeta*zeta));
+      return 1-Math.exp(-zeta*wn*t)*(Math.cos(wd*t)+zeta/Math.sqrt(1-zeta*zeta)*Math.sin(wd*t));
+    }
+
+    const tMax=5/wn*6;
+    const pts=300;
+    let yMax=0;
+    for(let i=0;i<pts;i++){const v=stepResponse(i/pts*tMax);yMax=Math.max(yMax,v);}
+    yMax=Math.max(yMax,1.05);
+
+    ctx.strokeStyle=c.grid; ctx.lineWidth=1;
+    [0,0.5,1.0].forEach(v=>{
+      const y=pad.t+ph-(v/yMax)*ph;
+      ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+pw,y); ctx.stroke();
+      ctx.fillStyle=c.text; ctx.font='10px monospace'; ctx.textAlign='right';
+      ctx.fillText(v.toFixed(1),pad.l-4,y+4);
+    });
+
+    // unity reference
+    const y1=pad.t+ph-ph/yMax;
+    ctx.beginPath(); ctx.strokeStyle=c.grid; ctx.lineWidth=1; ctx.setLineDash([5,3]);
+    ctx.moveTo(pad.l,y1); ctx.lineTo(pad.l+pw,y1); ctx.stroke(); ctx.setLineDash([]);
+
+    ctx.beginPath(); ctx.strokeStyle=c.blue; ctx.lineWidth=2.5;
+    for(let i=0;i<=pts;i++){
+      const t=i/pts*tMax;
+      const v=stepResponse(t);
+      const x=pad.l+i/pts*pw;
+      const y=pad.t+ph-(v/yMax)*ph;
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    const overshoot=PM>0?Math.exp(-Math.PI*Math.min(0.99,zeta)/Math.sqrt(1-Math.min(0.99,zeta)**2))*100:100;
+    ctx.fillStyle=c.text; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Step Response — PM='+PM.toFixed(0)+'° → Overshoot≈'+overshoot.toFixed(1)+'%',W/2,pad.t+12);
+    ctx.fillStyle=c.text; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Time →',pad.l+pw/2,H-4);
+  }
+
+  [kS,p1S,p2S,aclS].forEach(e=>e.addEventListener('input',update));
+  window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',update);
+  update();
+})();
+</script>
+</body>
+</html>

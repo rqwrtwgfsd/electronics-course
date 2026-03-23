@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-DB-6.3.3 Wrong Connection</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:12px;padding:12px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:250px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+.btn{display:block;width:100%;margin-top:5px;padding:6px 8px;background:#1a1a3a;border:1px solid #334;color:#ccc;cursor:pointer;font-family:inherit;font-size:11px;border-radius:3px;text-align:left}
+.btn.ok{background:#004400;border-color:#00ff88;color:#00ff88}
+.btn.bad{background:#440000;border-color:#ff4444;color:#ff6666}
+.sym{font-size:11px;color:#ffaa00;margin-top:8px;line-height:1.6;border-top:1px solid #222;padding-top:6px}
+.fix{font-size:11px;color:#00aaff;margin-top:5px}
+.readout{color:#00ff88;font-size:12px;margin-top:4px}
+</style>
+</head>
+<body>
+<h1>P2-DB-6.3.3 — Wrong Connection Errors</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="580" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>Connection Error</h2>
+<button class="btn ok" id="b_norm" onclick="setConn('norm')">Correct Wiring</button>
+<button class="btn" id="b_rev_e" onclick="setConn('rev_e')">Reversed Electrolytic (+/− swapped)</button>
+<button class="btn" id="b_ser_par" onclick="setConn('ser_par')">Cap in Series instead of Parallel</button>
+<button class="btn" id="b_rc_rev" onclick="setConn('rc_rev')">R and C position swapped</button>
+<button class="btn" id="b_double" onclick="setConn('double')">Two caps in parallel (doubled C)</button>
+<div class="sym" id="sym">Symptoms: correct waveform.</div>
+<div class="fix" id="fix"></div>
+<h2 style="margin-top:10px">Parameters</h2>
+<div class="readout" id="r_tau">τ = —</div>
+<div class="readout" id="r_vfinal">V_final = —</div>
+<div class="readout" id="r_note">Note: —</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let conn='norm';
+const R=10e3,C=100e-9,Vin=5;
+const W=580,H=380,PAD={l:60,r:20,t:30,b:40};
+const CW=W-PAD.l-PAD.r,CH=H-PAD.t-PAD.b;
+
+const configs={
+  norm:{lbl:'Correct',col:'#00ff88',tau:R*C,vf:Vin,sym:'Normal RC charge: τ=1ms, V→5V.',fix:'',note:'R=10kΩ, C=100nF in series'},
+  rev_e:{lbl:'Rev Electrolytic',col:'#ff4444',tau:R*C*0.05,vf:0.6,sym:'Reversed electrolytic: forward-biased at junction voltage (~0.6V). Low breakdown, high leakage, very short τ before clamp.',fix:'Check +/− marking. Stripe on electrolytic = negative. Re-insert correctly.',note:'Leakage clamps at ~0.6V'},
+  ser_par:{lbl:'Cap in Series',col:'#ff6600',tau:R*(C*0.1),vf:Vin*0.5,sym:'Series capacitor blocks DC. In AC: high-pass. Final DC = 0 (cap charges to V_in, then blocks). Waveform peaks then falls.',fix:'Move capacitor to shunt path (one terminal to ground).',note:'Series C → DC blocking, AC coupling'},
+  rc_rev:{lbl:'R/C Swapped',col:'#aa44ff',tau:R*C,vf:Vin,sym:'R and C swapped: V_out across R instead of C. Output is a differentiator, not integrator. Fast spike at edge.',fix:'Swap R and C. Output node must be across capacitor for low-pass behavior.',note:'Output across R = high-pass / differentiator'},
+  double:{lbl:'Double C',col:'#ffaa00',tau:R*(2*C),vf:Vin,sym:'Two capacitors in parallel: C_total = 2C, τ = 2ms. Output rise is twice as slow.',fix:'Remove one capacitor. Check that only one capacitor is in the shunt position.',note:'Parallel C doubles τ'},
+};
+
+function setConn(c){conn=c;Object.keys(configs).forEach(k=>{const b=document.getElementById('b_'+k);b.className='btn'+(k===c?(k==='norm'?' ok':' bad'):'');});draw();}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const cf=configs[conn];
+  const tau=cf.tau*1000; // ms
+  const vfinal=cf.vf;
+  const tmax=Math.max(tau*7,configs.norm.tau*7*1000);
+  const vmax=Vin*1.15;
+  function toPx(t,v){return[PAD.l+CW*(t/tmax),PAD.t+CH*(1-v/vmax)];}
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=7;i++){const x=PAD.l+CW*(i/7);ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=PAD.t+CH*(i/5);ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+CH);ctx.moveTo(PAD.l,PAD.t+CH);ctx.lineTo(PAD.l+CW,PAD.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=7;i++){const t=tmax*i/7;const x=PAD.l+CW*(i/7);ctx.fillText(t.toFixed(2)+'ms',x,PAD.t+CH+14);}
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){const v=vmax*(1-i/5);const y=PAD.t+CH*(i/5);ctx.fillText(v.toFixed(1)+'V',PAD.l-4,y+4);}
+  // Normal reference
+  ctx.strokeStyle='#1a3a1a';ctx.lineWidth=1.5;ctx.setLineDash([3,4]);
+  ctx.beginPath();
+  for(let i=0;i<=400;i++){const t=tmax*i/400;const tau0=configs.norm.tau*1000;const v=Vin*(1-Math.exp(-t/tau0));const[x,y]=toPx(t,v);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();ctx.setLineDash([]);
+  // Fault waveform
+  ctx.strokeStyle=cf.col;ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=600;i++){
+    const t=tmax*i/600;
+    let v;
+    if(conn==='ser_par'){
+      // series cap: charges to V_in, then output = V_in - V_C (across R) → decays to 0
+      const tc=R*C*0.5*1000;
+      v=Vin*Math.exp(-t/tc);
+    } else if(conn==='rc_rev'){
+      // output across R: differentiator, spike
+      const tau0=configs.norm.tau*1000;
+      v=Vin*Math.exp(-t/tau0);
+    } else {
+      v=vfinal*(1-Math.exp(-t/tau));
+    }
+    const[x,y]=toPx(t,v);
+    if(y>PAD.t-5&&y<PAD.t+CH+5){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  }
+  ctx.stroke();
+  ctx.fillStyle=cf.col;ctx.font='bold 11px Courier New';ctx.textAlign='left';
+  ctx.fillText(cf.lbl+' | τ='+tau.toFixed(3)+'ms | V_final='+vfinal.toFixed(2)+'V',PAD.l+4,PAD.t+14);
+  // Readouts
+  document.getElementById('r_tau').textContent='τ = '+tau.toFixed(3)+' ms';
+  document.getElementById('r_vfinal').textContent='V_final = '+vfinal.toFixed(2)+' V';
+  document.getElementById('r_note').textContent='Note: '+cf.note;
+  document.getElementById('sym').textContent='Symptoms: '+cf.sym;
+  document.getElementById('fix').textContent=cf.fix?'Fix: '+cf.fix:'';
+}
+setConn('norm');
+</script>
+</body>
+</html>

@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-MS-5.2.1 — Cascaded Stages Structure</title>
+<style>
+  :root {
+    --bg: #ffffff; --bg2: #f5f5f5; --text: #1a1a1a; --text2: #555;
+    --border: #ddd; --accent: #0066cc; --green: #00994d; --canvas-bg: #fafafa; --warn: #cc4400;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1a1a1a; --bg2: #242424; --text: #e8e8e8; --text2: #aaa; --border: #444; --canvas-bg: #1f1f1f; }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+  header { background: var(--bg2); border-bottom: 2px solid var(--accent); padding: 12px 20px; }
+  header .id { font-family: monospace; font-size: 12px; color: var(--accent); font-weight: 700; }
+  header h1 { font-size: 16px; margin-top: 2px; }
+  .container { display: flex; gap: 16px; padding: 16px; flex-wrap: wrap; }
+  .panel { background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 14px; }
+  .sim-panel { flex: 1; min-width: 380px; }
+  .ctrl-panel { width: 260px; min-width: 240px; }
+  canvas { background: var(--canvas-bg); border: 1px solid var(--border); border-radius: 4px; display: block; width: 100%; }
+  .readouts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .readout { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px; }
+  .readout label { font-size: 11px; color: var(--text2); display: block; }
+  .readout .val { font-family: monospace; font-size: 16px; font-weight: 700; color: var(--accent); }
+  .ctrl { margin-bottom: 14px; }
+  .ctrl label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+  .ctrl label span { font-family: monospace; color: var(--accent); font-weight: 700; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .section-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text2); margin-bottom: 10px; }
+  .formula-box { background: var(--bg); border-left: 3px solid var(--accent); padding: 8px 12px; margin: 10px 0; font-family: monospace; font-size: 12px; border-radius: 0 4px 4px 0; line-height: 1.7; }
+  .insight { background: var(--bg); border: 1px solid var(--green); border-radius: 4px; padding: 8px 12px; margin-top: 10px; font-size: 12px; color: var(--text2); line-height: 1.5; }
+  .insight strong { color: var(--green); }
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4B-MS-5.2.1</div>
+  <h1>Multi-Stage — Cascaded Stages Structure</h1>
+</header>
+<div class="container">
+  <div class="panel sim-panel">
+    <canvas id="cv" height="320"></canvas>
+    <div class="readouts">
+      <div class="readout"><label>Stage 1 Gain</label><span class="val" id="r-av1">—</span></div>
+      <div class="readout"><label>Stage 2 Gain</label><span class="val" id="r-av2">—</span></div>
+      <div class="readout"><label>Total Gain (V/V)</label><span class="val" id="r-total">—</span></div>
+      <div class="readout"><label>Total Gain (dB)</label><span class="val" id="r-totaldb">—</span></div>
+    </div>
+    <div class="insight">
+      <strong>Design Status:</strong> <span id="insight-text">Adjust parameters to see cascade behavior.</span>
+    </div>
+  </div>
+  <div class="panel ctrl-panel">
+    <div class="section-title">Stage 1 Parameters</div>
+    <div class="ctrl">
+      <label>gm1 (mA/V) <span id="lbl-gm1">1.2</span></label>
+      <input type="range" id="sl-gm1" min="0.1" max="5" step="0.1" value="1.2" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>Rout1 (kΩ) <span id="lbl-ro1">50</span></label>
+      <input type="range" id="sl-ro1" min="5" max="200" step="5" value="50" oninput="update()">
+    </div>
+    <div class="section-title" style="margin-top:10px">Stage 2 Parameters</div>
+    <div class="ctrl">
+      <label>gm2 (mA/V) <span id="lbl-gm2">4.0</span></label>
+      <input type="range" id="sl-gm2" min="0.1" max="10" step="0.1" value="4.0" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>Rout2 (kΩ) <span id="lbl-ro2">15</span></label>
+      <input type="range" id="sl-ro2" min="1" max="100" step="1" value="15" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>Interstage Rin2 (kΩ) <span id="lbl-rin2">∞</span></label>
+      <input type="range" id="sl-rin2" min="0" max="20" step="1" value="0" oninput="update()">
+      <small style="font-size:11px;color:var(--text2)">0 = infinite (MOSFET gate)</small>
+    </div>
+    <div class="section-title" style="margin-top:10px">Target</div>
+    <div class="ctrl">
+      <label>Required Gain (dB) <span id="lbl-req">70</span></label>
+      <input type="range" id="sl-req" min="40" max="100" step="2" value="70" oninput="update()">
+    </div>
+    <div class="formula-box">
+      A_v1 = gm1 × (Rout1 ‖ Rin2)<br>
+      A_v2 = gm2 × Rout2<br>
+      A_total = A_v1 × A_v2
+    </div>
+  </div>
+</div>
+<script>
+function update() {
+  const gm1  = parseFloat(document.getElementById('sl-gm1').value) / 1000;
+  const ro1  = parseFloat(document.getElementById('sl-ro1').value) * 1000;
+  const gm2  = parseFloat(document.getElementById('sl-gm2').value) / 1000;
+  const ro2  = parseFloat(document.getElementById('sl-ro2').value) * 1000;
+  const rin2_kΩ = parseFloat(document.getElementById('sl-rin2').value);
+  const req  = parseFloat(document.getElementById('sl-req').value);
+
+  document.getElementById('lbl-gm1').textContent = (gm1*1000).toFixed(1);
+  document.getElementById('lbl-ro1').textContent = (ro1/1000).toFixed(0);
+  document.getElementById('lbl-gm2').textContent = (gm2*1000).toFixed(1);
+  document.getElementById('lbl-ro2').textContent = (ro2/1000).toFixed(0);
+  document.getElementById('lbl-req').textContent = req;
+
+  let rout1_eff;
+  if (rin2_kΩ === 0) {
+    document.getElementById('lbl-rin2').textContent = '∞';
+    rout1_eff = ro1;
+  } else {
+    document.getElementById('lbl-rin2').textContent = rin2_kΩ;
+    const rin2 = rin2_kΩ * 1000;
+    rout1_eff = (ro1 * rin2) / (ro1 + rin2);
+  }
+
+  const av1 = gm1 * rout1_eff;
+  const av2 = gm2 * ro2;
+  const avT = av1 * av2;
+  const dbT = 20 * Math.log10(avT);
+  const db1 = 20 * Math.log10(av1);
+  const db2 = 20 * Math.log10(av2);
+
+  document.getElementById('r-av1').textContent = av1.toFixed(1) + ' (' + db1.toFixed(1) + 'dB)';
+  document.getElementById('r-av2').textContent = av2.toFixed(1) + ' (' + db2.toFixed(1) + 'dB)';
+  document.getElementById('r-total').textContent = avT.toFixed(0);
+  const dbEl = document.getElementById('r-totaldb');
+  dbEl.textContent = dbT.toFixed(1) + ' dB';
+  dbEl.style.color = dbT >= req ? 'var(--green)' : 'var(--warn)';
+
+  const ins = dbT >= req
+    ? `Target met: ${dbT.toFixed(1)} dB ≥ ${req} dB. Margin = ${(dbT-req).toFixed(1)} dB.`
+    : `Target MISSED: ${dbT.toFixed(1)} dB < ${req} dB. Deficit = ${(req-dbT).toFixed(1)} dB. Increase gm or Rout.`;
+  document.getElementById('insight-text').textContent =
+    ins + (rin2_kΩ > 0 ? ` Loading reduces Stage 1 gain by ${(100*(1-rout1_eff/ro1)).toFixed(0)}%.` : '');
+
+  drawChart(db1, db2, dbT, req);
+}
+
+function drawChart(db1, db2, dbT, req) {
+  const canvas = document.getElementById('cv');
+  const W = canvas.offsetWidth || 500;
+  canvas.width = W; canvas.height = 320;
+  const ctx = canvas.getContext('2d');
+  const pad = {l:50, r:20, t:30, b:50};
+  const pw = W - pad.l - pad.r, ph = 320 - pad.t - pad.b;
+
+  ctx.fillStyle = 'var(--canvas-bg)'; ctx.fillRect(0,0,W,320);
+
+  // Draw signal flow diagram in upper portion
+  const topH = 120, sigY = pad.t + 50;
+  // Input
+  ctx.fillStyle = '#0066cc'; ctx.beginPath(); ctx.arc(pad.l+10, sigY, 8, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = 'var(--text)'; ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center';
+  ctx.fillText('Vin', pad.l+10, sigY+22);
+
+  // Arrow → Stage 1 box → Arrow → Stage 2 box → Arrow → Vout
+  const boxes = [
+    { x: pad.l+40, label: 'Stage 1', db: db1 },
+    { x: pad.l + pw/2 - 40, label: 'Stage 2', db: db2 }
+  ];
+  let cx = pad.l + 30;
+  // line from input to stage 1
+  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(pad.l+18, sigY); ctx.lineTo(pad.l+40, sigY); ctx.stroke();
+  drawArrow(ctx, pad.l+40, sigY, '#0066cc');
+
+  boxes.forEach((b, i) => {
+    const bx = pad.l + 40 + i*(pw/2-20);
+    const bw = pw/2 - 30;
+    const bh = 50;
+    const by = sigY - bh/2;
+    // box
+    ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2;
+    ctx.fillStyle = 'var(--bg)';
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.strokeRect(bx, by, bw, bh);
+    ctx.fillStyle = 'var(--text)'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(b.label, bx+bw/2, by+18);
+    ctx.fillStyle = '#0066cc'; ctx.font = 'bold 13px monospace';
+    ctx.fillText(b.db.toFixed(1)+' dB', bx+bw/2, by+36);
+    // line to next
+    if (i < boxes.length-1) {
+      ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(bx+bw, sigY); ctx.lineTo(bx+bw+30, sigY); ctx.stroke();
+      drawArrow(ctx, bx+bw+30, sigY, '#0066cc');
+    }
+  });
+  // output node
+  const outX = pad.l + pw - 10;
+  const lastBox = pad.l + 40 + (pw/2-20) + (pw/2 - 30);
+  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(lastBox, sigY); ctx.lineTo(outX-8, sigY); ctx.stroke();
+  drawArrow(ctx, outX-8, sigY, '#0066cc');
+  ctx.fillStyle = '#00994d'; ctx.beginPath(); ctx.arc(outX, sigY, 8, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = 'var(--text)'; ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center';
+  ctx.fillText('Vout', outX, sigY+22);
+
+  // Total gain label
+  ctx.fillStyle = '#00994d'; ctx.font = 'bold 13px monospace'; ctx.textAlign = 'center';
+  ctx.fillText('Total: '+ dbT.toFixed(1) + ' dB', pad.l+pw/2, sigY - 40);
+
+  // Bar chart in lower portion
+  const bPad = topH + pad.t + 10;
+  const bh_area = ph - topH + pad.b - 20;
+  const yMax = 100;
+  const bars = [
+    { label: 'Stage 1', val: db1, color: '#0066cc' },
+    { label: 'Stage 2', val: db2, color: '#00994d' },
+    { label: 'Total',   val: dbT, color: dbT >= req ? '#00994d' : '#cc4400' }
+  ];
+  const barW = pw / 5;
+
+  // Axes
+  ctx.strokeStyle = 'var(--border)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad.l, bPad); ctx.lineTo(pad.l, bPad + bh_area);
+  ctx.lineTo(pad.l+pw, bPad + bh_area); ctx.stroke();
+  for (let y = 0; y <= 100; y += 20) {
+    const yp = bPad + bh_area - (y/yMax)*bh_area;
+    ctx.fillStyle = 'var(--border)'; ctx.beginPath(); ctx.moveTo(pad.l, yp); ctx.lineTo(pad.l+pw, yp); ctx.stroke();
+    ctx.fillStyle = 'var(--text)'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(y+'dB', pad.l-4, yp+3);
+  }
+
+  bars.forEach((b, i) => {
+    const bx = pad.l + (i+1)*barW - barW*0.3;
+    const bwid = barW*0.6;
+    const bhi  = (Math.max(0, b.val)/yMax) * bh_area;
+    const by2  = bPad + bh_area - bhi;
+    ctx.fillStyle = b.color; ctx.fillRect(bx, by2, bwid, bhi);
+    ctx.fillStyle = 'var(--text)'; ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(b.val.toFixed(1)+'dB', bx+bwid/2, by2-4);
+    ctx.fillText(b.label, bx+bwid/2, bPad+bh_area+14);
+  });
+
+  // Requirement line
+  const yReq = bPad + bh_area - (req/yMax)*bh_area;
+  ctx.strokeStyle = '#cc4400'; ctx.lineWidth = 1.5; ctx.setLineDash([6,4]);
+  ctx.beginPath(); ctx.moveTo(pad.l, yReq); ctx.lineTo(pad.l+pw, yReq); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#cc4400'; ctx.font = '11px monospace'; ctx.textAlign = 'right';
+  ctx.fillText('Min: '+req+'dB', pad.l+pw-2, yReq-4);
+}
+
+function drawArrow(ctx, x, y, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x-8, y-5); ctx.lineTo(x-8, y+5); ctx.closePath(); ctx.fill();
+}
+
+update();
+</script>
+</body>
+</html>

@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>M4B-5T-9.1.2 — 5T OTA Sizing Simulator</title>
+<style>
+  body { font-family: 'Courier New', monospace; background: #0a0a0a; color: #e0e0e0; margin: 0; padding: 20px; }
+  h1 { color: #00bcd4; font-size: 1.1em; margin-bottom: 4px; }
+  .subtitle { color: #888; font-size: 0.85em; margin-bottom: 20px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .tab { padding: 8px 16px; background: #1a1a1a; border: 1px solid #333; cursor: pointer; font-family: inherit; font-size: 0.85em; color: #aaa; }
+  .tab.active { background: #00bcd4; color: #000; border-color: #00bcd4; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  canvas { background: #111; border: 1px solid #333; display: block; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+  .ctrl { background: #1a1a1a; border: 1px solid #333; padding: 8px 12px; min-width: 180px; }
+  .ctrl label { display: block; color: #aaa; font-size: 0.78em; margin-bottom: 4px; }
+  .ctrl input[type=range] { width: 100%; accent-color: #00bcd4; }
+  .ctrl .val { color: #00bcd4; font-size: 0.85em; }
+  .ctrl select { background: #222; color: #e0e0e0; border: 1px solid #444; padding: 4px; font-family: inherit; width: 100%; }
+  .readouts { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .ro { background: #1a1a1a; border: 1px solid #444; padding: 6px 12px; font-size: 0.82em; }
+  .ro span { color: #00bcd4; }
+  .pass { color: #4caf50 !important; }
+  .fail { color: #f44336 !important; }
+  .step-out { background: #1a1a1a; border-left: 3px solid #00bcd4; padding: 10px 14px; margin: 6px 0; font-size: 0.82em; line-height: 1.7; }
+  .sv { color: #4caf50; }
+  .sfail { color: #f44336; }
+</style>
+</head>
+<body>
+<h1>M4B-5T-9.1.2 — Five-Transistor OTA Systematic Sizing</h1>
+<div class="subtitle">6-step sizing procedure: enter spec → device dimensions and verification</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab(0)">6-Step Sizing</div>
+  <div class="tab" onclick="switchTab(1)">Noise vs Power</div>
+  <div class="tab" onclick="switchTab(2)">Subthreshold Region</div>
+</div>
+
+<!-- TAB 0 -->
+<div class="panel active" id="tab0">
+  <div class="controls">
+    <div class="ctrl">
+      <label>GBW (MHz): <span class="val" id="gbw_v">200</span></label>
+      <input type="range" id="gbw" min="0.001" max="5000" step="0.001" value="200" oninput="runSteps()">
+    </div>
+    <div class="ctrl">
+      <label>CL (pF): <span class="val" id="cl_v">1.0</span></label>
+      <input type="range" id="cl" min="0.05" max="30" step="0.05" value="1.0" oninput="runSteps()">
+    </div>
+    <div class="ctrl">
+      <label>Vov1 (mV): <span class="val" id="vov1_v">100</span></label>
+      <input type="range" id="vov1" min="20" max="400" step="5" value="100" oninput="runSteps()">
+    </div>
+    <div class="ctrl">
+      <label>gm3/gm1 target: <span class="val" id="r3_v">0.50</span></label>
+      <input type="range" id="r3" min="0.1" max="1.5" step="0.05" value="0.5" oninput="runSteps()">
+    </div>
+    <div class="ctrl">
+      <label>L multiplier (×Lmin): <span class="val" id="lmul_v">4</span></label>
+      <input type="range" id="lmul" min="1" max="15" step="1" value="4" oninput="runSteps()">
+    </div>
+    <div class="ctrl">
+      <label>Process:
+        <select id="proc" onchange="runSteps()">
+          <option value="180">TSMC 180nm</option>
+          <option value="65" selected>TSMC 65nm</option>
+          <option value="28">TSMC 28nm</option>
+        </select>
+      </label>
+    </div>
+    <div class="ctrl">
+      <label>VDD (V): <span class="val" id="vdd_v">1.2</span></label>
+      <input type="range" id="vdd" min="0.6" max="5.0" step="0.1" value="1.2" oninput="runSteps()">
+    </div>
+  </div>
+  <div id="steps_out"></div>
+  <div class="readouts" id="ro0"></div>
+</div>
+
+<!-- TAB 1: Noise vs Power -->
+<div class="panel" id="tab1">
+  <div class="controls">
+    <div class="ctrl">
+      <label>CL (pF): <span class="val" id="cl1_v">1.0</span></label>
+      <input type="range" id="cl1" min="0.05" max="20" step="0.05" value="1.0" oninput="drawNP()">
+    </div>
+    <div class="ctrl">
+      <label>VDD (V): <span class="val" id="vdd1_v">1.2</span></label>
+      <input type="range" id="vdd1" min="0.6" max="5.0" step="0.1" value="1.2" oninput="drawNP()">
+    </div>
+    <div class="ctrl">
+      <label>Noise target (nV/√Hz): <span class="val" id="ntgt_v">10</span></label>
+      <input type="range" id="ntgt" min="1" max="100" step="1" value="10" oninput="drawNP()">
+    </div>
+  </div>
+  <canvas id="canvas1" width="860" height="360"></canvas>
+</div>
+
+<!-- TAB 2: Subthreshold -->
+<div class="panel" id="tab2">
+  <div class="controls">
+    <div class="ctrl">
+      <label>IDD range max (nA): <span class="val" id="idd2_v">1000</span></label>
+      <input type="range" id="idd2" min="1" max="100000" step="1" value="1000" oninput="drawSub()">
+    </div>
+    <div class="ctrl">
+      <label>CL (pF): <span class="val" id="cl2_v">1.0</span></label>
+      <input type="range" id="cl2" min="0.05" max="20" step="0.05" value="1.0" oninput="drawSub()">
+    </div>
+    <div class="ctrl">
+      <label>n (subthreshold slope): <span class="val" id="n2_v">1.40</span></label>
+      <input type="range" id="n2" min="1.0" max="2.0" step="0.05" value="1.4" oninput="drawSub()">
+    </div>
+  </div>
+  <canvas id="canvas2" width="860" height="360"></canvas>
+</div>
+
+<script>
+const PROC_D = {
+  '180': { unCox:270e-6, upCox:70e-6,  Lmin:180e-9, lam0:0.05, vth_n:0.5 },
+  '65':  { unCox:500e-6, upCox:120e-6, Lmin:65e-9,  lam0:0.15, vth_n:0.4 },
+  '28':  { unCox:650e-6, upCox:200e-6, Lmin:28e-9,  lam0:0.25, vth_n:0.35 }
+};
+const kB = 1.38e-23, T = 300;
+
+function getSV(id, dec) { const v=parseFloat(document.getElementById(id).value); document.getElementById(id+'_v').textContent=v.toFixed(dec); return v; }
+
+function runSteps() {
+  const gbw = getSV('gbw',3)*1e6;
+  const cl  = getSV('cl',1)*1e-12;
+  const vov1= getSV('vov1',0)*1e-3;
+  const r3  = getSV('r3',2);
+  const lmul= getSV('lmul',0);
+  const vdd = getSV('vdd',1);
+  const proc= document.getElementById('proc').value;
+  const P   = PROC_D[proc];
+  const L   = P.Lmin * lmul;
+  const lam = P.lam0 / (L/1e-6);
+
+  // Step 1
+  const gm1 = gbw * 2 * Math.PI * cl;
+
+  // Step 2
+  const iss = gm1 * vov1;
+  const id1 = iss / 2;
+
+  // Step 3
+  const WL1 = 2 * id1 / (P.unCox * vov1**2);
+
+  // Step 4
+  const gm3 = gm1 * r3;
+  const vov3 = 2 * id1 / gm3; // gm3 = 2×ID3/vov3
+  const WL3 = 2 * id1 / (P.upCox * vov3**2);
+
+  // Step 5
+  const ro1 = 1 / (lam * id1);
+  const ro4 = ro1;
+  const Rout = ro1 * ro4 / (ro1 + ro4);
+  const Av  = gm1 * Rout;
+
+  // Noise
+  const gamma = proc === '28' ? 1.5 : proc === '65' ? 1.0 : 0.67;
+  const Svn   = 8 * kB * T * gamma / gm1 * (1 + r3);
+  const noise_nV = Math.sqrt(Svn) * 1e9;
+
+  // Swing
+  const swing_lo = 2 * vov1;
+  const swing_hi = vdd - vov3;
+  const swing_pct = (swing_hi - swing_lo) / vdd * 100;
+
+  const fmtF = f => f>1e9?(f/1e9).toFixed(2)+'GHz':f>1e6?(f/1e6).toFixed(1)+'MHz':f>1e3?(f/1e3).toFixed(0)+'kHz':f.toFixed(0)+'Hz';
+
+  document.getElementById('steps_out').innerHTML = `
+    <div class="step-out"><b style="color:#00bcd4">Step 1:</b> gm1 = GBW × 2π × CL = ${fmtF(gbw)} × 2π × ${(cl*1e12).toFixed(1)}pF = <span class="sv">${(gm1*1000).toFixed(3)} mA/V</span></div>
+    <div class="step-out"><b style="color:#00bcd4">Step 2:</b> Vov1 = ${(vov1*1000).toFixed(0)} mV → ISS = gm1 × Vov1 = <span class="sv">${(iss*1e6).toFixed(1)} µA</span> &nbsp; ID1 = ${(id1*1e6).toFixed(1)} µA</div>
+    <div class="step-out"><b style="color:#00bcd4">Step 3 (M1/M2):</b> W/L = 2×ID1/(µnCox×Vov1²) = <span class="sv">${WL1.toFixed(1)}</span> &nbsp; W = ${(WL1*L*1e6).toFixed(2)} µm, L = ${(L*1e9).toFixed(0)} nm</div>
+    <div class="step-out"><b style="color:#00bcd4">Step 4 (M3/M4):</b> gm3 = ${r3.toFixed(2)}×gm1 = ${(gm3*1000).toFixed(3)} mA/V → Vov3 = ${(vov3*1000).toFixed(0)} mV &nbsp; W/L_M3 = <span class="sv">${WL3.toFixed(1)}</span></div>
+    <div class="step-out"><b style="color:#00bcd4">Step 5 (Gain):</b> ro = ${(ro1/1e3).toFixed(1)} kΩ (λ=${lam.toFixed(2)}/V at L=${(L*1e9).toFixed(0)}nm) → Rout = ${(Rout/1e3).toFixed(1)} kΩ → <span class="sv">Av = ${(20*Math.log10(Av)).toFixed(0)} dB</span></div>
+    <div class="step-out"><b style="color:#00bcd4">Step 6 (Noise/Swing):</b> Noise = <span class="${noise_nV<10?'sv':'sfail'}">${noise_nV.toFixed(1)} nV/√Hz</span> &nbsp; Swing = <span class="${swing_pct>60?'sv':'sfail'}">${(swing_lo*1000).toFixed(0)}mV–${(swing_hi*1000).toFixed(0)}mV (${swing_pct.toFixed(0)}% VDD)</span></div>`;
+
+  document.getElementById('ro0').innerHTML = `
+    <div class="ro">gm1: <span>${(gm1*1000).toFixed(3)} mA/V</span></div>
+    <div class="ro">ISS: <span>${(iss*1e6).toFixed(1)} µA</span></div>
+    <div class="ro">W/L M1: <span>${WL1.toFixed(1)}</span></div>
+    <div class="ro">W/L M3: <span>${WL3.toFixed(1)}</span></div>
+    <div class="ro">Av: <span class="${Av>100?'pass':'fail'}">${(20*Math.log10(Av)).toFixed(0)} dB</span></div>
+    <div class="ro">GBW: <span>${fmtF(gbw)}</span></div>
+    <div class="ro">SR: <span>${(iss/cl/1e6).toFixed(0)} V/µs</span></div>
+    <div class="ro">Power: <span>${(iss*vdd*1e6).toFixed(0)} µW</span></div>
+    <div class="ro">FoM: <span>${(gbw/1e6*cl/1e-12/(iss/1e-3)).toFixed(0)} GHz·pF/A</span></div>`;
+}
+
+function drawNP() {
+  const cl   = getSV('cl1',1)*1e-12;
+  const vdd  = getSV('vdd1',1);
+  const ntgt = getSV('ntgt',0)*1e-9; // V/√Hz
+
+  const canvas = document.getElementById('canvas1');
+  const ctx = canvas.getContext('2d');
+  const W=canvas.width, H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const M={top:40,bottom:50,left:80,right:80};
+  const pw=W-M.left-M.right, ph=H-M.top-M.bottom;
+
+  // Sweep ISS, compute noise and power
+  const isss = Array.from({length:80},(_,i)=>1e-6*Math.pow(10000,i/79));
+  const vovs = [50e-3,100e-3,150e-3,200e-3];
+  const cols  = ['#2196f3','#4caf50','#ff9800','#f44336'];
+
+  const gammas = [0.67, 1.0, 1.5];
+  const gline = [
+    // One curve per Vov: noise = sqrt(8kT*gamma/gm1*(1+0.5)) = sqrt(8kT*gamma*Vov*(1.5)/ISS)
+  ];
+  const maxP = vovs[vovs.length-1]*isss[isss.length-1]*vdd*1e3; // mW
+
+  function xC(pwr){ return M.left+(Math.log10(pwr)-Math.log10(vovs[0]*isss[0]*vdd*1e3))/(Math.log10(maxP)-Math.log10(vovs[0]*isss[0]*vdd*1e3))*pw; }
+  function yC(nV){ return M.top+(1-Math.log10(nV/1e-9)/(2))*ph; } // log scale 1-100 nV/√Hz
+
+  // Noise target line
+  const yTgt = yC(ntgt/1e-9);
+  ctx.strokeStyle='#ffeb3b';ctx.lineWidth=1.5;ctx.setLineDash([4,2]);
+  ctx.beginPath();ctx.moveTo(M.left,yTgt);ctx.lineTo(M.left+pw,yTgt);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#ffeb3b';ctx.font='9px Courier New';ctx.textAlign='left';ctx.fillText('Noise target: '+(ntgt*1e9).toFixed(0)+'nV/√Hz',M.left+4,yTgt-3);
+
+  vovs.forEach((vov,vi)=>{
+    const gamma = 1.0;
+    const noises = isss.map(iss=>{
+      const gm1 = iss/vov;
+      return Math.sqrt(8*kB*T*gamma/gm1*1.5)*1e9; // nV/√Hz
+    });
+    const pwrs = isss.map(iss=>iss*vov*vdd*1e3); // mW
+
+    ctx.strokeStyle=cols[vi];ctx.lineWidth=2;ctx.beginPath();
+    noises.forEach((n,i)=>{
+      const x=xC(pwrs[i]), y=M.top+(1-(Math.log10(n)-Math.log10(1))/2)*ph;
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+    ctx.fillStyle=cols[vi];ctx.font='9px Courier New';ctx.textAlign='right';
+    ctx.fillText('Vov='+( vov*1000).toFixed(0)+'mV',M.left+pw,M.top+ph*(1-(Math.log10(noises[40])-0)/2)-5+vi*14);
+  });
+
+  ctx.strokeStyle='#333';ctx.strokeRect(M.left,M.top,pw,ph);
+  [0.001,0.01,0.1,1,10].forEach(p=>{
+    if(p<=maxP){const x=xC(p);ctx.fillStyle='#555';ctx.font='9px Courier New';ctx.textAlign='center';ctx.fillText(p+'mW',x,H-M.bottom+14);
+      ctx.strokeStyle='#1a1a1a';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x,M.top);ctx.lineTo(x,H-M.bottom);ctx.stroke();}
+  });
+  [1,3,10,30,100].forEach(n=>{
+    const y=M.top+(1-(Math.log10(n)-0)/2)*ph;
+    ctx.fillStyle='#555';ctx.font='9px Courier New';ctx.textAlign='right';ctx.fillText(n+'nV/√Hz',M.left-4,y+3);
+    ctx.strokeStyle='#1a1a1a';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(M.left,y);ctx.lineTo(M.left+pw,y);ctx.stroke();
+  });
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  ctx.fillText(`Input noise (nV/√Hz) vs Power — CL=${(cl*1e12).toFixed(1)}pF, VDD=${vdd}V, γ=1.0`,M.left+pw/2,M.top-10);
+  ctx.fillText('Power (mW)', M.left+pw/2, H-8);
+}
+
+function drawSub() {
+  const iddMax = getSV('idd2',0)*1e-9;
+  const cl     = getSV('cl2',1)*1e-12;
+  const n2     = getSV('n2',2);
+
+  const canvas = document.getElementById('canvas2');
+  const ctx = canvas.getContext('2d');
+  const W=canvas.width, H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const M={top:40,bottom:50,left:80,right:80};
+  const pw=W-M.left-M.right, ph=H-M.top-M.bottom;
+
+  const VT = kB*T/1.6e-19;
+  const isss = Array.from({length:60},(_,i)=>1e-12*Math.pow(iddMax/1e-12,i/59));
+  const gbws  = isss.map(iss=>iss/(n2*VT)/(2*Math.PI*cl));
+  const noises= isss.map(iss=>{const gm=iss/(n2*VT); return Math.sqrt(8*kB*T*1.0*1.5/gm)*1e9;});
+
+  const maxGBW = Math.max(...gbws);
+  const minGBW = gbws[0];
+
+  function xC(iss){ return M.left+(Math.log10(iss)-Math.log10(isss[0]))/(Math.log10(iddMax)-Math.log10(isss[0]))*pw; }
+  function yG(gbw){ return M.top+(1-(Math.log10(gbw)-Math.log10(minGBW))/(Math.log10(maxGBW)-Math.log10(minGBW)))*ph*0.5; }
+  function yN(n)  { return M.top+ph*0.55+(1-(Math.log10(n)-0)/(2))*ph*0.45; }
+
+  ctx.strokeStyle='#2196f3';ctx.lineWidth=2.5;ctx.beginPath();
+  gbws.forEach((g,i)=>{ i===0?ctx.moveTo(xC(isss[i]),yG(g)):ctx.lineTo(xC(isss[i]),yG(g)); });
+  ctx.stroke();
+
+  ctx.strokeStyle='#4caf50';ctx.lineWidth=2;ctx.beginPath();
+  noises.forEach((n,i)=>{ i===0?ctx.moveTo(xC(isss[i]),yN(n)):ctx.lineTo(xC(isss[i]),yN(n)); });
+  ctx.stroke();
+
+  ctx.strokeStyle='#333';ctx.strokeRect(M.left,M.top,pw,ph);
+  ctx.beginPath();ctx.strokeStyle='#333';ctx.moveTo(M.left,M.top+ph*0.5);ctx.lineTo(M.left+pw,M.top+ph*0.5);ctx.stroke();
+
+  // X axis
+  [1e-12,1e-11,1e-10,1e-9,1e-8,1e-7].forEach(v=>{
+    if(v<=iddMax){const x=xC(v);ctx.fillStyle='#555';ctx.font='9px Courier New';ctx.textAlign='center';
+      const lab=v>=1e-6?(v*1e6)+'µA':v>=1e-9?(v*1e9)+'nA':(v*1e12)+'pA';
+      ctx.fillText(lab,x,H-M.bottom+14);}
+  });
+
+  ctx.fillStyle='#2196f3';ctx.font='9px Courier New';ctx.textAlign='left';ctx.fillText('GBW (Hz)',M.left+4,M.top+ph*0.2);
+  ctx.fillStyle='#4caf50';ctx.fillText('Noise (nV/√Hz)',M.left+4,M.top+ph*0.7);
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  ctx.fillText(`Subthreshold 5T OTA: GBW and Noise vs IDD — CL=${(cl*1e12).toFixed(1)}pF, n=${n2.toFixed(2)}`,M.left+pw/2,M.top-10);
+  ctx.fillText('IDD (sub-threshold bias)', M.left+pw/2, H-8);
+}
+
+function switchTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
+  if(n===0) runSteps(); if(n===1) drawNP(); if(n===2) drawSub();
+}
+runSteps();
+</script>
+</body>
+</html>

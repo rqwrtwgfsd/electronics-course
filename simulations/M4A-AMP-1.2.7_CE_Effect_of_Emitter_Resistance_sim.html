@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.2.7 — CE Effect of Emitter Resistance</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;gap:16px;align-items:baseline;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:14px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.2.7</div>
+  <div class="topic">CE Effect of Emitter Resistance — Degeneration Factor D</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>Transistor Bias</h3>
+      <label>IC (mA): <b id="ic_lbl">1.0</b></label>
+      <input type="range" id="ic" min="0.1" max="10" value="1" step="0.1">
+      <label>β: <b id="b_lbl">150</b></label>
+      <input type="range" id="beta" min="30" max="500" value="150" step="5">
+      <label>RC (kΩ): <b id="rc_lbl">10</b></label>
+      <input type="range" id="rc" min="0.5" max="50" value="10" step="0.5">
+    </div>
+    <div class="cg">
+      <h3>Emitter Resistance</h3>
+      <label>RE (Ω): <b id="re_lbl">0</b></label>
+      <input type="range" id="re" min="0" max="2000" value="0" step="10">
+    </div>
+    <div class="cg">
+      <h3>Degeneration Analysis</h3>
+      <div class="rd">D = 1+gm×RE: <span id="r_d">1.0</span></div>
+      <div class="rd">Gain |Av|: <span id="r_av">385</span> V/V (÷D)</div>
+      <div class="rd">Zin transistor: <span id="r_zin">3.9</span> kΩ (×D)</div>
+      <div class="rd">Zout collector: <span id="r_zout">—</span> MΩ (×D)</div>
+      <div class="rd">BW factor: <span id="r_bw">—</span> × (approx)</div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_d">1.0</div><div class="l">Factor D</div></div>
+      <div class="met"><div class="v" id="m_av">385</div><div class="l">|Av| (V/V)</div></div>
+      <div class="met"><div class="v" id="m_zin">3.9</div><div class="l">Zin (kΩ)</div></div>
+      <div class="met"><div class="v" id="m_bw">1×</div><div class="l">BW Factor</div></div>
+    </div>
+    <div>
+      <div class="pl">All four effects of RE — normalized to RE=0 baseline</div>
+      <canvas id="effectCanvas" height="220"></canvas>
+    </div>
+    <div>
+      <div class="pl">D factor vs RE — parametric over IC</div>
+      <canvas id="dCanvas" height="180"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+const VT=0.026;
+function update(){
+  const ic=parseFloat(document.getElementById('ic').value)*1e-3;
+  const beta=parseFloat(document.getElementById('beta').value);
+  const rc=parseFloat(document.getElementById('rc').value)*1e3;
+  const re=parseFloat(document.getElementById('re').value);
+  document.getElementById('ic_lbl').textContent=(ic*1000).toFixed(1);
+  document.getElementById('b_lbl').textContent=beta;
+  document.getElementById('rc_lbl').textContent=(rc/1000).toFixed(1);
+  document.getElementById('re_lbl').textContent=re.toFixed(0);
+  const gm=ic/VT;
+  const D=1+gm*re;
+  const av=gm*rc/D;
+  const rpi=beta/gm;
+  const zin=rpi*D;
+  const ro_typical=100/ic; // VA=100V assumed
+  const zout=ro_typical*D;
+  const bw=D;
+  document.getElementById('r_d').textContent=D.toFixed(2);
+  document.getElementById('r_av').textContent=av.toFixed(1);
+  document.getElementById('r_zin').textContent=(zin/1000).toFixed(2);
+  document.getElementById('r_zout').textContent=(zout/1e6).toFixed(2);
+  document.getElementById('r_bw').textContent=bw.toFixed(1);
+  document.getElementById('m_d').textContent=D.toFixed(1);
+  document.getElementById('m_av').textContent=av.toFixed(0);
+  document.getElementById('m_zin').textContent=(zin/1000).toFixed(2);
+  document.getElementById('m_bw').textContent=bw.toFixed(1)+'×';
+  drawEffects(ic,rc,re);
+  drawD(ic,re);
+}
+
+function drawEffects(ic,rc,re){
+  const canvas=document.getElementById('effectCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:10,r:10,t:30,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const gm=ic/VT;
+  const D=1+gm*re;
+  const RE_MAX=2000;
+
+  // Parameter names and colors
+  const params=[
+    {name:'|Av| / Av₀',color:cs.getPropertyValue('--accent').trim(),fn:re=>1/(1+gm*re)},
+    {name:'Zin / Zin₀',color:'#cc6600',fn:re=>(1+gm*re)},
+    {name:'Zout / Zout₀',color:'#006633',fn:re=>(1+gm*re)},
+    {name:'BW / BW₀',color:'#8800cc',fn:re=>(1+gm*re)},
+  ];
+
+  function xOf(re){return pad.l+re/RE_MAX*pw;}
+  // y axis: log scale from 0.01 to 100
+  const LOG_MIN=-2,LOG_MAX=2;
+  function yOf(v){if(v<=0)return pad.t+ph;const lv=Math.log10(v);return pad.t+ph-(lv-LOG_MIN)/(LOG_MAX-LOG_MIN)*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [-2,-1,0,1,2].forEach(exp=>{
+    const y=yOf(Math.pow(10,exp));
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    const lbl=exp>=0?Math.pow(10,exp).toFixed(0):'1/'+Math.pow(10,-exp).toFixed(0);
+    ctx.fillText(lbl,0,y+3);
+  });
+
+  // Unity line (bold)
+  ctx.strokeStyle=cs.getPropertyValue('--fg').trim();ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(pad.l,yOf(1));ctx.lineTo(pad.l+pw,yOf(1));ctx.stroke();
+  ctx.setLineDash([]);
+
+  params.forEach(p=>{
+    ctx.strokeStyle=p.color;ctx.lineWidth=2;
+    ctx.beginPath();
+    for(let px=0;px<=pw;px++){
+      const re=px/pw*RE_MAX;
+      const v=p.fn(re);
+      const y=yOf(Math.max(0.001,Math.min(v,100)));
+      if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+    }
+    ctx.stroke();
+  });
+
+  // Current RE marker
+  const xc=xOf(re);
+  ctx.strokeStyle='#ff8800';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(xc,pad.t);ctx.lineTo(xc,pad.t+ph);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Legend
+  ctx.font='9px Courier New';
+  let legX=pad.l+5,legY=pad.t+8;
+  params.forEach(p=>{
+    ctx.fillStyle=p.color;ctx.fillText('── '+p.name,legX,legY);legX+=pw/4;
+  });
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();
+  ctx.fillText('RE (Ω) →',W/2-20,H-1);
+  ctx.fillText('Normalized (×/÷ = D)',W-200,pad.t-2);
+}
+
+function drawD(ic,re_sel){
+  const canvas=document.getElementById('dCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:40,r:10,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const RE_MAX=2000,D_MAX=100;
+  function xOf(re){return pad.l+re/RE_MAX*pw;}
+  function yOf(d){return pad.t+ph-Math.min(d,D_MAX)/D_MAX*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [0,20,40,60,80,100].forEach(d=>{
+    const y=yOf(d);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(d,2,y+3);
+  });
+
+  const icArr=[0.1e-3,0.5e-3,1e-3,2e-3,5e-3];
+  const colors=[cs.getPropertyValue('--accent').trim(),'#006633','#cc6600','#8800cc','#cc0000'];
+  icArr.forEach((ic_i,idx)=>{
+    const gm_i=ic_i/VT;
+    ctx.strokeStyle=colors[idx];ctx.lineWidth=1.5+(ic_i===ic?0.5:0);
+    ctx.beginPath();
+    for(let px=0;px<=pw;px++){
+      const re=px/pw*RE_MAX;
+      const d=1+gm_i*re;
+      const y=yOf(d);
+      if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+    }
+    ctx.stroke();
+  });
+
+  // Current operating point
+  const gm=ic/VT;
+  const xc=xOf(re_sel);
+  const yc=yOf(1+gm*re_sel);
+  ctx.fillStyle='#ff8800';ctx.beginPath();ctx.arc(xc,yc,5,0,2*Math.PI);ctx.fill();
+
+  ctx.font='9px Courier New';
+  icArr.forEach((ic_i,idx)=>{
+    const lbl=ic_i>=1e-3?(ic_i*1000).toFixed(0)+'mA':(ic_i*1000).toFixed(1)+'mA';
+    ctx.fillStyle=colors[idx];
+    ctx.fillText('IC='+lbl,W-90-idx*0,14+idx*12);
+  });
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();
+  ctx.fillText('RE (Ω) →',W/2-20,H-1);
+  ctx.save();ctx.translate(12,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('D',0,0);ctx.restore();
+}
+
+['ic','beta','rc','re'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

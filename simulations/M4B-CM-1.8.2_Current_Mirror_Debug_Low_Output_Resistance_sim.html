@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CM-1.8.2 — Debug: Low Output Resistance</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.r span{color:#cc2200;} .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CM-1.8.2</div>
+  <h1>Current Mirror — Debug: Low Output Resistance</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>r_out Diagnosis</h2>
+      <label>I_D (μA): <b id="id_l">100</b> μA <input type="range" id="id" min="5" max="500" value="100" step="5"></label>
+      <label>λ (V⁻¹): <b id="lam_l">0.08</b> <input type="range" id="lam" min="0.01" max="1.0" value="0.08" step="0.01"></label>
+      <label>V_ov (mV): <b id="vov_l">200</b> mV <input type="range" id="vov" min="50" max="500" value="200" step="10"></label>
+      <label>Cascode bias error (mV): <b id="verr_l">0</b> mV <input type="range" id="verr" min="-300" max="0" value="0" step="10"></label>
+      <label>Boost gain A: <b id="ga_l">1</b> <input type="range" id="ga" min="1" max="200" value="1" step="1"></label>
+
+      <div class="ro">r_o (single device) (MΩ): <span id="ro_d">--</span></div>
+      <div class="ro g" style="margin-top:4px">Expected r_out (cascode) (GΩ): <span id="rcas_d">--</span></div>
+      <div class="ro r" style="margin-top:4px">Effective r_out with bias error (MΩ): <span id="reff_d">--</span></div>
+      <div class="ro" style="margin-top:4px">r_out degradation factor: <span id="deg_d">--</span></div>
+      <div class="insight">
+        Cascode bias error (negative = V_bias too low) forces the cascode transistor into triode. r_out collapses from g_m×r_o² (GΩ) to r_o (MΩ). Boost gain multiplies r_out when cascode is in saturation.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>r_out vs Cascode Bias Error</h2>
+      <canvas id="cv" height="280"></canvas>
+      <div class="insight">
+        X-axis: cascode bias deficit (0 = correct, −300 mV = severely under-biased). When bias error exceeds −V_ov, cascode enters triode and r_out collapses. Red zone shows triode region. The collapse is abrupt.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const ID=+document.getElementById('id').value*1e-6;
+    const lam=+document.getElementById('lam').value;
+    const vov=+document.getElementById('vov').value/1000;
+    const verr=+document.getElementById('verr').value/1000;
+    const ga=+document.getElementById('ga').value;
+
+    document.getElementById('id_l').textContent=(ID*1e6).toFixed(0);
+    document.getElementById('lam_l').textContent=lam.toFixed(2);
+    document.getElementById('vov_l').textContent=(vov*1000).toFixed(0);
+    document.getElementById('verr_l').textContent=(verr*1000).toFixed(0);
+    document.getElementById('ga_l').textContent=ga;
+
+    const ro=1/(lam*ID);
+    const gm=2*ID/vov;
+    const rcas=ga*gm*ro*ro;
+
+    // Effective r_out: if cascode bias error < -vov, cascode is in triode
+    // Smooth transition: rout = rcas * sigmoid(verr/(0.05)) where -vov is threshold
+    const margin=verr+vov; // positive = in saturation margin
+    let reff;
+    if(margin>=0){
+      reff=rcas*(1/(1+Math.exp(-margin/0.02)));
+    } else {
+      // triode: r_out falls to roughly ro * (1 + g_m*|margin|/2)^-1
+      reff=ro/(1+gm*Math.abs(margin));
+    }
+
+    const deg=reff/rcas;
+
+    document.getElementById('ro_d').textContent=(ro/1e6).toFixed(2);
+    document.getElementById('rcas_d').textContent=(rcas/1e9).toFixed(2);
+    document.getElementById('reff_d').textContent=(reff/1e6).toFixed(2);
+    document.getElementById('deg_d').textContent=deg<0.001?(deg*100).toExponential(2)+'%':(deg*100).toFixed(2)+'%';
+
+    draw(ro,gm,rcas,vov,ga,verr,reff);
+  }
+
+  function draw(ro,gm,rcas,vov,ga,verr_op,reff_op){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=280;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,280);
+    const pL=60,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=280-pT-pB;
+
+    const verrMin=-0.3, verrMax=0.05;
+    const logRmin=Math.log10(ro*0.01);
+    const logRmax=Math.log10(rcas*1.5);
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='10px system-ui';
+    ctx.fillText('r_out (Ω)', 2, pT+ph/2);
+    ctx.fillText('Bias error (mV)', pL+pw/2-24, 280-4);
+
+    // Log Y
+    for(let e=Math.floor(logRmin);e<=Math.ceil(logRmax);e++){
+      const y=pT+ph-((e-logRmin)/(logRmax-logRmin))*ph;
+      if(y<pT||y>pT+ph) continue;
+      const labels=['1','10','100','1k','10k','100k','1M','10M','100M','1G','10G','100G','1T'];
+      const lbl=e<0?'1e'+e:e<labels.length?labels[e]+'':('1e'+e);
+      ctx.fillStyle='#8888aa'; ctx.fillText(lbl, 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+
+    // X ticks
+    [-300,-200,-100,-50,0].forEach(mv=>{
+      const x=pL+((mv/1000-verrMin)/(verrMax-verrMin))*pw;
+      ctx.fillStyle='#8888aa'; ctx.fillText(mv, x-10, pT+ph+14);
+    });
+
+    // Triode shading (bias error < -vov)
+    const xTriode=pL+((-vov-verrMin)/(verrMax-verrMin))*pw;
+    ctx.fillStyle='rgba(204,34,0,0.07)';
+    ctx.fillRect(pL,pT,Math.max(0,xTriode-pL),ph);
+    ctx.fillStyle='#cc220066'; ctx.font='9px system-ui';
+    ctx.fillText('Triode', pL+4, pT+12);
+
+    // r_out vs bias error curve
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+    ctx.beginPath(); let first=true;
+    for(let px=0;px<=pw;px++){
+      const ve=verrMin+(px/pw)*(verrMax-verrMin);
+      const margin=ve+vov;
+      let r;
+      if(margin>=0){ r=rcas*(1/(1+Math.exp(-margin/0.02))); }
+      else{ r=ro/(1+gm*Math.abs(margin)); }
+      const logR=Math.log10(Math.max(r,1));
+      const y=pT+ph-((logR-logRmin)/(logRmax-logRmin))*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // Operating point
+    const xop=pL+((verr_op-verrMin)/(verrMax-verrMin))*pw;
+    const logRop=Math.log10(Math.max(reff_op,1));
+    const yop=pT+ph-((logRop-logRmin)/(logRmax-logRmin))*ph;
+    ctx.fillStyle='#ff8800'; ctx.beginPath(); ctx.arc(xop,yop,6,0,2*Math.PI); ctx.fill();
+
+    // r_o reference line
+    const yro=pT+ph-((Math.log10(ro)-logRmin)/(logRmax-logRmin))*ph;
+    ctx.strokeStyle='#cc220066'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(pL,yro); ctx.lineTo(pL+pw,yro); ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle='#cc2200'; ctx.font='9px system-ui'; ctx.fillText('r_o', pL+pw-20, yro-4);
+
+    // rcas reference line
+    const yrcas=pT+ph-((Math.log10(rcas)-logRmin)/(logRmax-logRmin))*ph;
+    ctx.strokeStyle='#00994d66'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(pL,yrcas); ctx.lineTo(pL+pw,yrcas); ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle='#00994d'; ctx.font='9px system-ui'; ctx.fillText('r_cascode', pL+pw-55, yrcas-4);
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

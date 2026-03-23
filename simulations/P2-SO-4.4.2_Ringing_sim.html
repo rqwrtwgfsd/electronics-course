@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-SO-4.4.2 — Ringing</title>
+<style>
+  :root { --accent: #0066cc; --bg: #1a1a1a; --panel: #242424; --border: #333; --text: #e0e0e0; --muted: #888; }
+  @media (prefers-color-scheme: light) { :root { --bg: #f4f4f4; --panel: #fff; --border: #ccc; --text: #1a1a1a; --muted: #555; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+  h1 { font-size: 1.1rem; color: var(--accent); padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .subtitle { font-size: 0.8rem; color: var(--muted); padding: 0 16px 8px; }
+  .layout { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; }
+  .controls { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px; min-width: 230px; flex: 0 0 230px; }
+  .ctrl-group { margin-bottom: 14px; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .val { font-weight: bold; color: var(--accent); }
+  .readout { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 10px; }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 5px 7px; }
+  .card-label { font-size: 0.68rem; color: var(--muted); }
+  .card-val { font-size: 0.84rem; font-weight: bold; color: var(--accent); }
+  canvas { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: block; }
+  .canvas-wrap { flex: 1; min-width: 300px; }
+</style>
+</head>
+<body>
+<h1>P2-SO-4.4.2 — Ringing (Oscilloscope View)</h1>
+<p class="subtitle">f_ring = ω_d/(2π) &nbsp;|&nbsp; decay τ_d = 1/α &nbsp;|&nbsp; Logarithmic decrement</p>
+<div class="layout">
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>Inductance L (nH): <span class="val" id="vL">100</span></label>
+      <input type="range" id="sL" min="1" max="500" step="1" value="100">
+    </div>
+    <div class="ctrl-group">
+      <label>Capacitance C (pF): <span class="val" id="vC">100</span></label>
+      <input type="range" id="sC" min="1" max="500" step="1" value="100">
+    </div>
+    <div class="ctrl-group">
+      <label>Resistance R (Ω): <span class="val" id="vR">3.16</span></label>
+      <input type="range" id="sR" min="0.1" max="200" step="0.1" value="3.16">
+    </div>
+    <div class="readout">
+      <div class="card"><div class="card-label">f_ring</div><div class="card-val" id="rFr">159 MHz</div></div>
+      <div class="card"><div class="card-label">τ_decay</div><div class="card-val" id="rTd">63.2 ns</div></div>
+      <div class="card"><div class="card-label">ζ</div><div class="card-val" id="rZ">0.050</div></div>
+      <div class="card"><div class="card-label">Log decrement Δ</div><div class="card-val" id="rDelta">0.315</div></div>
+      <div class="card"><div class="card-label">Rings to 1%</div><div class="card-val" id="rN">14.6</div></div>
+      <div class="card"><div class="card-label">Peak ratio y₁/y₂</div><div class="card-val" id="rRat">1.37</div></div>
+    </div>
+  </div>
+  <div class="canvas-wrap">
+    <canvas id="cv" width="560" height="440"></canvas>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+
+function draw() {
+  const L=parseFloat(document.getElementById('sL').value)*1e-9;
+  const C=parseFloat(document.getElementById('sC').value)*1e-12;
+  const R=parseFloat(document.getElementById('sR').value);
+  document.getElementById('vL').textContent=(L*1e9).toFixed(0);
+  document.getElementById('vC').textContent=(C*1e12).toFixed(0);
+  document.getElementById('vR').textContent=R.toFixed(2);
+
+  const omega0=1/Math.sqrt(L*C);
+  const alpha=R/(2*L);
+  const zeta=alpha/omega0;
+  const underdamped=zeta<1;
+  const od=underdamped?omega0*Math.sqrt(1-zeta*zeta):0;
+  const fring=underdamped?od/(2*Math.PI):0;
+  const td=1/alpha;
+  const delta=underdamped?2*Math.PI*zeta/Math.sqrt(1-zeta*zeta):Infinity;
+  const N=underdamped?4.605/delta:0;
+  const peakRatio=underdamped?Math.exp(delta):1;
+
+  function fmt(v){if(v>=1e9)return(v/1e9).toFixed(2)+' GHz';if(v>=1e6)return(v/1e6).toFixed(1)+' MHz';if(v>=1e3)return(v/1e3).toFixed(1)+' kHz';return v.toFixed(0)+' Hz';}
+  function fmtT(t){if(t<=1e-9)return(t*1e12).toFixed(0)+' ps';if(t<=1e-6)return(t*1e9).toFixed(0)+' ns';if(t<=1e-3)return(t*1e6).toFixed(0)+' µs';return(t*1e3).toFixed(2)+' ms';}
+
+  document.getElementById('rFr').textContent=underdamped?fmt(fring):'No ring';
+  document.getElementById('rTd').textContent=fmtT(td);
+  document.getElementById('rZ').textContent=zeta.toFixed(3);
+  document.getElementById('rDelta').textContent=underdamped?delta.toFixed(3):'∞';
+  document.getElementById('rN').textContent=underdamped?N.toFixed(1):'0';
+  document.getElementById('rRat').textContent=underdamped?peakRatio.toFixed(3):'1';
+
+  const W=cv.width,H=cv.height,padL=60,padR=20,padT=35,padB=55,plotW=W-padL-padR,plotH=H-padT-padB;
+  const T=underdamped?1/fring:1/alpha;
+  const tMax=Math.min(5*td,8*T);
+  const V0=1;
+  const amp=V0/Math.sqrt(1-zeta*zeta);
+
+  const isDark=window.matchMedia('(prefers-color-scheme: dark)').matches;
+  ctx.fillStyle=isDark?'#242424':'#fff';ctx.fillRect(0,0,W,H);
+  const gridC=isDark?'#2e2e2e':'#e8e8e8';
+  const mutC=isDark?'#888':'#555';
+  const tx=t=>padL+(t/tMax)*plotW;
+  const ty=y=>padT+(1-(y+amp*1.1)/(2*amp*1.1))*plotH;
+
+  // Scope-style grid (green tinted)
+  ctx.strokeStyle=isDark?'rgba(0,80,30,0.6)':'rgba(0,100,40,0.3)';ctx.lineWidth=1;
+  for(let i=0;i<=10;i++){ctx.beginPath();ctx.moveTo(tx(i*tMax/10),padT);ctx.lineTo(tx(i*tMax/10),padT+plotH);ctx.stroke();}
+  for(let i=0;i<=8;i++){ctx.beginPath();ctx.moveTo(padL,padT+i*plotH/8);ctx.lineTo(padL+plotW,padT+i*plotH/8);ctx.stroke();}
+
+  // Zero line
+  ctx.strokeStyle=isDark?'rgba(100,200,100,0.4)':'rgba(0,100,40,0.3)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,ty(0));ctx.lineTo(padL+plotW,ty(0));ctx.stroke();
+
+  if(underdamped){
+    // Envelope
+    ctx.strokeStyle='rgba(255,136,68,0.5)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();
+    for(let i=0;i<=300;i++){const t=i/300*tMax;const e=amp*Math.exp(-alpha*t);if(i===0)ctx.moveTo(tx(t),ty(e));else ctx.lineTo(tx(t),ty(e));}
+    ctx.stroke();
+    ctx.beginPath();
+    for(let i=0;i<=300;i++){const t=i/300*tMax;const e=-amp*Math.exp(-alpha*t);if(i===0)ctx.moveTo(tx(t),ty(e));else ctx.lineTo(tx(t),ty(e));}
+    ctx.stroke();ctx.setLineDash([]);
+
+    // Ringing waveform (impulse response style: damped sine)
+    ctx.strokeStyle='#00ff88';ctx.lineWidth=2;ctx.beginPath();
+    for(let i=0;i<=800;i++){const t=i/800*tMax;const y=amp*Math.exp(-alpha*t)*Math.sin(od*t);if(i===0)ctx.moveTo(tx(t),ty(y));else ctx.lineTo(tx(t),ty(y));}
+    ctx.stroke();
+
+    // Measurement cursors at first two peaks
+    const t1=Math.PI/(2*od), t2=5*Math.PI/(2*od);
+    const y1=amp*Math.exp(-alpha*t1);
+    const y2=amp*Math.exp(-alpha*t2);
+    [[t1,y1,'#ffaa00'],[t2,y2,'#88aaff']].forEach(([t,y,col])=>{
+      ctx.strokeStyle=col;ctx.lineWidth=1;ctx.setLineDash([4,3]);
+      ctx.beginPath();ctx.moveTo(tx(t),ty(y)+10);ctx.lineTo(tx(t),padT+plotH);ctx.stroke();ctx.setLineDash([]);
+      ctx.fillStyle=col;ctx.beginPath();ctx.arc(tx(t),ty(y),5,0,Math.PI*2);ctx.fill();
+    });
+    // Cursors annotation
+    ctx.fillStyle='#ffaa00';ctx.font='10px sans-serif';
+    ctx.fillText(`y₁=${y1.toFixed(3)}`,tx(t1)+4,ty(y1)-4);
+    ctx.fillStyle='#88aaff';
+    ctx.fillText(`y₂=${y2.toFixed(3)}`,tx(t2)+4,ty(y2)-4);
+    ctx.fillStyle='#ff8844';
+    ctx.fillText(`ln(y₁/y₂)=${Math.log(y1/y2).toFixed(3)}=Δ`,padL+plotW-175,padT+16);
+  } else {
+    ctx.strokeStyle='#00ff88';ctx.lineWidth=2;ctx.beginPath();
+    for(let i=0;i<=400;i++){const t=i/400*tMax;const y=V0*Math.exp(-alpha*t);if(i===0)ctx.moveTo(tx(t),ty(y));else ctx.lineTo(tx(t),ty(y));}
+    ctx.stroke();
+    ctx.fillStyle='#ffaa00';ctx.font='11px sans-serif';ctx.fillText('OVERDAMPED — no ringing',padL+plotW/2-80,padT+30);
+  }
+
+  ctx.fillStyle=isDark?'rgba(0,200,80,0.8)':'rgba(0,100,40,0.8)';ctx.font='11px monospace';
+  ctx.fillText(`f_ring=${underdamped?fmt(fring):'N/A'}  τ_d=${fmtT(td)}`,padL+4,padT-10);
+
+  ctx.fillStyle=mutC;ctx.font='10px sans-serif';
+  for(let i=0;i<=10;i++)ctx.fillText(fmtT(i*tMax/10),tx(i*tMax/10)-15,padT+plotH+18);
+  ctx.fillText('t',padL+plotW/2,padT+plotH+36);
+  [amp*1.0,amp*0.5,0,-amp*0.5,-amp*1.0].forEach(y=>ctx.fillText(y.toFixed(2),2,ty(y)+4));
+}
+
+['sL','sC','sR'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',draw);
+draw();
+</script>
+</body>
+</html>

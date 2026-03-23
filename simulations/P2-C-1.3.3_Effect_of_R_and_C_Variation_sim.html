@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-C-1.3.3 — Effect of R and C Variation Simulator</title>
+<style>
+  :root {
+    --bg: #ffffff; --surface: #f5f5f5; --border: #cccccc; --text: #1a1a1a;
+    --accent: #0066cc; --accent2: #cc4400; --accent3: #008844; --muted: #666666;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a; --surface: #2a2a2a; --border: #444444; --text: #e8e8e8;
+      --accent: #4499ff; --accent2: #ff6633; --accent3: #44cc88; --muted: #999999;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); padding: 20px; max-width: 960px; margin: 0 auto; }
+  header { border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+  .module-id { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+  h1 { font-size: 22px; margin: 4px 0; }
+  .subtitle { font-size: 14px; color: var(--muted); }
+  .layout { display: grid; grid-template-columns: 1fr 300px; gap: 20px; }
+  canvas { border: 1px solid var(--border); border-radius: 4px; display: block; background: var(--surface); width: 100%; }
+  .controls { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 16px; }
+  .ctrl-group { margin-bottom: 14px; }
+  .ctrl-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: baseline; }
+  .ctrl-value { color: var(--accent); font-size: 14px; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+  .toggle-row { display: flex; gap: 8px; margin-bottom: 16px; }
+  .toggle-btn { flex: 1; padding: 9px 4px; border-radius: 4px; border: 2px solid var(--border); background: transparent; color: var(--text); font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.15s; }
+  .toggle-btn.active { border-color: var(--accent); background: var(--accent); color: #fff; }
+  .curve-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 14px; }
+  .curve-table th { font-size: 11px; color: var(--muted); font-weight: 600; padding: 4px 6px; border-bottom: 1px solid var(--border); text-align: left; }
+  .curve-table td { padding: 5px 6px; border-bottom: 1px solid var(--border); font-family: monospace; font-size: 12px; }
+  .key-fact { background: rgba(0,102,204,0.08); border: 1px solid rgba(0,102,204,0.25); border-radius: 4px; padding: 10px 12px; margin-top: 14px; font-size: 12px; line-height: 1.5; color: var(--muted); }
+  .key-fact strong { color: var(--text); }
+  @media (max-width: 640px) { .layout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">P2-C-1.3.3 | Analog Electronics</div>
+  <h1>Effect of R and C Variation on Charging Speed</h1>
+  <div class="subtitle">Changing R or C shifts the time axis only — all curves reach the same V<sub>s</sub></div>
+</header>
+
+<div class="layout">
+  <div>
+    <canvas id="cv" height="420"></canvas>
+  </div>
+  <div class="controls">
+    <div class="ctrl-label" style="margin-bottom:8px;">Vary Which Component?</div>
+    <div class="toggle-row">
+      <button class="toggle-btn active" id="btn-R" onclick="setMode('R')">Vary R</button>
+      <button class="toggle-btn" id="btn-C" onclick="setMode('C')">Vary C</button>
+    </div>
+
+    <div class="ctrl-group">
+      <div class="ctrl-label">Base R <span class="ctrl-value" id="r-display">—</span></div>
+      <input type="range" id="r-slider" min="0" max="100" value="40">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Base C <span class="ctrl-value" id="c-display">—</span></div>
+      <input type="range" id="c-slider" min="0" max="100" value="50">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Supply V<sub>s</sub> <span class="ctrl-value" id="vs-display">5.0 V</span></div>
+      <input type="range" id="vs-slider" min="1" max="20" step="0.5" value="5">
+    </div>
+
+    <div id="mode-label" style="font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">Curves shown (×1, ×2, ×4, ×8 R)</div>
+
+    <table class="curve-table">
+      <thead><tr><th>Multiplier</th><th>τ</th><th>V at t=τ<sub>base</sub></th></tr></thead>
+      <tbody id="curve-tbody"></tbody>
+    </table>
+
+    <div class="key-fact" id="key-fact">
+      <strong>Key:</strong> All four curves reach V<sub>s</sub>. Doubling R (or C) doubles τ, halving the charging speed. Final voltage is unchanged.
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+let varyMode = 'R';
+
+const MULTIPLIERS = [0.5, 1, 2, 4];
+const CURVE_COLORS = ['#cc0044','#0066cc','#008844','#aa5500'];
+const CURVE_COLORS_DARK = ['#ff4488','#4499ff','#44cc88','#ffaa33'];
+
+function setMode(m) {
+  varyMode = m;
+  document.getElementById('btn-R').classList.toggle('active', m === 'R');
+  document.getElementById('btn-C').classList.toggle('active', m === 'C');
+  draw();
+}
+
+function sliderToR(v) { return Math.pow(10, v/100 * 5); }
+function sliderToC(v) { return 1e-9 * Math.pow(10, v/100 * 6); }
+function formatR(r) { return r >= 1e3 ? (r/1e3).toPrecision(3)+' kΩ' : r.toPrecision(3)+' Ω'; }
+function formatC(c) { return c >= 1e-6 ? (c*1e6).toPrecision(3)+' µF' : c >= 1e-9 ? (c*1e9).toPrecision(3)+' nF' : (c*1e12).toPrecision(3)+' pF'; }
+function formatTau(t) {
+  if (t >= 1) return t.toPrecision(3)+' s';
+  if (t >= 1e-3) return (t*1e3).toPrecision(3)+' ms';
+  if (t >= 1e-6) return (t*1e6).toPrecision(3)+' µs';
+  return (t*1e9).toPrecision(3)+' ns';
+}
+
+function resizeCanvas() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width;
+  canvas.height = 420;
+}
+
+function draw() {
+  const R_base = sliderToR(+document.getElementById('r-slider').value);
+  const C_base = sliderToC(+document.getElementById('c-slider').value);
+  const Vs = +document.getElementById('vs-slider').value;
+
+  document.getElementById('r-display').textContent = formatR(R_base);
+  document.getElementById('c-display').textContent = formatC(C_base);
+  document.getElementById('vs-display').textContent = Vs.toFixed(1)+' V';
+
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const cColors = isDark ? CURVE_COLORS_DARK : CURVE_COLORS;
+
+  // Build curve parameters
+  const curves = MULTIPLIERS.map(m => {
+    const R = varyMode === 'R' ? R_base * m : R_base;
+    const C = varyMode === 'C' ? C_base * m : C_base;
+    return { R, C, tau: R*C, m, label: varyMode === 'R' ? formatR(R) : formatC(C) };
+  });
+
+  // tMax = 6 × largest τ
+  const tauMax = Math.max(...curves.map(c => c.tau));
+  const tMax = 6 * tauMax;
+  const tau_base = R_base * C_base;
+
+  // Update table
+  const tbody = document.getElementById('curve-tbody');
+  tbody.innerHTML = '';
+  curves.forEach((c, idx) => {
+    const vc_at_base_tau = Vs*(1-Math.exp(-tau_base/c.tau));
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td style="color:${cColors[idx]};font-weight:700">×${c.m} = ${c.label}</td><td>${formatTau(c.tau)}</td><td>${vc_at_base_tau.toFixed(2)}V</td>`;
+    tbody.appendChild(tr);
+  });
+
+  // Mode label
+  document.getElementById('mode-label').textContent =
+    varyMode === 'R'
+      ? 'Curves: R×0.5, R×1, R×2, R×4 (C fixed)'
+      : 'Curves: C×0.5, C×1, C×2, C×4 (R fixed)';
+
+  document.getElementById('key-fact').innerHTML =
+    varyMode === 'R'
+      ? `<strong>Key:</strong> All curves reach V<sub>s</sub> = ${Vs.toFixed(1)}V. Doubling R doubles τ (slower). Peak current I<sub>0</sub> = V<sub>s</sub>/R changes between curves. Final voltage unchanged.`
+      : `<strong>Key:</strong> All curves reach V<sub>s</sub> = ${Vs.toFixed(1)}V. Doubling C doubles τ (slower). Peak current I<sub>0</sub> = V<sub>s</sub>/R is identical for all curves (R fixed). Final voltage unchanged.`;
+
+  const W = canvas.width, H = canvas.height;
+  const PAD = { top: 30, right: 24, bottom: 50, left: 64 };
+  const pw = W - PAD.left - PAD.right;
+  const ph = H - PAD.top - PAD.bottom;
+  const Vmax = Vs * 1.1;
+
+  const gridColor = isDark ? '#333' : '#e0e0e0';
+  const textColor = isDark ? '#e8e8e8' : '#1a1a1a';
+  const mutedColor = isDark ? '#999' : '#666';
+  const accentV = isDark ? '#4499ff' : '#0066cc';
+
+  function tx(t) { return PAD.left + (t/tMax)*pw; }
+  function ty(v) { return PAD.top + ph - (v/Vmax)*ph; }
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = isDark ? '#2a2a2a' : '#f5f5f5';
+  ctx.fillRect(0,0,W,H);
+
+  // Grid
+  ctx.strokeStyle = gridColor; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+  [0,1,2,3,4,5,6].forEach(n => {
+    const x = tx(n * tauMax);
+    ctx.beginPath(); ctx.moveTo(x,PAD.top); ctx.lineTo(x,PAD.top+ph); ctx.stroke();
+  });
+  [0,0.25,0.5,0.75,1].forEach(f => {
+    const y = ty(f*Vs);
+    ctx.beginPath(); ctx.moveTo(PAD.left,y); ctx.lineTo(PAD.left+pw,y); ctx.stroke();
+  });
+  ctx.setLineDash([]);
+
+  // Axes
+  ctx.strokeStyle = mutedColor; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(PAD.left,PAD.top); ctx.lineTo(PAD.left,PAD.top+ph); ctx.lineTo(PAD.left+pw,PAD.top+ph); ctx.stroke();
+
+  // Axis labels
+  ctx.fillStyle = mutedColor; ctx.font='11px system-ui'; ctx.textAlign='center';
+  [0,1,2,3,4,5,6].forEach(n => ctx.fillText(n===0 ? '0' : n+'τ_max', tx(n*tauMax), PAD.top+ph+18));
+  ctx.fillText('Time (×τ_max = '+formatTau(tauMax)+')', PAD.left+pw/2, PAD.top+ph+38);
+  ctx.textAlign='right';
+  [0,0.25,0.5,0.75,1].forEach(f => ctx.fillText((f*Vs).toFixed(1)+'V', PAD.left-5, ty(f*Vs)+4));
+
+  // V_s asymptote
+  ctx.strokeStyle = accentV; ctx.lineWidth=1; ctx.setLineDash([6,3]); ctx.globalAlpha=0.3;
+  ctx.beginPath(); ctx.moveTo(PAD.left,ty(Vs)); ctx.lineTo(PAD.left+pw,ty(Vs)); ctx.stroke();
+  ctx.setLineDash([]); ctx.globalAlpha=1;
+  ctx.fillStyle = accentV; ctx.font='11px system-ui'; ctx.textAlign='right';
+  ctx.fillText('V_s = '+Vs.toFixed(1)+'V', PAD.left+pw, ty(Vs)-5);
+
+  // Draw curves (slowest first = most visible at bottom)
+  const N = 500;
+  const drawOrder = [3,2,1,0]; // draw slowest first
+  drawOrder.forEach(idx => {
+    const c = curves[idx];
+    ctx.strokeStyle = cColors[idx];
+    ctx.lineWidth = idx === 1 ? 3 : 2; // highlight base curve
+    if (idx === 1) ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    for (let i=0; i<=N; i++) {
+      const t=(i/N)*tMax;
+      const v=Vs*(1-Math.exp(-t/c.tau));
+      if (i===0) ctx.moveTo(tx(t),ty(v)); else ctx.lineTo(tx(t),ty(v));
+    }
+    ctx.stroke();
+
+    // Label at 5τ of this curve
+    const t_label = 5 * c.tau;
+    const v_label = Vs*(1-Math.exp(-5));
+    const xlbl = tx(t_label);
+    const ylbl = ty(v_label);
+    // Only label if within canvas
+    if (xlbl < PAD.left+pw - 10) {
+      ctx.fillStyle = cColors[idx]; ctx.font = idx===1 ? 'bold 11px system-ui' : '10px system-ui';
+      ctx.textAlign = 'left';
+      ctx.fillText(c.label, xlbl+4, ylbl - (idx*14 - 28));
+    }
+  });
+
+  // Title
+  ctx.fillStyle = textColor; ctx.font='bold 13px system-ui'; ctx.textAlign='center';
+  const varStr = varyMode === 'R' ? 'R varies (C fixed)' : 'C varies (R fixed)';
+  ctx.fillText(`Family of RC Charging Curves — ${varStr}`, PAD.left+pw/2, PAD.top-12);
+}
+
+window.addEventListener('resize', () => { resizeCanvas(); draw(); });
+['r-slider','c-slider','vs-slider'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+resizeCanvas(); draw();
+</script>
+</body>
+</html>

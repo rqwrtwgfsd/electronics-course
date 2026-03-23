@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.4.2 — Op-Amp Infinite Zin</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;gap:16px;align-items:baseline;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:13px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.4.2</div>
+  <div class="topic">Op-Amp Zin — Source Loading, Sensor Interface, TIA Virtual Ground, Drift</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>Source</h3>
+      <label>Vsource (V): <b id="vs_lbl">1.0</b></label>
+      <input type="range" id="vs" min="0.001" max="10" value="1" step="0.001">
+      <label>Zsource (Ω): <b id="zs_lbl">1M</b></label>
+      <input type="range" id="zs_exp" min="0" max="12" value="6" step="0.1">
+    </div>
+    <div class="cg">
+      <h3>Op-Amp</h3>
+      <label>Zin log (Ω): <b id="zin_lbl">1TΩ</b></label>
+      <input type="range" id="zin_exp" min="3" max="14" value="12" step="0.1">
+      <label>Cin (pF): <b id="cin_lbl">5</b></label>
+      <input type="range" id="cin" min="0.1" max="50" value="5" step="0.1">
+    </div>
+    <div class="cg">
+      <h3>TIA</h3>
+      <label>Rf (MΩ): <b id="rf_lbl">1.0</b></label>
+      <input type="range" id="rf" min="0.01" max="100" value="1" step="0.1">
+      <label>Ileak (pA): <b id="il_lbl">1</b></label>
+      <input type="range" id="il" min="0.001" max="1000" value="1" step="0.1">
+      <label>Cf (pF): <b id="cf_lbl">100</b></label>
+      <input type="range" id="cf" min="1" max="10000" value="100" step="10">
+    </div>
+    <div class="cg">
+      <h3>Results</h3>
+      <div class="rd">Signal fraction: <span id="r_sfrac">—</span></div>
+      <div class="rd">Loading error: <span id="r_err">—</span></div>
+      <div class="rd">Drift rate: <span id="r_drift">—</span></div>
+      <div class="rd">Drift to 1V: <span id="r_dt">—</span></div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_sfrac">—</div><div class="l">Signal fraction</div></div>
+      <div class="met"><div class="v" id="m_err">—</div><div class="l">Error</div></div>
+      <div class="met"><div class="v" id="m_drift">—</div><div class="l">Drift (mV/s)</div></div>
+    </div>
+    <div>
+      <div class="pl">Signal fraction vs Zin/Zsource ratio (log scale)</div>
+      <canvas id="loadCanvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">Effective input impedance vs frequency (Zin and 1/Cin)</div>
+      <canvas id="zinCanvas" height="190"></canvas>
+    </div>
+    <div>
+      <div class="pl">Charge amp drift vs input current for various Cf</div>
+      <canvas id="driftCanvas" height="160"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+function fmtZ(z){if(z>=1e12)return (z/1e12).toFixed(0)+'TΩ';if(z>=1e9)return (z/1e9).toFixed(0)+'GΩ';if(z>=1e6)return (z/1e6).toFixed(0)+'MΩ';if(z>=1e3)return (z/1e3).toFixed(0)+'kΩ';return z.toFixed(0)+'Ω';}
+function fmtHz(f){if(f>=1e9)return (f/1e9).toFixed(1)+'GHz';if(f>=1e6)return (f/1e6).toFixed(1)+'MHz';if(f>=1e3)return (f/1e3).toFixed(1)+'kHz';return f.toFixed(1)+'Hz';}
+
+function update(){
+  const vs=parseFloat(document.getElementById('vs').value);
+  const zs=Math.pow(10,parseFloat(document.getElementById('zs_exp').value));
+  const zin=Math.pow(10,parseFloat(document.getElementById('zin_exp').value));
+  const cin=parseFloat(document.getElementById('cin').value)*1e-12;
+  const rf=parseFloat(document.getElementById('rf').value)*1e6;
+  const il=parseFloat(document.getElementById('il').value)*1e-12;
+  const cf=parseFloat(document.getElementById('cf').value)*1e-12;
+
+  document.getElementById('vs_lbl').textContent=vs.toFixed(3);
+  document.getElementById('zs_lbl').textContent=fmtZ(zs);
+  document.getElementById('zin_lbl').textContent=fmtZ(zin);
+  document.getElementById('cin_lbl').textContent=(cin*1e12).toFixed(1);
+  document.getElementById('rf_lbl').textContent=(rf/1e6).toFixed(1);
+  document.getElementById('il_lbl').textContent=(il*1e12).toFixed(2);
+  document.getElementById('cf_lbl').textContent=(cf*1e12).toFixed(0);
+
+  const sfrac=zin/(zin+zs);
+  const err=(1-sfrac)*100;
+  const drift_v_per_s=il/cf;
+  const dt_to_1v=1/drift_v_per_s;
+
+  document.getElementById('r_sfrac').textContent=(sfrac*100).toFixed(4)+'%';
+  document.getElementById('r_err').textContent=err.toFixed(4)+'%';
+  document.getElementById('r_drift').textContent=(drift_v_per_s*1e3).toFixed(3)+' mV/s';
+  document.getElementById('r_dt').textContent=dt_to_1v>=1000?(dt_to_1v/3600).toFixed(1)+'hr':dt_to_1v.toFixed(1)+'s';
+
+  document.getElementById('m_sfrac').textContent=(sfrac*100).toFixed(2)+'%';
+  document.getElementById('m_err').textContent=err.toFixed(3)+'%';
+  document.getElementById('m_drift').textContent=(drift_v_per_s*1e3).toFixed(2);
+
+  drawLoad(zs,zin);
+  drawZin(cin,zin);
+  drawDrift(il,cf);
+}
+
+function drawLoad(zs0,zin0){
+  const canvas=document.getElementById('loadCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:60,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+  // x: Zin/Zs ratio log 0.001 to 1e10
+  const xmin=Math.log10(0.001),xmax=Math.log10(1e10);
+  const toX=r=>pad.l+(Math.log10(r)-xmin)/(xmax-xmin)*pw;
+  const toY=v=>pad.t+(1-v)*ph;
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [0.25,0.5,0.75,1.0].forEach(v=>{ctx.beginPath();ctx.moveTo(pad.l,toY(v));ctx.lineTo(pad.l+pw,toY(v));ctx.stroke();ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText((v*100).toFixed(0)+'%',pad.l-22,toY(v)+3);});
+  [0.001,0.01,0.1,1,10,100,1e3,1e6,1e10].forEach(v=>{
+    const x=toX(v);ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    const lbl=v>=1000?(v>=1e6?(v/1e6).toFixed(0)+'M':(v/1e3).toFixed(0)+'k'):v.toString();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(lbl,x-8,pad.t+ph+12);
+  });
+
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=300;i++){
+    const ratio=Math.pow(10,xmin+i/300*(xmax-xmin));
+    const sfrac=ratio/(ratio+1);
+    if(i===0)ctx.moveTo(pad.l+i/300*pw,toY(sfrac));else ctx.lineTo(pad.l+i/300*pw,toY(sfrac));
+  }
+  ctx.stroke();
+
+  // spec lines
+  ctx.strokeStyle='#cc0000';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,toY(0.999));ctx.lineTo(pad.l+pw,toY(0.999));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#cc0000';ctx.font='8px Courier New';ctx.fillText('0.1% error (99.9%)',pad.l+5,toY(0.999)-3);
+
+  // current ratio
+  const ratio0=zin0/zs0;
+  if(ratio0>=0.001&&ratio0<=1e10){
+    const sfrac0=ratio0/(ratio0+1);
+    ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.beginPath();ctx.arc(toX(ratio0),toY(sfrac0),5,0,2*Math.PI);ctx.fill();
+  }
+
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='9px Courier New';ctx.fillText('Veff/Vsource = Zin/(Zin+Zs)',pad.l+5,pad.t+14);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('Zin/Zsource ratio →',W/2-35,H-3);
+  ctx.save();ctx.translate(10,H/2+15);ctx.rotate(-Math.PI/2);ctx.fillText('Signal fraction',0,0);ctx.restore();
+}
+
+function drawZin(cin0,zin0){
+  const canvas=document.getElementById('zinCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:65,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+  const fmin=1e0,fmax=1e10;
+  const toX=f=>pad.l+(Math.log10(f)-Math.log10(fmin))/(Math.log10(fmax)-Math.log10(fmin))*pw;
+  const ymin=Math.log10(1),ymax=Math.log10(1e14);
+  const toY=z=>pad.t+(1-(Math.log10(z)-ymin)/(ymax-ymin))*ph;
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [1,1e3,1e6,1e9,1e12,1e14].forEach(v=>{
+    const y=toY(v);if(y<pad.t||y>pad.t+ph)return;
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    const lbl=v>=1e12?(v/1e12).toFixed(0)+'T':v>=1e9?(v/1e9).toFixed(0)+'G':v>=1e6?(v/1e6).toFixed(0)+'M':v>=1e3?(v/1e3).toFixed(0)+'k':v+'';
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(lbl+'Ω',pad.l-33,y+3);
+  });
+
+  // Zin(DC) = flat
+  ctx.strokeStyle='#006633';ctx.lineWidth=2;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,toY(zin0));ctx.lineTo(pad.l+pw,toY(zin0));ctx.stroke();ctx.setLineDash([]);
+
+  // Zcm(f) = 1/(2pi*f*Cin)
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=300;i++){
+    const f=Math.pow(10,Math.log10(fmin)+i/300*Math.log10(fmax/fmin));
+    const zcm=1/(2*Math.PI*f*cin0);
+    const zeff=Math.min(zcm,zin0);
+    const y=toY(zeff);if(y<pad.t||y>pad.t+ph)continue;
+    if(i===0)ctx.moveTo(pad.l+i/300*pw,y);else ctx.lineTo(pad.l+i/300*pw,y);
+  }
+  ctx.stroke();
+
+  [1,1e2,1e4,1e6,1e8,1e10].forEach(v=>{const x=toX(v);const lbl=v>=1e9?(v/1e9).toFixed(0)+'GHz':v>=1e6?(v/1e6).toFixed(0)+'MHz':v>=1e3?(v/1e3).toFixed(0)+'kHz':v+'Hz';ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(lbl,x-12,pad.t+ph+12);});
+  ctx.fillStyle='#006633';ctx.font='8px Courier New';ctx.fillText('Zin(DC)',pad.l+5,toY(zin0)-3);
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.fillText('Zcm = 1/(2πfCin)',pad.l+pw-110,pad.t+14);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('Frequency →',W/2-25,H-3);
+}
+
+function drawDrift(il0,cf0){
+  const canvas=document.getElementById('driftCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:65,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+  const ilmin=1e-15,ilmax=1e-9;
+  const toX=il=>pad.l+(Math.log10(il)-Math.log10(ilmin))/(Math.log10(ilmax)-Math.log10(ilmin))*pw;
+  const toY_drift=dps=>pad.t+(1-(Math.log10(Math.max(dps,1e-6))+6)/10)*ph; // -6 to 4 log
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [1e-6,1e-4,1e-2,1,100].forEach(v=>{
+    const y=toY_drift(v);if(y<pad.t||y>pad.t+ph)return;
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    const lbl=v>=1?(v+'V/s'):v>=1e-3?(v*1e3+'mV/s'):(v*1e6+'µV/s');
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(lbl,pad.l-40,y+3);
+  });
+
+  const cfvals=[100e-12,1e-9,10e-9,100e-9];
+  const colors=[cs.getPropertyValue('--accent').trim(),'#006633','#cc6600','#cc0000'];
+  cfvals.forEach((cf,i)=>{
+    ctx.strokeStyle=colors[i];ctx.lineWidth=2;
+    ctx.beginPath();
+    for(let j=0;j<=200;j++){
+      const il=Math.pow(10,Math.log10(ilmin)+j/200*Math.log10(ilmax/ilmin));
+      const drift=il/cf;
+      const x=pad.l+j/200*pw,y=toY_drift(drift);
+      if(j===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    const cf_str=cf>=1e-9?(cf/1e-9).toFixed(0)+'nF':(cf/1e-12).toFixed(0)+'pF';
+    ctx.fillStyle=colors[i];ctx.font='8px Courier New';ctx.fillText('Cf='+cf_str,pad.l+5+(i*65),pad.t+12+i*0);
+  });
+
+  // current point
+  const drift0=il0/cf0;
+  if(il0>=ilmin&&il0<=ilmax){
+    ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.beginPath();ctx.arc(toX(il0),toY_drift(drift0),5,0,2*Math.PI);ctx.fill();
+  }
+
+  [1e-15,1e-13,1e-11,1e-9].forEach(v=>{const x=toX(v);const lbl=v>=1e-12?(v/1e-12).toFixed(0)+'pA':(v/1e-15).toFixed(0)+'fA';ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(lbl,x-12,pad.t+ph+12);});
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('Input leakage current →',W/2-45,H-3);
+  ctx.save();ctx.translate(10,H/2+15);ctx.rotate(-Math.PI/2);ctx.fillText('Drift (V/s)',0,0);ctx.restore();
+}
+
+['vs','zs_exp','zin_exp','cin','rf','il','cf'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

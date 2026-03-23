@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-GB-2.5.1 — Why High Gain Reduces Bandwidth</title>
+<style>
+  :root{--bg:#ffffff;--surface:#f5f5f5;--border:#dddddd;--text:#1a1a1a;--accent:#0066cc;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Arial,sans-serif;font-size:14px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;display:flex;align-items:baseline;gap:16px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}
+  h1{font-size:17px;font-weight:600;}
+  .main{display:grid;grid-template-columns:280px 1fr;height:calc(100vh - 48px);}
+  .ctrl{background:var(--surface);border-right:1px solid var(--border);padding:18px;overflow-y:auto;}
+  .ctrl h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin-bottom:10px;margin-top:14px;}
+  .cg{margin-bottom:13px;}
+  .cg label{display:block;font-size:12px;margin-bottom:4px;}
+  .val{font-weight:700;color:var(--accent);}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rbox{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:8px;margin-bottom:8px;}
+  .rl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;opacity:.7;margin-bottom:2px;}
+  .rv{font-size:17px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ru{font-size:11px;opacity:.7;}
+  .carea{padding:16px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;}
+  canvas{border:1px solid var(--border);border-radius:6px;display:block;}
+  .clabel{font-size:12px;font-weight:600;margin-bottom:4px;opacity:.8;}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+</style>
+</head>
+<body>
+<header>
+  <span class="mid">M4A-GB-2.5.1</span>
+  <h1>Why High Gain Reduces Bandwidth — GBW Hyperbola & Loop Gain</h1>
+</header>
+<div class="main">
+  <div class="ctrl">
+    <h2>Op-Amp</h2>
+    <div class="cg"><label>GBW: <span class="val" id="gbw-v">10 MHz</span></label><input type="range" id="gbw" min="1" max="100" step="1" value="10"></div>
+    <div class="cg"><label>Open-Loop Gain (dB): <span class="val" id="aol-v">100 dB</span></label><input type="range" id="aol" min="60" max="140" step="5" value="100"></div>
+
+    <h2>Closed-Loop Configuration</h2>
+    <div class="cg"><label>CL Gain |Av|: <span class="val" id="av-v">10</span></label><input type="range" id="av" min="1" max="1000" step="1" value="10"></div>
+
+    <h2>Readouts</h2>
+    <div class="rbox"><div class="rl">CL Bandwidth</div><div class="rv" id="bw-out">1.0 MHz</div></div>
+    <div class="rbox"><div class="rl">Feedback Factor β</div><div class="rv" id="beta-out">0.100</div><div class="ru">= 1/|Av|</div></div>
+    <div class="rbox"><div class="rl">DC Loop Gain T₀</div><div class="rv" id="T0-out">10,000</div><div class="ru">= Aol_DC × β</div></div>
+    <div class="rbox"><div class="rl">GBW Product Check</div><div class="rv" id="gbw-check">10 MHz</div></div>
+    <div class="rbox"><div class="rl">GBW × Gain = Const?</div><div class="rv" id="const-out">✓ Yes</div></div>
+
+    <h2>3-Gain Comparison</h2>
+    <div style="font-size:12px;line-height:2;font-family:monospace;" id="table-out"></div>
+  </div>
+
+  <div class="carea">
+    <div class="two">
+      <div>
+        <div class="clabel">GBW Hyperbola: Gain vs Bandwidth (log-log)</div>
+        <canvas id="hyperCanvas" width="400" height="270"></canvas>
+      </div>
+      <div>
+        <div class="clabel">Closed-Loop Bode — Multiple Gains Overlaid</div>
+        <canvas id="multiCanvas" width="400" height="270"></canvas>
+      </div>
+    </div>
+    <div>
+      <div class="clabel">Loop Gain T vs Frequency — Less feedback at higher gain</div>
+      <canvas id="loopCanvas" width="820" height="160"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  function G(id){return document.getElementById(id);}
+  const gbwS=G('gbw'),aolS=G('aol'),avS=G('av');
+
+  function getC(){
+    const dk=window.matchMedia('(prefers-color-scheme:dark)').matches;
+    return{bg:dk?'#1a1a1a':'#fff',grid:dk?'#2e2e2e':'#eee',text:dk?'#ccc':'#555',blue:dk?'#4499ff':'#0066cc',orange:dk?'#ff9944':'#cc6600',red:dk?'#ff5555':'#cc0000',green:dk?'#44bb44':'#007700',purple:dk?'#bb88ff':'#7700cc',teal:dk?'#44cccc':'#008888'};
+  }
+  function fmtF(f){return f>=1e6?(f/1e6).toFixed(2)+'M':f>=1e3?(f/1e3).toFixed(1)+'k':f.toFixed(0);}
+
+  function update(){
+    const GBW=parseFloat(gbwS.value)*1e6;
+    const Aol_DC=Math.pow(10,parseFloat(aolS.value)/20);
+    const Av=parseFloat(avS.value);
+    const BW=GBW/Av;
+    const beta=1/Av;
+    const T0=Aol_DC*beta;
+
+    G('gbw-v').textContent=(GBW/1e6).toFixed(0)+' MHz';
+    G('aol-v').textContent=parseFloat(aolS.value).toFixed(0)+' dB';
+    G('av-v').textContent=Av;
+    G('bw-out').textContent=fmtF(BW)+'Hz';
+    G('beta-out').textContent=beta.toFixed(4);
+    G('T0-out').textContent=T0>=1000?(T0/1000).toFixed(1)+'k':T0.toFixed(0);
+    G('gbw-check').textContent=fmtF(GBW)+'Hz';
+    G('const-out').textContent='✓ '+fmtF(GBW)+'Hz';
+
+    // table
+    const gains=[1,10,100,1000];
+    let table='Gain | BW\n';
+    for(const g of gains) table+=' '+g.toString().padStart(4)+'  | '+fmtF(GBW/g)+'Hz\n';
+    G('table-out').textContent=table;
+
+    drawHyper(GBW,Av);
+    drawMulti(GBW,Aol_DC);
+    drawLoop(GBW,Aol_DC,Av);
+  }
+
+  function drawHyper(GBW,curAv){
+    const cv=G('hyperCanvas');
+    const ctx=cv.getContext('2d');
+    const W=cv.width,H=cv.height;
+    const c=getC();
+    ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+    const pad={l:55,r:15,t:20,b:45};
+    const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+    const logAvMin=0,logAvMax=3;
+    const logBwMin=Math.log10(GBW/1e7),logBwMax=Math.log10(GBW)+1;
+    function avX(av){return pad.l+(Math.log10(av)-logAvMin)/(logAvMax-logAvMin)*pw;}
+    function bwY(bw){return pad.t+ph-(Math.log10(bw)-logBwMin)/(logBwMax-logBwMin)*ph;}
+
+    ctx.strokeStyle=c.grid; ctx.lineWidth=1;
+    [1,10,100,1000].forEach(av=>{
+      const x=avX(av);
+      ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,pad.t+ph); ctx.stroke();
+      ctx.fillStyle=c.text; ctx.font='10px monospace'; ctx.textAlign='center';
+      ctx.fillText(av,x,pad.t+ph+14);
+    });
+    [1,10,100,1000,10000,100000,1000000,10000000].forEach(bw=>{
+      if(Math.log10(bw)<logBwMin-0.1||Math.log10(bw)>logBwMax+0.1) return;
+      const y=bwY(bw);
+      ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+pw,y); ctx.stroke();
+      ctx.fillStyle=c.text; ctx.font='9px monospace'; ctx.textAlign='right';
+      ctx.fillText(fmtF(bw),pad.l-3,y+4);
+    });
+
+    ctx.beginPath(); ctx.strokeStyle=c.blue; ctx.lineWidth=2.5;
+    for(let px=0;px<=pw;px++){
+      const logAv=logAvMin+(px/pw)*(logAvMax-logAvMin);
+      const av=Math.pow(10,logAv);
+      const bw=GBW/av;
+      const x=pad.l+px,y=bwY(bw);
+      if(y<pad.t-5||y>pad.t+ph+5){px===0?ctx.moveTo(x,y):ctx.lineTo(x,y);continue;}
+      px===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    const xOp=avX(curAv),yOp=bwY(GBW/curAv);
+    if(yOp>=pad.t&&yOp<=pad.t+ph){
+      ctx.beginPath(); ctx.arc(xOp,yOp,7,0,2*Math.PI); ctx.fillStyle=c.orange; ctx.fill();
+      ctx.fillStyle=c.orange; ctx.font='10px monospace'; ctx.textAlign='left';
+      ctx.fillText(fmtF(GBW/curAv)+'Hz',xOp+10,yOp+4);
+    }
+    ctx.fillStyle=c.text; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Gain |Av| →',pad.l+pw/2,H-8);
+    ctx.save(); ctx.translate(14,pad.t+ph/2); ctx.rotate(-Math.PI/2); ctx.fillText('BW',0,0); ctx.restore();
+    ctx.fillStyle=c.blue; ctx.font='10px monospace'; ctx.textAlign='center';
+    ctx.fillText('GBW = '+fmtF(GBW)+'Hz = constant',pad.l+pw/2,pad.t+12);
+  }
+
+  function drawMulti(GBW,Aol_DC){
+    const cv=G('multiCanvas');
+    const ctx=cv.getContext('2d');
+    const W=cv.width,H=cv.height;
+    const c=getC();
+    ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+    const pad={l:55,r:15,t:20,b:45};
+    const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+    const gains=[1,10,100,1000];
+    const colors=[c.blue,c.green,c.orange,c.red];
+    const fMin=GBW/1e5,fMax=GBW*100;
+    const logMin=Math.log10(fMin),logMax=Math.log10(fMax);
+    const gainMin_dB=-40,gainMax_dB=20*Math.log10(1000)+5;
+
+    function fX(f){return pad.l+(Math.log10(f)-logMin)/(logMax-logMin)*pw;}
+    function dY(db){return pad.t+ph-(db-gainMin_dB)/(gainMax_dB-gainMin_dB)*ph;}
+
+    ctx.strokeStyle=c.grid; ctx.lineWidth=1;
+    for(let lf=Math.ceil(logMin);lf<=Math.floor(logMax);lf++){
+      const x=fX(Math.pow(10,lf));
+      ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,pad.t+ph); ctx.stroke();
+      const f=Math.pow(10,lf);
+      ctx.fillStyle=c.text; ctx.font='9px monospace'; ctx.textAlign='center';
+      ctx.fillText(f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f,x,pad.t+ph+14);
+    }
+    [-20,0,20,40,60].forEach(db=>{
+      const y=dY(db);
+      if(y<pad.t||y>pad.t+ph) return;
+      ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+pw,y); ctx.stroke();
+      ctx.fillStyle=c.text; ctx.font='9px monospace'; ctx.textAlign='right';
+      ctx.fillText(db,pad.l-3,y+4);
+    });
+
+    // open-loop
+    ctx.beginPath(); ctx.strokeStyle=c.text; ctx.lineWidth=1; ctx.setLineDash([6,3]);
+    for(let px=0;px<=pw;px++){
+      const f=Math.pow(10,logMin+(px/pw)*(logMax-logMin));
+      const fp=GBW/Math.pow(10,parseFloat(aolS.value)/20);
+      const aol=20*Math.log10(Aol_DC/Math.sqrt(1+(f/fp)**2));
+      const x=pad.l+px,y=dY(aol);
+      px===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+
+    for(let gi=0;gi<gains.length;gi++){
+      const Av=gains[gi];
+      const BW=GBW/Av;
+      ctx.beginPath(); ctx.strokeStyle=colors[gi]; ctx.lineWidth=2;
+      for(let px=0;px<=pw;px++){
+        const f=Math.pow(10,logMin+(px/pw)*(logMax-logMin));
+        const g_db=20*Math.log10(Av/Math.sqrt(1+(f/BW)**2));
+        const x=pad.l+px,y=dY(g_db);
+        px===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+      ctx.fillStyle=colors[gi]; ctx.font='10px monospace'; ctx.textAlign='left';
+      ctx.fillText(Av+'×',pad.l+5,dY(20*Math.log10(Av))-3);
+    }
+    ctx.fillStyle=c.text; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Frequency →',pad.l+pw/2,H-8);
+  }
+
+  function drawLoop(GBW,Aol_DC,Av){
+    const cv=G('loopCanvas');
+    const ctx=cv.getContext('2d');
+    const W=cv.width,H=cv.height;
+    const c=getC();
+    ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+    const pad={l:60,r:20,t:20,b:35};
+    const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+    const BW=GBW/Av;
+    const fMin=BW/1000,fMax=GBW*100;
+    const logMin=Math.log10(fMin),logMax=Math.log10(fMax);
+    const Tmax=Math.max(100,Aol_DC/Av);
+
+    function fX(f){return pad.l+(Math.log10(f)-logMin)/(logMax-logMin)*pw;}
+    function tY(T){return pad.t+ph-Math.log10(Math.max(T,0.001))/Math.log10(Tmax)*ph;}
+
+    ctx.strokeStyle=c.grid; ctx.lineWidth=1;
+    for(let lf=Math.ceil(logMin);lf<=Math.floor(logMax);lf++){
+      const x=fX(Math.pow(10,lf));
+      ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,pad.t+ph); ctx.stroke();
+      const f=Math.pow(10,lf);
+      ctx.fillStyle=c.text; ctx.font='9px monospace'; ctx.textAlign='center';
+      ctx.fillText(f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f,x,H-8);
+    }
+    [1,10,100,1000,10000].forEach(T=>{
+      if(T>Tmax*1.1) return;
+      const y=tY(T);
+      ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+pw,y); ctx.stroke();
+      ctx.fillStyle=c.text; ctx.font='9px monospace'; ctx.textAlign='right';
+      ctx.fillText(T,pad.l-3,y+4);
+    });
+
+    const gainCols=[c.blue,c.green,c.orange,c.red];
+    const gainVals=[1,10,100,1000];
+    for(let gi=0;gi<gainVals.length;gi++){
+      const g=gainVals[gi];
+      const bw_g=GBW/g;
+      ctx.beginPath(); ctx.strokeStyle=gainCols[gi]; ctx.lineWidth=2;
+      for(let px=0;px<=pw;px++){
+        const f=Math.pow(10,logMin+(px/pw)*(logMax-logMin));
+        const aol_at_f=GBW/f;
+        const T=Math.max(aol_at_f/g,0.001);
+        const x=pad.l+px,y=tY(T);
+        px===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+    }
+    ctx.fillStyle=c.text; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Frequency → (higher gain = lower loop gain at any given frequency)',pad.l+pw/2,H-4);
+    ctx.save(); ctx.translate(14,pad.t+ph/2); ctx.rotate(-Math.PI/2); ctx.fillText('Loop Gain T',0,0); ctx.restore();
+
+    // T=1 line
+    const y1=tY(1);
+    ctx.beginPath(); ctx.strokeStyle=c.red; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+    ctx.moveTo(pad.l,y1); ctx.lineTo(pad.l+pw,y1); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=c.red; ctx.font='10px monospace'; ctx.textAlign='left';
+    ctx.fillText('T=1 (BW edge)',pad.l+4,y1-3);
+  }
+
+  [gbwS,aolS,avS].forEach(e=>e.addEventListener('input',update));
+  window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',update);
+  update();
+})();
+</script>
+</body>
+</html>

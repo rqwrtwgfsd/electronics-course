@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.3.7 — CG Configuration Concept</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;gap:16px;align-items:baseline;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:14px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.3.7</div>
+  <div class="topic">CG vs CS — Gain, Zin, Miller Effect, Bandwidth</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>Amplifier Parameters</h3>
+      <label>gm (mA/V): <b id="gm_lbl">10</b></label>
+      <input type="range" id="gm" min="0.5" max="50" value="10" step="0.5">
+      <label>RD (kΩ): <b id="rd_lbl">3.0</b></label>
+      <input type="range" id="rd" min="0.1" max="20" value="3" step="0.1">
+      <label>RL (kΩ): <b id="rl_lbl">10</b></label>
+      <input type="range" id="rl" min="0.05" max="100" value="10" step="0.5">
+      <label>Rsource (kΩ): <b id="rsrc_lbl">1.0</b></label>
+      <input type="range" id="rsrc" min="0.05" max="10" value="1" step="0.05">
+    </div>
+    <div class="cg">
+      <h3>Gate Capacitances</h3>
+      <label>Cgs (pF): <b id="cgs_lbl">1.0</b></label>
+      <input type="range" id="cgs" min="0.1" max="20" value="1" step="0.1">
+      <label>Cgd (pF): <b id="cgd_lbl">0.5</b></label>
+      <input type="range" id="cgd" min="0.05" max="10" value="0.5" step="0.05">
+    </div>
+    <div class="cg">
+      <h3>Comparison</h3>
+      <div class="rd">CG Av: <span id="r_cg_av">—</span> V/V (+)</div>
+      <div class="rd">CS Av: <span id="r_cs_av">—</span> V/V (−)</div>
+      <div class="rd">CG Zin: <span id="r_cg_zin">—</span> Ω</div>
+      <div class="rd">CG Cin: <span id="r_cg_cin">—</span> pF</div>
+      <div class="rd">CS Cin (Miller): <span id="r_cs_cin">—</span> pF</div>
+      <div class="rd">CG BW: <span id="r_cg_bw">—</span> MHz</div>
+      <div class="rd">CS BW: <span id="r_cs_bw">—</span> MHz</div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_av">—</div><div class="l">|Av| (V/V)</div></div>
+      <div class="met"><div class="v" id="m_zin">—</div><div class="l">CG Zin (Ω)</div></div>
+      <div class="met"><div class="v" id="m_bw_ratio">—</div><div class="l">BW ratio CG/CS</div></div>
+      <div class="met"><div class="v" id="m_cg_bw">—</div><div class="l">CG BW (MHz)</div></div>
+    </div>
+    <div>
+      <div class="pl">Waveform — CG (non-inverting) vs CS (inverting), same gm</div>
+      <canvas id="waveCanvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">Cin vs |Av| — CS Miller vs CG (no Miller)</div>
+      <canvas id="cinCanvas" height="170"></canvas>
+    </div>
+    <div>
+      <div class="pl">Bandwidth vs gm — CG vs CS (parametric over Cgd)</div>
+      <canvas id="bwCanvas" height="150"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+function update(){
+  const gm=parseFloat(document.getElementById('gm').value)*1e-3;
+  const rd=parseFloat(document.getElementById('rd').value)*1e3;
+  const rl=parseFloat(document.getElementById('rl').value)*1e3;
+  const rsrc=parseFloat(document.getElementById('rsrc').value)*1e3;
+  const cgs=parseFloat(document.getElementById('cgs').value)*1e-12;
+  const cgd=parseFloat(document.getElementById('cgd').value)*1e-12;
+
+  document.getElementById('gm_lbl').textContent=(gm*1e3).toFixed(1);
+  document.getElementById('rd_lbl').textContent=(rd/1e3).toFixed(1);
+  document.getElementById('rl_lbl').textContent=(rl/1e3).toFixed(0);
+  document.getElementById('rsrc_lbl').textContent=(rsrc/1e3).toFixed(2);
+  document.getElementById('cgs_lbl').textContent=(cgs*1e12).toFixed(1);
+  document.getElementById('cgd_lbl').textContent=(cgd*1e12).toFixed(2);
+
+  const rdl=rd*rl/(rd+rl);
+  const av=gm*rdl;
+  const zin_cg=1/gm;
+  const cin_cg=cgs;
+  const cin_cs=cgs+cgd*(1+av);
+  const bw_cg=1/(2*Math.PI*rsrc*cin_cg);
+  const bw_cs=1/(2*Math.PI*rsrc*cin_cs);
+  const bw_ratio=bw_cg/bw_cs;
+
+  document.getElementById('r_cg_av').textContent='+'+av.toFixed(2);
+  document.getElementById('r_cs_av').textContent='-'+av.toFixed(2);
+  document.getElementById('r_cg_zin').textContent=(zin_cg).toFixed(0);
+  document.getElementById('r_cg_cin').textContent=(cin_cg*1e12).toFixed(2);
+  document.getElementById('r_cs_cin').textContent=(cin_cs*1e12).toFixed(2);
+  document.getElementById('r_cg_bw').textContent=(bw_cg/1e6).toFixed(1);
+  document.getElementById('r_cs_bw').textContent=(bw_cs/1e6).toFixed(1);
+
+  document.getElementById('m_av').textContent=av.toFixed(1);
+  document.getElementById('m_zin').textContent=zin_cg.toFixed(0);
+  document.getElementById('m_bw_ratio').textContent=bw_ratio.toFixed(1)+'×';
+  document.getElementById('m_cg_bw').textContent=(bw_cg/1e6).toFixed(1);
+
+  drawWave(av);
+  drawCin(gm,cgs,cgd,rd,rl);
+  drawBW(gm,cgs,cgd,rd,rl,rsrc);
+}
+
+function drawWave(av){
+  const canvas=document.getElementById('waveCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const mid=H/2,amp=Math.min(H*0.35,80);
+  const N=400;
+  const vin_amp=Math.min(amp/(av||1),amp*0.3);
+
+  // Grid
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  ctx.beginPath();ctx.moveTo(0,mid);ctx.lineTo(W,mid);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(0,H/4);ctx.lineTo(W,H/4);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(0,3*H/4);ctx.lineTo(W,3*H/4);ctx.stroke();
+
+  // Input (dashed, thin)
+  ctx.strokeStyle='#888';ctx.lineWidth=1.2;ctx.setLineDash([4,4]);
+  ctx.beginPath();
+  for(let i=0;i<N;i++){
+    const x=i/N*W;
+    const y=mid-vin_amp*Math.sin(2*Math.PI*i*2/N);
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();ctx.setLineDash([]);
+
+  // CG output (in phase with input, amplified)
+  ctx.strokeStyle='#006633';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<N;i++){
+    const x=i/N*W;
+    const vout=vin_amp*av;
+    const y=mid-Math.min(vout,amp)*Math.sin(2*Math.PI*i*2/N);
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // CS output (inverted, amplified)
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<N;i++){
+    const x=i/N*W;
+    const vout=vin_amp*av;
+    const y=mid+Math.min(vout,amp)*Math.sin(2*Math.PI*i*2/N);
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Labels
+  ctx.fillStyle='#888';ctx.font='10px Courier New';
+  ctx.fillText('vin (input)',5,mid-vin_amp-5);
+  ctx.fillStyle='#006633';
+  ctx.fillText('CG output (+Av, in phase)',5,mid-Math.min(vin_amp*av,amp)-5);
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();
+  ctx.fillText('CS output (−Av, inverted)',5,mid+Math.min(vin_amp*av,amp)+12);
+
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+  ctx.fillText('Time →',W-60,mid+12);
+}
+
+function drawCin(gm,cgs,cgd,rd,rl){
+  const canvas=document.getElementById('cinCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:42,r:15,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const AV_MAX=50;
+  const rdl=rd*rl/(rd+rl);
+  const CIN_MAX=(cgs+cgd*(1+AV_MAX))*1e12*1.1||10;
+  function xOf(av){return pad.l+av/AV_MAX*pw;}
+  function yOf(cin){return pad.t+ph-Math.min(cin,CIN_MAX)/CIN_MAX*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const cin=CIN_MAX*i/4;
+    const y=yOf(cin);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(cin.toFixed(1),0,y+3);
+  }
+
+  // CS Cin = Cgs + Cgd*(1+|Av|)
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const av=px/pw*AV_MAX;
+    const cin=(cgs+cgd*(1+av))*1e12;
+    const y=yOf(cin);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  // CG Cin = Cgs (constant)
+  ctx.strokeStyle='#006633';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  const y_cg=yOf(cgs*1e12);
+  ctx.beginPath();ctx.moveTo(pad.l,y_cg);ctx.lineTo(pad.l+pw,y_cg);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Current Av marker
+  const av_cur=gm*rdl;
+  ctx.fillStyle='#ff8800';
+  ctx.beginPath();ctx.arc(xOf(av_cur),yOf((cgs+cgd*(1+av_cur))*1e12),5,0,2*Math.PI);ctx.fill();
+
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='8px Courier New';
+  ctx.fillText('── CS Cin (Miller)',pad.l+5,pad.t+10);
+  ctx.fillStyle='#006633';ctx.fillText('-- CG Cin (no Miller)',pad.l+5,pad.t+22);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+  ctx.fillText('|Av| (V/V) →',W/2-20,H-1);
+  ctx.save();ctx.translate(10,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('Cin (pF)',0,0);ctx.restore();
+}
+
+function drawBW(gm_cur,cgs,cgd,rd,rl,rsrc){
+  const canvas=document.getElementById('bwCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:42,r:15,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const GM_MAX=50e-3;
+  const rdl=rd*rl/(rd+rl);
+  // Find BW max for axis
+  const bw_cg_max=1/(2*Math.PI*rsrc*cgs)*1e-6; // MHz
+  const BW_MAX=bw_cg_max*1.1||500;
+  function xOf(gm){return pad.l+gm/GM_MAX*pw;}
+  function yOf(bw_MHz){return pad.t+ph-Math.min(bw_MHz,BW_MAX)/BW_MAX*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const bw=BW_MAX*i/4;
+    const y=yOf(bw);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(bw.toFixed(0),0,y+3);
+  }
+
+  // CG BW = 1/(2π×Rsrc×Cgs) — constant vs gm (Cgs doesn't depend on gm here)
+  ctx.strokeStyle='#006633';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  const bw_cg=1/(2*Math.PI*rsrc*cgs)*1e-6;
+  ctx.beginPath();ctx.moveTo(pad.l,yOf(bw_cg));ctx.lineTo(pad.l+pw,yOf(bw_cg));ctx.stroke();
+  ctx.setLineDash([]);
+
+  // CS BW vs gm
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=1;px<=pw;px++){
+    const gm_i=px/pw*GM_MAX;
+    const av_i=gm_i*rdl;
+    const cin_cs=cgs+cgd*(1+av_i);
+    const bw_cs=1/(2*Math.PI*rsrc*cin_cs)*1e-6;
+    const y=yOf(bw_cs);
+    if(px===1)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  // Current gm marker
+  const av_q=gm_cur*rdl;
+  const cin_cs_q=cgs+cgd*(1+av_q);
+  const bw_cs_q=1/(2*Math.PI*rsrc*cin_cs_q)*1e-6;
+  ctx.fillStyle='#ff8800';
+  ctx.beginPath();ctx.arc(xOf(gm_cur),yOf(bw_cs_q),5,0,2*Math.PI);ctx.fill();
+
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='8px Courier New';
+  ctx.fillText('── CS BW (drops with gm)',pad.l+5,pad.t+10);
+  ctx.fillStyle='#006633';ctx.fillText('-- CG BW (constant, no Miller)',pad.l+5,pad.t+22);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+  ctx.fillText('gm (S) →',W/2-20,H-1);
+  ctx.save();ctx.translate(10,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('BW (MHz)',0,0);ctx.restore();
+}
+
+['gm','rd','rl','rsrc','cgs','cgd'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

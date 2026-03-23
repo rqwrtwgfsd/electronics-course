@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-PM-11.4.1 — Offset & Mismatch Metrics</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0e1117; color: #cdd6f4; font-family: 'Segoe UI', sans-serif; font-size: 14px; }
+  h1 { text-align: center; padding: 18px; font-size: 17px; color: #cba6f7; border-bottom: 1px solid #313244; }
+  .tabs { display: flex; background: #181825; border-bottom: 1px solid #313244; }
+  .tab { padding: 10px 22px; cursor: pointer; color: #a6adc8; font-size: 13px; border-bottom: 3px solid transparent; }
+  .tab.active { color: #cba6f7; border-bottom-color: #cba6f7; }
+  .tab:hover:not(.active) { color: #cdd6f4; }
+  .panel { display: none; padding: 18px; }
+  .panel.active { display: block; }
+  canvas { display: block; background: #1e1e2e; border-radius: 8px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+  .ctrl { background: #181825; border-radius: 8px; padding: 14px; min-width: 220px; }
+  .ctrl label { display: block; color: #a6adc8; font-size: 12px; margin-bottom: 6px; }
+  .ctrl input[type=range] { width: 100%; accent-color: #cba6f7; margin-bottom: 2px; }
+  .ctrl .val { color: #a6e3a1; font-size: 12px; text-align: right; margin-bottom: 8px; }
+  .info-box { background: #181825; border-radius: 8px; padding: 12px; margin-top: 12px; font-size: 12px; line-height: 1.7; }
+  .hi { color: #a6e3a1; font-weight: bold; }
+  .warn { color: #f38ba8; font-weight: bold; }
+  .note { color: #fab387; }
+</style>
+</head>
+<body>
+<h1>M4B-PM-11.4.1 — Offset and Mismatch Metrics</h1>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">Pelgrom Offset Budget</div>
+  <div class="tab" onclick="showTab(1)">VOS vs Temperature</div>
+  <div class="tab" onclick="showTab(2)">Offset Cancellation Comparison</div>
+</div>
+
+<!-- TAB 0: Pelgrom budget -->
+<div class="panel active" id="tab0">
+  <div class="row">
+    <canvas id="c0" width="580" height="390"></canvas>
+    <div class="ctrl" style="max-width:230px;">
+      <label>A_Vth_P (mV·μm): <span class="val" id="v0_avp">4.0</span></label>
+      <input type="range" id="r0_avp" min="1" max="15" step="0.5" value="4.0" oninput="draw0()">
+      <label>A_Vth_N (mV·μm): <span class="val" id="v0_avn">6.0</span></label>
+      <input type="range" id="r0_avn" min="1" max="15" step="0.5" value="6.0" oninput="draw0()">
+      <label>W1 (μm): <span class="val" id="v0_w1">90</span></label>
+      <input type="range" id="r0_w1" min="5" max="500" step="5" value="90" oninput="draw0()">
+      <label>L1 (nm): <span class="val" id="v0_l1">500</span></label>
+      <input type="range" id="r0_l1" min="60" max="2000" step="20" value="500" oninput="draw0()">
+      <label>gm3/gm1 ratio: <span class="val" id="v0_ratio">0.75</span></label>
+      <input type="range" id="r0_ratio" min="0.1" max="2.0" step="0.05" value="0.75" oninput="draw0()">
+      <label>W3 (μm): <span class="val" id="v0_w3">75</span></label>
+      <input type="range" id="r0_w3" min="5" max="500" step="5" value="75" oninput="draw0()">
+      <label>VOS spec (mV, 3σ): <span class="val" id="v0_spec">3.0</span></label>
+      <input type="range" id="r0_spec" min="0.1" max="10" step="0.1" value="3.0" oninput="draw0()">
+    </div>
+  </div>
+  <div class="info-box" id="info0"></div>
+</div>
+
+<!-- TAB 1: VOS vs T -->
+<div class="panel" id="tab1">
+  <div class="row">
+    <canvas id="c1" width="580" height="390"></canvas>
+    <div class="ctrl" style="max-width:230px;">
+      <label>VOS at 27°C (mV): <span class="val" id="v1_vos27">1.0</span></label>
+      <input type="range" id="r1_vos27" min="-5" max="5" step="0.05" value="1.0" oninput="draw1()">
+      <label>TCVOS (μV/°C): <span class="val" id="v1_tc">3.0</span></label>
+      <input type="range" id="r1_tc" min="0" max="20" step="0.1" value="3.0" oninput="draw1()">
+      <label>σ(VOS) (mV): <span class="val" id="v1_sig">0.87</span></label>
+      <input type="range" id="r1_sig" min="0.1" max="3.0" step="0.05" value="0.87" oninput="draw1()">
+      <label>VOS spec (mV): <span class="val" id="v1_spec">3.0</span></label>
+      <input type="range" id="r1_spec" min="0.5" max="10" step="0.1" value="3.0" oninput="draw1()">
+    </div>
+  </div>
+  <div class="info-box" id="info1"></div>
+</div>
+
+<!-- TAB 2: Offset cancellation -->
+<div class="panel" id="tab2">
+  <div class="row">
+    <canvas id="c2" width="620" height="400"></canvas>
+  </div>
+  <div class="info-box" id="info2">Comparison of offset cancellation techniques across key metrics.</div>
+</div>
+
+<script>
+const dpr=window.devicePixelRatio||1;
+function setupCanvas(id,w,h){
+  const c=document.getElementById(id);
+  c.width=w*dpr; c.height=h*dpr; c.style.width=w+'px'; c.style.height=h+'px';
+  const ctx=c.getContext('2d'); ctx.scale(dpr,dpr); return ctx;
+}
+function g(id){return parseFloat(document.getElementById(id).value);}
+function sv(id,v){document.getElementById(id).textContent=v;}
+function showTab(n){
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
+  if(n===1)draw1(); if(n===2)draw2();
+}
+
+// TAB 0 ──────────────────────────────────────────────────────────────────────
+function draw0(){
+  const Avp=g('r0_avp'), Avn=g('r0_avn'), W1=g('r0_w1'), L1=g('r0_l1')/1000;
+  const ratio=g('r0_ratio'), W3=g('r0_w3'), spec=g('r0_spec');
+  sv('v0_avp',Avp.toFixed(1)); sv('v0_avn',Avn.toFixed(1)); sv('v0_w1',W1.toFixed(0));
+  sv('v0_l1',(L1*1000).toFixed(0)); sv('v0_ratio',ratio.toFixed(2)); sv('v0_w3',W3.toFixed(0));
+  sv('v0_spec',spec.toFixed(1));
+
+  const L3=L1; // same L for load devices
+  const sigma12=Avp/Math.sqrt(W1*L1);
+  const sigma34=ratio*Avn/Math.sqrt(W3*L3);
+  const sigma_total=Math.sqrt(sigma12**2+sigma34**2);
+  const three_sigma=sigma_total*3;
+  const pass=three_sigma<=spec;
+
+  const ctx=setupCanvas('c0',580,390);
+  const W=580,H=390;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Pelgrom Offset Budget',W/2,20);
+
+  // Pie-chart style contribution
+  const cx=160, cy=200, R=100;
+  const contrib=[
+    {label:'M1/M2 input pair', val:sigma12**2, color:'#89b4fa'},
+    {label:'M3/M4 active load', val:sigma34**2, color:'#f38ba8'},
+  ];
+  const total_var=sigma12**2+sigma34**2;
+  let startAngle=-Math.PI/2;
+  contrib.forEach(c=>{
+    const sweep=2*Math.PI*c.val/total_var;
+    ctx.beginPath();
+    ctx.moveTo(cx,cy);
+    ctx.arc(cx,cy,R,startAngle,startAngle+sweep);
+    ctx.closePath();
+    ctx.fillStyle=c.color; ctx.fill();
+    ctx.strokeStyle='#1e1e2e'; ctx.lineWidth=2; ctx.stroke();
+    startAngle+=sweep;
+  });
+  // Center label
+  ctx.fillStyle='#cdd6f4'; ctx.font='bold 14px Segoe UI'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('σ_total', cx, cy-10);
+  ctx.fillText((sigma_total).toFixed(2)+' mV', cx, cy+10);
+  ctx.textBaseline='alphabetic';
+
+  // Legend
+  contrib.forEach((c,i)=>{
+    ctx.fillStyle=c.color; ctx.fillRect(20, 310+i*22, 12,10);
+    ctx.fillStyle='#a6adc8'; ctx.font='11px Segoe UI'; ctx.textAlign='left';
+    ctx.fillText(c.label+': σ='+Math.sqrt(c.val).toFixed(2)+' mV ('+( c.val/total_var*100).toFixed(0)+'%)', 36, 319+i*22);
+  });
+
+  // Right: Waterfall bars
+  const rx=310, ry=50, barH=36, gap=14, barMaxW=220;
+  const rows=[
+    {label:'σ(M1/M2)', val:sigma12, color:'#89b4fa'},
+    {label:'σ(M3/M4)', val:sigma34, color:'#f38ba8'},
+    {label:'σ(total)', val:sigma_total, color:'#a6e3a1'},
+    {label:'3σ total', val:three_sigma, color: pass?'#a6e3a1':'#f38ba8'},
+    {label:'Spec (3σ)', val:spec, color:'#cba6f7', is_spec:true},
+  ];
+  const maxVal=Math.max(spec*1.3, three_sigma*1.2, 3);
+  rows.forEach((r,i)=>{
+    const y=ry+i*(barH+gap);
+    const blen=barMaxW*r.val/maxVal;
+    ctx.fillStyle=r.is_spec?'transparent':r.color;
+    if(!r.is_spec) ctx.fillRect(rx,y,blen,barH);
+    if(r.is_spec){
+      const x_spec=rx+barMaxW*r.val/maxVal;
+      ctx.beginPath(); ctx.moveTo(x_spec,ry); ctx.lineTo(x_spec,ry+(rows.length)*(barH+gap));
+      ctx.strokeStyle=r.color; ctx.lineWidth=2; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle=r.color; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+      ctx.fillText('Spec: '+spec+' mV', x_spec, ry-5);
+    }
+    ctx.fillStyle='#a6adc8'; ctx.font='11px Segoe UI'; ctx.textAlign='right';
+    ctx.fillText(r.label, rx-6, y+barH/2+4);
+    ctx.fillStyle=r.is_spec?r.color:'#cdd6f4'; ctx.font='bold 11px Segoe UI'; ctx.textAlign='left';
+    if(!r.is_spec) ctx.fillText(r.val.toFixed(2)+' mV', rx+blen+5, y+barH/2+4);
+  });
+
+  document.getElementById('info0').innerHTML=
+    `σ(M1/M2) = ${sigma12.toFixed(3)} mV (W1×L1 = ${(W1*L1).toFixed(1)} μm²).
+     σ(M3/M4) = ${sigma34.toFixed(3)} mV (ratio=${ratio.toFixed(2)}, W3×L3=${(W3*L3).toFixed(1)} μm²).
+     σ_total = ${sigma_total.toFixed(3)} mV.  3σ = ${three_sigma.toFixed(2)} mV.  Spec = ${spec} mV.
+     <br>${pass?'<span class="hi">PASS: 3σ = '+three_sigma.toFixed(2)+' mV ≤ '+spec+' mV</span>':'<span class="warn">FAIL: 3σ = '+three_sigma.toFixed(2)+' mV > '+spec+' mV — increase W×L</span>'}`;
+}
+
+// TAB 1 ──────────────────────────────────────────────────────────────────────
+function draw1(){
+  const VOS27=g('r1_vos27'), TC=g('r1_tc')*1e-3, sig=g('r1_sig'), spec=g('r1_spec');
+  sv('v1_vos27',VOS27.toFixed(2)); sv('v1_tc',(TC*1e3).toFixed(1)); sv('v1_sig',sig.toFixed(2)); sv('v1_spec',spec.toFixed(1));
+
+  const ctx=setupCanvas('c1',580,390);
+  const W=580,H=390;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('VOS vs Temperature with Mismatch Band',W/2,20);
+
+  const mL=65,mR=25,mT=40,mB=50;
+  const bW=W-mL-mR, bH=H-mT-mB;
+  const Tmin=-40, Tmax=125;
+  function tx(T){return mL+bW*(T-Tmin)/(Tmax-Tmin);}
+
+  const VOS_max_cold=VOS27+TC*(27-Tmin)+sig*3;
+  const VOS_min_cold=VOS27+TC*(27-Tmin)-sig*3;
+  const VOS_max_hot=VOS27+TC*(Tmax-27)+sig*3;
+  const Ymax=Math.max(Math.abs(VOS_max_cold),Math.abs(VOS_max_hot),spec)*1.3;
+  function vy(v){return mT+bH*(1-(v+Ymax)/(2*Ymax));}
+
+  // Grid
+  [-Ymax,-Ymax/2,0,Ymax/2,Ymax].forEach(v=>{
+    const y=vy(v);
+    ctx.beginPath(); ctx.moveTo(mL,y); ctx.lineTo(mL+bW,y);
+    ctx.strokeStyle=v===0?'#585b70':'#313244'; ctx.lineWidth=v===0?1:0.7; ctx.stroke();
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='right';
+    ctx.fillText(v.toFixed(1),mL-3,y+3);
+  });
+  [-40,-20,0,27,60,85,125].forEach(T=>{
+    const x=tx(T);
+    ctx.beginPath(); ctx.moveTo(x,mT); ctx.lineTo(x,mT+bH);
+    ctx.strokeStyle='#313244'; ctx.lineWidth=0.7; ctx.stroke();
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText(T+'°',x,mT+bH+14);
+  });
+
+  // Spec band
+  const y_spec_hi=vy(spec), y_spec_lo=vy(-spec);
+  ctx.fillStyle='rgba(166,227,161,0.07)';
+  ctx.fillRect(mL,y_spec_hi,bW,y_spec_lo-y_spec_hi);
+  ctx.beginPath(); ctx.moveTo(mL,y_spec_hi); ctx.lineTo(mL+bW,y_spec_hi);
+  ctx.strokeStyle='#a6e3a1'; ctx.lineWidth=1; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(mL,y_spec_lo); ctx.lineTo(mL+bW,y_spec_lo);
+  ctx.strokeStyle='#a6e3a1'; ctx.lineWidth=1; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+
+  // ±3σ band (filled)
+  ctx.beginPath();
+  for(let T=Tmin;T<=Tmax;T+=1){
+    const vos_mean=VOS27+TC*(T-27);
+    const v_hi=vos_mean+3*sig;
+    const x=tx(T), y=vy(v_hi);
+    T===Tmin?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  for(let T=Tmax;T>=Tmin;T--){
+    const vos_mean=VOS27+TC*(T-27);
+    const v_lo=vos_mean-3*sig;
+    const x=tx(T), y=vy(v_lo);
+    ctx.lineTo(x,y);
+  }
+  ctx.closePath();
+  ctx.fillStyle='rgba(137,180,250,0.15)'; ctx.fill();
+  ctx.strokeStyle='rgba(137,180,250,0.4)'; ctx.lineWidth=1; ctx.stroke();
+
+  // Mean VOS line
+  ctx.beginPath();
+  for(let T=Tmin;T<=Tmax;T+=5){
+    const vos=VOS27+TC*(T-27);
+    const x=tx(T), y=vy(vos);
+    T===Tmin?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.strokeStyle='#89b4fa'; ctx.lineWidth=2.5; ctx.stroke();
+
+  // Check violations
+  const VOS_max=Math.abs(VOS27)+Math.abs(TC*Math.max(27-Tmin,Tmax-27))+3*sig;
+  const passes=VOS_max<=spec;
+
+  ctx.fillStyle='#585b70'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Temperature (°C)', W/2, H-8);
+  ctx.save(); ctx.translate(12,H/2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle='#585b70'; ctx.fillText('VOS (mV)', 0,0); ctx.restore();
+  ctx.fillStyle='#a6e3a1'; ctx.font='10px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText('±'+spec+' mV spec band', mL+3, y_spec_hi-4);
+
+  document.getElementById('info1').innerHTML=
+    `VOS at 27°C = ${VOS27.toFixed(2)} mV, TCVOS = ${(TC*1e3).toFixed(1)} μV/°C, σ = ${sig.toFixed(2)} mV.
+     <br>Worst-case VOS over ${Tmin}°C–${Tmax}°C: ${VOS_max.toFixed(2)} mV.  Spec: ±${spec} mV.
+     <br>${passes?'<span class="hi">PASS: worst-case VOS within spec.</span>':'<span class="warn">FAIL: worst-case VOS exceeds spec. Reduce TC or initial offset.</span>'}
+     <br><span class="note">TC contribution: ${(Math.abs(TC*Math.max(27-Tmin,Tmax-27))*1000).toFixed(0)} μV. Random 3σ: ${(sig*3).toFixed(2)} mV.</span>`;
+}
+
+// TAB 2 ──────────────────────────────────────────────────────────────────────
+function draw2(){
+  const ctx=setupCanvas('c2',620,400);
+  const W=620,H=400;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Offset Cancellation Techniques Comparison',W/2,22);
+
+  const techs=[
+    {name:'No cancellation', VOS_typical:'1–5 mV', VOS_residual:'1–5 mV', TCVOS:'1–5 μV/°C', noise:'Baseline', complexity:'None', color:'#585b70'},
+    {name:'Laser trim', VOS_typical:'1–5 mV', VOS_residual:'50–200 μV', TCVOS:'1–5 μV/°C', noise:'Baseline', complexity:'Wafer test cost', color:'#89b4fa'},
+    {name:'Electrical trim', VOS_typical:'1–5 mV', VOS_residual:'25–100 μV', TCVOS:'0.5–2 μV/°C', noise:'Baseline', complexity:'On-chip fuse', color:'#a6e3a1'},
+    {name:'Autozero', VOS_typical:'Any', VOS_residual:'1–10 μV', TCVOS:'≈0', noise:'+√2 thermal', complexity:'Clocked, DSC', color:'#fab387'},
+    {name:'Chopper', VOS_typical:'Any', VOS_residual:'0.05–1 μV', TCVOS:'≈0', noise:'Chopper ripple', complexity:'Switches+filter', color:'#cba6f7'},
+  ];
+
+  const headers=['Technique','VOS residual','TCVOS','Noise impact','Complexity'];
+  const colW=[160,110,100,110,120];
+  const mL=20, mT=50;
+  let x=mL;
+  headers.forEach((h,i)=>{
+    ctx.fillStyle='#313244'; ctx.fillRect(x,mT,colW[i]-2,28);
+    ctx.fillStyle='#cba6f7'; ctx.font='bold 11px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText(h, x+colW[i]/2, mT+18);
+    x+=colW[i];
+  });
+
+  techs.forEach((t,ti)=>{
+    const y=mT+30+ti*46;
+    let x=mL;
+    const rowData=[t.name, t.VOS_residual, t.TCVOS, t.noise, t.complexity];
+    rowData.forEach((d,ci)=>{
+      const isName=ci===0;
+      ctx.fillStyle=ti%2===0?'#1e1e2e':'#252535';
+      ctx.fillRect(x,y,colW[ci]-2,44);
+      ctx.fillStyle=isName?t.color:'#a6adc8';
+      ctx.font=isName?'bold 11px Segoe UI':'10px Segoe UI';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(d, x+colW[ci]/2, y+22);
+      ctx.textBaseline='alphabetic';
+      x+=colW[ci];
+    });
+  });
+
+  // Visual: VOS residual bars
+  const bx=20, by=H-90, bW2=W-40, maxVOS=5;
+  ctx.fillStyle='#585b70'; ctx.font='10px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText('VOS residual (relative scale, lower = better):', bx, by-5);
+
+  const residuals=[3.5, 0.15, 0.07, 0.005, 0.0003];
+  const maxR=4;
+  techs.forEach((t,i)=>{
+    const x=bx+i*(bW2/techs.length);
+    const blen=70*Math.log10(residuals[i]/0.00003+1)/Math.log10(maxR/0.00003+1);
+    ctx.fillStyle=t.color;
+    ctx.fillRect(x+5, by+8, blen, 16);
+    ctx.fillStyle='#a6adc8'; ctx.font='9px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText(t.name.length>12?t.name.substr(0,12)+'..':t.name, x+(bW2/techs.length)/2, by+35);
+  });
+
+  document.getElementById('info2').innerHTML=
+    `Chopper stabilization gives the lowest residual VOS (< 1 μV) and zero temperature drift, at the cost of clock generation and output filtering.
+     Autozero achieves < 10 μV but increases broadband noise by √2 due to noise folding.
+     Laser/electrical trimming reduces VOS by 10–100× but does not eliminate TC drift.
+     <span class="note">For ADC applications: chopper ripple must be < 1 LSB at the ADC input — clock at least 10× above signal band.</span>`;
+}
+
+draw0(); draw1(); draw2();
+</script>
+</body>
+</html>

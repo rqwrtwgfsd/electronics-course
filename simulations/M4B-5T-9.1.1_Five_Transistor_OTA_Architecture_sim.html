@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>M4B-5T-9.1.1 — Five-Transistor OTA Simulator</title>
+<style>
+  body { font-family: 'Courier New', monospace; background: #0a0a0a; color: #e0e0e0; margin: 0; padding: 20px; }
+  h1 { color: #00bcd4; font-size: 1.1em; margin-bottom: 4px; }
+  .subtitle { color: #888; font-size: 0.85em; margin-bottom: 20px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .tab { padding: 8px 16px; background: #1a1a1a; border: 1px solid #333; cursor: pointer; font-family: inherit; font-size: 0.85em; color: #aaa; }
+  .tab.active { background: #00bcd4; color: #000; border-color: #00bcd4; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  canvas { background: #111; border: 1px solid #333; display: block; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+  .ctrl { background: #1a1a1a; border: 1px solid #333; padding: 8px 12px; min-width: 180px; }
+  .ctrl label { display: block; color: #aaa; font-size: 0.78em; margin-bottom: 4px; }
+  .ctrl input[type=range] { width: 100%; accent-color: #00bcd4; }
+  .ctrl .val { color: #00bcd4; font-size: 0.85em; }
+  .ctrl select { background: #222; color: #e0e0e0; border: 1px solid #444; padding: 4px; font-family: inherit; width: 100%; }
+  .readouts { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .ro { background: #1a1a1a; border: 1px solid #444; padding: 6px 12px; font-size: 0.82em; }
+  .ro span { color: #00bcd4; }
+  .ro .pass { color: #4caf50; }
+  .ro .fail { color: #f44336; }
+</style>
+</head>
+<body>
+<h1>M4B-5T-9.1.1 — Five-Transistor OTA: Architecture and Performance</h1>
+<div class="subtitle">Interactive performance calculator: Bode plot, transfer curve, and design sizing</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab(0)">Bode Plot</div>
+  <div class="tab" onclick="switchTab(1)">Transfer Curve</div>
+  <div class="tab" onclick="switchTab(2)">Performance Map</div>
+</div>
+
+<!-- TAB 0: Bode Plot -->
+<div class="panel active" id="tab0">
+  <div class="controls">
+    <div class="ctrl">
+      <label>ISS (µA): <span class="val" id="iss0_v">200</span></label>
+      <input type="range" id="iss0" min="0.001" max="5000" step="0.001" value="200" oninput="drawBode()">
+    </div>
+    <div class="ctrl">
+      <label>Vov (mV): <span class="val" id="vov0_v">100</span></label>
+      <input type="range" id="vov0" min="20" max="400" step="5" value="100" oninput="drawBode()">
+    </div>
+    <div class="ctrl">
+      <label>λ_n = λ_p (V⁻¹): <span class="val" id="lam0_v">0.15</span></label>
+      <input type="range" id="lam0" min="0.01" max="2.0" step="0.01" value="0.15" oninput="drawBode()">
+    </div>
+    <div class="ctrl">
+      <label>CL (pF): <span class="val" id="cl0_v">1.0</span></label>
+      <input type="range" id="cl0" min="0.05" max="30" step="0.05" value="1.0" oninput="drawBode()">
+    </div>
+    <div class="ctrl">
+      <label>VDD (V): <span class="val" id="vdd0_v">1.2</span></label>
+      <input type="range" id="vdd0" min="0.6" max="5.0" step="0.1" value="1.2" oninput="drawBode()">
+    </div>
+  </div>
+  <canvas id="canvas0" width="860" height="380"></canvas>
+  <div class="readouts" id="ro0"></div>
+</div>
+
+<!-- TAB 1: Transfer Curve -->
+<div class="panel" id="tab1">
+  <div class="controls">
+    <div class="ctrl">
+      <label>ISS (µA): <span class="val" id="iss1_v">200</span></label>
+      <input type="range" id="iss1" min="1" max="2000" step="1" value="200" oninput="drawTransfer()">
+    </div>
+    <div class="ctrl">
+      <label>Vov (mV): <span class="val" id="vov1_v">100</span></label>
+      <input type="range" id="vov1" min="20" max="400" step="5" value="100" oninput="drawTransfer()">
+    </div>
+    <div class="ctrl">
+      <label>Show gm line: <span class="val" id="gm_show_v">ON</span></label>
+      <input type="range" id="gm_show" min="0" max="1" step="1" value="1" oninput="drawTransfer()">
+    </div>
+  </div>
+  <canvas id="canvas1" width="860" height="360"></canvas>
+</div>
+
+<!-- TAB 2: Performance Map -->
+<div class="panel" id="tab2">
+  <div class="controls">
+    <div class="ctrl">
+      <label>VDD (V): <span class="val" id="vdd2_v">1.2</span></label>
+      <input type="range" id="vdd2" min="0.6" max="5.0" step="0.1" value="1.2" oninput="drawPerfMap()">
+    </div>
+    <div class="ctrl">
+      <label>Process:
+        <select id="proc2" onchange="drawPerfMap()">
+          <option value="180">TSMC 180nm</option>
+          <option value="65" selected>TSMC 65nm</option>
+          <option value="28">TSMC 28nm</option>
+        </select>
+      </label>
+    </div>
+    <div class="ctrl">
+      <label>CL (pF): <span class="val" id="cl2_v">1.0</span></label>
+      <input type="range" id="cl2" min="0.05" max="20" step="0.05" value="1.0" oninput="drawPerfMap()">
+    </div>
+  </div>
+  <canvas id="canvas2" width="860" height="380"></canvas>
+</div>
+
+<script>
+const PROC_L = { '180': { un:270e-6, L:0.5e-6, lam:0.1 }, '65': { un:500e-6, L:0.12e-6, lam:0.5 }, '28': { un:650e-6, L:0.08e-6, lam:0.75 } };
+function getSV(id, dec) { const v=parseFloat(document.getElementById(id).value); document.getElementById(id+'_v').textContent=v.toFixed(dec); return v; }
+const M = {top:35, bottom:50, left:70, right:70};
+
+function drawBode() {
+  const iss = getSV('iss0', 3)*1e-6;
+  const vov = getSV('vov0', 0)*1e-3;
+  const lam = getSV('lam0', 2);
+  const cl  = getSV('cl0',  1)*1e-12;
+  const vdd = getSV('vdd0', 1);
+
+  const gm1  = iss/vov;          // = 2×ID/Vov = ISS/(2×Vov/2) = ISS/Vov
+  const ro   = 1/(lam*iss/2);    // ro at ID = ISS/2
+  const Rout = ro/2;
+  const Av   = gm1*Rout;
+  const fp1  = 1/(2*Math.PI*Rout*cl);
+  const GBW  = gm1/(2*Math.PI*cl);
+  const SR   = iss/cl;
+
+  const canvas = document.getElementById('canvas0');
+  const ctx = canvas.getContext('2d');
+  const W=canvas.width, H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+  const pw=W-M.left-M.right, ph=(H-M.top-M.bottom)/2;
+
+  const fmin=1, fmax=GBW*10;
+  const N=300;
+  const freqs = Array.from({length:N},(_,i)=>Math.pow(10,Math.log10(fmin)+i*(Math.log10(fmax)-Math.log10(fmin))/(N-1)));
+  const mags  = freqs.map(f=>20*Math.log10(Av)-10*Math.log10(1+(f/fp1)**2));
+  const phases= freqs.map(f=>-180-Math.atan(f/fp1)*180/Math.PI);
+  const magMin=-20, magMax=Math.max(20*Math.log10(Av)+10,20);
+  const phMin=-270, phMax=-90;
+
+  function xC(f){ return M.left+(Math.log10(f)-Math.log10(fmin))/(Math.log10(fmax)-Math.log10(fmin))*pw; }
+  function yM(db){ return M.top+(1-(db-magMin)/(magMax-magMin))*ph; }
+  function yP(deg){ return M.top+ph+(1-(deg-phMin)/(phMax-phMin))*ph; }
+
+  ctx.strokeStyle='#1a1a1a'; ctx.lineWidth=1;
+  [-20,0,20,40,60].forEach(db=>{
+    const y=yM(db); if(y<M.top||y>M.top+ph) return;
+    ctx.beginPath();ctx.moveTo(M.left,y);ctx.lineTo(M.left+pw,y);ctx.stroke();
+    ctx.fillStyle='#555';ctx.font='9px Courier New';ctx.textAlign='right';ctx.fillText(db+'dB',M.left-4,y+3);
+  });
+  [-270,-225,-180,-135,-90].forEach(deg=>{
+    const y=yP(deg); if(y<M.top+ph||y>H-M.bottom) return;
+    ctx.strokeStyle='#1a1a1a';ctx.beginPath();ctx.moveTo(M.left,y);ctx.lineTo(M.left+pw,y);ctx.stroke();
+    ctx.fillStyle='#555';ctx.font='9px Courier New';ctx.textAlign='left';ctx.fillText(deg+'°',M.left+pw+4,y+3);
+  });
+
+  ctx.strokeStyle='#2196f3';ctx.lineWidth=2.5;ctx.beginPath();
+  mags.forEach((db,i)=>{ i===0?ctx.moveTo(xC(freqs[i]),yM(db)):ctx.lineTo(xC(freqs[i]),yM(db)); });
+  ctx.stroke();
+
+  ctx.strokeStyle='#4caf50';ctx.lineWidth=2;ctx.beginPath();
+  phases.forEach((p,i)=>{ i===0?ctx.moveTo(xC(freqs[i]),yP(p)):ctx.lineTo(xC(freqs[i]),yP(p)); });
+  ctx.stroke();
+
+  // GBW marker
+  const xG=xC(GBW);
+  ctx.strokeStyle='#ffeb3b';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(xG,M.top);ctx.lineTo(xG,H-M.bottom);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#ffeb3b';ctx.font='9px Courier New';ctx.textAlign='center';ctx.fillText('GBW',xG,M.top-4);
+
+  ctx.strokeStyle='#333';ctx.lineWidth=1;ctx.strokeRect(M.left,M.top,pw,ph*2);
+  ctx.beginPath();ctx.moveTo(M.left,M.top+ph);ctx.lineTo(M.left+pw,M.top+ph);ctx.stroke();
+
+  const fmtF=f=>f>1e9?(f/1e9).toFixed(2)+'GHz':f>1e6?(f/1e6).toFixed(1)+'MHz':f>1e3?(f/1e3).toFixed(0)+'kHz':f.toFixed(0)+'Hz';
+  [1,1e2,1e4,1e6,1e8,1e10].forEach(f=>{
+    if(f>=fmin&&f<=fmax){const x=xC(f);ctx.fillStyle='#555';ctx.font='9px Courier New';ctx.textAlign='center';ctx.fillText(fmtF(f),x,H-M.bottom+14);}
+  });
+
+  const swing_lo=2*vov, swing_hi=vdd-vov;
+  document.getElementById('ro0').innerHTML=`
+    <div class="ro">gm1: <span>${(gm1*1000).toFixed(2)} mA/V</span></div>
+    <div class="ro">Av: <span>${(20*Math.log10(Av)).toFixed(0)} dB (${Av.toFixed(0)}×)</span></div>
+    <div class="ro">GBW: <span>${fmtF(GBW)}</span></div>
+    <div class="ro">fp1: <span>${fmtF(fp1)}</span></div>
+    <div class="ro">SR: <span>${(SR/1e6).toFixed(0)} V/µs</span></div>
+    <div class="ro">Rout: <span>${(Rout/1e3).toFixed(1)} kΩ</span></div>
+    <div class="ro">Swing: <span>${(swing_lo*1000).toFixed(0)}mV–${(swing_hi*1000).toFixed(0)}mV (${((swing_hi-swing_lo)/vdd*100).toFixed(0)}% VDD)</span></div>`;
+}
+
+function drawTransfer() {
+  const iss = getSV('iss1',0)*1e-6;
+  const vov = getSV('vov1',0)*1e-3;
+  const show= getSV('gm_show',0);
+
+  const canvas = document.getElementById('canvas1');
+  const ctx = canvas.getContext('2d');
+  const W=canvas.width, H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  const gm1 = iss/vov;
+  const N=200;
+  const vidMax = Math.min(vov*3, 0.4);
+  const vids = Array.from({length:N},(_,i)=>-vidMax+2*vidMax*i/(N-1));
+
+  // Differential pair large-signal: ΔI = gm1×Vid for |Vid| < √2×Vov (saturation)
+  // Full tanh-like: ΔI = ISS × tanh(Vid/(2*Vov)) [simplified]
+  const dIs = vids.map(v => Math.max(-iss/2, Math.min(iss/2, gm1*v/2)));
+
+  const pw = W-M.left-M.right, ph = H-M.top-M.bottom;
+  function xC(v){ return M.left+(v-(-vidMax))/(2*vidMax)*pw; }
+  function yC(di){ return M.top+(1-(di/(iss/2)+1)/2)*ph; }
+
+  ctx.strokeStyle='#1a1a1a'; ctx.lineWidth=1;
+  [-iss/2,-iss/4,0,iss/4,iss/2].forEach(di=>{
+    const y=yC(di);
+    ctx.beginPath();ctx.moveTo(M.left,y);ctx.lineTo(M.left+pw,y);ctx.stroke();
+    ctx.fillStyle='#555';ctx.font='9px Courier New';ctx.textAlign='right';
+    ctx.fillText((di*1e6).toFixed(0)+'µA',M.left-4,y+3);
+  });
+
+  // Signal curve
+  ctx.strokeStyle='#2196f3';ctx.lineWidth=2.5;ctx.beginPath();
+  dIs.forEach((di,i)=>{ i===0?ctx.moveTo(xC(vids[i]),yC(di)):ctx.lineTo(xC(vids[i]),yC(di)); });
+  ctx.stroke();
+
+  // gm tangent line
+  if (show) {
+    ctx.strokeStyle='#ffeb3b';ctx.lineWidth=1;ctx.setLineDash([4,2]);
+    const x0=xC(0),y0=yC(0);
+    const slope=gm1/2*(pw/(2*vidMax))/(ph/(iss));
+    const dx=pw*0.2;
+    ctx.beginPath();ctx.moveTo(x0-dx,y0+slope*dx);ctx.lineTo(x0+dx,y0-slope*dx);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#ffeb3b';ctx.font='9px Courier New';ctx.textAlign='left';
+    ctx.fillText('gm1 = '+( gm1*1000).toFixed(2)+'mA/V',x0+dx+5,y0);
+  }
+
+  // Linear range markers
+  const vLin = vov/Math.sqrt(2);
+  [vLin,-vLin].forEach(v=>{
+    const x=xC(v);
+    ctx.strokeStyle='#4caf50';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(x,M.top);ctx.lineTo(x,H-M.bottom);ctx.stroke();ctx.setLineDash([]);
+  });
+  ctx.fillStyle='#4caf50';ctx.font='9px Courier New';ctx.textAlign='center';
+  ctx.fillText('Linear range: ±'+( vLin*1000).toFixed(0)+'mV (±Vov/√2)',M.left+pw/2,M.top+12);
+
+  // 0V marker
+  const x0=xC(0);
+  ctx.strokeStyle='#555';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x0,M.top);ctx.lineTo(x0,H-M.bottom);ctx.stroke();
+
+  ctx.strokeStyle='#333';ctx.strokeRect(M.left,M.top,pw,ph);
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  ctx.fillText('Differential output current ΔI vs Vid — 5T OTA transfer characteristic',M.left+pw/2,M.top-10);
+
+  [-0.3,-0.2,-0.1,0,0.1,0.2,0.3].forEach(v=>{
+    if(Math.abs(v)<=vidMax){const x=xC(v);ctx.fillStyle='#555';ctx.font='9px Courier New';ctx.textAlign='center';ctx.fillText((v*1000).toFixed(0)+'mV',x,H-M.bottom+14);}
+  });
+  ctx.fillStyle='#555';ctx.font='10px Courier New';ctx.textAlign='center';ctx.fillText('Vid (mV)',M.left+pw/2,H-6);
+}
+
+function drawPerfMap() {
+  const vdd = getSV('vdd2',1);
+  const proc = document.getElementById('proc2').value;
+  const cl  = getSV('cl2', 1)*1e-12;
+  const P   = PROC_L[proc];
+
+  const canvas = document.getElementById('canvas2');
+  const ctx = canvas.getContext('2d');
+  const W=canvas.width, H=canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  // Sweep Vov and ISS, compute GBW, Av, and FoM
+  const vovs = [50e-3, 100e-3, 150e-3, 200e-3, 300e-3];
+  const isss = Array.from({length:50},(_,i)=>1e-6*Math.pow(5000,i/49));
+  const cols  = ['#1565c0','#2196f3','#00bcd4','#4caf50','#ff9800'];
+
+  const pw=W-M.left-M.right, ph=H-M.top-M.bottom;
+  const lam = P.lam;
+  const maxGBW = isss[isss.length-1]/(50e-3)/(2*Math.PI*cl);
+  const minGBW = 1e3;
+
+  function xC(gbw){ return M.left+(Math.log10(gbw)-3)/(Math.log10(maxGBW)-3)*pw; }
+  function yC(fom){ return M.top+(1-(fom/600))*ph; }
+
+  ctx.strokeStyle='#1a1a1a'; ctx.lineWidth=1;
+  [0,100,200,300,400,500,600].forEach(f=>{
+    const y=yC(f);
+    ctx.beginPath();ctx.moveTo(M.left,y);ctx.lineTo(M.left+pw,y);ctx.stroke();
+    ctx.fillStyle='#555';ctx.font='9px Courier New';ctx.textAlign='right';ctx.fillText(f,M.left-4,y+3);
+  });
+
+  vovs.forEach((vov,vi)=>{
+    const gm1s = isss.map(iss=>iss/vov);
+    const ros  = isss.map(iss=>1/(lam*iss/2));
+    const gbws = gm1s.map(g=>g/(2*Math.PI*cl));
+    const avs  = gm1s.map((g,i)=>g*ros[i]/2);
+    const foms = gbws.map((g,i)=>g/1e6*cl/1e-12/(isss[i]/1e-3));
+
+    ctx.strokeStyle=cols[vi]; ctx.lineWidth=2;
+    ctx.beginPath();
+    foms.forEach((fom,i)=>{
+      if(gbws[i]<minGBW||gbws[i]>maxGBW) return;
+      i===0?ctx.moveTo(xC(gbws[i]),yC(fom)):ctx.lineTo(xC(gbws[i]),yC(fom));
+    });
+    ctx.stroke();
+    ctx.fillStyle=cols[vi];ctx.font='9px Courier New';ctx.textAlign='left';
+    ctx.fillText('Vov='+( vov*1000).toFixed(0)+'mV',M.left+pw+5,yC(foms[25]));
+  });
+
+  ctx.strokeStyle='#333';ctx.strokeRect(M.left,M.top,pw,ph);
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  ctx.fillText(`FoM = GBW×CL/IDD (GHz·pF/A) vs GBW — TSMC ${proc}nm, VDD=${vdd}V, CL=${(cl*1e12).toFixed(1)}pF`,M.left+pw/2,M.top-10);
+  ctx.fillText('GBW (Hz)', M.left+pw/2, H-8);
+  ctx.fillStyle='#555';ctx.font='9px Courier New';
+  [1e3,1e6,1e9].forEach(f=>{
+    if(f<=maxGBW){const x=xC(f);ctx.textAlign='center';ctx.fillText(f>=1e9?(f/1e9)+'GHz':f>=1e6?(f/1e6)+'MHz':(f/1e3)+'kHz',x,H-M.bottom+14);}
+  });
+  ctx.fillStyle='#888';ctx.font='9px Courier New';ctx.textAlign='right';
+  ctx.save();ctx.translate(M.left-50,M.top+ph/2);ctx.rotate(-Math.PI/2);
+  ctx.fillText('FoM (GHz·pF/A)',0,0);ctx.restore();
+}
+
+function switchTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
+  if(n===0) drawBode(); if(n===1) drawTransfer(); if(n===2) drawPerfMap();
+}
+drawBode();
+</script>
+</body>
+</html>

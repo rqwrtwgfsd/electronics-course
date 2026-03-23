@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CAS-4.4.2 — Wide-Swing Cascode</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#4d9fff;--green:#00cc66;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CAS-4.4.2</div>
+  <h1>Cascode — Wide-Swing Cascode</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Process and Supply Parameters</h2>
+      <label>V_DD (V): <b id="vdd_l">1.8</b> <input type="range" id="vdd" min="0.6" max="3.3" value="1.8" step="0.1"></label>
+      <label>V_th,n (V): <b id="vthn_l">0.50</b> <input type="range" id="vthn" min="0.2" max="0.8" value="0.5" step="0.01"></label>
+      <label>|V_th,p| (V): <b id="vthp_l">0.50</b> <input type="range" id="vthp" min="0.2" max="0.8" value="0.5" step="0.01"></label>
+      <label>V_ov,n (mV): <b id="vovn_l">200</b> <input type="range" id="vovn" min="50" max="400" value="200" step="10"></label>
+      <label>|V_ov,p| (mV): <b id="vovp_l">200</b> <input type="range" id="vovp" min="50" max="400" value="200" step="10"></label>
+      <label>V_ov,tail (mV): <b id="vovt_l">200</b> <input type="range" id="vovt" min="50" max="400" value="200" step="10"></label>
+
+      <div class="ro">Standard V_gate,n: <span id="vg_std">--</span> V / V_out,min: <span id="vmin_std">--</span> V</div>
+      <div class="ro g">Wide-swing V_gate,n: <span id="vg_ws">--</span> V / V_out,min: <span id="vmin_ws">--</span> V</div>
+      <div class="ro">Standard V_out,max: <span id="vmax_std">--</span> V</div>
+      <div class="ro g">Wide-swing V_out,max: <span id="vmax_ws">--</span> V</div>
+      <div class="ro">Swing (standard): <span id="sw_std">--</span> V</div>
+      <div class="ro g">Swing (wide-swing): <span id="sw_ws">--</span> V</div>
+      <div class="ro">Swing recovery: <span id="sw_rec">--</span> mV</div>
+
+      <div class="insight" id="insight_box">Compare standard vs wide-swing headroom.</div>
+    </div>
+
+    <div class="card">
+      <h2>Swing Comparison: Standard vs Wide-Swing</h2>
+      <canvas id="cv" height="340"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const VDD  = +document.getElementById('vdd').value;
+    const Vthn = +document.getElementById('vthn').value;
+    const Vthp = +document.getElementById('vthp').value;
+    const Vovn = +document.getElementById('vovn').value / 1000;
+    const Vovp = +document.getElementById('vovp').value / 1000;
+    const Vovt = +document.getElementById('vovt').value / 1000;
+
+    document.getElementById('vdd_l').textContent  = VDD.toFixed(1);
+    document.getElementById('vthn_l').textContent = Vthn.toFixed(2);
+    document.getElementById('vthp_l').textContent = Vthp.toFixed(2);
+    document.getElementById('vovn_l').textContent = (Vovn*1000).toFixed(0);
+    document.getElementById('vovp_l').textContent = (Vovp*1000).toFixed(0);
+    document.getElementById('vovt_l').textContent = (Vovt*1000).toFixed(0);
+
+    // Standard bias: V_gate = 2*(Vth + Vov)
+    const Vg_std_n    = 2 * (Vthn + Vovn);
+    const Vout_min_std = Vovt + Vthn + Vovn; // standard: Vovt + Vthn + Vovn (Vs,M2 = Vovt + Vovn, Vout_min = Vs,M2 + Vov,M2 but standard gate means Vs_M2 = Vthn + Vovn)
+    // More precisely: Vs_M2 = Vg_std - Vgs_M2 = 2(Vth+Vov) - (Vth+Vov) = Vth + Vov
+    // But M1 source is at Vovt. So V_DS,M1 = (Vth + Vov) - Vovt. V_out,min = Vs_M2 + Vov = Vth + 2*Vov
+    const Vs_M2_std   = Vthn + Vovn; // = Vth + Vov (M2's source)
+    const Vout_min_std2 = Vs_M2_std + Vovn; // V_out,min for M2 in sat
+    // But also we need V_DS,M1 = Vs_M2 - Vovt >= Vovn -> Vthn + Vovn - Vovt >= Vovn -> Vthn >= Vovt (usually true)
+    // For the output swing bottom:
+    const Vout_bot_std = Vovt + Vovn + Vovn; // Vovt(tail) + Vov(M1) + Vov(M2) but Vthn also needed?
+    // Actually: standard V_out,min = Vg_std - (Vthn - Vovn) = 2Vthn+2Vovn - Vthn + Vovn = Vthn + 3Vovn?
+    // Let me redo carefully:
+    // Vg_std = 2*(Vthn+Vovn)
+    // V_S,M2 = Vg_std - V_GS,M2 = 2*(Vthn+Vovn) - (Vthn+Vovn) = Vthn + Vovn
+    // V_out,min (M2 barely in sat): V_out,min = V_S,M2 + Vov,M2 = Vthn + Vovn + Vovn = Vthn + 2*Vovn
+    const Vout_min_std_final = Vthn + 2 * Vovn;
+
+    // Wide-swing: V_gate = Vthn + 2*Vovn (lower gate!)
+    const Vg_ws_n     = Vthn + 2 * Vovn;
+    const Vs_M2_ws    = Vg_ws_n - (Vthn + Vovn); // = Vovn
+    const Vout_min_ws = Vs_M2_ws + Vovn; // = 2*Vovn
+
+    // PMOS side standard: V_gate,p,std = VDD - 2*(Vthp + Vovp)
+    const Vg_std_p    = VDD - 2*(Vthp + Vovp);
+    const Vsd_M_P     = Vthp + Vovp; // V_SD of top PMOS = Vg_std above GND, so V_source - V_gate
+    const Vout_max_std = VDD - Vthp - 2*Vovp; // = VDD - (Vthn + 2*Vov) analog
+
+    // PMOS wide-swing: V_gate,p,ws = VDD - Vthp - 2*Vovp
+    const Vg_ws_p     = VDD - Vthp - 2 * Vovp;
+    const Vout_max_ws = VDD - 2 * Vovp;
+
+    const swing_std = Math.max(0, Vout_max_std - Vout_min_std_final);
+    const swing_ws  = Math.max(0, Vout_max_ws  - Vout_min_ws);
+    const recovery  = (swing_ws - swing_std) * 1000;
+
+    document.getElementById('vg_std').textContent  = Vg_std_n.toFixed(3);
+    document.getElementById('vmin_std').textContent = Vout_min_std_final.toFixed(3);
+    document.getElementById('vg_ws').textContent   = Vg_ws_n.toFixed(3);
+    document.getElementById('vmin_ws').textContent  = Vout_min_ws.toFixed(3);
+    document.getElementById('vmax_std').textContent = Vout_max_std.toFixed(3);
+    document.getElementById('vmax_ws').textContent  = Vout_max_ws.toFixed(3);
+    document.getElementById('sw_std').textContent   = swing_std.toFixed(3);
+    document.getElementById('sw_ws').textContent    = swing_ws.toFixed(3);
+    document.getElementById('sw_rec').textContent   = recovery.toFixed(0);
+
+    document.getElementById('insight_box').textContent =
+      'Standard V_out,min = V_th + 2V_ov = ' + (Vout_min_std_final*1000).toFixed(0) + ' mV. ' +
+      'Wide-swing V_out,min = 2V_ov = ' + (Vout_min_ws*1000).toFixed(0) + ' mV (saves ' + (Vthn*1000).toFixed(0) + ' mV). ' +
+      'PMOS: standard V_out,max = ' + (Vout_max_std*1000).toFixed(0) + ' mV vs wide-swing ' + (Vout_max_ws*1000).toFixed(0) + ' mV. ' +
+      'Total swing recovery = ' + recovery.toFixed(0) + ' mV.';
+
+    draw(VDD, Vout_min_std_final, Vout_min_ws, Vout_max_std, Vout_max_ws, swing_std, swing_ws, Vthn, Vthp, Vovn, Vovp);
+  }
+
+  function draw(VDD, vmin_std, vmin_ws, vmax_std, vmax_ws, sw_std, sw_ws, Vthn, Vthp, Vovn, Vovp){
+    const cv  = document.getElementById('cv');
+    const W   = cv.parentElement.clientWidth - 36;
+    cv.width = W; cv.height = 340;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, W, 340);
+
+    const isDark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+    const axCol  = isDark ? '#8899bb' : '#8888aa';
+
+    const barH = 280, baseY = 318;
+    const bW   = 60;
+    const gap  = 20;
+    const totalW = 2 * bW + gap;
+    const startX = (W - totalW) / 2;
+
+    function voltY(v){ return baseY - (Math.max(0,Math.min(VDD,v))/VDD) * barH; }
+
+    function drawBar(bx, vmin, vmax, label, colorSwing, colorBot, colorTop){
+      // Background (full bar = VDD)
+      ctx.fillStyle = isDark ? '#2a2a3a' : '#f0f0ff';
+      ctx.fillRect(bx, voltY(VDD), bW, barH);
+      ctx.strokeStyle = axCol; ctx.lineWidth=1;
+      ctx.strokeRect(bx, voltY(VDD), bW, barH);
+
+      // Bottom dead zone (0 to vmin)
+      ctx.fillStyle = colorBot + 'cc';
+      const yBot = voltY(vmin);
+      ctx.fillRect(bx, yBot, bW, baseY - yBot);
+      ctx.fillStyle = '#fff'; ctx.font='9px system-ui'; ctx.textAlign='center';
+      if(baseY - yBot > 12) ctx.fillText('dead', bx+bW/2, (yBot+baseY)/2+4);
+
+      // Top dead zone (vmax to VDD)
+      ctx.fillStyle = colorTop + 'cc';
+      const yTop = voltY(VDD);
+      const yMax = voltY(vmax);
+      ctx.fillRect(bx, yTop, bW, yMax - yTop);
+      if(yMax - yTop > 12) ctx.fillText('dead', bx+bW/2, (yTop+yMax)/2+4);
+
+      // Swing region
+      ctx.fillStyle = colorSwing + '99';
+      ctx.fillRect(bx, yMax, bW, yBot - yMax);
+      ctx.fillStyle = isDark ? '#fff' : '#333'; ctx.font='bold 9px system-ui';
+      if(yBot - yMax > 14) ctx.fillText((Math.max(0,vmax-vmin)*1000).toFixed(0)+'mV', bx+bW/2, (yMax+yBot)/2+4);
+
+      // Label
+      ctx.fillStyle = axCol; ctx.font='9px system-ui'; ctx.textAlign='center';
+      ctx.fillText(label, bx+bW/2, baseY+14);
+
+      // Voltage markers on right side
+      ctx.fillStyle = axCol; ctx.font='8px system-ui'; ctx.textAlign='left';
+      ctx.fillText((vmin*1000).toFixed(0)+'mV', bx+bW+3, yBot+3);
+      ctx.fillText((vmax*1000).toFixed(0)+'mV', bx+bW+3, yMax+3);
+    }
+
+    drawBar(startX,         vmin_std, vmax_std, 'Standard', '#0066cc', '#cc4400', '#004488');
+    drawBar(startX+bW+gap,  vmin_ws,  vmax_ws,  'Wide-Sw', '#00994d', '#884400', '#003366');
+
+    // Y axis
+    ctx.strokeStyle = axCol; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(startX-25, voltY(VDD)); ctx.lineTo(startX-25, baseY); ctx.stroke();
+    [0, 0.3, 0.6, 0.9, 1.2, 1.5, 1.8, 2.1].forEach(v=>{
+      if(v > VDD) return;
+      const y = voltY(v);
+      ctx.strokeStyle=axCol; ctx.lineWidth=0.5;
+      ctx.beginPath(); ctx.moveTo(startX-28, y); ctx.lineTo(startX-22, y); ctx.stroke();
+      ctx.fillStyle=axCol; ctx.font='8px system-ui'; ctx.textAlign='right';
+      ctx.fillText(v.toFixed(1), startX-30, y+3);
+    });
+
+    // Legend
+    ctx.fillStyle='#cc4400cc'; ctx.fillRect(10, voltY(VDD)+10, 12, 12);
+    ctx.fillStyle=axCol; ctx.font='8px system-ui'; ctx.textAlign='left';
+    ctx.fillText('NMOS dead zone (V_th waste)', 26, voltY(VDD)+20);
+    ctx.fillStyle='#0066cc99'; ctx.fillRect(10, voltY(VDD)+28, 12, 12);
+    ctx.fillText('Swing region', 26, voltY(VDD)+38);
+
+    ctx.textAlign='center'; ctx.fillStyle=axCol; ctx.font='bold 10px system-ui';
+    ctx.fillText('Standard vs Wide-Swing Cascode Output Swing', W/2, 14);
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e => e.addEventListener('input', compute));
+  compute();
+  window.addEventListener('resize', compute);
+</script>
+</body>
+</html>

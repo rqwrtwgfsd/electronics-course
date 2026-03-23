@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-GB-2.1.1 — Voltage Gain Definition</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --surface: #f5f5f5;
+    --border: #dddddd;
+    --text: #1a1a1a;
+    --accent: #0066cc;
+    --accent2: #cc6600;
+    --green: #007700;
+    --red: #cc0000;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a;
+      --surface: #2a2a2a;
+      --border: #444444;
+      --text: #e8e8e8;
+      --accent: #4499ff;
+      --accent2: #ff9944;
+      --green: #44bb44;
+      --red: #ff5555;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', Arial, sans-serif; font-size: 15px; }
+  header { background: var(--accent); color: #fff; padding: 12px 20px; display: flex; align-items: baseline; gap: 16px; }
+  header .module-id { font-size: 12px; opacity: 0.85; font-family: monospace; }
+  header h1 { font-size: 18px; font-weight: 600; }
+  .main { display: grid; grid-template-columns: 300px 1fr; gap: 0; height: calc(100vh - 48px); }
+  .controls { background: var(--surface); border-right: 1px solid var(--border); padding: 20px; overflow-y: auto; }
+  .controls h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); margin-bottom: 16px; }
+  .control-group { margin-bottom: 20px; }
+  .control-group label { display: block; font-size: 13px; margin-bottom: 6px; color: var(--text); }
+  .control-group .value-display { font-weight: 700; color: var(--accent); }
+  input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+  .readout-box { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 12px; }
+  .readout-box .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; opacity: 0.7; margin-bottom: 4px; }
+  .readout-box .value { font-size: 22px; font-weight: 700; color: var(--accent); font-family: monospace; }
+  .readout-box .unit { font-size: 13px; opacity: 0.7; }
+  .canvas-area { padding: 20px; display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
+  canvas { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; display: block; }
+  .canvas-label { font-size: 12px; font-weight: 600; color: var(--text); margin-bottom: 6px; opacity: 0.8; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .info-box { background: var(--surface); border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0; padding: 10px 14px; font-size: 13px; line-height: 1.5; }
+  select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 5px 8px; font-size: 13px; width: 100%; }
+  @media (max-width: 700px) {
+    .main { grid-template-columns: 1fr; }
+    .two-col { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <span class="module-id">M4A-GB-2.1.1</span>
+  <h1>Voltage Gain Definition — Interactive Explorer</h1>
+</header>
+<div class="main">
+  <div class="controls">
+    <h2>Circuit Parameters</h2>
+
+    <div class="control-group">
+      <label>Topology: <span class="value-display" id="topo-display">Common-Emitter BJT</span></label>
+      <select id="topo-select">
+        <option value="ce">Common-Emitter BJT</option>
+        <option value="cs">Common-Source MOSFET</option>
+        <option value="follower">Emitter Follower</option>
+      </select>
+    </div>
+
+    <div class="control-group">
+      <label>Collector/Drain Current Ic: <span class="value-display" id="ic-display">1.0 mA</span></label>
+      <input type="range" id="ic-slider" min="0.1" max="5" step="0.1" value="1.0">
+    </div>
+
+    <div class="control-group">
+      <label>Load Resistance RC/RD: <span class="value-display" id="rc-display">4.7 kΩ</span></label>
+      <input type="range" id="rc-slider" min="1" max="20" step="0.5" value="4.7">
+    </div>
+
+    <div class="control-group">
+      <label>Emitter/Source Degeneration RE: <span class="value-display" id="re-display">0 Ω</span></label>
+      <input type="range" id="re-slider" min="0" max="500" step="10" value="0">
+    </div>
+
+    <div class="control-group">
+      <label>Input Signal Amplitude: <span class="value-display" id="vin-display">10 mV</span></label>
+      <input type="range" id="vin-slider" min="1" max="200" step="1" value="10">
+    </div>
+
+    <h2 style="margin-top:8px;">Key Readouts</h2>
+    <div class="readout-box">
+      <div class="label">Transconductance gm</div>
+      <div class="value" id="gm-readout">38.5</div>
+      <div class="unit">mA/V</div>
+    </div>
+    <div class="readout-box">
+      <div class="label">Voltage Gain |Av|</div>
+      <div class="value" id="av-readout">181</div>
+      <div class="unit">V/V</div>
+    </div>
+    <div class="readout-box">
+      <div class="label">Output Peak</div>
+      <div class="value" id="vout-readout">1810</div>
+      <div class="unit">mV</div>
+    </div>
+    <div class="readout-box">
+      <div class="label">Phase</div>
+      <div class="value" id="phase-readout">180°</div>
+      <div class="unit">inversion</div>
+    </div>
+
+    <div class="info-box" id="info-box">
+      Common-emitter: inverting amplifier. Av = −gm × RC. Gain increases linearly with both Ic and RC.
+    </div>
+  </div>
+
+  <div class="canvas-area">
+    <div class="two-col">
+      <div>
+        <div class="canvas-label">Input vs Output Waveforms</div>
+        <canvas id="waveCanvas" width="420" height="220"></canvas>
+      </div>
+      <div>
+        <div class="canvas-label">Gain vs Collector Current (RC fixed)</div>
+        <canvas id="gainCurveCanvas" width="420" height="220"></canvas>
+      </div>
+    </div>
+    <div>
+      <div class="canvas-label">Gain vs RC Load Resistance (Ic fixed) — hover to read</div>
+      <canvas id="gainVsRcCanvas" width="860" height="200"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  const VT = 0.026; // 26 mV thermal voltage
+
+  const icSlider = document.getElementById('ic-slider');
+  const rcSlider = document.getElementById('rc-slider');
+  const reSlider = document.getElementById('re-slider');
+  const vinSlider = document.getElementById('vin-slider');
+  const topoSelect = document.getElementById('topo-select');
+
+  function getParams() {
+    return {
+      Ic: parseFloat(icSlider.value) * 1e-3,
+      RC: parseFloat(rcSlider.value) * 1e3,
+      RE: parseFloat(reSlider.value),
+      Vin_pk: parseFloat(vinSlider.value) * 1e-3,
+      topo: topoSelect.value
+    };
+  }
+
+  function computeGain(p) {
+    let gm, Av;
+    if (p.topo === 'ce' || p.topo === 'cs') {
+      gm = p.topo === 'ce' ? p.Ic / VT : p.Ic / (2 * VT); // MOSFET gm approximated lower
+      if (p.topo === 'cs') gm = Math.min(gm, 0.08); // cap MOSFET gm
+      Av = -gm * p.RC / (1 + gm * p.RE);
+    } else {
+      // emitter follower
+      gm = p.Ic / VT;
+      Av = gm * p.RE / (1 + gm * p.RE);
+      if (p.RE === 0) Av = 0.999; // unity gain follower
+    }
+    return { gm, Av };
+  }
+
+  function updateDisplays() {
+    const p = getParams();
+    const { gm, Av } = computeGain(p);
+
+    document.getElementById('ic-display').textContent = (p.Ic * 1e3).toFixed(1) + ' mA';
+    document.getElementById('rc-display').textContent = (p.RC / 1000).toFixed(1) + ' kΩ';
+    document.getElementById('re-display').textContent = p.RE.toFixed(0) + ' Ω';
+    document.getElementById('vin-display').textContent = (p.Vin_pk * 1e3).toFixed(0) + ' mV';
+    document.getElementById('topo-display').textContent = topoSelect.options[topoSelect.selectedIndex].text;
+
+    document.getElementById('gm-readout').textContent = (gm * 1e3).toFixed(1);
+    document.getElementById('av-readout').textContent = Math.abs(Av).toFixed(1);
+    document.getElementById('vout-readout').textContent = (Math.abs(Av) * p.Vin_pk * 1e3).toFixed(1);
+    document.getElementById('phase-readout').textContent = Av < 0 ? '180° inv.' : '0° (in-phase)';
+
+    const infoMap = {
+      ce: 'Common-emitter BJT: inverting. Av = −gm × RC / (1 + gm·RE). High gm from high Ic.',
+      cs: 'Common-source MOSFET: inverting. MOSFET gm lower than BJT at same current — set by process.',
+      follower: 'Emitter follower: non-inverting, Av ≈ +1. Purpose is impedance transformation, not voltage gain.'
+    };
+    document.getElementById('info-box').textContent = infoMap[p.topo];
+
+    drawWaveforms(p, Av);
+    drawGainCurve(p);
+    drawGainVsRc(p);
+  }
+
+  function getColors() {
+    const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return {
+      bg: dark ? '#1a1a1a' : '#ffffff',
+      grid: dark ? '#333333' : '#eeeeee',
+      text: dark ? '#cccccc' : '#555555',
+      blue: dark ? '#4499ff' : '#0066cc',
+      orange: dark ? '#ff9944' : '#cc6600',
+      red: dark ? '#ff5555' : '#cc0000',
+      green: dark ? '#44bb44' : '#007700'
+    };
+  }
+
+  function drawWaveforms(p, Av) {
+    const canvas = document.getElementById('waveCanvas');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const c = getColors();
+    ctx.fillStyle = c.bg; ctx.fillRect(0, 0, W, H);
+
+    const pad = { l: 50, r: 20, t: 20, b: 40 };
+    const pw = W - pad.l - pad.r;
+    const ph = H - pad.t - pad.b;
+    const midY = pad.t + ph / 2;
+
+    // grid
+    ctx.strokeStyle = c.grid; ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = pad.t + (i / 4) * ph;
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+    }
+
+    const Vout_pk = Math.abs(Av) * p.Vin_pk;
+    const maxV = Math.max(p.Vin_pk * 1.5, Vout_pk * 1.1, 0.001);
+    const scale = (ph / 2) / maxV;
+    const CLIP_V = 2.0; // assume 2V max swing
+
+    // axes labels
+    ctx.fillStyle = c.text; ctx.font = '11px monospace'; ctx.textAlign = 'right';
+    ctx.fillText((maxV * 1e3).toFixed(0) + 'mV', pad.l - 4, pad.t + 8);
+    ctx.fillText('0', pad.l - 4, midY + 4);
+    ctx.fillText(-(maxV * 1e3).toFixed(0) + 'mV', pad.l - 4, pad.t + ph);
+
+    ctx.textAlign = 'center';
+    ctx.fillText('Time →', pad.l + pw / 2, H - 5);
+
+    // draw input sine
+    ctx.beginPath(); ctx.strokeStyle = c.blue; ctx.lineWidth = 2;
+    for (let x = 0; x <= pw; x++) {
+      const t = (x / pw) * 2 * Math.PI * 2;
+      const v = p.Vin_pk * Math.sin(t);
+      const py = midY - v * scale;
+      x === 0 ? ctx.moveTo(pad.l + x, py) : ctx.lineTo(pad.l + x, py);
+    }
+    ctx.stroke();
+
+    // draw output sine (possibly clipped)
+    ctx.beginPath(); ctx.strokeStyle = c.orange; ctx.lineWidth = 2;
+    for (let x = 0; x <= pw; x++) {
+      const t = (x / pw) * 2 * Math.PI * 2;
+      let v = Vout_pk * Math.sin(t + (Av < 0 ? Math.PI : 0));
+      const clipped = Math.abs(v) > CLIP_V;
+      v = Math.max(-CLIP_V, Math.min(CLIP_V, v));
+      const py = midY - v * scale;
+      if (x === 0) ctx.moveTo(pad.l + x, py);
+      else ctx.lineTo(pad.l + x, py);
+    }
+    ctx.stroke();
+
+    if (Vout_pk > CLIP_V) {
+      ctx.fillStyle = c.red; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText('⚠ CLIPPING', pad.l + pw / 2, pad.t + 14);
+    }
+
+    // legend
+    ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillStyle = c.blue; ctx.fillText('● Input', pad.l + 8, pad.t + 14);
+    ctx.fillStyle = c.orange; ctx.fillText('● Output', pad.l + 60, pad.t + 14);
+  }
+
+  function drawGainCurve(p) {
+    const canvas = document.getElementById('gainCurveCanvas');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const c = getColors();
+    ctx.fillStyle = c.bg; ctx.fillRect(0, 0, W, H);
+
+    const pad = { l: 55, r: 20, t: 20, b: 40 };
+    const pw = W - pad.l - pad.r;
+    const ph = H - pad.t - pad.b;
+
+    const IcMax = 5e-3;
+    const RC = p.RC;
+    const RE = p.RE;
+
+    const gains = [];
+    for (let i = 0; i <= 100; i++) {
+      const ic = (i / 100) * IcMax + 0.01e-3;
+      const gm = ic / VT;
+      const av = gm * RC / (1 + gm * RE);
+      gains.push(av);
+    }
+    const maxGain = Math.max(...gains);
+
+    // grid
+    ctx.strokeStyle = c.grid; ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = pad.t + (i / 4) * ph;
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+      const v = maxGain * (1 - i / 4);
+      ctx.fillStyle = c.text; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+      ctx.fillText(v.toFixed(0), pad.l - 4, y + 4);
+    }
+
+    // axis labels
+    ctx.fillStyle = c.text; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Ic (mA) →', pad.l + pw / 2, H - 5);
+    ctx.save(); ctx.translate(14, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+    ctx.fillText('|Av| (V/V)', 0, 0); ctx.restore();
+
+    // gain curve
+    ctx.beginPath(); ctx.strokeStyle = c.blue; ctx.lineWidth = 2;
+    for (let i = 0; i <= 100; i++) {
+      const ic = (i / 100) * IcMax + 0.01e-3;
+      const gm = ic / VT;
+      const av = gm * RC / (1 + gm * RE);
+      const x = pad.l + (ic / IcMax) * pw;
+      const y = pad.t + ph - (av / maxGain) * ph;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // current operating point
+    const xOp = pad.l + (p.Ic / IcMax) * pw;
+    const { gm, Av } = computeGain(p);
+    const avMag = Math.abs(Av);
+    const yOp = pad.t + ph - (avMag / maxGain) * ph;
+    ctx.beginPath(); ctx.arc(xOp, yOp, 6, 0, 2 * Math.PI);
+    ctx.fillStyle = c.orange; ctx.fill();
+    ctx.strokeStyle = c.bg; ctx.lineWidth = 2; ctx.stroke();
+
+    ctx.fillStyle = c.text; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    ctx.fillText('Operating Point', xOp, yOp - 10);
+  }
+
+  function drawGainVsRc(p) {
+    const canvas = document.getElementById('gainVsRcCanvas');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const c = getColors();
+    ctx.fillStyle = c.bg; ctx.fillRect(0, 0, W, H);
+
+    const pad = { l: 55, r: 20, t: 20, b: 40 };
+    const pw = W - pad.l - pad.r;
+    const ph = H - pad.t - pad.b;
+
+    const RCmax = 20e3;
+    const gm = p.Ic / VT;
+    const maxGain = gm * RCmax / (1 + gm * p.RE);
+
+    // grid
+    ctx.strokeStyle = c.grid; ctx.lineWidth = 1;
+    for (let i = 0; i <= 4; i++) {
+      const y = pad.t + (i / 4) * ph;
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+      const v = maxGain * (1 - i / 4);
+      ctx.fillStyle = c.text; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+      ctx.fillText(v.toFixed(0), pad.l - 4, y + 4);
+    }
+    for (let i = 0; i <= 4; i++) {
+      const x = pad.l + (i / 4) * pw;
+      ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
+      ctx.fillStyle = c.text; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+      ctx.fillText((i * 5) + 'kΩ', x, H - 5);
+    }
+
+    ctx.fillStyle = c.text; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('RC / RD (kΩ) →', pad.l + pw / 2, H - 5);
+
+    // curve
+    ctx.beginPath(); ctx.strokeStyle = c.green; ctx.lineWidth = 2;
+    for (let i = 0; i <= 200; i++) {
+      const rc = (i / 200) * RCmax;
+      const av = gm * rc / (1 + gm * p.RE);
+      const x = pad.l + (rc / RCmax) * pw;
+      const y = pad.t + ph - (av / maxGain) * ph;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // current RC marker
+    const xOp = pad.l + (p.RC / RCmax) * pw;
+    const avOp = gm * p.RC / (1 + gm * p.RE);
+    const yOp = pad.t + ph - (avOp / maxGain) * ph;
+    ctx.beginPath(); ctx.arc(xOp, yOp, 6, 0, 2 * Math.PI);
+    ctx.fillStyle = c.orange; ctx.fill();
+
+    ctx.fillStyle = c.text; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    ctx.fillText('RC = ' + (p.RC / 1000).toFixed(1) + 'kΩ → Av=' + avOp.toFixed(0), xOp, yOp - 12);
+  }
+
+  [icSlider, rcSlider, reSlider, vinSlider, topoSelect].forEach(el =>
+    el.addEventListener('input', updateDisplays));
+
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', updateDisplays);
+  updateDisplays();
+})();
+</script>
+</body>
+</html>

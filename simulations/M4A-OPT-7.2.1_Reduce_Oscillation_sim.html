@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-OPT-7.2.1 — Reduce Oscillation</title>
+<style>
+:root{--bg:#f5f5f5;--surface:#fff;--border:#d0d0d0;--text:#1a1a1a;--text2:#555;--accent:#1a6bbf;--pass:#2a7a2a;--warn:#b87000;--fail:#b82020;--pass-bg:#e8f5e8;--warn-bg:#fff8e0;--fail-bg:#fde8e8;--plot-bg:#fdfdfd;}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#252525;--border:#404040;--text:#e8e8e8;--text2:#aaa;--accent:#4a9eff;--pass:#4aaa4a;--warn:#ddaa30;--fail:#ff5555;--pass-bg:#1a2e1a;--warn-bg:#2e2200;--fail-bg:#2e1010;--plot-bg:#1e1e1e;}}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);font-size:14px;}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 20px;}
+header h1{font-size:17px;font-weight:700;color:var(--accent);}
+header p{font-size:12px;color:var(--text2);margin-top:2px;}
+.tab-bar{display:flex;background:var(--surface);border-bottom:1px solid var(--border);padding:0 16px;}
+.tab{padding:10px 18px;cursor:pointer;border-bottom:3px solid transparent;color:var(--text2);font-size:13px;font-weight:600;transition:color .2s,border-color .2s;}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tab:hover:not(.active){color:var(--text);}
+.panel{display:none;padding:16px;}
+.panel.active{display:block;}
+.layout{display:flex;gap:14px;flex-wrap:wrap;}
+.sidebar{flex:0 0 230px;display:flex;flex-direction:column;gap:10px;}
+.main-area{flex:1 1 400px;display:flex;flex-direction:column;gap:10px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;}
+.card h3{font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;}
+label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--text2);}
+label span{display:flex;justify-content:space-between;}
+input[type=range]{width:100%;accent-color:var(--accent);}
+canvas{width:100%;display:block;border:1px solid var(--border);border-radius:4px;background:var(--plot-bg);}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.metric{background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:8px 10px;}
+.metric .val{font-size:18px;font-weight:700;color:var(--accent);}
+.metric .lbl{font-size:11px;color:var(--text2);}
+.badge{display:inline-block;padding:2px 7px;border-radius:3px;font-size:11px;font-weight:700;}
+.badge.pass{background:var(--pass-bg);color:var(--pass);}
+.badge.warn{background:var(--warn-bg);color:var(--warn);}
+.badge.fail{background:var(--fail-bg);color:var(--fail);}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th{background:var(--bg);color:var(--text2);padding:5px 8px;text-align:left;border:1px solid var(--border);font-weight:600;font-size:11px;}
+td{padding:5px 8px;border:1px solid var(--border);}
+</style>
+</head>
+<body>
+<header>
+  <h1>M4A-OPT-7.2.1 — Reduce Oscillation</h1>
+  <p>Phase margin improvement via series Rs, Cf compensation, and load isolation</p>
+</header>
+<div class="tab-bar">
+  <div class="tab active" onclick="showTab(0)">CL Compensation (Series Rs)</div>
+  <div class="tab" onclick="showTab(1)">Summing Node Cf</div>
+  <div class="tab" onclick="showTab(2)">Step Response Comparison</div>
+</div>
+
+<!-- TAB 0: Series Rs for CL -->
+<div class="panel active" id="tab0">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="card">
+        <h3>Circuit</h3>
+        <label><span>GBW (MHz) <b id="v_gbw0">100</b></span>
+          <input type="range" id="sl_gbw0" min="1" max="1000" step="1" value="100" oninput="upd0()"></label>
+        <label><span>Closed-loop gain <b id="v_g0">10</b></span>
+          <input type="range" id="sl_g0" min="1" max="100" step="1" value="10" oninput="upd0()"></label>
+        <label><span>Rout (Ω) <b id="v_ro0">75</b></span>
+          <input type="range" id="sl_ro0" min="5" max="500" step="5" value="75" oninput="upd0()"></label>
+        <label><span>Load cap CL (pF) <b id="v_cl0">100</b></span>
+          <input type="range" id="sl_cl0" min="0" max="2000" step="10" value="100" oninput="upd0()"></label>
+      </div>
+      <div class="card">
+        <h3>Compensation</h3>
+        <label><span>Series Rs (Ω) <b id="v_rs0">0</b></span>
+          <input type="range" id="sl_rs0" min="0" max="500" step="5" value="0" oninput="upd0()"></label>
+      </div>
+      <div class="card metrics">
+        <div class="metric"><div class="val" id="m_pm0_u">--</div><div class="lbl">PM — no Rs</div></div>
+        <div class="metric"><div class="val" id="m_pm0_c">--</div><div class="lbl">PM — with Rs</div></div>
+        <div class="metric"><div class="val" id="m_fcl">--</div><div class="lbl">CL pole (MHz)</div></div>
+        <div class="metric"><div class="val" id="m_fzrs">--</div><div class="lbl">Rs zero (MHz)</div></div>
+      </div>
+      <div class="card">
+        <h3>Recommended Rs</h3>
+        <p id="rs_rec" style="font-size:12px;color:var(--text2);line-height:1.6">--</p>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="card">
+        <h3>Loop Gain Bode Plot — with/without Series Rs</h3>
+        <canvas id="c0" height="380"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: Cf Compensation -->
+<div class="panel" id="tab1">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="card">
+        <h3>Circuit</h3>
+        <label><span>GBW (MHz) <b id="v_gbw1">100</b></span>
+          <input type="range" id="sl_gbw1" min="1" max="1000" step="1" value="100" oninput="upd1()"></label>
+        <label><span>Gain <b id="v_g1">10</b></span>
+          <input type="range" id="sl_g1" min="2" max="100" step="1" value="10" oninput="upd1()"></label>
+        <label><span>R1 (kΩ) <b id="v_r11">1</b></span>
+          <input type="range" id="sl_r11" min="0.1" max="10" step="0.1" value="1" oninput="upd1()"></label>
+        <label><span>Stray Cs (pF) <b id="v_cs1">5</b></span>
+          <input type="range" id="sl_cs1" min="0" max="20" step="0.5" value="5" oninput="upd1()"></label>
+      </div>
+      <div class="card">
+        <h3>Compensation Cf</h3>
+        <label><span>Cf (pF) <b id="v_cf1">0</b></span>
+          <input type="range" id="sl_cf1" min="0" max="20" step="0.5" value="0" oninput="upd1()"></label>
+      </div>
+      <div class="card metrics">
+        <div class="metric"><div class="val" id="m_pm1_u">--</div><div class="lbl">PM — Cf=0</div></div>
+        <div class="metric"><div class="val" id="m_pm1_c">--</div><div class="lbl">PM — with Cf</div></div>
+        <div class="metric"><div class="val" id="m_fcs">--</div><div class="lbl">Stray pole (MHz)</div></div>
+        <div class="metric"><div class="val" id="m_fzc">--</div><div class="lbl">Cf zero (MHz)</div></div>
+      </div>
+      <div class="card">
+        <h3>Cf Guidance</h3>
+        <p id="cf_rec" style="font-size:12px;color:var(--text2);line-height:1.6">--</p>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="card">
+        <h3>Loop Gain Bode — Stray Cs + Cf Compensation</h3>
+        <canvas id="c1" height="380"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: Step Response -->
+<div class="panel" id="tab2">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="card">
+        <h3>Scenario</h3>
+        <label><span>PM without comp (°) <b id="v_pm2">25</b></span>
+          <input type="range" id="sl_pm2" min="5" max="85" step="1" value="25" oninput="upd2()"></label>
+        <label><span>PM with comp (°) <b id="v_pm2c">55</b></span>
+          <input type="range" id="sl_pm2c" min="30" max="90" step="1" value="55" oninput="upd2()"></label>
+        <label><span>f_crossover (MHz) <b id="v_fc2">1</b></span>
+          <input type="range" id="sl_fc2" min="0.1" max="20" step="0.1" value="1" oninput="upd2()"></label>
+        <label><span>Step amplitude (V) <b id="v_sa2">1</b></span>
+          <input type="range" id="sl_sa2" min="0.1" max="5" step="0.1" value="1" oninput="upd2()"></label>
+      </div>
+      <div class="card">
+        <h3>Metrics</h3>
+        <table>
+          <tr><th>Metric</th><th>Uncomp</th><th>Comp</th></tr>
+          <tr><td>OS</td><td id="t_os_u">--</td><td id="t_os_c">--</td></tr>
+          <tr><td>Settle (2%)</td><td id="t_st_u">--</td><td id="t_st_c">--</td></tr>
+          <tr><td>Peaking (dB)</td><td id="t_pk_u">--</td><td id="t_pk_c">--</td></tr>
+          <tr><td>Q</td><td id="t_q_u">--</td><td id="t_q_c">--</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="card">
+        <h3>Step Response — Before and After Compensation</h3>
+        <canvas id="c2" height="280"></canvas>
+      </div>
+      <div class="card">
+        <h3>Closed-Loop Frequency Response Comparison</h3>
+        <canvas id="c2b" height="200"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const sl=id=>parseFloat($(id).value);
+function dpr(c){const r=window.devicePixelRatio||1;const rect=c.getBoundingClientRect();c.width=rect.width*r;c.height=rect.height*r;const ctx=c.getContext('2d');ctx.scale(r,r);return{ctx,w:rect.width,h:rect.height};}
+function tc(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+function showTab(n){document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));[upd0,upd1,upd2][n]();}
+
+function loopT(fHz,gbw,G,Cs,Rp,Cf,Rf,Ro,CL,Rs){
+  const aol0=1e5,f1=gbw*1e6/aol0;
+  let Aol=aol0/Math.sqrt(1+(fHz/f1)**2);
+  let Aol_ph=-Math.atan2(fHz,f1);
+  // CL pole (with Rs creating zero)
+  if(CL>0){const fCL=1/(2*Math.PI*(Ro+Rs)*CL);Aol/=Math.sqrt(1+(fHz/fCL)**2);Aol_ph-=Math.atan2(fHz,fCL);
+    if(Rs>0){const fzCL=1/(2*Math.PI*Rs*CL);Aol*=Math.sqrt(1+(fHz/fzCL)**2);Aol_ph+=Math.atan2(fHz,fzCL);}}
+  let b=1/G,b_ph=0;
+  if(Cs>0){const fp=1/(2*Math.PI*Rp*Cs);b/=Math.sqrt(1+(fHz/fp)**2);b_ph-=Math.atan2(fHz,fp);}
+  if(Cf>0&&Rf>0){const fz=1/(2*Math.PI*Rf*Cf);b*=Math.sqrt(1+(fHz/fz)**2);b_ph+=Math.atan2(fHz,fz);}
+  return{T:Aol*b,ph:(Aol_ph+b_ph)*180/Math.PI};
+}
+
+function findPMfull(gbw,G,Cs,Rp,Cf,Rf,Ro,CL,Rs){
+  let lo=100,hi=gbw*1e6*20;
+  for(let i=0;i<60;i++){const mid=Math.sqrt(lo*hi);const{T}=loopT(mid,gbw,G,Cs,Rp,Cf,Rf,Ro,CL,Rs);if(T>1)lo=mid;else hi=mid;}
+  const fc=Math.sqrt(lo*hi);
+  const{ph}=loopT(fc,gbw,G,Cs,Rp,Cf,Rf,Ro,CL,Rs);
+  return{fc,pm:180+ph};
+}
+
+/* ── TAB 0 ── */
+function upd0(){
+  const gbw=sl('sl_gbw0'),G=sl('sl_g0'),Ro=sl('sl_ro0'),CL=sl('sl_cl0')*1e-12,Rs=sl('sl_rs0');
+  $('v_gbw0').textContent=gbw;$('v_g0').textContent=G;$('v_ro0').textContent=Ro;$('v_cl0').textContent=sl('sl_cl0');$('v_rs0').textContent=Rs;
+  const R1=1e3,Rf=R1*(G-1);const Rp=R1*Rf/(R1+Rf+1e-10);
+  const{pm:pm_u}=findPMfull(gbw,G,0,0,0,Rf,Ro,CL,0);
+  const{pm:pm_c}=findPMfull(gbw,G,0,0,0,Rf,Ro,CL,Rs);
+  const fCL=CL>0?1/(2*Math.PI*Ro*CL)/1e6:Infinity;
+  const fzRs=CL>0&&Rs>0?1/(2*Math.PI*Rs*CL)/1e6:Infinity;
+  $('m_pm0_u').textContent=pm_u.toFixed(0)+'°';$('m_pm0_u').style.color=pm_u>=45?'var(--pass)':pm_u>=25?'var(--warn)':'var(--fail)';
+  $('m_pm0_c').textContent=pm_c.toFixed(0)+'°';$('m_pm0_c').style.color=pm_c>=45?'var(--pass)':pm_c>=25?'var(--warn)':'var(--fail)';
+  $('m_fcl').textContent=isFinite(fCL)?fCL.toFixed(1):'∞';
+  $('m_fzrs').textContent=isFinite(fzRs)?fzRs.toFixed(1):'N/A';
+  // Recommend Rs for PM=55°
+  let Rs_rec=0;
+  for(let r=0;r<=500;r+=5){const{pm}=findPMfull(gbw,G,0,0,0,Rf,Ro,CL,r);if(pm>=55){Rs_rec=r;break;}}
+  $('rs_rec').textContent=CL>0?(Rs_rec>0?'Rs ≥ '+Rs_rec+' Ω for PM=55°':'No Rs needed (already stable)'):'CL=0: Rs not required';
+  drawBode0(gbw,G,Ro,CL,Rs,R1,Rf,Rp);
+}
+
+function drawBode0(gbw,G,Ro,CL,Rs,R1,Rf,Rp){
+  const c=$('c0');const{ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=55,padR=20,padT=20,padB=130;
+  const pw=w-padL-padR,ph2=(h-padT-padB)/2;
+  const text=tc('--text'),text2=tc('--text2'),border=tc('--border'),accent=tc('--accent');
+  const fmin=1e3,fmax=gbw*1e7;
+  const logFmin=Math.log10(fmin),logFmax=Math.log10(fmax);
+  const gMin=-40,gMax=80;const phMin=-270,phMax=10;
+  const gainTop=padT,gainH=ph2,phTop=padT+ph2+16,phH=ph2;
+
+  function fx(f){return padL+(Math.log10(f)-logFmin)/(logFmax-logFmin)*pw;}
+  function gyg(g){return gainTop+(1-(g-gMin)/(gMax-gMin))*gainH;}
+  function gyp(p){return phTop+(1-(p-phMin)/(phMax-phMin))*phH;}
+
+  ctx.strokeStyle=border;ctx.lineWidth=.5;
+  for(let g=-40;g<=80;g+=20){const y=gyg(g);ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(g+'dB',padL-4,y+4);}
+  for(let p=-270;p<=10;p+=45){const y=gyp(p);ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(p+'°',padL-4,y+4);}
+  for(let e=3;e<=Math.ceil(logFmax);e++){for(let m=1;m<10;m++){const f=m*Math.pow(10,e);if(f<fmin||f>fmax)continue;
+    const x=fx(f);ctx.beginPath();ctx.moveTo(x,gainTop);ctx.lineTo(x,gainTop+gainH);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x,phTop);ctx.lineTo(x,phTop+phH);ctx.stroke();
+    if(m===1){ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';const lbl=f>=1e6?(f/1e6).toFixed(0)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f+'';ctx.fillText(lbl,x,phTop+phH+14);}}}
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,gyg(0));ctx.lineTo(padL+pw,gyg(0));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(padL,gyp(-180));ctx.lineTo(padL+pw,gyp(-180));ctx.stroke();ctx.setLineDash([]);
+
+  const N=300;
+  function drawCurves(Rs_val,gcol,pcol,dashArr){
+    ctx.setLineDash(dashArr);
+    ctx.strokeStyle=gcol;ctx.lineWidth=2;ctx.beginPath();
+    for(let i=0;i<=N;i++){const f=Math.pow(10,logFmin+i*(logFmax-logFmin)/N);
+      const{T}=loopT(f,gbw,G,0,Rp,0,Rf,Ro,CL,Rs_val);
+      const x=fx(f),y=gyg(Math.max(gMin,Math.min(gMax,20*Math.log10(Math.max(1e-9,T)))));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+    ctx.stroke();
+    ctx.strokeStyle=pcol;ctx.lineWidth=2;ctx.beginPath();
+    for(let i=0;i<=N;i++){const f=Math.pow(10,logFmin+i*(logFmax-logFmin)/N);
+      const{ph}=loopT(f,gbw,G,0,Rp,0,Rf,Ro,CL,Rs_val);
+      const x=fx(f),y=gyp(Math.max(phMin,Math.min(phMax,ph)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+    ctx.stroke();ctx.setLineDash([]);
+  }
+  drawCurves(0,'#e74c3c','#e67e22',[5,3]);
+  drawCurves(Rs,accent,'#2ecc71',[]);
+
+  ctx.strokeStyle=border;ctx.lineWidth=1;ctx.strokeRect(padL,gainTop,pw,gainH);ctx.strokeRect(padL,phTop,pw,phH);
+  ctx.fillStyle=text;ctx.font='bold 11px sans-serif';ctx.textAlign='left';ctx.fillText('Gain',padL+4,gainTop+14);ctx.fillText('Phase',padL+4,phTop+14);
+  const lx=padL,ly=h-padB+16;
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#e74c3c';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(lx,ly+1);ctx.lineTo(lx+16,ly+1);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=text;ctx.font='11px sans-serif';ctx.textAlign='left';ctx.fillText('No Rs — Gain',lx+20,ly+4);
+  ctx.strokeStyle=accent;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(lx+160,ly+1);ctx.lineTo(lx+176,ly+1);ctx.stroke();ctx.fillStyle=text;ctx.fillText('With Rs='+sl('sl_rs0')+'Ω — Gain',lx+180,ly+4);
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#e67e22';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(lx,ly+18);ctx.lineTo(lx+16,ly+18);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=text;ctx.fillText('No Rs — Phase',lx+20,ly+22);
+  ctx.strokeStyle='#2ecc71';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(lx+160,ly+18);ctx.lineTo(lx+176,ly+18);ctx.stroke();ctx.fillStyle=text;ctx.fillText('With Rs — Phase',lx+180,ly+22);
+}
+
+/* ── TAB 1: Cf Compensation ── */
+function upd1(){
+  const gbw=sl('sl_gbw1'),G=sl('sl_g1'),R1=sl('sl_r11')*1e3,Cs=sl('sl_cs1')*1e-12,Cf=sl('sl_cf1')*1e-12;
+  $('v_gbw1').textContent=gbw;$('v_g1').textContent=G;$('v_r11').textContent=sl('sl_r11');$('v_cs1').textContent=sl('sl_cs1');$('v_cf1').textContent=sl('sl_cf1');
+  const Rf=R1*(G-1),Rp=R1*Rf/(R1+Rf+1e-10);
+  const{pm:pm_u}=findPMfull(gbw,G,Cs,Rp,0,Rf,75,0,0);
+  const{pm:pm_c}=findPMfull(gbw,G,Cs,Rp,Cf,Rf,75,0,0);
+  const fcs=Cs>0?1/(2*Math.PI*Rp*Cs)/1e6:Infinity;
+  const fzc=Cf>0?1/(2*Math.PI*Rf*Cf)/1e6:Infinity;
+  const Cf_opt=Cs>0?Math.sqrt(Cs/(2*Math.PI*gbw*1e6*Rf))*1e12:0;
+  $('m_pm1_u').textContent=pm_u.toFixed(0)+'°';$('m_pm1_u').style.color=pm_u>=45?'var(--pass)':pm_u>=25?'var(--warn)':'var(--fail)';
+  $('m_pm1_c').textContent=pm_c.toFixed(0)+'°';$('m_pm1_c').style.color=pm_c>=45?'var(--pass)':pm_c>=25?'var(--warn)':'var(--fail)';
+  $('m_fcs').textContent=isFinite(fcs)?fcs.toFixed(1):'∞';
+  $('m_fzc').textContent=isFinite(fzc)?fzc.toFixed(1):'N/A';
+  $('cf_rec').textContent=Cs>0?'Optimal Cf = '+Cf_opt.toFixed(2)+' pF (place zero at crossover)\nLarger Cf reduces bandwidth; smaller Cf leaves peaking':'No stray Cs: Cf not needed';
+  drawBode1(gbw,G,Cs,Rp,Cf,Rf);
+}
+
+function drawBode1(gbw,G,Cs,Rp,Cf,Rf){
+  const c=$('c1');const{ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=55,padR=20,padT=20,padB=130;
+  const pw=w-padL-padR,ph2=(h-padT-padB)/2;
+  const text=tc('--text'),text2=tc('--text2'),border=tc('--border'),accent=tc('--accent');
+  const fmin=1e3,fmax=gbw*1e7;
+  const logFmin=Math.log10(fmin),logFmax=Math.log10(fmax);
+  const gMin=-40,gMax=80,phMin=-270,phMax=10;
+  const gainTop=padT,gainH=ph2,phTop=padT+ph2+16,phH=ph2;
+  function fx(f){return padL+(Math.log10(f)-logFmin)/(logFmax-logFmin)*pw;}
+  function gyg(g){return gainTop+(1-(g-gMin)/(gMax-gMin))*gainH;}
+  function gyp(p){return phTop+(1-(p-phMin)/(phMax-phMin))*phH;}
+  ctx.strokeStyle=border;ctx.lineWidth=.5;
+  for(let g=-40;g<=80;g+=20){const y=gyg(g);ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(g+'dB',padL-4,y+4);}
+  for(let p=-270;p<=10;p+=45){const y=gyp(p);ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(p+'°',padL-4,y+4);}
+  for(let e=3;e<=Math.ceil(logFmax);e++){for(let m=1;m<10;m++){const f=m*Math.pow(10,e);if(f<fmin||f>fmax)continue;
+    const x=fx(f);ctx.beginPath();ctx.moveTo(x,gainTop);ctx.lineTo(x,gainTop+gainH);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x,phTop);ctx.lineTo(x,phTop+phH);ctx.stroke();
+    if(m===1){ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';const lbl=f>=1e6?(f/1e6).toFixed(0)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f+'';ctx.fillText(lbl,x,phTop+phH+14);}}}
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,gyg(0));ctx.lineTo(padL+pw,gyg(0));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(padL,gyp(-180));ctx.lineTo(padL+pw,gyp(-180));ctx.stroke();ctx.setLineDash([]);
+  const N=300;
+  function drawPair(Cf_val,gcol,pcol,dashArr){
+    ctx.setLineDash(dashArr);ctx.strokeStyle=gcol;ctx.lineWidth=2;ctx.beginPath();
+    for(let i=0;i<=N;i++){const f=Math.pow(10,logFmin+i*(logFmax-logFmin)/N);
+      const{T}=loopT(f,gbw,G,Cs,Rp,Cf_val,Rf,75,0,0);
+      const x=fx(f),y=gyg(Math.max(gMin,Math.min(gMax,20*Math.log10(Math.max(1e-9,T)))));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+    ctx.stroke();ctx.strokeStyle=pcol;ctx.lineWidth=2;ctx.beginPath();
+    for(let i=0;i<=N;i++){const f=Math.pow(10,logFmin+i*(logFmax-logFmin)/N);
+      const{ph}=loopT(f,gbw,G,Cs,Rp,Cf_val,Rf,75,0,0);
+      const x=fx(f),y=gyp(Math.max(phMin,Math.min(phMax,ph)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+    ctx.stroke();ctx.setLineDash([]);}
+  drawPair(0,'#e74c3c','#e67e22',[5,3]);
+  drawPair(Cf,accent,'#2ecc71',[]);
+  ctx.strokeStyle=border;ctx.lineWidth=1;ctx.strokeRect(padL,gainTop,pw,gainH);ctx.strokeRect(padL,phTop,pw,phH);
+  const lx=padL,ly=h-padB+16;
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#e74c3c';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(lx,ly+1);ctx.lineTo(lx+16,ly+1);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=text;ctx.font='11px sans-serif';ctx.textAlign='left';ctx.fillText('No Cf — Gain',lx+20,ly+4);
+  ctx.strokeStyle=accent;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(lx+160,ly+1);ctx.lineTo(lx+176,ly+1);ctx.stroke();ctx.fillStyle=text;ctx.fillText('Cf='+sl('sl_cf1')+'pF — Gain',lx+180,ly+4);
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#e67e22';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(lx,ly+18);ctx.lineTo(lx+16,ly+18);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=text;ctx.fillText('No Cf — Phase',lx+20,ly+22);
+  ctx.strokeStyle='#2ecc71';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(lx+160,ly+18);ctx.lineTo(lx+176,ly+18);ctx.stroke();ctx.fillStyle=text;ctx.fillText('Cf — Phase',lx+180,ly+22);
+}
+
+/* ── TAB 2: Step Response ── */
+function upd2(){
+  const pm_u=sl('sl_pm2'),pm_c=sl('sl_pm2c'),fc=sl('sl_fc2')*1e6,sa=sl('sl_sa2');
+  $('v_pm2').textContent=pm_u;$('v_pm2c').textContent=pm_c;$('v_fc2').textContent=sl('sl_fc2');$('v_sa2').textContent=sa;
+  const wn=2*Math.PI*fc;
+  const z_u=Math.max(0.02,Math.cos(pm_u*Math.PI/180));
+  const z_c=Math.max(0.02,Math.cos(pm_c*Math.PI/180));
+  const os_u=pm_u<90?100*Math.exp(-Math.PI*z_u/Math.sqrt(Math.max(1e-6,1-z_u*z_u))):0;
+  const os_c=pm_c<90?100*Math.exp(-Math.PI*z_c/Math.sqrt(Math.max(1e-6,1-z_c*z_c))):0;
+  const st_u=(4/(z_u*wn))*1e9;const st_c=(4/(z_c*wn))*1e9;
+  const pk_u=pm_u<90?1/(2*z_u*Math.sqrt(1-z_u*z_u)):0;const pk_c=pm_c<90?1/(2*z_c*Math.sqrt(1-z_c*z_c)):0;
+  $('t_os_u').textContent=os_u.toFixed(0)+'%';$('t_os_c').textContent=os_c.toFixed(0)+'%';
+  $('t_st_u').textContent=st_u.toFixed(0)+'ns';$('t_st_c').textContent=st_c.toFixed(0)+'ns';
+  $('t_pk_u').textContent=pk_u>0?'+'+20*Math.log10(pk_u).toFixed(1)+' dB':'0 dB';
+  $('t_pk_c').textContent=pk_c>0?'+'+20*Math.log10(pk_c).toFixed(1)+' dB':'0 dB';
+  $('t_q_u').textContent=(1/(2*z_u)).toFixed(2);$('t_q_c').textContent=(1/(2*z_c)).toFixed(2);
+  drawStep2(pm_u,pm_c,wn,z_u,z_c,sa);
+  drawFreqResp2(pm_u,pm_c,wn,z_u,z_c,fc);
+}
+
+function step2nd(t,A,wn,z){if(z>=1){const r1=-z*wn+wn*Math.sqrt(z*z-1);const r2=-z*wn-wn*Math.sqrt(z*z-1);return A*(1+(r2/(r1-r2))*Math.exp(r1*t)-(r1/(r1-r2))*Math.exp(r2*t));}
+  const wd=wn*Math.sqrt(1-z*z);return A*(1-Math.exp(-z*wn*t)*(Math.cos(wd*t)+(z/Math.sqrt(1-z*z))*Math.sin(wd*t)));}
+
+function drawStep2(pm_u,pm_c,wn,z_u,z_c,A){
+  const c=$('c2');const{ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=50,padR=20,padT=20,padB=35;
+  const pw=w-padL-padR,ph=h-padT-padB;
+  const text=tc('--text'),text2=tc('--text2'),border=tc('--border'),accent=tc('--accent');
+  const tau_u=1/(Math.max(.01,z_u)*wn),tau_c=1/(Math.max(.01,z_c)*wn);
+  const tmax=Math.max(tau_u,tau_c)*6;
+  function tx(t){return padL+t/tmax*pw;}
+  function ty(v){return padT+(1-(v+0.3)/1.8)*ph;}
+  ctx.strokeStyle=border;ctx.lineWidth=.5;
+  for(let i=0;i<=5;i++){const t=i*tmax/5;const x=tx(t);ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();
+    ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText((t*1e9).toFixed(0)+'ns',x,padT+ph+16);}
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,ty(A));ctx.lineTo(padL+pw,ty(A));ctx.stroke();ctx.setLineDash([]);
+  const N=400;
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#e74c3c';ctx.lineWidth=2;ctx.beginPath();
+  for(let i=0;i<=N;i++){const t=i*tmax/N;const v=step2nd(t,A,wn,z_u);const x=tx(t),y=ty(Math.max(-0.3,Math.min(1.7,v)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();ctx.setLineDash([]);
+  ctx.strokeStyle=accent;ctx.lineWidth=2;ctx.beginPath();
+  for(let i=0;i<=N;i++){const t=i*tmax/N;const v=step2nd(t,A,wn,z_c);const x=tx(t),y=ty(Math.max(-0.3,Math.min(1.7,v)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  ctx.strokeStyle=border;ctx.lineWidth=1;ctx.strokeRect(padL,padT,pw,ph);
+  ctx.fillStyle=text;ctx.font='bold 11px sans-serif';ctx.textAlign='left';ctx.fillText('Step Response',padL+4,padT+14);
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#e74c3c';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(padL+pw-200,padT+10);ctx.lineTo(padL+pw-184,padT+10);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=text;ctx.font='11px sans-serif';ctx.textAlign='left';ctx.fillText('Uncomp PM='+pm_u+'°',padL+pw-180,padT+14);
+  ctx.strokeStyle=accent;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(padL+pw-200,padT+26);ctx.lineTo(padL+pw-184,padT+26);ctx.stroke();
+  ctx.fillStyle=text;ctx.fillText('Comp PM='+pm_c+'°',padL+pw-180,padT+30);
+}
+
+function drawFreqResp2(pm_u,pm_c,wn,z_u,z_c,fc){
+  const c=$('c2b');const{ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=50,padR=20,padT=15,padB=35;
+  const pw=w-padL-padR,ph=h-padT-padB;
+  const text2=tc('--text2'),border=tc('--border'),accent=tc('--accent');
+  const fmin=fc/50,fmax=fc*10;
+  const logMin=Math.log10(fmin),logMax=Math.log10(fmax);
+  const gMin=-30,gMax=10;
+  function fx(f){return padL+(Math.log10(f)-logMin)/(logMax-logMin)*pw;}
+  function fy(g){return padT+(1-(g-gMin)/(gMax-gMin))*ph;}
+  ctx.strokeStyle=border;ctx.lineWidth=.5;
+  for(let g=gMin;g<=gMax;g+=10){const y=fy(g);ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(g+'',padL-4,y+4);}
+  for(let e=Math.floor(logMin);e<=Math.ceil(logMax);e++){for(let m=1;m<10;m++){const f=m*Math.pow(10,e);if(f<fmin||f>fmax)continue;const x=fx(f);ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();
+    if(m===1){ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';const lbl=f>=1e6?(f/1e6).toFixed(1)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f.toFixed(0);ctx.fillText(lbl,x,padT+ph+16);}}}
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#888';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(padL,fy(0));ctx.lineTo(padL+pw,fy(0));ctx.stroke();ctx.setLineDash([]);
+  const N=300;
+  [[z_u,'#e74c3c',[5,3]],[z_c,accent,[]]].forEach(([z,col,dash])=>{
+    ctx.setLineDash(dash);ctx.strokeStyle=col;ctx.lineWidth=2;ctx.beginPath();
+    for(let i=0;i<=N;i++){const f=Math.pow(10,logMin+i*(logMax-logMin)/N);
+      const w2=2*Math.PI*f;const dB=20*Math.log10(wn*wn/Math.sqrt((wn*wn-w2*w2)**2+(2*z*wn*w2)**2));
+      const x=fx(f),y=fy(Math.max(gMin,Math.min(gMax,dB)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+    ctx.stroke();ctx.setLineDash([]);});
+  ctx.strokeStyle=border;ctx.lineWidth=1;ctx.strokeRect(padL,padT,pw,ph);
+  ctx.fillStyle=tc('--text');ctx.font='bold 11px sans-serif';ctx.textAlign='left';ctx.fillText('CL Frequency Response (dB)',padL+4,padT+13);
+}
+
+window.addEventListener('load',()=>{upd0();upd1();upd2();});
+window.addEventListener('resize',()=>{upd0();upd1();upd2();});
+</script>
+</body>
+</html>

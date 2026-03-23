@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-DA-2.1.2 — Role in Analog IC Design</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-DA-2.1.2</div>
+  <h1>Differential Amplifier — Role in Analog IC Design</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Differential Pair Specs</h2>
+      <label>I_SS (μA): <b id="iss_l">200</b> μA <input type="range" id="iss" min="10" max="2000" value="200" step="10"></label>
+      <label>V_ov (mV): <b id="vov_l">200</b> mV <input type="range" id="vov" min="50" max="500" value="200" step="10"></label>
+      <label>Tail r_SS (kΩ): <b id="rss_l">200</b> kΩ <input type="range" id="rss" min="10" max="100000" value="200" step="10"></label>
+      <label>V_DD (V): <b id="vdd_l">1.8</b> V <input type="range" id="vdd" min="0.6" max="3.3" value="1.8" step="0.05"></label>
+      <label>A_VT (mV·μm): <b id="avt_l">5.0</b> <input type="range" id="avt" min="1" max="10" value="5" step="0.1"></label>
+      <label>W×L (μm²): <b id="wl_l">50</b> μm² <input type="range" id="wl" min="1" max="800" value="50" step="1"></label>
+
+      <div class="ro">g_m (mA/V): <span id="gm_d">--</span></div>
+      <div class="ro g" style="margin-top:4px">CMRR (dB): <span id="cmrr_d">--</span></div>
+      <div class="ro" style="margin-top:4px">σ(V_os) (mV): <span id="vos_d">--</span></div>
+      <div class="ro" style="margin-top:4px">V_CM,min (mV): <span id="vcmin_d">--</span></div>
+      <div class="ro" style="margin-top:4px">V_CM,max (mV): <span id="vcmax_d">--</span></div>
+      <div class="ro g" style="margin-top:4px">CMIR width (mV): <span id="cmir_d">--</span></div>
+    </div>
+
+    <div class="card">
+      <h2>CMRR and Offset vs Tail Resistance</h2>
+      <canvas id="cv" height="280"></canvas>
+      <div class="insight">
+        Left axis (blue): CMRR vs tail current source resistance r_SS. Right side (orange) marks the offset floor set by Pelgrom mismatch, which is fixed for a given W×L. CMRR improves without bound with r_SS; offset does not.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const ISS=+document.getElementById('iss').value*1e-6;
+    const vov=+document.getElementById('vov').value/1000;
+    const rSS=+document.getElementById('rss').value*1e3;
+    const VDD=+document.getElementById('vdd').value;
+    const avt=+document.getElementById('avt').value;
+    const wl=+document.getElementById('wl').value;
+
+    document.getElementById('iss_l').textContent=(ISS*1e6).toFixed(0);
+    document.getElementById('vov_l').textContent=(vov*1000).toFixed(0);
+    document.getElementById('rss_l').textContent=(rSS/1e3).toFixed(0);
+    document.getElementById('vdd_l').textContent=VDD.toFixed(2);
+    document.getElementById('avt_l').textContent=avt.toFixed(1);
+    document.getElementById('wl_l').textContent=wl.toFixed(0);
+
+    const gm=ISS/vov;
+    const CMRR_lin=2*gm*rSS;
+    const CMRR_dB=20*Math.log10(CMRR_lin);
+    const sigma_vos=avt/Math.sqrt(wl); // mV
+
+    const Vth=0.5;
+    const Vds_sat_tail=0.2;
+    const VCM_min=(Vth+vov+Vds_sat_tail)*1000;
+    const VCM_max=(VDD-0.5-0.15)*1000; // approx PMOS Vsg=0.7, Vsd_sat=0.15
+    const CMIR=Math.max(0,VCM_max-VCM_min);
+
+    document.getElementById('gm_d').textContent=(gm*1e3).toFixed(3);
+    document.getElementById('cmrr_d').textContent=CMRR_dB.toFixed(1);
+    document.getElementById('vos_d').textContent=sigma_vos.toFixed(2);
+    document.getElementById('vcmin_d').textContent=VCM_min.toFixed(0);
+    document.getElementById('vcmax_d').textContent=VCM_max.toFixed(0);
+    document.getElementById('cmir_d').textContent=CMIR.toFixed(0);
+
+    draw(gm,rSS,sigma_vos);
+  }
+
+  function draw(gm,rSS_op,sigma_vos){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=280;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,280);
+    const pL=55,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=280-pT-pB;
+
+    const rSSmin=10e3, rSSmax=100e6;
+    const logRmin=Math.log10(rSSmin), logRmax=Math.log10(rSSmax);
+    const CMRRmax=160, CMRRmin=20;
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='10px system-ui';
+    ctx.fillText('CMRR (dB)', 2, pT+ph/2);
+    ctx.fillText('r_SS (Ω)', pL+pw/2-14, 280-4);
+
+    for(let db=CMRRmin;db<=CMRRmax;db+=20){
+      const y=pT+ph-((db-CMRRmin)/(CMRRmax-CMRRmin))*ph;
+      ctx.fillStyle='#8888aa'; ctx.fillText(db, 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+    ['10k','100k','1M','10M','100M'].forEach((lbl,i)=>{
+      const v=[10e3,100e3,1e6,10e6,100e6][i];
+      const x=pL+((Math.log10(v)-logRmin)/(logRmax-logRmin))*pw;
+      ctx.fillStyle='#8888aa'; ctx.fillText(lbl, x-10, pT+ph+14);
+    });
+
+    // CMRR vs r_SS
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+    ctx.beginPath(); let first=true;
+    for(let px=0;px<=pw;px++){
+      const r=Math.pow(10,logRmin+(px/pw)*(logRmax-logRmin));
+      const cmrr_dB=20*Math.log10(2*gm*r);
+      const y=pT+ph-((cmrr_dB-CMRRmin)/(CMRRmax-CMRRmin))*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // Operating point
+    const xop=pL+((Math.log10(rSS_op)-logRmin)/(logRmax-logRmin))*pw;
+    const yop=pT+ph-((20*Math.log10(2*gm*rSS_op)-CMRRmin)/(CMRRmax-CMRRmin))*ph;
+    ctx.fillStyle='#ff8800'; ctx.beginPath(); ctx.arc(xop,yop,6,0,2*Math.PI); ctx.fill();
+
+    // Vos note
+    ctx.fillStyle='#cc2200'; ctx.font='10px system-ui';
+    ctx.fillText('σ(V_os) = '+sigma_vos.toFixed(1)+' mV (Pelgrom, fixed)', pL+4, pT+12);
+    ctx.fillText('Not improved by larger r_SS', pL+4, pT+24);
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

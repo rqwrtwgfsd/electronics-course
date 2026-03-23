@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-OTA-7.2.1 — Differential Pair Core</title>
+<style>
+  :root { --bg:#ffffff; --bg2:#f5f5f5; --text:#1a1a1a; --text2:#555; --border:#ddd; --accent:#0066cc; --green:#00994d; --canvas-bg:#fafafa; --warn:#cc4400; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1a1a1a; --bg2:#242424; --text:#e8e8e8; --text2:#aaa; --border:#444; --canvas-bg:#1f1f1f; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); font-size:14px; }
+  header { background:var(--bg2); border-bottom:2px solid var(--accent); padding:12px 20px; }
+  header .id { font-family:monospace; font-size:12px; color:var(--accent); font-weight:700; }
+  header h1 { font-size:16px; margin-top:2px; }
+  .tabs { display:flex; border-bottom:1px solid var(--border); background:var(--bg2); padding:0 16px; }
+  .tab { padding:8px 16px; cursor:pointer; font-size:13px; border-bottom:3px solid transparent; color:var(--text2); }
+  .tab.active { border-bottom-color:var(--accent); color:var(--accent); font-weight:700; }
+  .tab-content { display:none; }
+  .tab-content.active { display:flex; gap:16px; padding:16px; flex-wrap:wrap; }
+  .panel { background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:14px; }
+  .sim-panel { flex:1; min-width:380px; }
+  .ctrl-panel { width:260px; min-width:240px; }
+  canvas { background:var(--canvas-bg); border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .readouts { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+  .readout { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 10px; }
+  .readout label { font-size:11px; color:var(--text2); display:block; }
+  .readout .val { font-family:monospace; font-size:14px; font-weight:700; color:var(--accent); }
+  .ctrl { margin-bottom:12px; }
+  .ctrl label { display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px; }
+  .ctrl label span { font-family:monospace; color:var(--accent); font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .section-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text2); margin-bottom:8px; }
+  .insight { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 12px; margin-top:10px; font-size:12px; color:var(--text2); line-height:1.5; }
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4B-OTA-7.2.1</div>
+  <h1>OTA — The Differential Pair Core</h1>
+</header>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">Iout vs Vid (Transfer Curve)</div>
+  <div class="tab" onclick="showTab(1)">gm vs Bias &amp; Noise</div>
+</div>
+
+<!-- TAB 0: Transfer curve -->
+<div class="tab-content active" id="tab0">
+  <div class="panel sim-panel">
+    <canvas id="cv0" height="320"></canvas>
+    <div class="readouts">
+      <div class="readout"><label>gm (mA/V)</label><span class="val" id="r0-gm">—</span></div>
+      <div class="readout"><label>Vov (mV)</label><span class="val" id="r0-vov">—</span></div>
+      <div class="readout"><label>Linear range (±mV)</label><span class="val" id="r0-lin">—</span></div>
+      <div class="readout"><label>Iout at operating Vid</label><span class="val" id="r0-iout">—</span></div>
+    </div>
+    <div class="insight" id="ins0">—</div>
+  </div>
+  <div class="panel ctrl-panel">
+    <div class="section-title">Differential Pair</div>
+    <div class="ctrl">
+      <label>ISS (µA) <span id="lbl0-iss">200</span></label>
+      <input type="range" id="sl0-iss" min="10" max="500" step="10" value="200" oninput="update0()">
+    </div>
+    <div class="ctrl">
+      <label>Vov (mV) <span id="lbl0-vov">200</span></label>
+      <input type="range" id="sl0-vov" min="50" max="500" step="10" value="200" oninput="update0()">
+    </div>
+    <div class="section-title" style="margin-top:8px">Operating Point</div>
+    <div class="ctrl">
+      <label>Vid (mV) <span id="lbl0-vid">50</span></label>
+      <input type="range" id="sl0-vid" min="-500" max="500" step="5" value="50" oninput="update0()">
+    </div>
+    <div class="section-title" style="margin-top:8px">Comparison</div>
+    <div class="ctrl">
+      <label style="align-items:center">Show BJT tanh curve
+        <input type="checkbox" id="chk0-bjt" onchange="update0()" style="width:auto;margin-left:8px">
+      </label>
+    </div>
+    <div class="ctrl">
+      <label style="align-items:center">Show linear (gm) slope
+        <input type="checkbox" id="chk0-lin" checked onchange="update0()" style="width:auto;margin-left:8px">
+      </label>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: gm vs bias + noise -->
+<div class="tab-content" id="tab1">
+  <div class="panel sim-panel">
+    <canvas id="cv1" height="320"></canvas>
+    <div class="readouts">
+      <div class="readout"><label>gm (mA/V)</label><span class="val" id="r1-gm">—</span></div>
+      <div class="readout"><label>Noise (nV/√Hz)</label><span class="val" id="r1-noise">—</span></div>
+      <div class="readout"><label>CMRR (dB)</label><span class="val" id="r1-cmrr">—</span></div>
+      <div class="readout"><label>Slew Rate</label><span class="val" id="r1-sr">—</span></div>
+    </div>
+    <div class="insight" id="ins1">—</div>
+  </div>
+  <div class="panel ctrl-panel">
+    <div class="section-title">Device Parameters</div>
+    <div class="ctrl">
+      <label>ID per device (µA) <span id="lbl1-id">100</span></label>
+      <input type="range" id="sl1-id" min="5" max="500" step="5" value="100" oninput="update1()">
+    </div>
+    <div class="ctrl">
+      <label>Vov (mV) <span id="lbl1-vov">200</span></label>
+      <input type="range" id="sl1-vov" min="50" max="400" step="10" value="200" oninput="update1()">
+    </div>
+    <div class="ctrl">
+      <label>CL (pF) <span id="lbl1-cl">2</span></label>
+      <input type="range" id="sl1-cl" min="0.1" max="20" step="0.1" value="2" oninput="update1()">
+    </div>
+    <div class="section-title" style="margin-top:8px">Tail Current Source</div>
+    <div class="ctrl">
+      <label>RSS (MΩ) <span id="lbl1-rss">200</span></label>
+      <input type="range" id="sl1-rss" min="0.01" max="1000" step="1" value="200" oninput="update1()">
+    </div>
+  </div>
+</div>
+
+<script>
+function showTab(n){
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.tab-content').forEach((t,i)=>t.classList.toggle('active',i===n));
+  if(n===0)update0();else update1();
+}
+
+function update0(){
+  const iss=parseFloat(document.getElementById('sl0-iss').value)*1e-6;
+  const vov=parseFloat(document.getElementById('sl0-vov').value)*1e-3;
+  const vid_mV=parseFloat(document.getElementById('sl0-vid').value);
+  const showBJT=document.getElementById('chk0-bjt').checked;
+  const showLin=document.getElementById('chk0-lin').checked;
+
+  document.getElementById('lbl0-iss').textContent=(iss*1e6).toFixed(0);
+  document.getElementById('lbl0-vov').textContent=(vov*1e3).toFixed(0);
+  document.getElementById('lbl0-vid').textContent=vid_mV;
+
+  const gm=iss/vov;
+  const vp=Math.sqrt(2)*vov; // clipping voltage
+  const vid_V=vid_mV/1000;
+
+  // MOSFET differential pair output current
+  function iout_mos(vid){
+    const vp2=vp;
+    if(Math.abs(vid)>=vp2) return (vid>0?1:-1)*iss;
+    return (iss*vid/vp2)*Math.sqrt(1-(vid/vp2)**2)*(iss/vov/iss)*vov;
+    // Simplified: ΔI ≈ gm*vid for small vid
+    // Full: ΔI = (2*ID/Vov)*vid * sqrt(1-(vid/sqrt2/vov)^2) -- from Tsividis
+  }
+  // Better formula: gm_eff(vid) = gm * sqrt(1-(vid/vp)^2)
+  function iout_mos2(vid){
+    const ratio=vid/vp;
+    if(Math.abs(ratio)>=1) return (vid>0?1:-1)*iss;
+    return iss*ratio*Math.sqrt(1-ratio*ratio)*Math.sqrt(2);
+    // this gives iss at vid=vp. Let's normalize:
+  }
+  // Use the clean version:
+  function deltaI_mos(vid){
+    const x=vid/vp;
+    if(x>1) return iss;
+    if(x<-1) return -iss;
+    return iss*(x*Math.sqrt(1-x*x));// peaks at 0.5*iss when x=1/sqrt2
+    // Correct: at vid=Vp, I1=ISS, I2=0, ΔI=ISS. Let's use beta*vid^2 approach.
+  }
+  // Cleaner: use large-signal I-V directly
+  function deltaI(vid){
+    const beta=iss/(vov*vov/2); // from 0.5*beta*vov^2 = iss/2
+    const v=vid/2;
+    const Vp2=vov*Math.sqrt(2);
+    const x=v/vov;
+    if(Math.abs(vid)>=Vp2){return (vid>=0?1:-1)*iss;}
+    // ID1 = iss/2 + gm*vid/2 - ... use square law
+    // id1 = 0.5*beta*(vov+vid/2)^2, id2 = 0.5*beta*(vov-vid/2)^2
+    const id1=0.5*beta*(vov+v)*(vov+v);
+    const id2=0.5*beta*(vov-v)*(vov-v);
+    // but need to clamp for saturation
+    const id1c=Math.min(iss,Math.max(0,id1));
+    const id2c=Math.min(iss,Math.max(0,id2));
+    const total=id1c+id2c;
+    // normalize to ISS
+    return id1c*(iss/total)-id2c*(iss/total);
+  }
+
+  const iout_val=deltaI(vid_V);
+  const linear_range=0.2*vov*1e3; // ±20% Vov for ~5% nonlinearity
+
+  document.getElementById('r0-gm').textContent=(gm*1000).toFixed(2);
+  document.getElementById('r0-vov').textContent=(vov*1000).toFixed(0);
+  document.getElementById('r0-lin').textContent='±'+(linear_range.toFixed(0));
+  document.getElementById('r0-iout').textContent=(iout_val*1e6).toFixed(1)+'µA';
+
+  document.getElementById('ins0').textContent=
+    `ISS=${(iss*1e6).toFixed(0)}µA, Vov=${(vov*1e3).toFixed(0)}mV. gm=ISS/Vov=${(gm*1e3).toFixed(2)}mA/V. ` +
+    `Clipping at Vid=±√2·Vov=±${(vp*1e3).toFixed(0)}mV. ` +
+    `At Vid=${vid_mV}mV: Iout=${(iout_val*1e6).toFixed(1)}µA (${(Math.abs(iout_val/iss)*100).toFixed(0)}% of ISS). ` +
+    `Linear range (gm within 10%): ±${linear_range.toFixed(0)}mV.`;
+
+  draw0(iss,vov,gm,vp,vid_V,iout_val,deltaI,showBJT,showLin);
+}
+
+function draw0(iss,vov,gm,vp,vid_V,iout_val,deltaI,showBJT,showLin){
+  const canvas=document.getElementById('cv0');
+  const W=canvas.offsetWidth||500;canvas.width=W;canvas.height=320;
+  const ctx=canvas.getContext('2d');
+  const pad={l:55,r:20,t:20,b:40};
+  const pw=W-pad.l-pad.r,ph=320-pad.t-pad.b;
+  ctx.fillStyle='var(--canvas-bg)';ctx.fillRect(0,0,W,320);
+
+  const VidMax=vp*1.8;
+  const vToX=v=>pad.l+(v+VidMax)/(2*VidMax)*pw;
+  const iToY=i=>pad.t+ph/2-i/(iss*1.1)*ph/2;
+
+  // Grid
+  ctx.strokeStyle='var(--border)';ctx.lineWidth=0.7;
+  [-1,-0.5,0,0.5,1].forEach(frac=>{
+    const i=frac*iss;const y=iToY(i);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='right';ctx.fillText((frac*100).toFixed(0)+'%ISS',pad.l-3,y+3);
+  });
+  // Zero line
+  const yzero=iToY(0);ctx.strokeStyle='rgba(0,0,0,0.2)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,yzero);ctx.lineTo(pad.l+pw,yzero);ctx.stroke();ctx.setLineDash([]);
+
+  // x-axis
+  ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='center';
+  [-1,-0.5,0,0.5,1].forEach(frac=>{
+    const vmV=frac*vp*1000;ctx.fillText(vmV.toFixed(0)+'mV',vToX(frac*vp),pad.t+ph+14);
+  });
+  // center line
+  const xcenter=vToX(0);ctx.strokeStyle='rgba(0,0,0,0.15)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(xcenter,pad.t);ctx.lineTo(xcenter,pad.t+ph);ctx.stroke();ctx.setLineDash([]);
+
+  // MOSFET curve
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2;ctx.beginPath();let first=true;
+  for(let i=0;i<=300;i++){const v=-VidMax+i/300*2*VidMax;const ii=deltaI(v);const x=vToX(v);const y=iToY(ii);first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;}ctx.stroke();
+
+  // BJT tanh
+  if(showBJT){
+    const VT=0.026;
+    ctx.strokeStyle='rgba(204,68,0,0.6)';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);ctx.beginPath();first=true;
+    for(let i=0;i<=300;i++){const v=-VidMax+i/300*2*VidMax;const ii=iss*Math.tanh(v/(2*VT));const x=vToX(v);const y=iToY(ii);first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;}ctx.stroke();ctx.setLineDash([]);
+  }
+
+  // Linear slope
+  if(showLin){
+    const vm=vp*0.5;
+    ctx.strokeStyle='rgba(0,153,77,0.5)';ctx.lineWidth=1.5;ctx.setLineDash([2,2]);
+    ctx.beginPath();ctx.moveTo(vToX(-vm),iToY(-gm*vm));ctx.lineTo(vToX(vm),iToY(gm*vm));ctx.stroke();ctx.setLineDash([]);
+  }
+
+  // Operating point
+  const xop=vToX(vid_V);const yop=iToY(iout_val);
+  ctx.fillStyle='#cc4400';ctx.beginPath();ctx.arc(xop,yop,5,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='var(--text)';ctx.font='9px monospace';ctx.textAlign='left';
+  ctx.fillText('Op: ('+( vid_V*1000).toFixed(0)+'mV, '+(iout_val*1e6).toFixed(0)+'µA)',xop+7,yop-3);
+
+  ctx.fillStyle='#0066cc';ctx.font='9px sans-serif';ctx.textAlign='left';ctx.fillText('MOSFET diff pair',pad.l+3,pad.t+8);
+  if(showBJT){ctx.fillStyle='rgba(204,68,0,0.8)';ctx.fillText('BJT tanh (dashed)',pad.l+3,pad.t+18);}
+  if(showLin){ctx.fillStyle='rgba(0,153,77,0.8)';ctx.fillText('Linear gm slope (dashed)',pad.l+3,pad.t+28);}
+  ctx.fillStyle='var(--text2)';ctx.font='9px monospace';ctx.textAlign='center';ctx.fillText('Vid (mV)',pad.l+pw/2,pad.t+ph+28);
+  ctx.fillText('ΔI = ID1 − ID2',pad.l-40,pad.t+ph/2);
+}
+
+function update1(){
+  const id=parseFloat(document.getElementById('sl1-id').value)*1e-6;
+  const vov=parseFloat(document.getElementById('sl1-vov').value)*1e-3;
+  const cl=parseFloat(document.getElementById('sl1-cl').value)*1e-12;
+  const rss=parseFloat(document.getElementById('sl1-rss').value)*1e6;
+
+  document.getElementById('lbl1-id').textContent=(id*1e6).toFixed(0);
+  document.getElementById('lbl1-vov').textContent=(vov*1e3).toFixed(0);
+  document.getElementById('lbl1-cl').textContent=(cl*1e12).toFixed(1);
+  document.getElementById('lbl1-rss').textContent=(rss/1e6).toFixed(0);
+
+  const gm=2*id/vov;
+  // Thermal noise
+  const kT=1.38e-23*300;
+  const noise=Math.sqrt(8*kT/(3*gm)*1e18); // nV/sqrt(Hz)
+  const gbw=gm/(2*Math.PI*cl);
+  const sr=2*id/cl; // ISS = 2*id
+  const cmrr_lin=2*gm*rss;
+  const cmrr_dB=20*Math.log10(cmrr_lin);
+
+  document.getElementById('r1-gm').textContent=(gm*1000).toFixed(2);
+  document.getElementById('r1-noise').textContent=noise.toFixed(2);
+  const cmrrEl=document.getElementById('r1-cmrr');cmrrEl.textContent=cmrr_dB.toFixed(0);cmrrEl.style.color=cmrr_dB>=80?'var(--green)':cmrr_dB>=60?'#cc8800':'var(--warn)';
+  document.getElementById('r1-sr').textContent=(sr/1e6).toFixed(0)+'V/µs';
+
+  document.getElementById('ins1').textContent=
+    `gm=2ID/Vov=${(gm*1e3).toFixed(2)}mA/V. Thermal noise≈${noise.toFixed(2)}nV/√Hz. ` +
+    `GBW=gm/(2πCL)=${(gbw/1e6).toFixed(1)}MHz. SR=ISS/CL=${(sr/1e6).toFixed(0)}V/µs. ` +
+    `CMRR=2·gm·RSS=${cmrr_dB.toFixed(0)}dB. ` +
+    (cmrr_dB>=80?'Excellent CMRR — cascode tail current source.':'Moderate CMRR — consider cascode tail source for better rejection.');
+
+  draw1(gm,noise,gbw,sr,cmrr_dB,id,vov,cl);
+}
+
+function draw1(gm,noise_nV,gbw,sr,cmrr_dB,id,vov,cl){
+  const canvas=document.getElementById('cv1');
+  const W=canvas.offsetWidth||500;canvas.width=W;canvas.height=320;
+  const ctx=canvas.getContext('2d');
+  const pad={l:55,r:20,t:30,b:40};
+  const pw=W-pad.l-pad.r,ph=320-pad.t-pad.b;
+  ctx.fillStyle='var(--canvas-bg)';ctx.fillRect(0,0,W,320);
+
+  // Show gm vs Vov curve at fixed ID
+  const npts=100;
+  const vovMin=50e-3,vovMax=400e-3;
+  const vovToX=v=>pad.l+(v-vovMin)/(vovMax-vovMin)*pw;
+  const gmMax=2*id/vovMin;
+  const gmToY=g=>pad.t+ph-(g/gmMax)*ph;
+  const noiseMax=Math.sqrt(8*1.38e-23*300/(3*2*id/vovMax)*1e18)*2;
+  const noiseToY=n=>pad.t+ph-(n/noiseMax)*ph;
+
+  // Grid
+  ctx.strokeStyle='var(--border)';ctx.lineWidth=0.7;
+  [0.25,0.5,0.75,1.0].forEach(frac=>{
+    const y=pad.t+ph*(1-frac);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+  });
+
+  // gm vs Vov
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2;ctx.beginPath();let first=true;
+  for(let i=0;i<=npts;i++){const v=vovMin+i/npts*(vovMax-vovMin);const g=2*id/v;const x=vovToX(v);const y=gmToY(g);first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;}ctx.stroke();
+  ctx.fillStyle='#0066cc';ctx.font='9px sans-serif';ctx.textAlign='left';ctx.fillText('gm (mA/V)',pad.l+3,pad.t+10);
+
+  // noise vs Vov
+  ctx.strokeStyle='#cc4400';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);ctx.beginPath();first=true;
+  for(let i=0;i<=npts;i++){const v=vovMin+i/npts*(vovMax-vovMin);const g=2*id/v;const n=Math.sqrt(8*1.38e-23*300/(3*g)*1e18);const x=vovToX(v);const y=noiseToY(n);if(y<pad.t||y>pad.t+ph){first=true;continue;}first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;}ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#cc4400';ctx.font='9px sans-serif';ctx.textAlign='right';ctx.fillText('noise (nV/√Hz)',pad.l+pw-3,pad.t+10);
+
+  // Current operating point
+  const xop=vovToX(vov);
+  const yop_gm=gmToY(gm);
+  const yop_n=noiseToY(noise_nV);
+  ctx.fillStyle='#0066cc';ctx.beginPath();ctx.arc(xop,yop_gm,5,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#cc4400';ctx.beginPath();ctx.arc(xop,yop_n,5,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#cc880088';ctx.lineWidth=1;ctx.setLineDash([3,2]);
+  ctx.beginPath();ctx.moveTo(xop,pad.t);ctx.lineTo(xop,pad.t+ph);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#cc8800';ctx.font='9px monospace';ctx.textAlign='center';ctx.fillText('Vov='+(vov*1000).toFixed(0)+'mV',xop,pad.t+ph+14);
+
+  // Labels
+  ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='center';
+  [50,100,150,200,250,300,350,400].forEach(mv=>{if(mv>=vovMin*1000&&mv<=vovMax*1000){ctx.fillText(mv+'mV',vovToX(mv/1000),pad.t+ph+26);}});
+  ctx.fillStyle='var(--text2)';ctx.font='9px sans-serif';ctx.textAlign='center';ctx.fillText('Overdrive voltage Vov →',pad.l+pw/2,pad.t+ph+36);
+  ctx.save();ctx.translate(15,pad.t+ph/2);ctx.rotate(-Math.PI/2);ctx.fillStyle='var(--text2)';ctx.textAlign='center';ctx.fillText('gm / noise (normalized)',0,0);ctx.restore();
+
+  ctx.fillStyle='var(--text2)';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText(`ID=${(id*1e6).toFixed(0)}µA per device — gm↑ with lower Vov, noise↓ with higher gm`,pad.l+pw/2,pad.t-8);
+}
+update0();
+</script>
+</body>
+</html>

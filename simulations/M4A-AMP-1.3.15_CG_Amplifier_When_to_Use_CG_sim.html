@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.3.15 — When to Use CG</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;gap:16px;align-items:baseline;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:13px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.3.15</div>
+  <div class="topic">When to Use CG — Topology Decision: Signal Level, Bandwidth, Matching</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>Transistor</h3>
+      <label>gm (mA/V): <b id="gm_lbl">10</b></label>
+      <input type="range" id="gm" min="1" max="40" value="10" step="0.5">
+      <label>Cgd (fF): <b id="cgd_lbl">30</b></label>
+      <input type="range" id="cgd" min="5" max="150" value="30" step="5">
+      <label>Cgs (fF): <b id="cgs_lbl">100</b></label>
+      <input type="range" id="cgs" min="20" max="300" value="100" step="10">
+    </div>
+    <div class="cg">
+      <h3>Circuit</h3>
+      <label>Source Rs (Ω): <b id="rs_lbl">200</b></label>
+      <input type="range" id="rs" min="10" max="10000" value="200" step="10">
+      <label>RD (kΩ): <b id="rd_lbl">1.0</b></label>
+      <input type="range" id="rd" min="0.1" max="10" value="1" step="0.1">
+    </div>
+    <div class="cg">
+      <h3>Recommendation</h3>
+      <div class="rd">Signal frac CS: <span id="r_cs_frac">—</span></div>
+      <div class="rd">Signal frac CG: <span id="r_cg_frac">—</span></div>
+      <div class="rd">CS BW (Miller): <span id="r_cs_bw">—</span></div>
+      <div class="rd">CG BW: <span id="r_cg_bw">—</span></div>
+      <div class="rd">Verdict: <span id="r_verdict">—</span></div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_match">—</div><div class="l">Zin vs Rs</div></div>
+      <div class="met"><div class="v" id="m_bwratio">—</div><div class="l">BW ratio CG/CS</div></div>
+      <div class="met"><div class="v" id="m_sigfrac">—</div><div class="l">CG signal fraction</div></div>
+    </div>
+    <div>
+      <div class="pl">Signal input fraction: CS vs CG — vs source resistance Rs</div>
+      <canvas id="fracCanvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">Bandwidth: CS (Miller) vs CG — vs source resistance Rs</div>
+      <canvas id="bwCanvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">Use-case map: CG advantage region vs Rs and Av</div>
+      <canvas id="mapCanvas" height="200"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+function fmtHz(f){
+  if(f>=1e9)return (f/1e9).toFixed(2)+'G';
+  if(f>=1e6)return (f/1e6).toFixed(1)+'M';
+  return (f/1e3).toFixed(0)+'k';
+}
+
+function update(){
+  const gm=parseFloat(document.getElementById('gm').value)*1e-3;
+  const cgd=parseFloat(document.getElementById('cgd').value)*1e-15;
+  const cgs=parseFloat(document.getElementById('cgs').value)*1e-15;
+  const rs=parseFloat(document.getElementById('rs').value);
+  const rd=parseFloat(document.getElementById('rd').value)*1e3;
+
+  document.getElementById('gm_lbl').textContent=(gm*1e3).toFixed(1);
+  document.getElementById('cgd_lbl').textContent=(cgd*1e15).toFixed(0);
+  document.getElementById('cgs_lbl').textContent=(cgs*1e15).toFixed(0);
+  document.getElementById('rs_lbl').textContent=rs.toFixed(0);
+  document.getElementById('rd_lbl').textContent=(rd/1e3).toFixed(1);
+
+  const av=gm*rd;
+  const zin_cg=1/gm;
+  const cin_cs=cgs+cgd*(1+av);
+  const bw_cs=1/(2*Math.PI*rs*cin_cs);
+  const zeff_cg=rs*zin_cg/(rs+zin_cg);
+  const bw_cg=1/(2*Math.PI*zeff_cg*cgs);
+  const frac_cs=1.0; // CS has infinite Zin ideally (MΩ>>Rs)
+  const frac_cg=zin_cg/(zin_cg+rs);
+  const bw_ratio=bw_cg/bw_cs;
+
+  document.getElementById('r_cs_frac').textContent='≈100% (Zin>>Rs)';
+  document.getElementById('r_cg_frac').textContent=(frac_cg*100).toFixed(1)+'%';
+  document.getElementById('r_cs_bw').textContent=fmtHz(bw_cs)+'Hz';
+  document.getElementById('r_cg_bw').textContent=fmtHz(bw_cg)+'Hz';
+  const verdict=bw_ratio>3&&frac_cg>0.3?'Use CG':frac_cg<0.2?'Use CS (Zin too low)':'Borderline';
+  document.getElementById('r_verdict').textContent=verdict;
+
+  document.getElementById('m_match').textContent=rs<2*zin_cg?'Matched':'Mismatched';
+  document.getElementById('m_bwratio').textContent=bw_ratio.toFixed(1)+'×';
+  document.getElementById('m_sigfrac').textContent=(frac_cg*100).toFixed(1)+'%';
+
+  drawFrac(gm,cgs,rs,rd);
+  drawBW(gm,cgs,cgd,rd,rs);
+  drawMap(gm,cgs,cgd,rs);
+}
+
+function drawFrac(gm0,cgs0,rs0,rd0){
+  const canvas=document.getElementById('fracCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:55,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+  // x: Rs log 10..100k
+  const xmin=Math.log10(10),xmax=Math.log10(100000);
+  const toX=v=>pad.l+(Math.log10(v)-xmin)/(xmax-xmin)*pw;
+  const toY=v=>pad.t+(1-v)*ph;
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [0.25,0.5,0.75,1.0].forEach(v=>{ctx.beginPath();ctx.moveTo(pad.l,toY(v));ctx.lineTo(pad.l+pw,toY(v));ctx.stroke();});
+  [10,100,1000,10000,100000].forEach(v=>{
+    const x=toX(v);ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';
+    const lbl=v>=1000?(v/1000)+'k':v+'';ctx.fillText(lbl,x-8,pad.t+ph+12);
+  });
+
+  // CS fraction ≈ 1 (flat)
+  ctx.strokeStyle='#006633';ctx.lineWidth=2;ctx.setLineDash([5,4]);
+  ctx.beginPath();ctx.moveTo(pad.l,toY(0.99));ctx.lineTo(pad.l+pw,toY(0.99));ctx.stroke();ctx.setLineDash([]);
+
+  // CG fraction = 1/gm / (1/gm + Rs)
+  const zin=1/gm0;
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=300;i++){
+    const rsv=Math.pow(10,xmin+i/300*(xmax-xmin));
+    const frac=zin/(zin+rsv);
+    const x=pad.l+i/300*pw,y=toY(frac);
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // marker
+  const frac0=zin/(zin+rs0);
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.beginPath();ctx.arc(toX(rs0),toY(frac0),4,0,2*Math.PI);ctx.fill();
+
+  // 50% and 10% lines
+  ctx.strokeStyle='#cc0000';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,toY(0.1));ctx.lineTo(pad.l+pw,toY(0.1));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#cc0000';ctx.font='8px Courier New';ctx.fillText('10% loss threshold',pad.l+5,toY(0.1)-3);
+
+  ctx.fillStyle='#006633';ctx.font='9px Courier New';ctx.fillText('CS (high Zin ≈ MΩ)',pad.l+5,toY(0.99)-3);
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.fillText('CG: Zin/(Zin+Rs)',pad.l+5,pad.t+14);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('Rs (Ω) →',W/2-20,H-3);
+  ctx.save();ctx.translate(10,H/2+15);ctx.rotate(-Math.PI/2);ctx.fillText('Signal fraction',0,0);ctx.restore();
+  [0,0.25,0.5,0.75,1.0].forEach(v=>{
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText((v*100).toFixed(0)+'%',pad.l-28,toY(v)+3);
+  });
+}
+
+function drawBW(gm0,cgs0,cgd0,rd0,rs0){
+  const canvas=document.getElementById('bwCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:65,r:20,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const av=gm0*rd0;
+  const cin_cs=cgs0+cgd0*(1+av);
+  const zin_cg=1/gm0;
+
+  const xmin=Math.log10(10),xmax=Math.log10(10000);
+  const toX=v=>pad.l+(Math.log10(v)-xmin)/(xmax-xmin)*pw;
+  const ymin=Math.log10(1e6),ymax=Math.log10(1e12);
+  const toY=v=>pad.t+(1-(Math.log10(v)-ymin)/(ymax-ymin))*ph;
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  [1e6,1e7,1e8,1e9,1e10,1e11,1e12].forEach(v=>{
+    const y=toY(v);if(y<pad.t||y>pad.t+ph)return;
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    const lbl=v>=1e9?(v/1e9).toFixed(0)+'G':(v/1e6).toFixed(0)+'M';
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(lbl+'Hz',pad.l-38,y+3);
+  });
+  [10,100,1000,10000].forEach(v=>{
+    const x=toX(v);ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    const lbl=v>=1000?(v/1000)+'k':v+'';ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(lbl,x-8,pad.t+ph+12);
+  });
+
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=300;i++){
+    const rsv=Math.pow(10,xmin+i/300*(xmax-xmin));
+    const bw=1/(2*Math.PI*rsv*cin_cs);
+    const y=toY(Math.max(bw,1e6));
+    if(i===0)ctx.moveTo(pad.l+i/300*pw,y);else ctx.lineTo(pad.l+i/300*pw,y);
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle='#006633';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=300;i++){
+    const rsv=Math.pow(10,xmin+i/300*(xmax-xmin));
+    const zeff=rsv*zin_cg/(rsv+zin_cg);
+    const bw=1/(2*Math.PI*zeff*cgs0);
+    const y=toY(Math.max(bw,1e6));
+    if(i===0)ctx.moveTo(pad.l+i/300*pw,y);else ctx.lineTo(pad.l+i/300*pw,y);
+  }
+  ctx.stroke();
+
+  const bw_cs0=1/(2*Math.PI*rs0*cin_cs);
+  const zeff0=rs0*zin_cg/(rs0+zin_cg);
+  const bw_cg0=1/(2*Math.PI*zeff0*cgs0);
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.beginPath();ctx.arc(toX(rs0),toY(bw_cs0),4,0,2*Math.PI);ctx.fill();
+  ctx.fillStyle='#006633';ctx.beginPath();ctx.arc(toX(rs0),toY(bw_cg0),4,0,2*Math.PI);ctx.fill();
+
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.font='9px Courier New';ctx.fillText('CS (Miller limited)',pad.l+5,pad.t+14);
+  ctx.fillStyle='#006633';ctx.fillText('CG bandwidth',pad.l+5,pad.t+26);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('Rs (Ω) →',W/2-20,H-3);
+  ctx.save();ctx.translate(10,H/2+15);ctx.rotate(-Math.PI/2);ctx.fillText('–3dB BW',0,0);ctx.restore();
+}
+
+function drawMap(gm0,cgs0,cgd0,rs0){
+  const canvas=document.getElementById('mapCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:55,r:10,t:20,b:30};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+  // x: Av 1..100, y: Rs log 10..10k
+  const toX=av=>pad.l+(av-1)/99*pw;
+  const ymin=Math.log10(10),ymax=Math.log10(10000);
+  const toY=rs=>pad.t+(Math.log10(rs)-ymin)/(ymax-ymin)*ph;
+
+  // Color map: green = use CG, red = use CS
+  const imgdata=ctx.createImageData(pw,ph);
+  const isDark=window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches;
+  for(let px=0;px<pw;px++){
+    const av=1+px/pw*99;
+    for(let py=0;py<ph;py++){
+      const rs=Math.pow(10,ymin+py/ph*(ymax-ymin));
+      const zin_cg=1/gm0;
+      const frac_cg=zin_cg/(zin_cg+rs);
+      const cin_cs=cgs0+cgd0*(1+av);
+      const bw_cs=1/(2*Math.PI*rs*cin_cs);
+      const zeff=rs*zin_cg/(rs+zin_cg);
+      const bw_cg=1/(2*Math.PI*zeff*cgs0);
+      const bw_ratio=bw_cg/bw_cs;
+      // CG preferred: bw_ratio > 3 AND frac_cg > 0.3
+      const cg_pref=bw_ratio>3&&frac_cg>0.3;
+      const idx=(py*pw+px)*4;
+      if(cg_pref){imgdata.data[idx]=0;imgdata.data[idx+1]=isDark?140:100;imgdata.data[idx+2]=0;imgdata.data[idx+3]=120;}
+      else{imgdata.data[idx]=isDark?160:200;imgdata.data[idx+1]=0;imgdata.data[idx+2]=0;imgdata.data[idx+3]=80;}
+    }
+  }
+  ctx.putImageData(imgdata,pad.l,pad.t);
+
+  // axes
+  ctx.strokeStyle=cs.getPropertyValue('--border').trim();ctx.lineWidth=1;
+  ctx.strokeRect(pad.l,pad.t,pw,ph);
+
+  [1,10,20,50,100].forEach(v=>{
+    const x=toX(v);ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(v,x-5,pad.t+ph+12);
+  });
+  [10,100,1000,10000].forEach(v=>{
+    const y=toY(v);ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    const lbl=v>=1000?(v/1000)+'k':v+'';ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='8px Courier New';ctx.fillText(lbl,pad.l-25,y+3);
+  });
+
+  ctx.fillStyle='#006600';ctx.font='10px Courier New';ctx.fillText('CG preferred',pad.l+5,pad.t+15);
+  ctx.fillStyle='#aa0000';ctx.fillText('CS preferred',pad.l+pw-70,pad.t+ph-5);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';ctx.fillText('Av →',W/2-15,H-3);
+  ctx.save();ctx.translate(10,H/2+15);ctx.rotate(-Math.PI/2);ctx.fillText('Rs (Ω)',0,0);ctx.restore();
+
+  // current operating point
+  const av0=gm0*parseFloat(document.getElementById('rd').value)*1e3;
+  if(av0>=1&&av0<=100){
+    const x=toX(av0),y=toY(rs0);
+    ctx.fillStyle='#ffffff';ctx.beginPath();ctx.arc(x,y,5,0,2*Math.PI);ctx.fill();
+    ctx.strokeStyle='#000000';ctx.lineWidth=1;ctx.beginPath();ctx.arc(x,y,5,0,2*Math.PI);ctx.stroke();
+  }
+}
+
+['gm','cgd','cgs','rs','rd'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CM-1.10.2 — Optimize: Increase Output Resistance</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CM-1.10.2</div>
+  <h1>Current Mirror — Optimize: Increase Output Resistance</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>r_out Optimization</h2>
+      <label>I_D (μA): <b id="id_l">100</b> μA <input type="range" id="id" min="1" max="500" value="100" step="1"></label>
+      <label>λ (V⁻¹): <b id="lam_l">0.08</b> <input type="range" id="lam" min="0.01" max="1.0" value="0.08" step="0.01"></label>
+      <label>V_ov (mV): <b id="vov_l">200</b> mV <input type="range" id="vov" min="50" max="500" value="200" step="10"></label>
+      <label>Boost gain A: <b id="ga_l">1</b> <input type="range" id="ga" min="1" max="500" value="1" step="1"></label>
+      <label>C_load (fF): <b id="cl_l">500</b> fF <input type="range" id="cl" min="10" max="10000" value="500" step="10"></label>
+
+      <div class="ro">r_o single device (MΩ): <span id="ro_d">--</span></div>
+      <div class="ro" style="margin-top:4px">g_m (mA/V): <span id="gm_d">--</span></div>
+      <div class="ro" style="margin-top:4px">Cascode r_out (GΩ): <span id="rcas_d">--</span></div>
+      <div class="ro g" style="margin-top:4px">Gain-boosted r_out (TΩ): <span id="rreg_d">--</span></div>
+      <div class="ro" style="margin-top:4px">Mirror pole f_p (kHz): <span id="fp_d">--</span></div>
+      <div class="ro" style="margin-top:4px">Max amp f_u for PM≥60° (kHz): <span id="fu_d">--</span></div>
+    </div>
+
+    <div class="card">
+      <h2>r_out vs I_D: All Topologies</h2>
+      <canvas id="cv" height="280"></canvas>
+      <div class="insight">
+        Log-log plot of r_out vs I_D. Simple (blue): r_out = 1/(λI). Cascode (green): r_out = g_m×r_o². Gain-boosted (orange): A×g_m×r_o². Orange dot marks operating point.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const ID=+document.getElementById('id').value*1e-6;
+    const lam=+document.getElementById('lam').value;
+    const vov=+document.getElementById('vov').value/1000;
+    const ga=+document.getElementById('ga').value;
+    const Cl=+document.getElementById('cl').value*1e-15;
+
+    document.getElementById('id_l').textContent=(ID*1e6).toFixed(0);
+    document.getElementById('lam_l').textContent=lam.toFixed(2);
+    document.getElementById('vov_l').textContent=(vov*1000).toFixed(0);
+    document.getElementById('ga_l').textContent=ga;
+    document.getElementById('cl_l').textContent=(Cl*1e15).toFixed(0);
+
+    const ro=1/(lam*ID);
+    const gm=2*ID/vov;
+    const rcas=gm*ro*ro;
+    const rreg=ga*rcas;
+    const fp=1/(2*Math.PI*rcas*Cl);
+    const fu=fp/3;
+
+    document.getElementById('ro_d').textContent=(ro/1e6).toFixed(2);
+    document.getElementById('gm_d').textContent=(gm*1e3).toFixed(3);
+    document.getElementById('rcas_d').textContent=(rcas/1e9).toFixed(2);
+    document.getElementById('rreg_d').textContent=(rreg/1e12).toFixed(4);
+    document.getElementById('fp_d').textContent=(fp/1e3).toFixed(2);
+    document.getElementById('fu_d').textContent=(fu/1e3).toFixed(2);
+
+    draw(ID,lam,vov,ga,rcas,rreg);
+  }
+
+  function draw(ID_op,lam,vov,ga,rcas_op,rreg_op){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=280;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,280);
+    const pL=58,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=280-pT-pB;
+
+    const IdMin=1e-6, IdMax=500e-6;
+    const logImin=Math.log10(IdMin), logImax=Math.log10(IdMax);
+    const logRmin=0, logRmax=15; // 1 Ω to 1 PΩ
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='9px system-ui';
+    ctx.fillText('r_out (Ω)', 2, pT+ph/2);
+    ctx.fillText('I_D (μA)', pL+pw/2-14, 280-4);
+
+    const Rlabels=['1','10','100','1k','10k','100k','1M','10M','100M','1G','10G','100G','1T','10T','100T','1P'];
+    for(let e=logRmin;e<=logRmax;e++){
+      const y=pT+ph-((e-logRmin)/(logRmax-logRmin))*ph;
+      ctx.fillStyle='#8888aa'; ctx.fillText(Rlabels[e]||('1e'+e), 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+    [1,10,100,500].forEach(i=>{
+      const x=pL+((Math.log10(i*1e-6)-logImin)/(logImax-logImin))*pw;
+      ctx.fillStyle='#8888aa'; ctx.fillText(i, x-6, pT+ph+14);
+    });
+
+    const drawLine=(fn,color,dash)=>{
+      ctx.strokeStyle=color; ctx.lineWidth=2; ctx.setLineDash(dash||[]);
+      ctx.beginPath(); let first=true;
+      for(let px=0;px<=pw;px++){
+        const I=Math.pow(10, logImin+(px/pw)*(logImax-logImin));
+        const r=fn(I);
+        if(r<=0) continue;
+        const logR=Math.log10(r);
+        if(logR<logRmin||logR>logRmax) continue;
+        const y=pT+ph-((logR-logRmin)/(logRmax-logRmin))*ph;
+        if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    };
+
+    drawLine(I=>1/(lam*I),'#0066cc',[]);
+    drawLine(I=>{const ro=1/(lam*I);const gm=2*I/vov;return gm*ro*ro;},'#00994d',[]);
+    if(ga>1) drawLine(I=>{const ro=1/(lam*I);const gm=2*I/vov;return ga*gm*ro*ro;},'#ff8800',[4,3]);
+
+    // Operating point on cascode curve
+    const logID=Math.log10(ID_op);
+    const xop=pL+((logID-logImin)/(logImax-logImin))*pw;
+    const logRcas=Math.log10(rcas_op);
+    const yop=pT+ph-((logRcas-logRmin)/(logRmax-logRmin))*ph;
+    ctx.fillStyle='#ff8800'; ctx.beginPath(); ctx.arc(xop,yop,6,0,2*Math.PI); ctx.fill();
+
+    // Legend
+    const items=[{c:'#0066cc',lbl:'Simple',d:[]},{c:'#00994d',lbl:'Cascode',d:[]},{c:'#ff8800',lbl:'Gain-Boosted',d:[4,3]}];
+    items.forEach(({c,lbl,d},i)=>{
+      ctx.strokeStyle=c; ctx.lineWidth=1.8; ctx.setLineDash(d);
+      ctx.beginPath(); ctx.moveTo(pL+pw-90,pT+12+14*i); ctx.lineTo(pL+pw-70,pT+12+14*i); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle='#8888aa'; ctx.font='10px system-ui'; ctx.fillText(lbl, pL+pw-66, pT+16+14*i);
+    });
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

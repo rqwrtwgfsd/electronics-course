@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-OAD-10.6.1 — Frequency Compensation Deep Dive</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0e1117; color: #cdd6f4; font-family: 'Segoe UI', sans-serif; font-size: 14px; }
+  h1 { text-align: center; padding: 18px; font-size: 17px; color: #cba6f7; border-bottom: 1px solid #313244; }
+  .tabs { display: flex; background: #181825; border-bottom: 1px solid #313244; }
+  .tab { padding: 10px 22px; cursor: pointer; color: #a6adc8; font-size: 13px; border-bottom: 3px solid transparent; transition: all .2s; }
+  .tab.active { color: #cba6f7; border-bottom-color: #cba6f7; }
+  .tab:hover:not(.active) { color: #cdd6f4; }
+  .panel { display: none; padding: 18px; }
+  .panel.active { display: block; }
+  canvas { display: block; background: #1e1e2e; border-radius: 8px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+  .ctrl { background: #181825; border-radius: 8px; padding: 14px; min-width: 220px; }
+  .ctrl label { display: block; color: #a6adc8; font-size: 12px; margin-bottom: 6px; }
+  .ctrl input[type=range] { width: 100%; accent-color: #cba6f7; margin-bottom: 2px; }
+  .ctrl .val { color: #a6e3a1; font-size: 12px; text-align: right; margin-bottom: 8px; }
+  .info-box { background: #181825; border-radius: 8px; padding: 12px; margin-top: 12px; font-size: 12px; line-height: 1.7; }
+  .hi { color: #a6e3a1; font-weight: bold; }
+  .warn { color: #f38ba8; font-weight: bold; }
+  .note { color: #fab387; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+  .leg-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #a6adc8; }
+  .leg-dot { width: 16px; height: 3px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<h1>M4B-OAD-10.6.1 — Full Op-Amp Frequency Compensation</h1>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">Bode + PM vs Poles</div>
+  <div class="tab" onclick="showTab(1)">Cc Gate Capacitance Effect</div>
+  <div class="tab" onclick="showTab(2)">Nulling Resistor Zero Control</div>
+</div>
+
+<!-- TAB 0: Full pole/zero Bode and PM breakdown -->
+<div class="panel active" id="tab0">
+  <div class="row">
+    <canvas id="c0" width="660" height="400"></canvas>
+    <div class="ctrl" style="max-width:230px;">
+      <label>gm1 (mA/V): <span class="val" id="v0_gm1">1.60</span></label>
+      <input type="range" id="r0_gm1" min="0.4" max="5.0" step="0.05" value="1.60" oninput="draw0()">
+      <label>gm6 (mA/V): <span class="val" id="v0_gm6">10.0</span></label>
+      <input type="range" id="r0_gm6" min="2.0" max="40.0" step="0.5" value="10.0" oninput="draw0()">
+      <label>Cc (pF): <span class="val" id="v0_cc">0.50</span></label>
+      <input type="range" id="r0_cc" min="0.1" max="3.0" step="0.05" value="0.50" oninput="draw0()">
+      <label>CL (pF): <span class="val" id="v0_cl">1.00</span></label>
+      <input type="range" id="r0_cl" min="0.1" max="10.0" step="0.1" value="1.00" oninput="draw0()">
+      <label>fp3 cascode (GHz): <span class="val" id="v0_fp3">9.5</span></label>
+      <input type="range" id="r0_fp3" min="0.5" max="20.0" step="0.5" value="9.5" oninput="draw0()">
+      <label>fp4 class-AB (GHz): <span class="val" id="v0_fp4">3.0</span></label>
+      <input type="range" id="r0_fp4" min="0.5" max="10.0" step="0.25" value="3.0" oninput="draw0()">
+      <label>Rs nulling (Ω): <span class="val" id="v0_rs">0</span></label>
+      <input type="range" id="r0_rs" min="0" max="500" step="10" value="0" oninput="draw0()">
+    </div>
+  </div>
+  <div class="legend">
+    <div class="leg-item"><div class="leg-dot" style="background:#89b4fa"></div>Gain (dB)</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#a6e3a1"></div>Phase (°)</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#f38ba8;border-top:2px dashed #f38ba8;height:0"></div>0 dB / 0° ref</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#fab387"></div>PM marker</div>
+  </div>
+  <div class="info-box" id="info0"></div>
+</div>
+
+<!-- TAB 1: Cgg6 effect on GBW -->
+<div class="panel" id="tab1">
+  <div class="row">
+    <canvas id="c1" width="620" height="380"></canvas>
+    <div class="ctrl" style="max-width:230px;">
+      <label>gm1 (mA/V): <span class="val" id="v1_gm1">1.60</span></label>
+      <input type="range" id="r1_gm1" min="0.5" max="5.0" step="0.1" value="1.60" oninput="draw1()">
+      <label>Cc designed (pF): <span class="val" id="v1_cc">0.50</span></label>
+      <input type="range" id="r1_cc" min="0.1" max="3.0" step="0.05" value="0.50" oninput="draw1()">
+      <label>W6 (μm): <span class="val" id="v1_w6">370</span></label>
+      <input type="range" id="r1_w6" min="10" max="1000" step="10" value="370" oninput="draw1()">
+      <label>L6 (nm): <span class="val" id="v1_l6">1000</span></label>
+      <input type="range" id="r1_l6" min="60" max="2000" step="20" value="1000" oninput="draw1()">
+      <label>Cox (fF/μm²): <span class="val" id="v1_cox">17.0</span></label>
+      <input type="range" id="r1_cox" min="5" max="30" step="0.5" value="17.0" oninput="draw1()">
+    </div>
+  </div>
+  <div class="info-box" id="info1"></div>
+</div>
+
+<!-- TAB 2: Nulling resistor zero sweep -->
+<div class="panel" id="tab2">
+  <div class="row">
+    <canvas id="c2" width="640" height="400"></canvas>
+    <div class="ctrl" style="max-width:230px;">
+      <label>gm6 (mA/V): <span class="val" id="v2_gm6">10.0</span></label>
+      <input type="range" id="r2_gm6" min="2.0" max="30.0" step="0.5" value="10.0" oninput="draw2()">
+      <label>Cc (pF): <span class="val" id="v2_cc">0.50</span></label>
+      <input type="range" id="r2_cc" min="0.1" max="2.0" step="0.05" value="0.50" oninput="draw2()">
+      <label>Rs (Ω): <span class="val" id="v2_rs">0</span></label>
+      <input type="range" id="r2_rs" min="0" max="600" step="5" value="0" oninput="draw2()">
+      <label>GBW target (MHz): <span class="val" id="v2_gbw">500</span></label>
+      <input type="range" id="r2_gbw" min="50" max="1000" step="10" value="500" oninput="draw2()">
+      <label>fp2 (GHz): <span class="val" id="v2_fp2">1.59</span></label>
+      <input type="range" id="r2_fp2" min="0.3" max="5.0" step="0.05" value="1.59" oninput="draw2()">
+    </div>
+  </div>
+  <div class="legend">
+    <div class="leg-item"><div class="leg-dot" style="background:#f38ba8"></div>RHP zero (phase loss)</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#a6e3a1"></div>LHP zero (phase recovery)</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#89b4fa"></div>PM vs Rs</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#fab387;border-top:2px dashed #fab387;height:0"></div>60° target</div>
+  </div>
+  <div class="info-box" id="info2"></div>
+</div>
+
+<script>
+const dpr = window.devicePixelRatio || 1;
+function setupCanvas(id, w, h) {
+  const c = document.getElementById(id);
+  c.width = w*dpr; c.height = h*dpr;
+  c.style.width = w+'px'; c.style.height = h+'px';
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr,dpr);
+  return ctx;
+}
+function g(id) { return parseFloat(document.getElementById(id).value); }
+function sv(id,v) { document.getElementById(id).textContent = v; }
+function showTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
+  if(n===1) draw1();
+  if(n===2) draw2();
+}
+
+// ── TAB 0: Bode Plot with full poles ────────────────────────────────────────
+function draw0() {
+  const gm1=g('r0_gm1')*1e-3, gm6=g('r0_gm6')*1e-3;
+  const Cc=g('r0_cc')*1e-12, CL=g('r0_cl')*1e-12;
+  const fp3=g('r0_fp3')*1e9, fp4=g('r0_fp4')*1e9;
+  const Rs=g('r0_rs');
+  sv('v0_gm1', g('r0_gm1').toFixed(2));
+  sv('v0_gm6', g('r0_gm6').toFixed(1));
+  sv('v0_cc', g('r0_cc').toFixed(2));
+  sv('v0_cl', g('r0_cl').toFixed(2));
+  sv('v0_fp3', g('r0_fp3').toFixed(1));
+  sv('v0_fp4', g('r0_fp4').toFixed(1));
+  sv('v0_rs', g('r0_rs').toFixed(0));
+
+  const fp1 = 1/(2*Math.PI*200e3*200*Cc); // approx dominant pole
+  const fp2 = gm6/(2*Math.PI*CL);
+  const GBW = gm1/(2*Math.PI*Cc);
+  const fz_rhp = gm6/(2*Math.PI*Cc);
+  // LHP or RHP zero from Rs
+  let fz_lhp = null;
+  const inv_gm6 = 1/gm6;
+  if (Rs > inv_gm6*1.01) {
+    // LHP zero
+    fz_lhp = 1/(2*Math.PI*Cc*(Rs - inv_gm6));
+  }
+  // Av0 ≈ 80 dB
+  const Av0 = 10000;
+
+  const ctx = setupCanvas('c0', 660, 400);
+  const W=660, H=400;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+
+  const mL=65, mR=20, mT=30, mB=40;
+  const bW=W-mL-mR, bH=H-mT-mB;
+
+  // frequency axis: 1 Hz to 10 GHz
+  const fMin=1, fMax=1e10;
+  function fx(f) { return mL + bW * Math.log10(f/fMin)/Math.log10(fMax/fMin); }
+
+  // gain axis: -20 dB to 100 dB
+  const gMin=-20, gMax=100;
+  function gy(db) { return mT + bH*(1-(db-gMin)/(gMax-gMin)); }
+  // phase axis: -200 to 0
+  const phMin=-200, phMax=20;
+  function py(ph) { return mT + bH*(1-(ph-phMin)/(phMax-phMin)); }
+
+  // grid
+  const dbs = [-20,0,20,40,60,80,100];
+  dbs.forEach(db => {
+    ctx.beginPath(); ctx.moveTo(mL, gy(db)); ctx.lineTo(mL+bW, gy(db));
+    ctx.strokeStyle = db===0 ? '#f38ba8' : '#313244';
+    ctx.lineWidth = db===0 ? 1.5 : 0.7;
+    ctx.setLineDash(db===0 ? [4,3] : []);
+    ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#585b70'; ctx.font='10px Segoe UI'; ctx.textAlign='right';
+    ctx.fillText(db, mL-4, gy(db)+3);
+  });
+
+  const freqs=[1,10,100,1e3,1e4,1e5,1e6,1e7,1e8,1e9,1e10];
+  freqs.forEach(f => {
+    const x=fx(f);
+    ctx.beginPath(); ctx.moveTo(x,mT); ctx.lineTo(x,mT+bH);
+    ctx.strokeStyle='#313244'; ctx.lineWidth=0.7; ctx.stroke();
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='center';
+    const labels={1:'1Hz',10:'10',100:'100',1e3:'1k',1e4:'10k',1e5:'100k',1e6:'1M',1e7:'10M',1e8:'100M',1e9:'1G',1e10:'10G'};
+    ctx.fillText(labels[f]||'', x, mT+bH+14);
+  });
+
+  // Transfer function evaluation
+  const nPts = 300;
+  const gainPts=[], phasePts=[];
+  for(let i=0;i<=nPts;i++) {
+    const f = fMin * Math.pow(fMax/fMin, i/nPts);
+    const w = 2*Math.PI*f;
+    // Two-stage gain with poles
+    // |T(jw)| ≈ Av0 / prod(1+(w/wp)^2)^0.5 * (zero terms)
+    const denom1 = Math.sqrt(1+(w/(2*Math.PI*fp1))**2);
+    const denom2 = Math.sqrt(1+(w/(2*Math.PI*fp2))**2);
+    const denom3 = Math.sqrt(1+(w/(2*Math.PI*fp3))**2);
+    const denom4 = Math.sqrt(1+(w/(2*Math.PI*fp4))**2);
+    // RHP zero: numerator factor (1 - jw/wz) => magnitude = sqrt(1+(w/wz)^2) but phase = -arctan
+    const rhpFactor = Math.sqrt(1+(w/(2*Math.PI*fz_rhp))**2);
+    let lhpFactor = 1;
+    if(fz_lhp && fz_lhp > 0) lhpFactor = Math.sqrt(1+(w/(2*Math.PI*fz_lhp))**2);
+
+    const mag = Av0 * lhpFactor / (denom1*denom2*denom3*denom4) * (Rs>0 ? 1/rhpFactor : 1/rhpFactor);
+    const gainDb = 20*Math.log10(Math.max(mag, 1e-6));
+
+    // Phase: dominant pole gives -90 asymptotically
+    let phase = -Math.atan(w/(2*Math.PI*fp1))*180/Math.PI
+               - Math.atan(w/(2*Math.PI*fp2))*180/Math.PI
+               - Math.atan(w/(2*Math.PI*fp3))*180/Math.PI
+               - Math.atan(w/(2*Math.PI*fp4))*180/Math.PI;
+    // RHP zero: phase goes negative
+    phase -= Math.atan(w/(2*Math.PI*fz_rhp))*180/Math.PI;
+    // LHP zero: phase recovery (but only if Rs cancels RHP)
+    if(Rs > 0 && fz_lhp && fz_lhp > 0) {
+      // The nulling resistor: if Rs > 1/gm6, RHP zero becomes LHP zero
+      // effectively replaces -arctan(w/wz_rhp) with +arctan(w/wz_lhp)
+      phase += Math.atan(w/(2*Math.PI*fz_rhp))*180/Math.PI; // remove RHP
+      if(fz_lhp > 0)
+        phase += Math.atan(w/(2*Math.PI*fz_lhp))*180/Math.PI; // add LHP
+    }
+
+    gainPts.push([f, gainDb]);
+    phasePts.push([f, phase]);
+  }
+
+  // find unity gain crossing
+  let f_ugain = GBW;
+  for(let i=1;i<gainPts.length;i++) {
+    if(gainPts[i-1][1] >= 0 && gainPts[i][1] < 0) {
+      f_ugain = gainPts[i-1][0];
+      break;
+    }
+  }
+  // phase at unity gain
+  let phase_at_ugain = -180;
+  for(let i=0;i<phasePts.length;i++) {
+    if(phasePts[i][0] >= f_ugain) {
+      phase_at_ugain = phasePts[i][1];
+      break;
+    }
+  }
+  const PM_calc = 180 + phase_at_ugain;
+
+  // Draw gain curve
+  ctx.beginPath();
+  gainPts.forEach(([f,db],i) => {
+    const x=fx(f), y=gy(Math.max(Math.min(db,105),-25));
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle='#89b4fa'; ctx.lineWidth=2; ctx.stroke();
+
+  // Draw phase curve (on secondary axis, scale: -180° at bottom, 0° at gain=0dB line)
+  ctx.beginPath();
+  phasePts.forEach(([f,ph],i) => {
+    const x=fx(f), y=py(Math.max(Math.min(ph,20),-200));
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle='#a6e3a1'; ctx.lineWidth=2; ctx.stroke();
+
+  // Phase margin marker
+  const xu = fx(f_ugain);
+  const y0 = gy(0);
+  ctx.beginPath(); ctx.moveTo(xu,mT); ctx.lineTo(xu,mT+bH);
+  ctx.strokeStyle='#fab387'; ctx.lineWidth=1; ctx.setLineDash([5,3]); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // PM annotation
+  const y_phase = py(phase_at_ugain);
+  const y_minus180 = py(-180);
+  ctx.beginPath(); ctx.moveTo(xu, Math.min(y_phase, y_minus180));
+  ctx.lineTo(xu, Math.max(y_phase, y_minus180));
+  ctx.strokeStyle='#fab387'; ctx.lineWidth=2; ctx.stroke();
+  ctx.fillStyle='#fab387'; ctx.font='bold 12px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText('PM=' + PM_calc.toFixed(1)+'°', xu+5, (y_phase+y_minus180)/2);
+
+  // Axis labels
+  ctx.fillStyle='#89b4fa'; ctx.font='11px Segoe UI'; ctx.textAlign='right';
+  ctx.fillText('Gain (dB)', mL-4, mT-8);
+  ctx.fillStyle='#a6e3a1'; ctx.textAlign='left';
+  ctx.fillText('Phase (°)', mL+bW+4, py(-90));
+
+  // Phase axis ticks
+  [-180,-135,-90,-45,0].forEach(ph=>{
+    const y=py(ph);
+    ctx.beginPath(); ctx.moveTo(mL+bW, y); ctx.lineTo(mL+bW+4, y);
+    ctx.strokeStyle='#a6e3a1'; ctx.lineWidth=0.8; ctx.stroke();
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='left';
+    ctx.fillText(ph+'°', mL+bW+6, y+3);
+  });
+
+  // -180° line
+  ctx.beginPath(); ctx.moveTo(mL,py(-180)); ctx.lineTo(mL+bW,py(-180));
+  ctx.strokeStyle='rgba(166,227,161,0.3)'; ctx.lineWidth=1; ctx.setLineDash([3,3]); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Title
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Open-Loop Bode Plot — Full Pole/Zero Model', W/2, 18);
+
+  // info
+  const pm_ok = PM_calc >= 60;
+  document.getElementById('info0').innerHTML =
+    `<span class="${pm_ok?'hi':'warn'}">PM = ${PM_calc.toFixed(1)}°</span> at f_ugain = ${(f_ugain*1e-6).toFixed(0)} MHz.
+     fp2 = ${(fp2*1e-9).toFixed(2)} GHz.
+     RHP zero = ${(fz_rhp*1e-9).toFixed(2)} GHz.
+     ${fz_lhp?'<span class="hi">LHP zero (Rs) = '+(fz_lhp*1e-9).toFixed(2)+' GHz — cancelling phase loss.</span>':'<span class="note">No nulling resistor — RHP zero subtracts phase.</span>'}
+     <br><span class="note">Two-pole approx would give PM = ${(90-Math.atan(GBW/fp2)*180/Math.PI).toFixed(1)}° — full model ${PM_calc >= 60 ? 'also OK' : 'reveals PM violation'}.</span>`;
+}
+
+// ── TAB 1: Cgg6 effect ─────────────────────────────────────────────────────
+function draw1() {
+  const gm1=g('r1_gm1')*1e-3, Cc=g('r1_cc')*1e-12;
+  const W6=g('r1_w6')*1e-6, L6=g('r1_l6')*1e-9;
+  const Cox=g('r1_cox')*1e-15;
+  sv('v1_gm1', g('r1_gm1').toFixed(2));
+  sv('v1_cc', g('r1_cc').toFixed(2));
+  sv('v1_w6', g('r1_w6').toFixed(0));
+  sv('v1_l6', g('r1_l6').toFixed(0));
+  sv('v1_cox', g('r1_cox').toFixed(1));
+
+  const Cgg6 = Cox * W6 * L6; // F (Cox in F/m²... need consistent units)
+  // Cox in fF/μm², W in μm, L in nm → Cgg = Cox * W * L/1000 in fF → convert to F
+  const Cgg6_fF = g('r1_cox') * g('r1_w6') * g('r1_l6')/1000;
+  const Cgg6_pF = Cgg6_fF/1000;
+  const Cc_pF = g('r1_cc');
+  const C_eff_pF = Cc_pF + Cgg6_pF;
+
+  const GBW_designed = gm1/(2*Math.PI*Cc)*1e-6; // MHz
+  const GBW_actual = gm1/(2*Math.PI*C_eff_pF*1e-12)*1e-6;
+
+  const ctx = setupCanvas('c1', 620, 380);
+  const W=620, H=380;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('GBW Degradation Due to Cgg6 of M6', W/2, 22);
+
+  // Bar chart: Cc vs Cgg6 vs effective
+  const barData = [
+    {label:'Cc designed', val:Cc_pF, color:'#89b4fa'},
+    {label:'Cgg6 (gate cap)', val:Cgg6_pF, color:'#f38ba8'},
+    {label:'C_eff = Cc + Cgg6', val:C_eff_pF, color:'#a6e3a1'},
+  ];
+
+  const mL=140, mR=80, mT=50, mB=50;
+  const bH=H-mT-mB;
+  const maxCap = Math.max(C_eff_pF*1.2, 1);
+  const bW = W-mL-mR;
+  const barH = 40, gap = 30;
+
+  barData.forEach((d,i) => {
+    const y = mT + i*(barH+gap);
+    const blen = bW * Math.min(d.val/maxCap, 1);
+    ctx.fillStyle = d.color;
+    ctx.fillRect(mL, y, blen, barH);
+    ctx.fillStyle='#a6adc8'; ctx.font='12px Segoe UI'; ctx.textAlign='right';
+    ctx.fillText(d.label, mL-8, y+barH/2+4);
+    ctx.fillStyle='#cdd6f4'; ctx.textAlign='left'; ctx.font='bold 12px Segoe UI';
+    ctx.fillText(d.val.toFixed(3)+' pF', mL+blen+6, y+barH/2+4);
+  });
+
+  // Arrow and annotation
+  const arrowY = mT + 2*(barH+gap) + barH/2;
+  ctx.fillStyle='#fab387'; ctx.font='12px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('GBW designed: '+GBW_designed.toFixed(0)+' MHz', W/2, arrowY+50);
+  ctx.fillStyle = GBW_actual < GBW_designed*0.8 ? '#f38ba8' : '#a6e3a1';
+  ctx.fillText('GBW actual: '+GBW_actual.toFixed(0)+' MHz', W/2, arrowY+70);
+  const ratio = GBW_actual/GBW_designed;
+  ctx.fillStyle='#cba6f7';
+  ctx.fillText('Degradation factor: '+ratio.toFixed(2)+'×', W/2, arrowY+90);
+
+  // GBW vs L6 curve
+  const curveY_start = mT;
+  const Ls = [], GBWs_designed=[], GBWs_actual=[];
+  for(let L=50; L<=2000; L+=25) {
+    const Cgg_var_pF = g('r1_cox') * g('r1_w6') * L/1000;
+    Ls.push(L);
+    GBWs_designed.push(GBW_designed);
+    GBWs_actual.push(gm1/(2*Math.PI*(Cc_pF+Cgg_var_pF)*1e-12)*1e-6);
+  }
+
+  const plotX=mL, plotY=H-130, plotW=W-mL-mR, plotH=100;
+  ctx.fillStyle='#252535'; ctx.fillRect(plotX, plotY, plotW, plotH);
+
+  const maxGBW_plot = GBW_designed*1.2;
+  const minGBW_plot = 0;
+
+  // designed line
+  ctx.beginPath(); ctx.moveTo(plotX, plotY+plotH*(1-GBW_designed/maxGBW_plot));
+  ctx.lineTo(plotX+plotW, plotY+plotH*(1-GBW_designed/maxGBW_plot));
+  ctx.strokeStyle='#89b4fa'; ctx.lineWidth=1.5; ctx.setLineDash([5,3]); ctx.stroke(); ctx.setLineDash([]);
+
+  // actual curve
+  ctx.beginPath();
+  Ls.forEach((L,i) => {
+    const x=plotX+plotW*(L-50)/(2000-50);
+    const y=plotY+plotH*(1-Math.max(GBWs_actual[i],0)/maxGBW_plot);
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle='#f38ba8'; ctx.lineWidth=2; ctx.stroke();
+
+  // current L6 marker
+  const xm = plotX+plotW*(g('r1_l6')-50)/(2000-50);
+  ctx.beginPath(); ctx.moveTo(xm, plotY); ctx.lineTo(xm, plotY+plotH);
+  ctx.strokeStyle='#fab387'; ctx.lineWidth=1.5; ctx.stroke();
+
+  ctx.fillStyle='#a6adc8'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('L6 (nm) →', plotX+plotW/2, plotY+plotH+14);
+  ctx.fillStyle='#89b4fa';
+  ctx.fillText('GBW_designed (dashed)', plotX+80, plotY-5);
+  ctx.fillStyle='#f38ba8';
+  ctx.fillText('GBW_actual vs L6', plotX+300, plotY-5);
+
+  document.getElementById('info1').innerHTML =
+    `<span class="${ratio<0.5?'warn':'hi'}">Cgg6 = ${Cgg6_fF.toFixed(1)} fF (${Cgg6_pF.toFixed(3)} pF) — ${(Cgg6_pF/Cc_pF*100).toFixed(0)}% of designed Cc.</span>
+     Effective C = ${C_eff_pF.toFixed(3)} pF.  GBW degrades from ${GBW_designed.toFixed(0)} MHz to ${GBW_actual.toFixed(0)} MHz (${(ratio*100).toFixed(0)}%).
+     <br><span class="note">Fix: reduce L6 to minimum (60-100 nm) and increase W6 to maintain gm6.  At L6=100nm same W6: Cgg = ${(g('r1_cox')*g('r1_w6')*100/1000).toFixed(1)} fF.</span>`;
+}
+
+// ── TAB 2: Nulling Resistor ─────────────────────────────────────────────────
+function draw2() {
+  const gm6=g('r2_gm6')*1e-3, Cc=g('r2_cc')*1e-12;
+  const Rs_current=g('r2_rs');
+  const GBW=g('r2_gbw')*1e6, fp2=g('r2_fp2')*1e9;
+  sv('v2_gm6', g('r2_gm6').toFixed(1));
+  sv('v2_cc', g('r2_cc').toFixed(2));
+  sv('v2_rs', g('r2_rs').toFixed(0));
+  sv('v2_gbw', g('r2_gbw').toFixed(0));
+  sv('v2_fp2', g('r2_fp2').toFixed(2));
+
+  const inv_gm6 = 1/gm6;
+  const fz_rhp = gm6/(2*Math.PI*Cc); // no Rs
+
+  // PM vs Rs sweep
+  const Rs_arr=[], PM_arr=[];
+  for(let Rs=0; Rs<=600; Rs+=3) {
+    let pm;
+    let phase = -Math.atan(GBW/fp2)*180/Math.PI; // fp2 contribution
+    // Extra poles (fixed)
+    const fp3=9.5e9, fp4=3e9;
+    phase -= Math.atan(GBW/fp3)*180/Math.PI;
+    phase -= Math.atan(GBW/fp4)*180/Math.PI;
+    // Zero contribution
+    if(Rs === 0) {
+      // RHP zero
+      phase -= Math.atan(GBW/fz_rhp)*180/Math.PI;
+    } else if(Rs < inv_gm6*0.99) {
+      // Zero still at RHP but moved
+      const fz = 1/(2*Math.PI*Cc*Math.abs(inv_gm6-Rs));
+      phase -= Math.atan(GBW/fz)*180/Math.PI;
+    } else if(Math.abs(Rs-inv_gm6) < 1) {
+      // Rs ≈ 1/gm6: zero at infinity, no contribution
+    } else {
+      // LHP zero
+      const fz_lhp = 1/(2*Math.PI*Cc*(Rs - inv_gm6));
+      phase += Math.atan(GBW/fz_lhp)*180/Math.PI;
+    }
+    pm = 90 + phase;
+    Rs_arr.push(Rs);
+    PM_arr.push(pm);
+  }
+
+  const ctx = setupCanvas('c2', 640, 400);
+  const W=640, H=400;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Phase Margin vs Nulling Resistor Rs', W/2, 20);
+
+  const mL=65,mR=20,mT=35,mB=45;
+  const bW=W-mL-mR, bH=H-mT-mB;
+  const Rs_max=600, PM_min=20, PM_max=110;
+  function rx(r) { return mL + bW*r/Rs_max; }
+  function py2(pm) { return mT + bH*(1-(pm-PM_min)/(PM_max-PM_min)); }
+
+  // Grid
+  [20,40,60,80,100].forEach(pm=>{
+    ctx.beginPath(); ctx.moveTo(mL,py2(pm)); ctx.lineTo(mL+bW,py2(pm));
+    ctx.strokeStyle = pm===60 ? '#f38ba8' : '#313244';
+    ctx.lineWidth = pm===60 ? 1.5 : 0.7;
+    ctx.setLineDash(pm===60 ? [4,3] : []);
+    ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#585b70'; ctx.font='10px Segoe UI'; ctx.textAlign='right';
+    ctx.fillText(pm+'°', mL-4, py2(pm)+3);
+  });
+  [0,100,200,300,400,500,600].forEach(r=>{
+    ctx.beginPath(); ctx.moveTo(rx(r),mT); ctx.lineTo(rx(r),mT+bH);
+    ctx.strokeStyle='#313244'; ctx.lineWidth=0.7; ctx.stroke();
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText(r+'Ω', rx(r), mT+bH+14);
+  });
+
+  // 1/gm6 vertical line
+  const x_inv_gm6 = rx(inv_gm6);
+  if(x_inv_gm6 >= mL && x_inv_gm6 <= mL+bW) {
+    ctx.beginPath(); ctx.moveTo(x_inv_gm6, mT); ctx.lineTo(x_inv_gm6, mT+bH);
+    ctx.strokeStyle='#cba6f7'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#cba6f7'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText('Rs=1/gm6='+(inv_gm6).toFixed(0)+'Ω', x_inv_gm6, mT-5);
+  }
+
+  // PM curve
+  ctx.beginPath();
+  Rs_arr.forEach((r,i)=>{
+    const x=rx(r), y=py2(Math.max(PM_min+1,Math.min(PM_max-1,PM_arr[i])));
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.strokeStyle='#89b4fa'; ctx.lineWidth=2.5; ctx.stroke();
+
+  // Current Rs marker
+  const x_cur = rx(Rs_current);
+  let PM_current = PM_arr[Math.round(Rs_current/3)] || PM_arr[PM_arr.length-1];
+  ctx.beginPath(); ctx.arc(x_cur, py2(Math.max(PM_min+2,Math.min(PM_max-2,PM_current))), 6, 0, 2*Math.PI);
+  ctx.fillStyle='#fab387'; ctx.fill();
+
+  // Region labels
+  ctx.fillStyle='#f38ba8'; ctx.font='11px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('← RHP zero (phase loss)', mL + (x_inv_gm6-mL)/2, mT+15);
+  ctx.fillStyle='#a6e3a1';
+  ctx.fillText('LHP zero (phase recovery) →', mL + (x_inv_gm6-mL) + (mL+bW-x_inv_gm6)/2, mT+15);
+
+  ctx.fillStyle='#cdd6f4'; ctx.font='11px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Rs (Ω)', W/2, H-8);
+  ctx.fillStyle='#89b4fa'; ctx.textAlign='right';
+  ctx.save(); ctx.translate(14, H/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('Phase Margin (°)', 0, 0); ctx.restore();
+
+  // 60° annotation
+  ctx.fillStyle='#f38ba8'; ctx.font='10px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText('60° min', mL+bW+2, py2(60));
+
+  document.getElementById('info2').innerHTML =
+    `<span class="hi">1/gm6 = ${inv_gm6.toFixed(0)} Ω.</span>
+     At Rs=0: RHP zero at ${(fz_rhp*1e-9).toFixed(2)} GHz subtracts ${Math.atan(GBW/fz_rhp)*180/Math.PI|0}° from PM.
+     <br>At Rs = 1/gm6 = ${inv_gm6.toFixed(0)} Ω: zero moves to infinity — maximum PM.
+     <br>At Rs > 1/gm6: LHP zero created — further phase recovery (up to ~15°) with pole-zero cancellation near fp2.
+     <br><span class="note">Current Rs = ${Rs_current} Ω → PM = ${PM_current.toFixed(1)}°  ${PM_current>=60?'✓ OK':'✗ Adjust Rs'}</span>`;
+}
+
+draw0();
+draw1();
+draw2();
+</script>
+</body>
+</html>

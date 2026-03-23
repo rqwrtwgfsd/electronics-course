@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M3-INT-5.2 Analog Power Supply</title>
+<style>
+:root{--bg:#ffffff;--surface:#f5f5f5;--border:#cccccc;--text:#111111;--accent:#0066cc;--accent2:#0066cc;}
+@media(prefers-color-scheme:dark){:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--accent:#0066cc;--accent2:#58a6ff;}}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;padding:16px;max-width:860px;margin:0 auto;}
+h1{font-size:1.2rem;color:var(--accent2);margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:8px;}
+.note{font-size:0.85rem;color:var(--text);opacity:0.7;margin-bottom:12px;}
+canvas{width:100%;height:260px;display:block;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:12px;}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;}
+.ctrl{display:flex;flex-direction:column;gap:3px;font-size:0.82rem;}
+.ctrl label{color:var(--text);opacity:0.8;}
+input[type=range]{width:160px;accent-color:var(--accent);}
+.readouts{display:flex;flex-wrap:wrap;gap:12px;font-size:0.85rem;font-family:monospace;}
+.ro{background:var(--surface);border:1px solid var(--border);padding:4px 10px;border-radius:4px;color:var(--accent2);}
+</style></head><body>
+<h1>M3-INT-5.2 — LDO Regulator: Ripple Rejection and Efficiency</h1>
+<p class="note">Compare linear (LDO) vs switching regulator. See ripple rejection, efficiency, and heat dissipation.</p>
+<canvas id="cv"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>V_in (V): <span id="vinv">5</span></label><input type="range" id="vin" min="1.5" max="15" value="5" step="0.1" oninput="sv('vinv',parseFloat(this.value).toFixed(1));draw();"></div>
+  <div class="ctrl"><label>V_out (V): <span id="voutv">3.3</span></label><input type="range" id="vout" min="0.8" max="12" value="3.3" step="0.1" oninput="sv('voutv',parseFloat(this.value).toFixed(1));draw();"></div>
+  <div class="ctrl"><label>I_load (mA): <span id="ilv">100</span></label><input type="range" id="il" min="1" max="1000" value="100" step="1" oninput="sv('ilv',this.value);draw();"></div>
+  <div class="ctrl"><label>PSRR (dB): <span id="pv">60</span></label><input type="range" id="psrr" min="10" max="100" value="60" step="1" oninput="sv('pv',this.value);draw();"></div>
+</div>
+<div class="readouts">
+  <div class="ro">LDO P_diss: <span id="pldo">0</span> mW</div>
+  <div class="ro">LDO efficiency: <span id="eldo">0</span> %</div>
+  <div class="ro">Ripple rejection: <span id="rrej">0</span>×</div>
+  <div class="ro">T_J rise: <span id="tj">0</span> °C (R_th=50°C/W)</div>
+</div>
+<script>
+
+const isDark=()=>window.matchMedia('(prefers-color-scheme:dark)').matches;
+function gs(id){return parseFloat(document.getElementById(id).value);}
+function sv(id,val){document.getElementById(id).textContent=val;}
+function resize(cv,draw){
+  cv.width=cv.offsetWidth*devicePixelRatio;
+  cv.height=260*devicePixelRatio;
+  cv.style.height='260px';
+  draw();
+}
+function drawAxes(ctx,W,H,pad,xl,yl,color){
+  ctx.strokeStyle=color;ctx.lineWidth=1;ctx.fillStyle=color;ctx.font=`${11*devicePixelRatio}px system-ui`;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  ctx.fillText(xl,W-pad-30,H-pad+14*devicePixelRatio);
+  ctx.save();ctx.translate(pad-14*devicePixelRatio,pad+30);ctx.rotate(-Math.PI/2);ctx.fillText(yl,0,0);ctx.restore();
+}
+
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+window.addEventListener('resize',()=>resize(cv,draw));
+
+function draw(){
+  const dpr=devicePixelRatio;
+  cv.width=cv.offsetWidth*dpr; cv.height=260*dpr;
+  const W=cv.width,H=cv.height,pad=55*dpr;
+  const dark=isDark();
+  const bg=dark?'#161b22':'#f5f5f5';
+  const fg=dark?'#e6edf3':'#111111';
+  const acc=dark?'#58a6ff':'#0066cc';
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  const VIN=gs('vin');
+  const VOUT=gs('vout');
+  const IL=gs('il')/1000; // A
+  const PSRR_dB=gs('psrr');
+
+  const dropout=0.2; // LDO dropout
+  const ok_reg=VIN>=VOUT+dropout;
+
+  const Pldo=ok_reg?(VIN-VOUT)*IL:0;
+  const eff_ldo=ok_reg?(VOUT*IL)/(VIN*IL)*100:0;
+  const ripple_reject=Math.pow(10,PSRR_dB/20);
+  const Rth=50; // °C/W
+  const TJ_rise=Pldo*Rth;
+
+  sv('pldo',(Pldo*1000).toFixed(1));
+  sv('eldo',eff_ldo.toFixed(1));
+  sv('rrej',ripple_reject.toFixed(0));
+  sv('tj',TJ_rise.toFixed(1));
+
+  // Sankey-style flow diagram
+  const midH=H/2;
+  const barH=50*dpr;
+  const Pout=VOUT*IL, Pin=VIN*IL;
+  const wTotal=W-2*pad;
+  const wOut=ok_reg?Pout/Pin*wTotal:0;
+  const wHeat=ok_reg?Pldo/Pin*wTotal:0;
+
+  // Input bar
+  ctx.fillStyle=dark?'#21262d':'#e8f4fd';
+  ctx.fillRect(pad,midH-barH/2,wTotal,barH);
+  ctx.strokeStyle=acc; ctx.lineWidth=1.5*dpr;
+  ctx.strokeRect(pad,midH-barH/2,wTotal,barH);
+
+  // Output (useful) bar
+  ctx.fillStyle=ok_reg?'#2ed573':'#ff6b6b';
+  ctx.fillRect(pad,midH-barH/2,wOut,barH);
+
+  // Heat bar
+  ctx.fillStyle='#ff6b6b';
+  ctx.fillRect(pad+wOut,midH+barH/2+5*dpr,wHeat,20*dpr);
+
+  ctx.fillStyle=fg; ctx.font=`${11*dpr}px system-ui`;
+  ctx.fillText(`P_in=${(Pin*1000).toFixed(0)}mW`,pad,midH-barH/2-5*dpr);
+  ctx.fillText(`P_out=${(Pout*1000).toFixed(0)}mW (useful)`,pad,midH+barH/2+50*dpr);
+  ctx.fillText(`P_heat=${(Pldo*1000).toFixed(0)}mW (LDO loss)`,pad+wOut,midH+barH/2+50*dpr);
+
+  if(!ok_reg){
+    ctx.fillStyle='#ff6b6b';
+    ctx.fillText('DROPOUT! V_in too low for V_out+0.2V',pad,midH);
+  }
+
+  // Efficiency comparison line
+  ctx.fillStyle=fg; ctx.font=`${11*dpr}px system-ui`;
+  ctx.fillText(`η_LDO=${eff_ldo.toFixed(1)}%  η_SMPS≈90%  Ripple atten.=${ripple_reject.toFixed(0)}×  T_J rise=${TJ_rise.toFixed(0)}°C`,pad,pad-8*dpr);
+}
+draw();
+</script></body></html>

@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-C-1.5.1 — Debug: Slow Response Issues</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+  h1 { color: #0066cc; font-size: 1.3em; margin-bottom: 4px; }
+  .subtitle { color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }
+  .layout { display: flex; gap: 20px; flex-wrap: wrap; }
+  .panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+  .controls { width: 290px; flex-shrink: 0; }
+  .plot-area { flex: 1; min-width: 360px; }
+  label { display: block; color: #8b949e; font-size: 0.8em; margin-bottom: 4px; margin-top: 12px; }
+  input[type=range] { width: 100%; accent-color: #0066cc; }
+  .val { color: #0066cc; font-weight: bold; }
+  .fault { color: #f78166 !important; }
+  canvas { background: #0d1117; border-radius: 6px; display: block; }
+  .readouts { margin-top: 14px; }
+  .readout-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #21262d; font-size: 0.82em; }
+  .readout-label { color: #8b949e; }
+  .rv-ok { color: #39d353; font-weight: bold; font-family: monospace; }
+  .rv-bad { color: #f78166; font-weight: bold; font-family: monospace; }
+  .sect-hdr { color: #8b949e; font-size: 0.75em; text-transform: uppercase; letter-spacing: 1px; margin-top: 14px; margin-bottom: 2px; }
+  button { background: #21262d; border: 1px solid #30363d; color: #e6edf3; padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 0.82em; margin-top: 12px; width: 100%; }
+  button:hover { background: #30363d; }
+  button.active { background: #f78166; border-color: #f78166; color: #0d1117; }
+</style>
+</head>
+<body>
+<h1>P2-C-1.5.1 — Debug: Slow Response Issues</h1>
+<div class="subtitle">Expected vs. actual waveform side-by-side · fault sliders add excess R and C · Fix toggle restores correct curve</div>
+<div class="layout">
+  <div class="panel controls">
+    <div class="sect-hdr">Designed Values</div>
+    <label>R_designed: <span class="val" id="rdLabel">100 kΩ</span></label>
+    <input type="range" id="rdSlider" min="10" max="500" value="100" step="10">
+    <label>C_designed: <span class="val" id="cdLabel">100 nF</span></label>
+    <input type="range" id="cdSlider" min="10" max="500" value="100" step="10">
+    <label>V_S: <span class="val" id="vsLabel">3.3 V</span></label>
+    <input type="range" id="vsSlider" min="10" max="150" value="33" step="1">
+
+    <div class="sect-hdr">Fault Injection</div>
+    <label>Excess R (source + trace + contact): <span class="val fault" id="rexLabel">0 Ω</span></label>
+    <input type="range" id="rexSlider" min="0" max="200" value="0" step="5">
+    <label>Excess C (derating reversal / wrong part): <span class="val fault" id="cexLabel">0%</span></label>
+    <input type="range" id="cexSlider" min="0" max="100" value="0" step="5">
+    <button id="fixBtn">Show Fix (remove faults)</button>
+
+    <div class="readouts">
+      <div class="readout-row"><span class="readout-label">τ_designed</span><span class="rv-ok" id="tauD">—</span></div>
+      <div class="readout-row"><span class="readout-label">τ_actual (with faults)</span><span class="rv-bad" id="tauA">—</span></div>
+      <div class="readout-row"><span class="readout-label">τ excess</span><span class="rv-bad" id="tauEx">—</span></div>
+      <div class="readout-row"><span class="readout-label">R_actual</span><span class="rv-bad" id="rAct">—</span></div>
+      <div class="readout-row"><span class="readout-label">C_actual</span><span class="rv-bad" id="cAct">—</span></div>
+    </div>
+  </div>
+  <div class="panel plot-area">
+    <canvas id="cv" width="600" height="400"></canvas>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'); const ctx=cv.getContext('2d');
+const W=600, H=400;
+const PAD={top:36,right:24,bottom:48,left:62};
+const PW=W-PAD.left-PAD.right, PH=H-PAD.top-PAD.bottom;
+let fixed=false;
+
+document.getElementById('fixBtn').addEventListener('click',()=>{
+  fixed=!fixed;
+  const btn=document.getElementById('fixBtn');
+  btn.textContent=fixed?'Show Faults':'Show Fix (remove faults)';
+  btn.classList.toggle('active',fixed);
+  draw();
+});
+
+function fmtT(t){ return t<0.001?(t*1e6).toFixed(1)+'µs':t<1?(t*1000).toFixed(2)+'ms':t.toFixed(3)+'s'; }
+
+function getP(){
+  const Rd=parseFloat(document.getElementById('rdSlider').value)*1000;
+  const Cd=parseFloat(document.getElementById('cdSlider').value)*1e-9;
+  const VS=parseFloat(document.getElementById('vsSlider').value)/10;
+  const Rex=parseFloat(document.getElementById('rexSlider').value)*100;
+  const Cex_pct=parseFloat(document.getElementById('cexSlider').value)/100;
+  const Ra=Rd+Rex;
+  const Ca=Cd*(1+Cex_pct);
+  const tauD=Rd*Cd, tauA=Ra*Ca;
+  return {Rd,Cd,VS,Rex,Cex_pct,Ra,Ca,tauD,tauA};
+}
+
+function draw(){
+  const p=getP();
+  // Labels
+  document.getElementById('rdLabel').textContent=(p.Rd/1000).toFixed(0)+' kΩ';
+  document.getElementById('cdLabel').textContent=(p.Cd*1e9).toFixed(0)+' nF';
+  document.getElementById('vsLabel').textContent=(p.VS).toFixed(1)+' V';
+  document.getElementById('rexLabel').textContent=p.Rex>=1000?(p.Rex/1000).toFixed(1)+' kΩ':p.Rex+' Ω';
+  document.getElementById('cexLabel').textContent='+'+(p.Cex_pct*100).toFixed(0)+'%';
+  document.getElementById('tauD').textContent=fmtT(p.tauD);
+  document.getElementById('tauA').textContent=fmtT(p.tauA);
+  const ex=(p.tauA-p.tauD)/p.tauD*100;
+  document.getElementById('tauEx').textContent='+'+ex.toFixed(1)+'%';
+  document.getElementById('rAct').textContent=(p.Ra/1000).toFixed(2)+' kΩ';
+  document.getElementById('cAct').textContent=(p.Ca*1e9).toFixed(1)+' nF';
+
+  ctx.clearRect(0,0,W,H);
+  const tMax=Math.max(p.tauD,p.tauA)*5.5;
+  const Vmax=p.VS*1.05;
+
+  // Grid
+  ctx.strokeStyle='#21262d'; ctx.lineWidth=1;
+  for(let i=0;i<=5;i++){const x=PAD.left+(i/5)*PW;ctx.beginPath();ctx.moveTo(x,PAD.top);ctx.lineTo(x,PAD.top+PH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=PAD.top+(i/5)*PH;ctx.beginPath();ctx.moveTo(PAD.left,y);ctx.lineTo(PAD.left+PW,y);ctx.stroke();}
+
+  // Axes
+  ctx.strokeStyle='#484f58'; ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(PAD.left,PAD.top);ctx.lineTo(PAD.left,PAD.top+PH);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(PAD.left,PAD.top+PH);ctx.lineTo(PAD.left+PW,PAD.top+PH);ctx.stroke();
+
+  // Axis labels
+  ctx.fillStyle='#8b949e'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+  for(let i=0;i<=5;i++){
+    const t=(i/5)*tMax; const x=PAD.left+(i/5)*PW;
+    ctx.fillText(fmtT(t),x,PAD.top+PH+16);
+  }
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){
+    const v=(i/5)*p.VS; const y=PAD.top+PH-(i/5)*PH*(p.VS/Vmax);
+    ctx.fillText(v.toFixed(1)+'V',PAD.left-5,y+4);
+  }
+
+  // Designed curve (always shown)
+  ctx.strokeStyle='#39d353'; ctx.lineWidth=2; ctx.beginPath();
+  for(let px=0;px<=PW;px++){
+    const t=(px/PW)*tMax; const vc=p.VS*(1-Math.exp(-t/p.tauD));
+    const y=PAD.top+PH-(vc/Vmax)*PH;
+    px===0?ctx.moveTo(PAD.left+px,y):ctx.lineTo(PAD.left+px,y);
+  }
+  ctx.stroke();
+
+  // Actual curve (fault or fix)
+  const tauPlot=fixed?p.tauD:p.tauA;
+  ctx.strokeStyle=fixed?'#39d353':'#f78166'; ctx.lineWidth=2.5; ctx.setLineDash(fixed?[]:[8,4]);
+  ctx.beginPath();
+  for(let px=0;px<=PW;px++){
+    const t=(px/PW)*tMax; const vc=p.VS*(1-Math.exp(-t/tauPlot));
+    const y=PAD.top+PH-(vc/Vmax)*PH;
+    px===0?ctx.moveTo(PAD.left+px,y):ctx.lineTo(PAD.left+px,y);
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+
+  // τ markers designed
+  for(let n=1;n<=5;n++){
+    const xt=PAD.left+(n*p.tauD/tMax)*PW;
+    if(xt<=PAD.left+PW){
+      const vc=p.VS*(1-Math.exp(-n)); const yn=PAD.top+PH-(vc/Vmax)*PH;
+      ctx.fillStyle='#39d353'; ctx.beginPath(); ctx.arc(xt,yn,4,0,2*Math.PI); ctx.fill();
+      ctx.fillStyle='#39d353'; ctx.font='9px sans-serif'; ctx.textAlign='center';
+      ctx.fillText(n+'τd',xt,yn-7);
+    }
+  }
+  // τ markers actual (only when showing faults)
+  if(!fixed && p.tauA!==p.tauD){
+    for(let n=1;n<=3;n++){
+      const xt=PAD.left+(n*p.tauA/tMax)*PW;
+      if(xt<=PAD.left+PW){
+        const vc=p.VS*(1-Math.exp(-n)); const yn=PAD.top+PH-(vc/Vmax)*PH;
+        ctx.fillStyle='#f78166'; ctx.beginPath(); ctx.arc(xt,yn,4,0,2*Math.PI); ctx.fill();
+        ctx.fillStyle='#f78166'; ctx.font='9px sans-serif'; ctx.textAlign='center';
+        ctx.fillText(n+'τa',xt,yn-7);
+      }
+    }
+  }
+
+  // 63.2% line
+  const y63=PAD.top+PH-(0.632*p.VS/Vmax)*PH;
+  ctx.strokeStyle='#8b949e'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(PAD.left,y63);ctx.lineTo(PAD.left+PW,y63);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#8b949e'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('63.2% = '+( 0.632*p.VS).toFixed(2)+'V',PAD.left+4,y63-4);
+
+  // Legend
+  ctx.fillStyle='#39d353'; ctx.fillRect(PAD.left, PAD.top-22, 16, 3);
+  ctx.fillStyle='#39d353'; ctx.font='11px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('Designed τ = '+fmtT(p.tauD), PAD.left+20, PAD.top-15);
+  if(!fixed){
+    ctx.fillStyle='#f78166'; ctx.fillRect(PAD.left+200, PAD.top-22, 16, 3);
+    ctx.fillStyle='#f78166'; ctx.textAlign='left';
+    ctx.fillText('Actual τ = '+fmtT(p.tauA)+' (+'+ex.toFixed(0)+'%)', PAD.left+220, PAD.top-15);
+  } else {
+    ctx.fillStyle='#39d353'; ctx.font='bold 11px sans-serif';
+    ctx.fillText('FIXED — faults removed', PAD.left+200, PAD.top-15);
+  }
+}
+
+['rdSlider','cdSlider','vsSlider','rexSlider','cexSlider'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+draw();
+</script>
+</body>
+</html>

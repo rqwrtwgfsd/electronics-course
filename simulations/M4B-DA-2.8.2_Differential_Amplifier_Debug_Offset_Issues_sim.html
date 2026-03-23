@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-DA-2.8.2 — Debug: Offset Issues</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  .ro.warn span{color:#cc4400;}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-DA-2.8.2</div>
+  <h1>Differential Amplifier — Debug: Offset Issues</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Offset Budget Tool</h2>
+      <label>W×L pair (μm²): <b id="wl_n_l">50</b> μm² <input type="range" id="wl_n" min="1" max="2000" value="50" step="1"></label>
+      <label>W×L load (μm²): <b id="wl_p_l">50</b> μm² <input type="range" id="wl_p" min="1" max="2000" value="50" step="1"></label>
+      <label>A_VT,n (mV·μm): <b id="avtn_l">5.0</b> <input type="range" id="avtn" min="1" max="15" value="5" step="0.5"></label>
+      <label>A_VT,p (mV·μm): <b id="avtp_l">7.0</b> <input type="range" id="avtp" min="1" max="15" value="7" step="0.5"></label>
+      <label>g_m,p / g_m,n ratio: <b id="gmr_l">1.0</b> <input type="range" id="gmr" min="0.1" max="3" value="1.0" step="0.1"></label>
+      <label>V_os spec (mV): <b id="spec_l">1.0</b> mV <input type="range" id="spec" min="0.1" max="10" value="1.0" step="0.1"></label>
+
+      <div class="ro">σ(ΔV_th,pair) (mV): <span id="svth_n">--</span></div>
+      <div class="ro" style="margin-top:4px">σ(ΔV_th,load) IR (mV): <span id="svth_p">--</span></div>
+      <div class="ro g" style="margin-top:4px">σ(V_os,total) (mV): <span id="svos">--</span></div>
+      <div class="ro" style="margin-top:4px">3σ worst-case (mV): <span id="vos3s">--</span></div>
+      <div class="ro" id="spec_ro" style="margin-top:4px">Spec check: <span id="spec_d">--</span></div>
+      <div class="insight">
+        Offset from load = (g_m,p/g_m,n) × ΔV_th,p. Both pair and load contribute equally when g_m,p = g_m,n. Larger W×L reduces σ at rate of 1/√(WL). The 3σ value covers 99.7% of dies.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>σ(V_os) vs W×L (Pelgrom Scaling)</h2>
+      <canvas id="cv" height="300"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  function computeOffset(wl_n, wl_p, avtn, avtp, gmr){
+    const svth_n = avtn/Math.sqrt(wl_n);
+    const svth_p_ir = gmr * avtp/Math.sqrt(wl_p);
+    const svos = Math.sqrt(svth_n**2 + svth_p_ir**2);
+    return {svth_n, svth_p_ir, svos};
+  }
+
+  function compute(){
+    const wl_n=+document.getElementById('wl_n').value;
+    const wl_p=+document.getElementById('wl_p').value;
+    const avtn=+document.getElementById('avtn').value;
+    const avtp=+document.getElementById('avtp').value;
+    const gmr=+document.getElementById('gmr').value;
+    const spec=+document.getElementById('spec').value;
+
+    document.getElementById('wl_n_l').textContent=wl_n.toFixed(0);
+    document.getElementById('wl_p_l').textContent=wl_p.toFixed(0);
+    document.getElementById('avtn_l').textContent=avtn.toFixed(1);
+    document.getElementById('avtp_l').textContent=avtp.toFixed(1);
+    document.getElementById('gmr_l').textContent=gmr.toFixed(1);
+    document.getElementById('spec_l').textContent=spec.toFixed(1);
+
+    const {svth_n, svth_p_ir, svos} = computeOffset(wl_n, wl_p, avtn, avtp, gmr);
+
+    document.getElementById('svth_n').textContent=svth_n.toFixed(3);
+    document.getElementById('svth_p').textContent=svth_p_ir.toFixed(3);
+    document.getElementById('svos').textContent=svos.toFixed(3);
+    document.getElementById('vos3s').textContent=(3*svos).toFixed(3);
+
+    const specRo=document.getElementById('spec_ro');
+    if(3*svos<=spec){
+      specRo.className='ro g';
+      document.getElementById('spec_d').textContent='PASS — 3σ = '+(3*svos).toFixed(2)+' mV ≤ '+spec+' mV';
+    } else {
+      specRo.className='ro warn';
+      document.getElementById('spec_d').textContent='FAIL — 3σ = '+(3*svos).toFixed(2)+' mV > '+spec+' mV';
+    }
+
+    draw(avtn, avtp, gmr, spec, wl_n, wl_p);
+  }
+
+  function draw(avtn, avtp, gmr, spec, wl_n_op, wl_p_op){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=300;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,300);
+    const pL=55,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=300-pT-pB;
+
+    const wlMin=1, wlMax=2000;
+    const svMax=20, svMin=0; // mV
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText('σ(V_os) mV', 2, pT+ph/2);
+    ctx.fillText('W×L (μm²)', pL+pw/2-14, 300-4);
+
+    for(let mv=0;mv<=svMax;mv+=5){
+      const y=pT+ph-((mv-svMin)/(svMax-svMin))*ph;
+      ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText(mv, 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+    [1,10,50,200,500,2000].forEach(v=>{
+      const x=pL+((v-wlMin)/(wlMax-wlMin))*pw;
+      ctx.fillStyle='#8888aa'; ctx.font='8px system-ui'; ctx.fillText(v, x-8, pT+ph+14);
+    });
+
+    // Pair (NMOS) curve
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2; ctx.setLineDash([]);
+    ctx.beginPath(); let first=true;
+    for(let px=0;px<=pw;px++){
+      const wl=wlMin+(px/pw)*(wlMax-wlMin);
+      const sv=avtn/Math.sqrt(wl);
+      const y=pT+ph-((sv-svMin)/(svMax-svMin))*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // Load (PMOS) IR curve
+    ctx.strokeStyle='#cc2200'; ctx.lineWidth=2; ctx.setLineDash([4,3]);
+    ctx.beginPath(); first=true;
+    for(let px=0;px<=pw;px++){
+      const wl=wlMin+(px/pw)*(wlMax-wlMin);
+      const sv=gmr*avtp/Math.sqrt(wl);
+      const y=pT+ph-((sv-svMin)/(svMax-svMin))*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // Total curve
+    ctx.strokeStyle='#00994d'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+    ctx.beginPath(); first=true;
+    for(let px=0;px<=pw;px++){
+      const wl=wlMin+(px/pw)*(wlMax-wlMin);
+      const {svos}=computeOffset(wl, wl, avtn, avtp, gmr);
+      const y=pT+ph-((svos-svMin)/(svMax-svMin))*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // Spec/3 line (so 3σ matches spec)
+    const specLine=spec/3;
+    if(specLine<=svMax){
+      const yspec=pT+ph-((specLine-svMin)/(svMax-svMin))*ph;
+      ctx.strokeStyle='#ff880088'; ctx.lineWidth=1; ctx.setLineDash([5,4]);
+      ctx.beginPath(); ctx.moveTo(pL,yspec); ctx.lineTo(pL+pw,yspec); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle='#ff8800'; ctx.font='9px system-ui';
+      ctx.fillText('σ target = '+specLine.toFixed(2)+' mV (3σ='+spec.toFixed(1)+')', pL+4, yspec-4);
+    }
+
+    // Op point markers
+    const xn=pL+((wl_n_op-wlMin)/(wlMax-wlMin))*pw;
+    const {svos:svos_op}=computeOffset(wl_n_op, wl_p_op, avtn, avtp, gmr);
+    const yn=pT+ph-((svos_op-svMin)/(svMax-svMin))*ph;
+    ctx.fillStyle='#00994d';
+    ctx.beginPath(); ctx.arc(xn, yn, 6, 0, 2*Math.PI); ctx.fill();
+
+    ctx.setLineDash([]);
+    const items=[{c:'#0066cc',lbl:'σ pair',d:[]},{c:'#cc2200',lbl:'σ load (IR)',d:[4,3]},{c:'#00994d',lbl:'σ total',d:[]}];
+    items.forEach(({c,lbl,d},i)=>{
+      ctx.strokeStyle=c; ctx.lineWidth=1.8; ctx.setLineDash(d);
+      ctx.beginPath(); ctx.moveTo(pL+pw-100, pT+12+14*i); ctx.lineTo(pL+pw-80, pT+12+14*i); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle='#8888aa'; ctx.font='10px system-ui'; ctx.fillText(lbl, pL+pw-76, pT+16+14*i);
+    });
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

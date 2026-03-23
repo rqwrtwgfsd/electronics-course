@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M3-D-1.1.2 Depletion Region Explorer</title>
+<style>
+  :root { --bg:#0d1117;--surface:#161b22;--border:#30363d;--accent:#0066cc;--accent2:#58a6ff;--text:#e6edf3;--subtext:#8b949e;--green:#3fb950;--red:#f85149;--orange:#d29922; }
+  @media(prefers-color-scheme:light){:root{--bg:#fff;--surface:#f6f8fa;--border:#d0d7de;--accent:#0066cc;--accent2:#0969da;--text:#24292f;--subtext:#57606a;--green:#1a7f37;--red:#d1242f;--orange:#9a6700;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;padding:20px;}
+  h1{color:var(--accent2);font-size:1.3rem;margin-bottom:4px;}
+  .subtitle{color:var(--subtext);font-size:0.85rem;margin-bottom:16px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;}
+  .card h2{font-size:0.95rem;color:var(--accent2);margin-bottom:12px;}
+  canvas{display:block;width:100%;border-radius:6px;}
+  .controls{display:flex;flex-direction:column;gap:10px;}
+  label{font-size:0.82rem;color:var(--subtext);}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .readout{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;font-family:monospace;font-size:0.83rem;}
+  .ro{display:flex;justify-content:space-between;margin-bottom:5px;}
+  .ro span:last-child{color:var(--accent2);font-weight:bold;}
+  .highlight{color:var(--green)!important;}
+</style>
+</head>
+<body>
+<h1>M3-D-1.1.2 — Depletion Region Explorer</h1>
+<p class="subtitle">Asymmetric depletion width, junction capacitance vs voltage</p>
+<div class="grid">
+  <div class="card">
+    <h2>Junction Cross-Section (asymmetric depletion)</h2>
+    <canvas id="jCanvas" height="180"></canvas>
+  </div>
+  <div class="card">
+    <h2>C_j vs Reverse Voltage</h2>
+    <canvas id="cjCanvas" height="180"></canvas>
+  </div>
+</div>
+<div class="grid" style="margin-top:16px">
+  <div class="card">
+    <h2>Controls</h2>
+    <div class="controls">
+      <div>
+        <label>P-side doping N_A (×10¹⁵ cm⁻³): <strong id="naLbl">10</strong></label>
+        <input type="range" id="naS" min="1" max="200" value="10">
+      </div>
+      <div>
+        <label>N-side doping N_D (×10¹⁵ cm⁻³): <strong id="ndLbl">2</strong></label>
+        <input type="range" id="ndS" min="1" max="200" value="2">
+      </div>
+      <div>
+        <label>Applied Voltage V_A (V): <strong id="vaLbl">0 V</strong></label>
+        <input type="range" id="vaS" min="-30" max="0.6" value="0" step="0.1">
+      </div>
+      <div>
+        <label>Junction Area A (µm²): <strong id="aLbl">1000</strong></label>
+        <input type="range" id="aS" min="100" max="5000" value="1000" step="100">
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Live Readouts</h2>
+    <div class="readout">
+      <div class="ro"><span>N_A</span><span id="ro_na">—</span></div>
+      <div class="ro"><span>N_D</span><span id="ro_nd">—</span></div>
+      <div class="ro"><span>V_bi</span><span id="ro_vbi">—</span></div>
+      <div class="ro"><span>Applied V_A</span><span id="ro_va">—</span></div>
+      <div class="ro"><span>Total W</span><span id="ro_w">—</span></div>
+      <div class="ro"><span>x_p (into P-side)</span><span id="ro_xp">—</span></div>
+      <div class="ro"><span>x_n (into N-side)</span><span id="ro_xn">—</span></div>
+      <div class="ro"><span class="highlight">C_j at V_A</span><span id="ro_cj" class="highlight">—</span></div>
+      <div class="ro"><span>C_j0 (at V_A=0)</span><span id="ro_cj0">—</span></div>
+    </div>
+  </div>
+</div>
+<script>
+const jC=document.getElementById('jCanvas'), cC=document.getElementById('cjCanvas');
+const jx=jC.getContext('2d'), cx=cC.getContext('2d');
+const q=1.602e-19, eps=1.04e-12; // F/cm
+const ni=1.5e10; // cm^-3
+
+function resize(){
+  [jC,cC].forEach(c=>{c.width=c.offsetWidth*devicePixelRatio;c.height=parseInt(c.getAttribute('height'))*devicePixelRatio;});
+  jx.scale(devicePixelRatio,devicePixelRatio);cx.scale(devicePixelRatio,devicePixelRatio);
+  draw();
+}
+
+function calcVbi(NA,ND){
+  return 0.026*Math.log(NA*ND/(ni*ni));
+}
+function calcW(NA,ND,VA){
+  const Vbi=calcVbi(NA,ND);
+  const net=Math.max(Vbi-VA,0.01);
+  return Math.sqrt(2*eps*net/q*(1/NA+1/ND));// cm
+}
+
+function fmtSci(v,u){
+  const e=Math.floor(Math.log10(Math.abs(v)));
+  return `${(v/Math.pow(10,e)).toFixed(2)}×10^${e} ${u}`;
+}
+
+function draw(){
+  const NA=parseFloat(document.getElementById('naS').value)*1e15;
+  const ND=parseFloat(document.getElementById('ndS').value)*1e15;
+  const VA=parseFloat(document.getElementById('vaS').value);
+  const A_um2=parseFloat(document.getElementById('aS').value);
+  const A_cm2=A_um2*1e-8;
+
+  document.getElementById('naLbl').textContent=parseFloat(document.getElementById('naS').value);
+  document.getElementById('ndLbl').textContent=parseFloat(document.getElementById('ndS').value);
+  document.getElementById('vaLbl').textContent=VA.toFixed(1)+' V';
+  document.getElementById('aLbl').textContent=A_um2;
+
+  const Vbi=calcVbi(NA,ND);
+  const W_cm=calcW(NA,ND,VA);
+  const W_nm=W_cm*1e7;
+  const xp_cm=W_cm*ND/(NA+ND);
+  const xn_cm=W_cm*NA/(NA+ND);
+  const Cj=eps*A_cm2/W_cm*1e12; // pF
+  const W0_cm=calcW(NA,ND,0);
+  const Cj0=eps*A_cm2/W0_cm*1e12;
+
+  document.getElementById('ro_na').textContent=fmtSci(NA,'cm⁻³');
+  document.getElementById('ro_nd').textContent=fmtSci(ND,'cm⁻³');
+  document.getElementById('ro_vbi').textContent=Vbi.toFixed(3)+' V';
+  document.getElementById('ro_va').textContent=VA.toFixed(1)+' V';
+  document.getElementById('ro_w').textContent=W_nm.toFixed(1)+' nm';
+  document.getElementById('ro_xp').textContent=(xp_cm*1e7).toFixed(1)+' nm';
+  document.getElementById('ro_xn').textContent=(xn_cm*1e7).toFixed(1)+' nm';
+  document.getElementById('ro_cj').textContent=Cj.toFixed(3)+' pF';
+  document.getElementById('ro_cj0').textContent=Cj0.toFixed(3)+' pF';
+
+  drawJunction(jC.width/devicePixelRatio, 180, NA, ND, W_nm, xp_cm*1e7, xn_cm*1e7, VA);
+  drawCjCurve(cC.width/devicePixelRatio, 180, NA, ND, A_cm2, Vbi, VA);
+}
+
+function drawJunction(W,H,NA,ND,W_nm,xp_nm,xn_nm,VA){
+  jx.clearRect(0,0,W,H);
+  const mid=W/2;
+  const maxW_nm=2000;
+  const scale=W*0.35/maxW_nm;
+  const xpPx=Math.max(xp_nm*scale,2);
+  const xnPx=Math.max(xn_nm*scale,2);
+
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  jx.fillStyle=isDark?'#2a1a2e':'#fdeef0';
+  jx.fillRect(0,0,mid-xpPx,H);
+  jx.fillStyle=isDark?'#1a2a2e':'#eef4fd';
+  jx.fillRect(mid+xnPx,0,W-mid-xnPx,H);
+  jx.fillStyle=isDark?'#202830':'#eeeeee';
+  jx.fillRect(mid-xpPx,0,xpPx+xnPx,H);
+  // hatch depletion
+  jx.strokeStyle=isDark?'#444':'#bbb'; jx.lineWidth=0.5;
+  for(let x=mid-xpPx;x<mid+xnPx;x+=8){jx.beginPath();jx.moveTo(x,0);jx.lineTo(x+12,H);jx.stroke();}
+
+  // Labels
+  jx.font='bold 14px monospace';
+  jx.textAlign='center';
+  jx.fillStyle='#e05252'; jx.fillText('P⁺',mid/2,H/2);
+  jx.fillStyle='#4a90d9'; jx.fillText('N',mid+(W-mid)/2,H/2);
+  jx.fillStyle=isDark?'#888':'#666';
+  jx.font='11px system-ui';
+  jx.fillText('Dep.',mid,H/2+4);
+
+  // Depletion arrows
+  jx.strokeStyle='#0066cc'; jx.lineWidth=1.5; jx.setLineDash([3,3]);
+  jx.beginPath(); jx.moveTo(mid-xpPx,30); jx.lineTo(mid+xnPx,30); jx.stroke();
+  jx.setLineDash([]);
+  jx.fillStyle='#0066cc'; jx.font='10px monospace'; jx.textAlign='center';
+  jx.fillText(`W = ${(xpPx+xnPx>2?W_nm.toFixed(0):0)} nm`,mid,45);
+
+  // x_p and x_n bars
+  jx.fillStyle='#e05252'; jx.font='10px monospace'; jx.textAlign='left';
+  jx.fillText(`x_p=${xp_nm.toFixed(0)}nm`,4,H-6);
+  jx.fillStyle='#4a90d9'; jx.textAlign='right';
+  jx.fillText(`x_n=${xn_nm.toFixed(0)}nm`,W-4,H-6);
+
+  // V_A label
+  jx.fillStyle='#3fb950'; jx.textAlign='center'; jx.font='bold 11px monospace';
+  jx.fillText(`V_A = ${VA.toFixed(1)} V`,mid,18);
+
+  // junction line
+  jx.strokeStyle='#0066cc'; jx.lineWidth=2; jx.setLineDash([]);
+  jx.beginPath(); jx.moveTo(mid,0); jx.lineTo(mid,H); jx.stroke();
+}
+
+function drawCjCurve(W,H,NA,ND,A_cm2,Vbi,VA_current){
+  cx.clearRect(0,0,W,H);
+  const pad={l:45,r:15,t:20,b:35};
+  const pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
+
+  const Vmin=-30, Vmax=0.5;
+  const W0_cm=calcW(NA,ND,0);
+  const Cj0_pF=eps*A_cm2/W0_cm*1e12;
+  const Cjmax=Cj0_pF*3;
+
+  // Axes
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  cx.strokeStyle=isDark?'#444':'#ccc'; cx.lineWidth=1;
+  cx.strokeRect(pad.l,pad.t,pw,ph);
+
+  // Grid lines
+  for(let i=1;i<5;i++){
+    const y=pad.t+ph*i/5;
+    cx.beginPath(); cx.moveTo(pad.l,y); cx.lineTo(pad.l+pw,y);
+    cx.strokeStyle=isDark?'#222':'#eee'; cx.stroke();
+  }
+
+  // C_j curve
+  cx.strokeStyle='#0066cc'; cx.lineWidth=2;
+  cx.beginPath();
+  let first=true;
+  for(let px=0;px<=pw;px++){
+    const V=Vmin+(Vmax-Vmin)*px/pw;
+    if(V>Vbi-0.05) break;
+    const Wv=calcW(NA,ND,V);
+    const Cj=eps*A_cm2/Wv*1e12;
+    const y=pad.t+ph*(1-Math.min(Cj/Cjmax,1));
+    if(first){cx.moveTo(pad.l+px,y);first=false;}else cx.lineTo(pad.l+px,y);
+  }
+  cx.stroke();
+
+  // Current operating point
+  if(VA_current<Vbi-0.05){
+    const px=(VA_current-Vmin)/(Vmax-Vmin)*pw;
+    const Wv=calcW(NA,ND,VA_current);
+    const Cj=eps*A_cm2/Wv*1e12;
+    const y=pad.t+ph*(1-Math.min(Cj/Cjmax,1));
+    cx.fillStyle='#f85149'; cx.strokeStyle='#f85149'; cx.lineWidth=1.5;
+    cx.beginPath(); cx.arc(pad.l+px,y,5,0,Math.PI*2); cx.fill();
+    cx.fillStyle='#f85149'; cx.font='10px monospace';
+    cx.textAlign='left';
+    cx.fillText(`${Cj.toFixed(2)}pF`,pad.l+px+7,y);
+  }
+
+  // Axis labels
+  cx.fillStyle=isDark?'#888':'#666'; cx.font='10px system-ui';
+  cx.textAlign='center'; cx.fillText('V_A (V)',pad.l+pw/2,H-5);
+  cx.textAlign='right';
+  cx.fillText(`${Cjmax.toFixed(1)}p`,pad.l-3,pad.t+5);
+  cx.fillText('0',pad.l-3,pad.t+ph);
+  cx.textAlign='left';
+  cx.fillText(Vmin,pad.l,pad.t+ph+12);
+  cx.fillText(Vmax,pad.l+pw-15,pad.t+ph+12);
+  cx.fillStyle='#58a6ff'; cx.font='bold 11px monospace';
+  cx.textAlign='left';
+  cx.fillText('C_j (pF)',pad.l+2,pad.t+14);
+}
+
+document.querySelectorAll('input[type=range]').forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',resize);
+resize();
+</script>
+</body>
+</html>

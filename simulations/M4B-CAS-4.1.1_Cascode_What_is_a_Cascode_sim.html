@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CAS-4.1.1 — What is a Cascode</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#4d9fff;--green:#00cc66;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CAS-4.1.1</div>
+  <h1>Cascode — What is a Cascode</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Transistor Parameters</h2>
+      <label>g_m,M1 (mA/V): <b id="gm1_l">2.0</b> <input type="range" id="gm1" min="0.5" max="10" value="2.0" step="0.1"></label>
+      <label>r_o,M1 (kΩ): <b id="ro1_l">200</b> <input type="range" id="ro1" min="20" max="1000" value="200" step="10"></label>
+      <label>g_m,M2 (mA/V): <b id="gm2_l">1.5</b> <input type="range" id="gm2" min="0.5" max="10" value="1.5" step="0.1"></label>
+      <label>r_o,M2 (kΩ): <b id="ro2_l">250</b> <input type="range" id="ro2" min="20" max="1000" value="250" step="10"></label>
+      <label>Load R_L (kΩ): <b id="rl_l">500</b> <input type="range" id="rl" min="10" max="5000" value="500" step="10"></label>
+      <label>C_gd,M1 (fF): <b id="cgd_l">50</b> <input type="range" id="cgd" min="5" max="200" value="50" step="5"></label>
+
+      <div class="ro">r_out (CS only): <span id="out_cs">--</span> kΩ</div>
+      <div class="ro g">r_out (cascode): <span id="out_cas">--</span> MΩ</div>
+      <div class="ro">G_m (cascode): <span id="gm_cas">--</span> mA/V</div>
+      <div class="ro">A_v (cascode): <span id="av_cas">--</span> dB</div>
+      <div class="ro">Miller C_in (CS): <span id="miller_cs">--</span> fF</div>
+      <div class="ro g">Miller C_in (cascode): <span id="miller_cas">--</span> fF</div>
+
+      <div class="insight" id="insight_box">Adjust parameters to explore cascode properties.</div>
+    </div>
+
+    <div class="card">
+      <h2>Output Resistance Comparison</h2>
+      <canvas id="cv" height="320"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  function fmt(v, digits){ return v.toFixed(digits); }
+
+  function compute(){
+    const gm1 = +document.getElementById('gm1').value * 1e-3;
+    const ro1  = +document.getElementById('ro1').value  * 1e3;
+    const gm2 = +document.getElementById('gm2').value * 1e-3;
+    const ro2  = +document.getElementById('ro2').value  * 1e3;
+    const RL   = +document.getElementById('rl').value   * 1e3;
+    const Cgd  = +document.getElementById('cgd').value  * 1e-15;
+
+    document.getElementById('gm1_l').textContent = (gm1*1e3).toFixed(1);
+    document.getElementById('ro1_l').textContent = (ro1/1e3).toFixed(0);
+    document.getElementById('gm2_l').textContent = (gm2*1e3).toFixed(1);
+    document.getElementById('ro2_l').textContent = (ro2/1e3).toFixed(0);
+    document.getElementById('rl_l').textContent  = (RL/1e3).toFixed(0);
+    document.getElementById('cgd_l').textContent = (Cgd/1e-15).toFixed(0);
+
+    // Output resistances
+    const r_cs  = ro1; // simple common-source r_out
+    const r_cas = ro2 + ro1 + gm2 * ro2 * ro1; // cascode r_out (exact)
+
+    // Effective load
+    const R_eff_cs  = (r_cs  * RL) / (r_cs  + RL);
+    const R_eff_cas = (r_cas * RL) / (r_cas + RL);
+
+    // Transconductance (unchanged by cascode)
+    const Gm = gm1;
+
+    // Voltage gain
+    const Av_cs  = gm1 * R_eff_cs;
+    const Av_cas = gm1 * R_eff_cas;
+
+    // Miller capacitance: CS => (1 + Av_cs) * Cgd; cascode => ~2*Cgd
+    const miller_cs  = (1 + Av_cs) * Cgd;
+    const miller_cas = (1 + gm1/gm2) * Cgd; // ≈ 2*Cgd
+
+    document.getElementById('out_cs').textContent  = fmt(r_cs/1e3, 0);
+    document.getElementById('out_cas').textContent = fmt(r_cas/1e6, 2);
+    document.getElementById('gm_cas').textContent  = fmt(Gm*1e3, 2);
+    document.getElementById('av_cas').textContent  = fmt(20*Math.log10(Av_cas), 1);
+    document.getElementById('miller_cs').textContent  = fmt(miller_cs/1e-15, 0);
+    document.getElementById('miller_cas').textContent = fmt(miller_cas/1e-15, 1);
+
+    const ratio = r_cas / r_cs;
+    const miller_ratio = miller_cs / miller_cas;
+    document.getElementById('insight_box').textContent =
+      'r_out improvement: ' + fmt(ratio,0) + '× (from ' + fmt(r_cs/1e3,0) + ' kΩ to ' +
+      fmt(r_cas/1e6,2) + ' MΩ). Miller C_in reduction: ' +
+      fmt(miller_ratio,0) + '× (from ' + fmt(miller_cs/1e-15,0) + ' fF to ' +
+      fmt(miller_cas/1e-15,1) + ' fF). G_m is unchanged at ' + fmt(Gm*1e3,2) + ' mA/V — the cascode only raises R_out, not G_m.';
+
+    draw(gm1, ro1, gm2, ro2, RL, Cgd, r_cs, r_cas, Av_cs, Av_cas, miller_cs, miller_cas);
+  }
+
+  function draw(gm1, ro1, gm2, ro2, RL, Cgd, r_cs, r_cas, Av_cs, Av_cas, miller_cs, miller_cas){
+    const cv = document.getElementById('cv');
+    const W  = cv.parentElement.clientWidth - 36;
+    cv.width = W; cv.height = 320;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, W, 320);
+
+    const isDark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+    const axCol  = isDark ? '#8899bb' : '#8888aa';
+    const bgCol  = isDark ? '#252530' : '#f4f6f9';
+
+    // === Left panel: bar chart for r_out CS vs Cascode vs Ideal (no load) ===
+    const pL=48, pT=20, pB=50, pH=320-pT-pB;
+    const panelW = (W-pL-20)/2;
+
+    // r_out values (log scale)
+    const vals = [r_cs, r_cas, r_cas];
+    const labels = ['CS only', 'Cascode', 'Cascode\n(no load)'];
+    const colors = ['#cc4400', '#0066cc', '#00994d'];
+
+    // Determine log range
+    const logMin = Math.floor(Math.log10(r_cs * 0.5));
+    const logMax = Math.ceil(Math.log10(r_cas * 3));
+
+    function logY(v){
+      const frac = (Math.log10(v) - logMin) / (logMax - logMin);
+      return pT + pH - frac * pH;
+    }
+
+    // Axes
+    ctx.strokeStyle = axCol; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pL, pT); ctx.lineTo(pL, pT+pH); ctx.lineTo(pL+panelW, pT+pH); ctx.stroke();
+    ctx.fillStyle = axCol; ctx.font = '9px system-ui';
+    ctx.save(); ctx.translate(10, pT+pH/2); ctx.rotate(-Math.PI/2);
+    ctx.fillText('r_out (log scale)', 0, 0); ctx.restore();
+
+    // Grid lines (log)
+    for(let e = logMin; e <= logMax; e++){
+      const y = logY(Math.pow(10, e));
+      if(y < pT || y > pT+pH) continue;
+      ctx.strokeStyle = axCol+'33'; ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(pL, y); ctx.lineTo(pL+panelW, y); ctx.stroke();
+      let lbl = e >= 6 ? (Math.pow(10,e)/1e6).toFixed(0)+'M' : e >= 3 ? (Math.pow(10,e)/1e3).toFixed(0)+'k' : Math.pow(10,e).toFixed(0);
+      ctx.fillStyle = axCol; ctx.font = '8px system-ui'; ctx.textAlign = 'right';
+      ctx.fillText(lbl+'Ω', pL-3, y+3);
+    }
+    ctx.textAlign = 'left';
+
+    const barW = Math.floor(panelW/3/1.8);
+    [r_cs, r_cas].forEach((v,i)=>{
+      const x = pL + (i+0.5) * (panelW/2) - barW/2;
+      const yTop = logY(v);
+      const yBot = pT + pH;
+      ctx.fillStyle = colors[i];
+      ctx.fillRect(x, yTop, barW, yBot - yTop);
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'center';
+      const dispV = v >= 1e6 ? (v/1e6).toFixed(1)+'MΩ' : v >= 1e3 ? (v/1e3).toFixed(0)+'kΩ' : v.toFixed(0)+'Ω';
+      if(yBot - yTop > 16) ctx.fillText(dispV, x+barW/2, yTop+14);
+      ctx.fillStyle = axCol; ctx.font = '9px system-ui';
+      ctx.fillText(labels[i], x+barW/2, pT+pH+16);
+    });
+
+    // === Right panel: Miller capacitance bar chart ===
+    const rX = pL + panelW + 20;
+    const rPanelW = W - rX - 4;
+
+    ctx.strokeStyle = axCol; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(rX, pT); ctx.lineTo(rX, pT+pH); ctx.lineTo(rX+rPanelW, pT+pH); ctx.stroke();
+    ctx.save(); ctx.translate(rX-12, pT+pH/2); ctx.rotate(-Math.PI/2);
+    ctx.fillStyle = axCol; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('Input Miller Cap (fF)', 0, 0); ctx.restore();
+
+    const maxMiller = miller_cs * 1.2;
+    function milY(v){ return pT + pH - (v/maxMiller) * pH; }
+
+    // Grid
+    const mgrid = [50, 500, 1000, 2000, 5000].filter(v => v <= maxMiller * 1.05);
+    mgrid.forEach(v=>{
+      const y = milY(v);
+      if(y < pT || y > pT+pH) return;
+      ctx.strokeStyle = axCol+'33'; ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(rX, y); ctx.lineTo(rX+rPanelW, y); ctx.stroke();
+      ctx.fillStyle = axCol; ctx.font = '8px system-ui'; ctx.textAlign = 'right';
+      ctx.fillText(v+'fF', rX-3, y+3);
+    });
+    ctx.textAlign = 'left';
+
+    const mVals = [miller_cs, miller_cas];
+    const mLabels = ['CS\n(Miller)', 'Cascode\n(≈2C_gd)'];
+    const mColors = ['#cc4400', '#00994d'];
+    const mbW = Math.floor(rPanelW/2/1.8);
+    mVals.forEach((v,i)=>{
+      const x = rX + (i+0.5)*(rPanelW/2) - mbW/2;
+      const yTop = milY(v);
+      const yBot = pT + pH;
+      ctx.fillStyle = mColors[i];
+      ctx.fillRect(x, yTop, mbW, yBot-yTop);
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'center';
+      const dispV = (v/1e-15).toFixed(0) + ' fF';
+      if(yBot-yTop > 16) ctx.fillText(dispV, x+mbW/2, yTop+14);
+      ctx.fillStyle = axCol; ctx.font = '9px system-ui';
+      ctx.fillText(mLabels[i].split('\n')[0], x+mbW/2, pT+pH+14);
+      ctx.fillText(mLabels[i].split('\n')[1], x+mbW/2, pT+pH+26);
+    });
+
+    // Panel titles
+    ctx.fillStyle = axCol; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('Output Resistance', pL + panelW/2, pT-4);
+    ctx.fillText('Input Miller Capacitance', rX + rPanelW/2, pT-4);
+    ctx.textAlign = 'left';
+
+    // Improvement annotations
+    const ratio_r = r_cas / r_cs;
+    const ratio_m = miller_cs / miller_cas;
+    ctx.fillStyle = '#00994d'; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(ratio_r.toFixed(0)+'× better', pL + panelW/2, pT + pH/2);
+    ctx.fillText(ratio_m.toFixed(0)+'× less', rX + rPanelW/2, pT + pH/2);
+    ctx.textAlign = 'left';
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e => e.addEventListener('input', compute));
+  compute();
+  window.addEventListener('resize', compute);
+</script>
+</body>
+</html>

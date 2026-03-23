@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-PM-11.3.1 — Noise Metrics</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0e1117; color: #cdd6f4; font-family: 'Segoe UI', sans-serif; font-size: 14px; }
+  h1 { text-align: center; padding: 18px; font-size: 17px; color: #cba6f7; border-bottom: 1px solid #313244; }
+  .tabs { display: flex; background: #181825; border-bottom: 1px solid #313244; }
+  .tab { padding: 10px 22px; cursor: pointer; color: #a6adc8; font-size: 13px; border-bottom: 3px solid transparent; }
+  .tab.active { color: #cba6f7; border-bottom-color: #cba6f7; }
+  .tab:hover:not(.active) { color: #cdd6f4; }
+  .panel { display: none; padding: 18px; }
+  .panel.active { display: block; }
+  canvas { display: block; background: #1e1e2e; border-radius: 8px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+  .ctrl { background: #181825; border-radius: 8px; padding: 14px; min-width: 220px; }
+  .ctrl label { display: block; color: #a6adc8; font-size: 12px; margin-bottom: 6px; }
+  .ctrl input[type=range] { width: 100%; accent-color: #cba6f7; margin-bottom: 2px; }
+  .ctrl .val { color: #a6e3a1; font-size: 12px; text-align: right; margin-bottom: 8px; }
+  .info-box { background: #181825; border-radius: 8px; padding: 12px; margin-top: 12px; font-size: 12px; line-height: 1.7; }
+  .hi { color: #a6e3a1; font-weight: bold; }
+  .warn { color: #f38ba8; font-weight: bold; }
+  .note { color: #fab387; }
+</style>
+</head>
+<body>
+<h1>M4B-PM-11.3.1 — Noise Metrics</h1>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">Noise Spectrum & Integration</div>
+  <div class="tab" onclick="showTab(1)">kT/C Noise vs Sampling Cap</div>
+  <div class="tab" onclick="showTab(2)">Noise-Power Trade-off</div>
+</div>
+
+<!-- TAB 0: Noise spectrum -->
+<div class="panel active" id="tab0">
+  <div class="row">
+    <canvas id="c0" width="600" height="390"></canvas>
+    <div class="ctrl" style="max-width:230px;">
+      <label>gm1 (mA/V): <span class="val" id="v0_gm1">1.60</span></label>
+      <input type="range" id="r0_gm1" min="0.2" max="10.0" step="0.1" value="1.60" oninput="draw0()">
+      <label>gm3/gm1 ratio: <span class="val" id="v0_ratio">0.80</span></label>
+      <input type="range" id="r0_ratio" min="0.2" max="3.0" step="0.05" value="0.80" oninput="draw0()">
+      <label>1/f corner fc (kHz): <span class="val" id="v0_fc">500</span></label>
+      <input type="range" id="r0_fc" min="1" max="5000" step="10" value="500" oninput="draw0()">
+      <label>Integration f1 (Hz): <span class="val" id="v0_f1">10</span></label>
+      <input type="range" id="r0_f1" min="0.1" max="1000" step="0.1" value="10" oninput="draw0()">
+      <label>Integration f2 (MHz): <span class="val" id="v0_f2">100</span></label>
+      <input type="range" id="r0_f2" min="1" max="1000" step="1" value="100" oninput="draw0()">
+      <label>γ: <span class="val" id="v0_gamma">0.667</span></label>
+      <input type="range" id="r0_gamma" min="0.3" max="2.5" step="0.05" value="0.667" oninput="draw0()">
+    </div>
+  </div>
+  <div class="info-box" id="info0"></div>
+</div>
+
+<!-- TAB 1: kT/C -->
+<div class="panel" id="tab1">
+  <div class="row">
+    <canvas id="c1" width="600" height="390"></canvas>
+    <div class="ctrl" style="max-width:230px;">
+      <label>Full-scale range (V): <span class="val" id="v1_fs">1.2</span></label>
+      <input type="range" id="r1_fs" min="0.2" max="3.6" step="0.1" value="1.2" oninput="draw1()">
+      <label>Target bits: <span class="val" id="v1_bits">14</span></label>
+      <input type="range" id="r1_bits" min="8" max="20" step="1" value="14" oninput="draw1()">
+      <label>Temperature (°C): <span class="val" id="v1_temp">27</span></label>
+      <input type="range" id="r1_temp" min="-40" max="125" step="5" value="27" oninput="draw1()">
+    </div>
+  </div>
+  <div class="info-box" id="info1"></div>
+</div>
+
+<!-- TAB 2: NPP -->
+<div class="panel" id="tab2">
+  <div class="row">
+    <canvas id="c2" width="620" height="390"></canvas>
+    <div class="ctrl" style="max-width:230px;">
+      <label>Vov (V): <span class="val" id="v2_vov">0.125</span></label>
+      <input type="range" id="r2_vov" min="0.05" max="0.4" step="0.005" value="0.125" oninput="draw2()">
+      <label>VDD (V): <span class="val" id="v2_vdd">1.2</span></label>
+      <input type="range" id="r2_vdd" min="0.8" max="3.6" step="0.1" value="1.2" oninput="draw2()">
+      <label>γ: <span class="val" id="v2_gamma">0.667</span></label>
+      <input type="range" id="r2_gamma" min="0.3" max="2.5" step="0.05" value="0.667" oninput="draw2()">
+      <label>Target Vn (nV/√Hz): <span class="val" id="v2_target">5.0</span></label>
+      <input type="range" id="r2_target" min="0.5" max="50" step="0.5" value="5.0" oninput="draw2()">
+    </div>
+  </div>
+  <div class="info-box" id="info2"></div>
+</div>
+
+<script>
+const dpr=window.devicePixelRatio||1;
+function setupCanvas(id,w,h){
+  const c=document.getElementById(id);
+  c.width=w*dpr; c.height=h*dpr; c.style.width=w+'px'; c.style.height=h+'px';
+  const ctx=c.getContext('2d'); ctx.scale(dpr,dpr); return ctx;
+}
+function g(id){return parseFloat(document.getElementById(id).value);}
+function sv(id,v){document.getElementById(id).textContent=v;}
+function showTab(n){
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
+  if(n===1)draw1(); if(n===2)draw2();
+}
+
+// TAB 0 ──────────────────────────────────────────────────────────────────────
+function draw0(){
+  const gm1=g('r0_gm1')*1e-3, ratio=g('r0_ratio');
+  const fc=g('r0_fc')*1e3, f1=g('r0_f1'), f2=g('r0_f2')*1e6;
+  const gamma=g('r0_gamma');
+  sv('v0_gm1',g('r0_gm1').toFixed(2)); sv('v0_ratio',ratio.toFixed(2));
+  sv('v0_fc',(fc/1e3).toFixed(0)); sv('v0_f1',g('r0_f1').toFixed(1));
+  sv('v0_f2',g('r0_f2').toFixed(0)); sv('v0_gamma',gamma.toFixed(3));
+
+  const kT=4.14e-21;
+  const Svn_th=8*kT*gamma/gm1*(1+ratio); // V²/Hz
+  const Svn_at_fc=Svn_th; // by definition of fc
+  function Svn(f){return Svn_th*(1+fc/f);}
+
+  // Integration
+  const Vn_rms2 = Svn_th*(f2-f1) + Svn_th*fc*Math.log(f2/f1);
+  const Vn_rms_uV = Math.sqrt(Vn_rms2)*1e6;
+  const Vn_floor_nV = Math.sqrt(Svn_th)*1e9;
+
+  const ctx=setupCanvas('c0',600,390);
+  const W=600,H=390;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Input-Referred Noise Spectrum',W/2,20);
+
+  const mL=70,mR=25,mT=35,mB=50;
+  const bW=W-mL-mR, bH=H-mT-mB;
+  const fMin=0.1,fMax=1e9;
+  function fx(f){return mL+bW*Math.log10(f/fMin)/Math.log10(fMax/fMin);}
+  const Svn_min=Svn_th*0.3, Svn_max=Svn(fMin)*5;
+  function sy(sv_val){return mT+bH*(1-Math.log10(sv_val/Svn_min)/Math.log10(Svn_max/Svn_min));}
+
+  // Grid
+  for(let exp=Math.floor(Math.log10(Svn_min)); exp<=Math.ceil(Math.log10(Svn_max)); exp++){
+    const y=sy(Math.pow(10,exp));
+    if(y<mT||y>mT+bH) continue;
+    ctx.beginPath(); ctx.moveTo(mL,y); ctx.lineTo(mL+bW,y);
+    ctx.strokeStyle='#313244'; ctx.lineWidth=0.7; ctx.stroke();
+    ctx.fillStyle='#585b70'; ctx.font='8px Segoe UI'; ctx.textAlign='right';
+    // convert to V/√Hz
+    ctx.fillText((Math.sqrt(Math.pow(10,exp))*1e9).toFixed(1)+' n', mL-3, y+3);
+  }
+  [0.1,1,10,100,1e3,1e4,1e5,1e6,1e7,1e8,1e9].forEach(f=>{
+    const x=fx(f);
+    ctx.beginPath(); ctx.moveTo(x,mT); ctx.lineTo(x,mT+bH);
+    ctx.strokeStyle='#313244'; ctx.lineWidth=0.7; ctx.stroke();
+    const ls={0.1:'0.1',1:'1',10:'10',100:'100',1e3:'1k',1e4:'10k',1e5:'100k',1e6:'1M',1e7:'10M',1e8:'100M',1e9:'1G'};
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText(ls[f]||'',x,mT+bH+14);
+  });
+
+  // Integration region shading
+  const x_f1=fx(f1), x_f2=fx(Math.min(f2,fMax));
+  ctx.fillStyle='rgba(137,180,250,0.08)';
+  ctx.fillRect(x_f1,mT,x_f2-x_f1,bH);
+
+  // Noise curve: 1/f + thermal
+  ctx.beginPath();
+  const nPts=300;
+  for(let i=0;i<=nPts;i++){
+    const f=fMin*Math.pow(fMax/fMin,i/nPts);
+    const sv_val=Svn(f);
+    const x=fx(f), y=sy(sv_val);
+    if(y>=mT&&y<=mT+bH) i===0||i>0&&(x-fx(fMin*Math.pow(fMax/fMin,(i-1)/nPts)))>-100?
+      (i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)):ctx.moveTo(x,y);
+    else ctx.moveTo(x,y);
+  }
+  ctx.strokeStyle='#89b4fa'; ctx.lineWidth=2.5; ctx.stroke();
+
+  // Thermal floor line
+  const y_th=sy(Svn_th);
+  ctx.beginPath(); ctx.moveTo(mL,y_th); ctx.lineTo(mL+bW,y_th);
+  ctx.strokeStyle='#a6e3a1'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#a6e3a1'; ctx.font='10px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText('Thermal: '+Vn_floor_nV.toFixed(2)+' nV/√Hz', mL+5, y_th-5);
+
+  // fc marker
+  const x_fc=fx(fc);
+  if(x_fc>=mL&&x_fc<=mL+bW){
+    ctx.beginPath(); ctx.moveTo(x_fc,mT); ctx.lineTo(x_fc,mT+bH);
+    ctx.strokeStyle='#fab387'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#fab387'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText('fc='+(fc/1e3).toFixed(0)+'kHz', x_fc, mT-4);
+  }
+
+  ctx.fillStyle='#585b70'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Frequency (Hz)', W/2, H-8);
+  ctx.save(); ctx.translate(12,H/2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle='#585b70'; ctx.fillText('Svn (V/√Hz)', 0,0); ctx.restore();
+
+  document.getElementById('info0').innerHTML=
+    `Svn_thermal = ${Vn_floor_nV.toFixed(2)} nV/√Hz.  fc = ${(fc/1e3).toFixed(0)} kHz.
+     Integrated ${f1.toFixed(1)} Hz – ${(f2/1e6).toFixed(0)} MHz:
+     <span class="${Vn_rms_uV<200?'hi':'warn'}">Vn_rms = ${Vn_rms_uV.toFixed(1)} μV</span>.
+     1/f contribution: ${(Math.sqrt(Svn_th*fc*Math.log(f2/f1))*1e6).toFixed(1)} μV,
+     thermal: ${(Math.sqrt(Svn_th*(f2-f1))*1e6).toFixed(1)} μV.`;
+}
+
+// TAB 1 ──────────────────────────────────────────────────────────────────────
+function draw1(){
+  const FS=g('r1_fs'), bits=g('r1_bits'), T_C=g('r1_temp');
+  sv('v1_fs',FS.toFixed(1)); sv('v1_bits',bits.toFixed(0)); sv('v1_temp',T_C.toFixed(0));
+
+  const kT=1.38e-23*(T_C+273.15);
+  const LSB=FS/Math.pow(2,bits);
+  const Cs_min_for_halfLSB=kT/(LSB/2)**2; // fF
+  const bits_from_ktC_fn=(Cs)=>0.5*Math.log2(FS**2/(kT/Cs))-0.5;
+
+  const ctx=setupCanvas('c1',600,390);
+  const W=600,H=390;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('kT/C Noise vs Sampling Capacitor',W/2,20);
+
+  const mL=60,mR=30,mT=40,mB=50;
+  const bW=W-mL-mR, bH=H-mT-mB;
+
+  // X: Cs from 1 fF to 100 pF (log), Y: Effective bits (0-20)
+  const CsMin=1e-15,CsMax=100e-12;
+  function cx(Cs){return mL+bW*Math.log10(Cs/CsMin)/Math.log10(CsMax/CsMin);}
+  function by(nbits){return mT+bH*(1-nbits/22);}
+
+  [0,2,4,6,8,10,12,14,16,18,20].forEach(n=>{
+    const y=by(n);
+    ctx.beginPath(); ctx.moveTo(mL,y); ctx.lineTo(mL+bW,y);
+    ctx.strokeStyle=n===bits?'#f38ba8':'#313244'; ctx.lineWidth=n===bits?1.5:0.7;
+    ctx.setLineDash(n===bits?[4,3]:[]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='right';
+    ctx.fillText(n,mL-4,y+3);
+  });
+  [1e-15,10e-15,100e-15,1e-12,10e-12,100e-12].forEach(c=>{
+    const x=cx(c);
+    ctx.beginPath(); ctx.moveTo(x,mT); ctx.lineTo(x,mT+bH);
+    ctx.strokeStyle='#313244'; ctx.lineWidth=0.7; ctx.stroke();
+    const ls={1e-15:'1f',10e-15:'10f',100e-15:'100f',1e-12:'1p',10e-12:'10p',100e-12:'100p'};
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText(ls[c]||'',x,mT+bH+14);
+  });
+
+  // Bits vs Cs curve (room temp)
+  ctx.beginPath();
+  for(let log=-15; log<=-10; log+=0.05){
+    const Cs=Math.pow(10,log);
+    const n=bits_from_ktC_fn(Cs);
+    const x=cx(Cs), y=by(Math.max(0,Math.min(21,n)));
+    log===-15?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.strokeStyle='#89b4fa'; ctx.lineWidth=2.5; ctx.stroke();
+
+  // Temperature comparison
+  [-40,125].forEach((Tc,i)=>{
+    const kTc=1.38e-23*(Tc+273.15);
+    ctx.beginPath();
+    for(let log=-15; log<=-10; log+=0.05){
+      const Cs=Math.pow(10,log);
+      const n=0.5*Math.log2(FS**2/(kTc/Cs))-0.5;
+      const x=cx(Cs), y=by(Math.max(0,Math.min(21,n)));
+      log===-15?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle=i===0?'#a6e3a1':'#f38ba8'; ctx.lineWidth=1.5;
+    ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=i===0?'#a6e3a1':'#f38ba8'; ctx.font='10px Segoe UI'; ctx.textAlign='right';
+    ctx.fillText(Tc+'°C', mL+bW-3, by(0.5*Math.log2(FS**2/(kTc/CsMax))-0.5)+12*(i===0?1:-1));
+  });
+
+  // Cs_min marker
+  const x_min=cx(Cs_min_for_halfLSB);
+  if(x_min>=mL&&x_min<=mL+bW){
+    ctx.beginPath(); ctx.moveTo(x_min,mT); ctx.lineTo(x_min,mT+bH);
+    ctx.strokeStyle='#fab387'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#fab387'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText('Cs_min', x_min, mT-5);
+    ctx.fillText((Cs_min_for_halfLSB*1e15).toFixed(1)+'fF', x_min, mT+8);
+  }
+
+  ctx.fillStyle='#585b70'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Sampling capacitor Cs (F)', W/2, H-8);
+  ctx.save(); ctx.translate(12,H/2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle='#585b70'; ctx.fillText('Effective bits limited by kT/C', 0,0); ctx.restore();
+
+  document.getElementById('info1').innerHTML=
+    `${bits}-bit, FS=${FS}V: LSB = ${(LSB*1e6).toFixed(1)} μV.  kT = ${(kT*1e21).toFixed(2)} zJ at ${T_C}°C.
+     <br>Cs_min for ½-LSB kT/C noise = ${(Cs_min_for_halfLSB*1e15).toFixed(1)} fF.
+     <br>At Cs = 100 fF: kT/C noise = ${(Math.sqrt(kT/100e-15)*1e6).toFixed(1)} μV = ${(Math.sqrt(kT/100e-15)/LSB).toFixed(2)} LSB.
+     ${kT/100e-15<(LSB/2)**2?'<span class="hi">100 fF sufficient for '+bits+'-bit.</span>':'<span class="warn">100 fF insufficient — need Cs ≥ '+(Cs_min_for_halfLSB*1e15).toFixed(0)+' fF.</span>'}`;
+}
+
+// TAB 2 ──────────────────────────────────────────────────────────────────────
+function draw2(){
+  const Vov=g('r2_vov'), VDD=g('r2_vdd'), gamma=g('r2_gamma'), Vn_target=g('r2_target')*1e-9;
+  sv('v2_vov',Vov.toFixed(3)); sv('v2_vdd',VDD.toFixed(2)); sv('v2_gamma',gamma.toFixed(3)); sv('v2_target',g('r2_target').toFixed(1));
+
+  const kT=4.14e-21;
+  // NPP = 16kTγ*Vov*VDD [V²·W]
+  const NPP=16*kT*gamma*Vov*VDD;
+  // Required power for target noise: P = NPP/Svn_target
+  const Svn_target=Vn_target**2;
+  const P_required=NPP/Svn_target;
+
+  const ctx=setupCanvas('c2',620,390);
+  const W=620,H=390;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Noise-Power Trade-off (NPP Limit)',W/2,20);
+
+  const mL=65,mR=30,mT=40,mB=50;
+  const bW=W-mL-mR, bH=H-mT-mB;
+
+  // X: Power 1μW to 100mW (log), Y: Vn floor nV/√Hz (log)
+  const Pmin=1e-6,Pmax=0.1;
+  function px(P){return mL+bW*Math.log10(P/Pmin)/Math.log10(Pmax/Pmin);}
+  const Vn_min=0.1e-9, Vn_max=100e-9;
+  function vy(Vn){return mT+bH*(1-Math.log10(Vn/Vn_min)/Math.log10(Vn_max/Vn_min));}
+
+  // Grid
+  [0.1,0.3,1,3,10,30,100].forEach(nv=>{
+    const y=vy(nv*1e-9);
+    if(y<mT||y>mT+bH) return;
+    ctx.beginPath(); ctx.moveTo(mL,y); ctx.lineTo(mL+bW,y);
+    ctx.strokeStyle='#313244'; ctx.lineWidth=0.7; ctx.stroke();
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='right';
+    ctx.fillText(nv+' n', mL-3,y+3);
+  });
+  [1e-6,10e-6,100e-6,1e-3,10e-3,100e-3].forEach(P=>{
+    const x=px(P);
+    ctx.beginPath(); ctx.moveTo(x,mT); ctx.lineTo(x,mT+bH);
+    ctx.strokeStyle='#313244'; ctx.lineWidth=0.7; ctx.stroke();
+    const ls={1e-6:'1μW',10e-6:'10μW',100e-6:'100μW',1e-3:'1mW',10e-3:'10mW',100e-3:'100mW'};
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText(ls[P]||'',x,mT+bH+14);
+  });
+
+  // NPP curves for different Vov × VDD combinations
+  const configs=[
+    {label:'Vov=0.05V,VDD=0.6V', Vov_v:0.05, VDD_v:0.6, color:'#74c7ec'},
+    {label:'Vov=0.1V,VDD=1.2V', Vov_v:0.1, VDD_v:1.2, color:'#a6e3a1'},
+    {label:'Vov=0.2V,VDD=1.8V', Vov_v:0.2, VDD_v:1.8, color:'#fab387'},
+    {label:'Vov=0.3V,VDD=3.3V', Vov_v:0.3, VDD_v:3.3, color:'#f38ba8'},
+  ];
+  configs.forEach(cfg=>{
+    const npp=16*kT*gamma*cfg.Vov_v*cfg.VDD_v;
+    ctx.beginPath();
+    for(let logP=-6; logP<=-1; logP+=0.05){
+      const P=Math.pow(10,logP);
+      const Svn_v=npp/P;
+      const Vn_v=Math.sqrt(Svn_v);
+      if(Vn_v<Vn_min||Vn_v>Vn_max*2) continue;
+      const x=px(P), y=vy(Vn_v);
+      logP===-6?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle=cfg.color; ctx.lineWidth=1.8; ctx.stroke();
+    // Label at right
+    const P_end=Pmax*0.9;
+    const Vn_end=Math.sqrt(npp/P_end);
+    if(Vn_end>=Vn_min&&Vn_end<=Vn_max){
+      ctx.fillStyle=cfg.color; ctx.font='9px Segoe UI'; ctx.textAlign='left';
+      ctx.fillText(cfg.label, px(P_end)+3, vy(Vn_end));
+    }
+  });
+
+  // Current design NPP curve (highlighted)
+  ctx.beginPath();
+  for(let logP=-6; logP<=-1; logP+=0.05){
+    const P=Math.pow(10,logP);
+    const Svn_v=NPP/P;
+    const Vn_v=Math.sqrt(Svn_v);
+    if(Vn_v<Vn_min||Vn_v>Vn_max*2) continue;
+    const x=px(P), y=vy(Vn_v);
+    logP===-6?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.strokeStyle='#89b4fa'; ctx.lineWidth=3; ctx.stroke();
+
+  // Target noise and required power lines
+  const y_target=vy(Vn_target);
+  ctx.beginPath(); ctx.moveTo(mL,y_target); ctx.lineTo(mL+bW,y_target);
+  ctx.strokeStyle='#cba6f7'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#cba6f7'; ctx.font='10px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText('Target: '+g('r2_target').toFixed(1)+' nV/√Hz', mL+3, y_target-5);
+
+  const x_req=px(P_required);
+  if(x_req>=mL&&x_req<=mL+bW){
+    ctx.beginPath(); ctx.moveTo(x_req,mT); ctx.lineTo(x_req,mT+bH);
+    ctx.strokeStyle='#cba6f7'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#cba6f7'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText('P_req', x_req, mT-4);
+    ctx.fillText((P_required*1000).toFixed(2)+'mW', x_req, mT+10);
+  }
+
+  ctx.fillStyle='#585b70'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Quiescent power P (W)', W/2, H-8);
+  ctx.save(); ctx.translate(12,H/2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle='#585b70'; ctx.fillText('Thermal noise floor Vn (V/√Hz)', 0,0); ctx.restore();
+
+  document.getElementById('info2').innerHTML=
+    `NPP = 16kTγ×Vov×VDD = ${(NPP*1e21).toFixed(3)} ×10⁻²¹ V²·W.
+     <br>For target Vn = ${g('r2_target').toFixed(1)} nV/√Hz: P_required = ${(P_required*1000).toFixed(3)} mW.
+     <br><span class="note">Halving Vn requires 4× more power (NPP = constant at fixed Vov, VDD).</span>
+     <br>Reduce NPP by lowering Vov (weaker inversion) or VDD (newer process node).
+     At Vov=0.05V, VDD=0.6V (FDSOI 22nm): NPP = ${(16*kT*gamma*0.05*0.6*1e21).toFixed(3)} ×10⁻²¹ — ${(16*kT*gamma*Vov*VDD/(16*kT*gamma*0.05*0.6)).toFixed(1)}× lower.`;
+}
+
+draw0(); draw1(); draw2();
+</script>
+</body>
+</html>

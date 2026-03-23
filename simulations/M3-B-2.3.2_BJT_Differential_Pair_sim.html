@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M3-B-2.3.2 BJT Differential Pair</title>
+<style>
+:root{--bg:#ffffff;--surface:#f5f5f5;--border:#cccccc;--text:#111111;--accent:#0066cc;--accent2:#0066cc;}
+@media(prefers-color-scheme:dark){:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--accent:#0066cc;--accent2:#58a6ff;}}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;padding:16px;max-width:860px;margin:0 auto;}
+h1{font-size:1.2rem;color:var(--accent2);margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:8px;}
+.note{font-size:0.85rem;color:var(--text);opacity:0.7;margin-bottom:12px;}
+canvas{width:100%;height:260px;display:block;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:12px;}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;}
+.ctrl{display:flex;flex-direction:column;gap:3px;font-size:0.82rem;}
+.ctrl label{color:var(--text);opacity:0.8;}
+input[type=range]{width:160px;accent-color:var(--accent);}
+.readouts{display:flex;flex-wrap:wrap;gap:12px;font-size:0.85rem;font-family:monospace;}
+.ro{background:var(--surface);border:1px solid var(--border);padding:4px 10px;border-radius:4px;color:var(--accent2);}
+</style></head><body>
+<h1>M3-B-2.3.2 — BJT Differential Pair Transfer Characteristic</h1>
+<p class="note">Differential pair current steering. Adjust tail current and RC to see differential gain and linear range.</p>
+<canvas id="cv"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>I_tail (mA): <span id="itv">2</span></label><input type="range" id="it" min="0.1" max="10" value="2" step="0.1" oninput="sv('itv',parseFloat(this.value).toFixed(1));draw();"></div>
+  <div class="ctrl"><label>R_C (kΩ): <span id="rcv">10</span></label><input type="range" id="rc" min="1" max="50" value="10" step="0.5" oninput="sv('rcv',parseFloat(this.value).toFixed(1));draw();"></div>
+  <div class="ctrl"><label>V_diff input (mV): <span id="vdv">20</span></label><input type="range" id="vd" min="-200" max="200" value="20" step="1" oninput="sv('vdv',this.value);draw();"></div>
+</div>
+<div class="readouts">
+  <div class="ro">g_m: <span id="gm">0</span> mA/V</div>
+  <div class="ro">A_d: <span id="ad">0</span></div>
+  <div class="ro">I_C1: <span id="ic1">0</span> mA</div>
+  <div class="ro">I_C2: <span id="ic2">0</span> mA</div>
+  <div class="ro">Linear range: <span id="lr">±104</span> mV</div>
+</div>
+<script>
+
+const isDark=()=>window.matchMedia('(prefers-color-scheme:dark)').matches;
+function gs(id){return parseFloat(document.getElementById(id).value);}
+function sv(id,val){document.getElementById(id).textContent=val;}
+function resize(cv,draw){
+  cv.width=cv.offsetWidth*devicePixelRatio;
+  cv.height=260*devicePixelRatio;
+  cv.style.height='260px';
+  draw();
+}
+function drawAxes(ctx,W,H,pad,xl,yl,color){
+  ctx.strokeStyle=color;ctx.lineWidth=1;ctx.fillStyle=color;ctx.font=`${11*devicePixelRatio}px system-ui`;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  ctx.fillText(xl,W-pad-30,H-pad+14*devicePixelRatio);
+  ctx.save();ctx.translate(pad-14*devicePixelRatio,pad+30);ctx.rotate(-Math.PI/2);ctx.fillText(yl,0,0);ctx.restore();
+}
+
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+window.addEventListener('resize',()=>resize(cv,draw));
+
+function draw(){
+  const dpr=devicePixelRatio;
+  cv.width=cv.offsetWidth*dpr; cv.height=260*dpr;
+  const W=cv.width,H=cv.height,pad=55*dpr;
+  const dark=isDark();
+  const bg=dark?'#161b22':'#f5f5f5';
+  const fg=dark?'#e6edf3':'#111111';
+  const acc=dark?'#58a6ff':'#0066cc';
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  const IT=gs('it')/1000; // A
+  const RC=gs('rc')*1000;
+  const Vd=gs('vd')/1000; // V
+
+  const VT=0.026;
+  const gm=(IT/2)/VT;
+  const Ad=gm*RC;
+  const IC1=IT/(1+Math.exp(-Vd/VT));
+  const IC2=IT-IC1;
+
+  sv('gm',(gm*1000).toFixed(1));
+  sv('ad',Ad.toFixed(1));
+  sv('ic1',(IC1*1000).toFixed(3));
+  sv('ic2',(IC2*1000).toFixed(3));
+  sv('lr','±'+(4*VT*1000).toFixed(0));
+
+  // Transfer curve: I_C1 vs V_diff
+  const vrange=0.3; // ±300mV
+  const xsc=(W-2*pad)/(2*vrange), xmid=pad+(W-2*pad)/2;
+  const ysc=(H-2*pad)/IT;
+
+  drawAxes(ctx,W,H,pad,'V_diff (mV)','I_C (mA)',fg);
+  ctx.font=`${9*dpr}px system-ui`; ctx.fillStyle=fg;
+  for(let v=-300;v<=300;v+=100){
+    const x=xmid+v/1000*xsc;
+    ctx.fillText(v,x-10,H-pad+13*dpr);
+    ctx.beginPath();ctx.strokeStyle=dark?'#30363d':'#dddddd';ctx.lineWidth=0.5;
+    ctx.moveTo(x,pad);ctx.lineTo(x,H-pad);ctx.stroke();
+  }
+  for(let i=0;i<=IT*1000;i+=Math.ceil(IT*1000/5)){
+    const y=H-pad-i/1000*ysc;
+    ctx.fillText(i,pad-22*dpr,y+4);
+    ctx.beginPath();ctx.strokeStyle=dark?'#30363d':'#dddddd';ctx.lineWidth=0.5;
+    ctx.moveTo(pad,y);ctx.lineTo(W-pad,y);ctx.stroke();
+  }
+
+  // I_C1 (tanh curve)
+  ctx.strokeStyle=acc; ctx.lineWidth=2*dpr; ctx.beginPath();
+  for(let v=-vrange;v<=vrange;v+=0.002){
+    const ic1=IT/(1+Math.exp(-v/VT));
+    const x=xmid+v*xsc, y=H-pad-ic1*ysc;
+    if(v===-vrange) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // I_C2
+  ctx.strokeStyle='#ff6b6b'; ctx.lineWidth=2*dpr; ctx.beginPath();
+  for(let v=-vrange;v<=vrange;v+=0.002){
+    const ic2=IT-IT/(1+Math.exp(-v/VT));
+    const x=xmid+v*xsc, y=H-pad-ic2*ysc;
+    if(v===-vrange) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Linear region bounds (±4VT)
+  const lin_x=xmid+4*VT*xsc;
+  ctx.strokeStyle='#ffa502'; ctx.lineWidth=1*dpr; ctx.setLineDash([4*dpr,3*dpr]);
+  ctx.beginPath(); ctx.moveTo(lin_x,pad); ctx.lineTo(lin_x,H-pad); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(xmid-4*VT*xsc,pad); ctx.lineTo(xmid-4*VT*xsc,H-pad); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Current operating point marker
+  const qx=xmid+Vd*xsc, qy=H-pad-IC1*ysc;
+  ctx.beginPath(); ctx.arc(qx,qy,5*dpr,0,2*Math.PI);
+  ctx.fillStyle='#2ed573'; ctx.fill();
+
+  ctx.fillStyle=fg; ctx.font=`${11*dpr}px system-ui`;
+  ctx.fillText(`g_m=${(gm*1000).toFixed(1)}mA/V  A_d=${Ad.toFixed(0)}  Linear: ±${(4*VT*1000).toFixed(0)}mV`,pad,pad-8*dpr);
+  ctx.fillStyle=acc; ctx.font=`${9*dpr}px system-ui`;
+  ctx.fillText('I_C1',W-pad-30*dpr,pad+15*dpr);
+  ctx.fillStyle='#ff6b6b';
+  ctx.fillText('I_C2',W-pad-30*dpr,H-pad-5*dpr);
+}
+draw();
+</script></body></html>

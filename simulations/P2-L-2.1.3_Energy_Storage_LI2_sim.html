@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-L-2.1.3 — Energy Storage ½LI²</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+  h1 { color: #0066cc; font-size: 1.3em; margin-bottom: 4px; }
+  .subtitle { color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }
+  .layout { display: flex; gap: 20px; flex-wrap: wrap; }
+  .panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+  .controls { width: 290px; flex-shrink: 0; }
+  .viz { flex: 1; min-width: 380px; }
+  label { display: block; color: #8b949e; font-size: 0.8em; margin-bottom: 4px; margin-top: 12px; }
+  input[type=range] { width: 100%; accent-color: #0066cc; }
+  .val { color: #0066cc; font-weight: bold; }
+  canvas { background: #0d1117; border-radius: 6px; display: block; }
+  .readouts { margin-top: 14px; }
+  .readout-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #21262d; font-size: 0.82em; }
+  .readout-label { color: #8b949e; }
+  .readout-val { color: #39d353; font-weight: bold; font-family: monospace; }
+  .eq { background: #21262d; border-left: 3px solid #0066cc; padding: 10px 12px; border-radius: 4px; margin-top: 14px; font-family: monospace; font-size: 0.82em; color: #a5d6ff; }
+  .dual { display: flex; gap: 10px; margin-top: 12px; }
+  .half { flex: 1; background: #0d1117; border-radius: 6px; padding: 8px; text-align: center; font-size: 0.78em; color: #8b949e; }
+  .half .big { font-size: 1.3em; font-weight: bold; font-family: monospace; margin: 4px 0; }
+  .ind-val { color: #0066cc; } .cap-val { color: #e3b341; }
+</style>
+</head>
+<body>
+<h1>P2-L-2.1.3 — Energy Storage: ½LI²</h1>
+<div class="subtitle">Energy bar · Ψ-I triangle · side-by-side comparison with ½CV² · live energy readouts</div>
+<div class="layout">
+  <div class="panel controls">
+    <label>Inductance L: <span class="val" id="lLabel">10 µH</span></label>
+    <input type="range" id="lSlider" min="1" max="100" value="10" step="1">
+    <label>Current I: <span class="val" id="iLabel">2.0 A</span></label>
+    <input type="range" id="iSlider" min="1" max="100" value="20" step="1">
+    <label>Capacitance C (for comparison): <span class="val" id="cLabel">100 µF</span></label>
+    <input type="range" id="cSlider" min="1" max="200" value="100" step="1">
+    <label>Voltage V (capacitor): <span class="val" id="vLabel">2.0 V</span></label>
+    <input type="range" id="vSlider" min="1" max="100" value="20" step="1">
+
+    <div class="readouts">
+      <div class="readout-row"><span class="readout-label">E_L = ½LI²</span><span class="readout-val ind-val" id="EL">—</span></div>
+      <div class="readout-row"><span class="readout-label">E_C = ½CV²</span><span class="readout-val cap-val" id="EC">—</span></div>
+      <div class="readout-row"><span class="readout-label">E_L / E_C ratio</span><span class="readout-val" id="Eratio">—</span></div>
+      <div class="readout-row"><span class="readout-label">V to match E_L at this C</span><span class="readout-val cap-val" id="Vmatch">—</span></div>
+      <div class="readout-row"><span class="readout-label">I to match E_C at this L</span><span class="readout-val ind-val" id="Imatch">—</span></div>
+    </div>
+    <div class="eq">E_L = ½ × L × I²<br>E_C = ½ × C × V²<br>L ↔ C (dual)<br>I ↔ V (dual)</div>
+  </div>
+  <div class="panel viz">
+    <canvas id="cv" width="580" height="460"></canvas>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'); const ctx=cv.getContext('2d');
+const W=580, H=460;
+
+function fmtE(e){ return e>=1?e.toFixed(3)+'J':e>=1e-3?(e*1e3).toFixed(2)+'mJ':e>=1e-6?(e*1e6).toFixed(2)+'µJ':(e*1e9).toFixed(1)+'nJ'; }
+function fmtL(l){ return l>=1e-3?(l*1e3).toFixed(1)+'mH':(l*1e6).toFixed(0)+'µH'; }
+function fmtC(c){ return c>=1e-3?(c*1e3).toFixed(1)+'mF':(c*1e6).toFixed(0)+'µF'; }
+
+function draw(){
+  const L=parseFloat(document.getElementById('lSlider').value)*1e-6;
+  const I=parseFloat(document.getElementById('iSlider').value)/10;
+  const C=parseFloat(document.getElementById('cSlider').value)*1e-6;
+  const V=parseFloat(document.getElementById('vSlider').value)/10;
+
+  document.getElementById('lLabel').textContent=fmtL(L);
+  document.getElementById('iLabel').textContent=I.toFixed(1)+' A';
+  document.getElementById('cLabel').textContent=fmtC(C);
+  document.getElementById('vLabel').textContent=V.toFixed(1)+' V';
+
+  const EL=0.5*L*I*I;
+  const EC=0.5*C*V*V;
+  const Vmatch=Math.sqrt(2*EL/C);
+  const Imatch=Math.sqrt(2*EC/L);
+
+  document.getElementById('EL').textContent=fmtE(EL);
+  document.getElementById('EC').textContent=fmtE(EC);
+  document.getElementById('Eratio').textContent=(EL/EC).toFixed(3);
+  document.getElementById('Vmatch').textContent=Vmatch.toFixed(2)+' V';
+  document.getElementById('Imatch').textContent=Imatch.toFixed(2)+' A';
+
+  ctx.clearRect(0,0,W,H);
+
+  // === Ψ-I triangle (left panel) ===
+  const triX=30, triY=30, triW=240, triH=180;
+  const Imax=I*1.5, PsiMax=L*Imax*1.1;
+  const scX=(I)=>triX+(I/Imax)*triW;
+  const scY=(psi)=>triY+triH-(psi/PsiMax)*triH;
+
+  ctx.strokeStyle='#484f58'; ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(triX,triY);ctx.lineTo(triX,triY+triH);ctx.lineTo(triX+triW,triY+triH);ctx.stroke();
+
+  // Ψ = LI line
+  ctx.strokeStyle='#0066cc'; ctx.lineWidth=2.5; ctx.beginPath();
+  ctx.moveTo(scX(0),scY(0)); ctx.lineTo(scX(Imax),scY(L*Imax));
+  ctx.stroke();
+
+  // Energy triangle fill
+  ctx.fillStyle='rgba(0,102,204,0.25)';
+  ctx.beginPath();
+  ctx.moveTo(scX(0), scY(0));
+  ctx.lineTo(scX(I), scY(0));
+  ctx.lineTo(scX(I), scY(L*I));
+  ctx.closePath(); ctx.fill();
+
+  // Axes labels
+  ctx.fillStyle='#8b949e'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('0', triX, triY+triH+14);
+  ctx.fillText(I.toFixed(1)+'A', scX(I), triY+triH+14);
+  ctx.fillText(Imax.toFixed(1)+'A', triX+triW, triY+triH+14);
+  ctx.textAlign='right';
+  ctx.fillText((L*Imax*1e6).toFixed(0)+'µWb', triX-4, scY(L*Imax)+4);
+  ctx.textAlign='center';
+
+  // Operating point
+  ctx.strokeStyle='#f78166'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(scX(I),triY+triH);ctx.lineTo(scX(I),scY(L*I));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(triX,scY(L*I));ctx.lineTo(scX(I),scY(L*I));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#f78166'; ctx.beginPath();ctx.arc(scX(I),scY(L*I),5,0,2*Math.PI);ctx.fill();
+
+  // Area label
+  ctx.fillStyle='#0066cc'; ctx.font='bold 11px sans-serif';
+  ctx.fillText('E = ½LI²', scX(I/2), scY(L*I/3)+4);
+  ctx.fillText('= '+fmtE(EL), scX(I/2), scY(L*I/3)+18);
+
+  // Title
+  ctx.fillStyle='#8b949e'; ctx.font='11px sans-serif';
+  ctx.fillText('Ψ-I PLANE (Inductor)', triX+triW/2, triY-12);
+
+  // === Q-V triangle (right panel, capacitor dual) ===
+  const triX2=310, triY2=30, triW2=240, triH2=180;
+  const Vmax=V*1.5, Qmax=C*Vmax*1.1;
+  const scX2=(v)=>triX2+(v/Vmax)*triW2;
+  const scY2=(q)=>triY2+triH2-(q/Qmax)*triH2;
+
+  ctx.strokeStyle='#484f58'; ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(triX2,triY2);ctx.lineTo(triX2,triY2+triH2);ctx.lineTo(triX2+triW2,triY2+triH2);ctx.stroke();
+
+  ctx.strokeStyle='#e3b341'; ctx.lineWidth=2.5; ctx.beginPath();
+  ctx.moveTo(scX2(0),scY2(0)); ctx.lineTo(scX2(Vmax),scY2(C*Vmax));
+  ctx.stroke();
+
+  ctx.fillStyle='rgba(227,179,65,0.25)';
+  ctx.beginPath();
+  ctx.moveTo(scX2(0),scY2(0));
+  ctx.lineTo(scX2(V),scY2(0));
+  ctx.lineTo(scX2(V),scY2(C*V));
+  ctx.closePath(); ctx.fill();
+
+  ctx.fillStyle='#8b949e'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('0', triX2, triY2+triH2+14);
+  ctx.fillText(V.toFixed(1)+'V', scX2(V), triY2+triH2+14);
+  ctx.fillText(Vmax.toFixed(1)+'V', triX2+triW2, triY2+triH2+14);
+  ctx.textAlign='right';
+  ctx.fillText((C*Vmax*1e6).toFixed(0)+'µC', triX2-4, scY2(C*Vmax)+4);
+  ctx.textAlign='center';
+
+  ctx.strokeStyle='#f78166'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(scX2(V),triY2+triH2);ctx.lineTo(scX2(V),scY2(C*V));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(triX2,scY2(C*V));ctx.lineTo(scX2(V),scY2(C*V));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#f78166'; ctx.beginPath();ctx.arc(scX2(V),scY2(C*V),5,0,2*Math.PI);ctx.fill();
+
+  ctx.fillStyle='#e3b341'; ctx.font='bold 11px sans-serif';
+  ctx.fillText('E = ½CV²', scX2(V/2), scY2(C*V/3)+4);
+  ctx.fillText('= '+fmtE(EC), scX2(V/2), scY2(C*V/3)+18);
+  ctx.fillStyle='#8b949e'; ctx.font='11px sans-serif';
+  ctx.fillText('Q-V PLANE (Capacitor dual)', triX2+triW2/2, triY2-12);
+
+  // === Energy bars ===
+  const barY=240, barH=40, barMaxW=540;
+  const Emax=Math.max(EL,EC)*1.2;
+
+  ctx.fillStyle='#8b949e'; ctx.font='11px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('ENERGY COMPARISON', 20, barY-12);
+
+  // Inductor bar
+  const barWL=Math.min(barMaxW, EL/Emax*barMaxW);
+  ctx.fillStyle='#21262d'; ctx.fillRect(20, barY, barMaxW, barH-4);
+  const grad1=ctx.createLinearGradient(20,barY,20+barWL,barY);
+  grad1.addColorStop(0,'#003d7a'); grad1.addColorStop(1,'#0066cc');
+  ctx.fillStyle=grad1; ctx.fillRect(20, barY, barWL, barH-4);
+  ctx.fillStyle='#e6edf3'; ctx.font='bold 12px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('Inductor: E_L = '+fmtE(EL)+'  (L='+fmtL(L)+', I='+I.toFixed(1)+'A)', 24, barY+24);
+
+  // Capacitor bar
+  const barWC=Math.min(barMaxW, EC/Emax*barMaxW);
+  ctx.fillStyle='#21262d'; ctx.fillRect(20, barY+50, barMaxW, barH-4);
+  const grad2=ctx.createLinearGradient(20,barY+50,20+barWC,barY+50);
+  grad2.addColorStop(0,'#5c4a00'); grad2.addColorStop(1,'#e3b341');
+  ctx.fillStyle=grad2; ctx.fillRect(20, barY+50, barWC, barH-4);
+  ctx.fillStyle='#e6edf3'; ctx.font='bold 12px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('Capacitor: E_C = '+fmtE(EC)+'  (C='+fmtC(C)+', V='+V.toFixed(1)+'V)', 24, barY+74);
+
+  // Power transfer at different frequencies
+  ctx.fillStyle='#8b949e'; ctx.font='11px sans-serif';
+  ctx.fillText('POWER IF FULLY TRANSFERRED PER CYCLE (E × f_sw):', 20, barY+108);
+  const freqs=[10000,100000,500000,1000000];
+  const fLabels=['10kHz','100kHz','500kHz','1MHz'];
+  freqs.forEach((f,fi)=>{
+    const PL=EL*f, PC=EC*f;
+    const x=20+fi*135;
+    ctx.fillStyle='#21262d'; ctx.fillRect(x, barY+120, 125, 60);
+    ctx.strokeStyle='#30363d'; ctx.lineWidth=1; ctx.strokeRect(x, barY+120, 125, 60);
+    ctx.fillStyle='#8b949e'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(fLabels[fi], x+63, barY+134);
+    ctx.fillStyle='#0066cc'; ctx.font='bold 10px sans-serif';
+    ctx.fillText('L: '+fmtE(PL).replace('J','W'), x+63, barY+150);
+    ctx.fillStyle='#e3b341';
+    ctx.fillText('C: '+fmtE(PC).replace('J','W'), x+63, barY+164);
+  });
+
+  // Duality table
+  ctx.fillStyle='#8b949e'; ctx.font='11px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('DUALITY REMINDER:', 20, barY+200);
+  const pairs=[['Inductor L','Capacitor C'],['Current I (state var)','Voltage V (state var)'],
+               ['E = ½LI²','E = ½CV²'],['V = L dI/dt','I = C dV/dt'],
+               ['Passes DC','Blocks DC']];
+  pairs.forEach((pair,pi)=>{
+    const y=barY+216+pi*18;
+    ctx.fillStyle='#0066cc'; ctx.textAlign='left'; ctx.font='10px sans-serif';
+    ctx.fillText(pair[0], 20, y);
+    ctx.fillStyle='#8b949e'; ctx.textAlign='center';
+    ctx.fillText('↔', 230, y);
+    ctx.fillStyle='#e3b341'; ctx.textAlign='left';
+    ctx.fillText(pair[1], 255, y);
+  });
+}
+
+['lSlider','iSlider','cSlider','vSlider'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+draw();
+</script>
+</body>
+</html>

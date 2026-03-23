@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-DBG-6.2.2 AC Signal Path Debugging</title>
+<style>
+  :root {
+    --bg: #f5f5f5; --panel: #ffffff; --border: #d0d0d0;
+    --text: #1a1a1a; --muted: #666; --accent: #1a6eb5;
+    --pass: #2d7a2d; --fail: #b52a2a; --warn: #b57a00;
+    --pass-bg: #e8f5e8; --fail-bg: #fde8e8; --warn-bg: #fff3cd;
+    --canvas-bg: #fafafa;
+    --c1: #1a6eb5; --c2: #e07b00; --c3: #2d7a2d; --c4: #8b1a8b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a; --panel: #242424; --border: #3a3a3a;
+      --text: #e8e8e8; --muted: #999; --accent: #4da3f5;
+      --pass: #4caf50; --fail: #ef5350; --warn: #ffb300;
+      --pass-bg: #1a2e1a; --fail-bg: #2e1a1a; --warn-bg: #2e2200;
+      --canvas-bg: #1e1e1e;
+      --c1: #4da3f5; --c2: #ffb300; --c3: #4caf50; --c4: #ce93d8;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; padding: 16px; }
+  h1 { font-size: 1.2em; color: var(--accent); margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 0.85em; margin-bottom: 16px; }
+  .layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .panel h3 { font-size: 0.9em; color: var(--accent); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .slider-row { margin-bottom: 9px; }
+  .slider-row label { display: flex; justify-content: space-between; font-size: 0.82em; color: var(--muted); margin-bottom: 3px; }
+  .slider-row label span { color: var(--text); font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .right-col { display: flex; flex-direction: column; gap: 14px; }
+  canvas { width: 100%; display: block; background: var(--canvas-bg); border-radius: 6px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.78em; font-weight: 700; }
+  .badge.pass { background: var(--pass-bg); color: var(--pass); }
+  .badge.fail { background: var(--fail-bg); color: var(--fail); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  select { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px; font-size: 0.85em; width: 100%; margin-bottom: 8px; }
+  .chain-row { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  .stage-box { flex: 1; min-width: 80px; background: var(--canvas-bg); border: 2px solid var(--border); border-radius: 6px; padding: 8px; text-align: center; cursor: pointer; }
+  .stage-box.faulted { border-color: var(--fail); background: var(--fail-bg); }
+  .stage-box.probed { border-color: var(--accent); }
+  .stage-box .gain { font-size: 1.1em; font-weight: 700; }
+  .stage-box .bw { font-size: 0.75em; color: var(--muted); }
+  .section-divider { font-size: 0.75em; color: var(--muted); margin: 8px 0 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+  @media (max-width: 720px) { .layout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<h1>M4A-DBG-6.2.2 — AC Signal Path Debugging</h1>
+<p class="subtitle">Three-stage amplifier chain: inject a fault, use divide-and-conquer to isolate the faulty stage</p>
+
+<div class="layout">
+<div>
+  <div class="panel" style="margin-bottom:12px">
+    <h3>Inject Fault</h3>
+    <select id="sel-fault" onchange="update()">
+      <option value="none">No fault (nominal)</option>
+      <option value="s1_gain_low">Stage 1: gain too low (Rf wrong)</option>
+      <option value="s1_bw_low">Stage 1: BW too low (stray cap)</option>
+      <option value="s2_gain_low">Stage 2: gain too low (Rf wrong)</option>
+      <option value="s2_open">Stage 2: output open (broken trace)</option>
+      <option value="s3_gain_high">Stage 3: gain too high (R1 wrong)</option>
+      <option value="s3_bw_low">Stage 3: BW too low (cap across Rf)</option>
+      <option value="s2_peaking">Stage 2: gain peaking (low PM)</option>
+    </select>
+    <div id="fault-desc" style="font-size:0.8em;color:var(--warn);padding:6px 0;min-height:30px"></div>
+  </div>
+
+  <div class="panel" style="margin-bottom:12px">
+    <h3>Nominal Stage Parameters</h3>
+    <div class="section-divider">Stage 1</div>
+    <div class="slider-row">
+      <label>G1 (nominal) <span id="lbl-g1">10</span></label>
+      <input type="range" id="sl-g1" min="1" max="50" step="1" value="10" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>BW1 (kHz) <span id="lbl-bw1">100</span></label>
+      <input type="range" id="sl-bw1" min="1" max="5000" step="1" value="100" oninput="update()">
+    </div>
+    <div class="section-divider">Stage 2</div>
+    <div class="slider-row">
+      <label>G2 (nominal) <span id="lbl-g2">5</span></label>
+      <input type="range" id="sl-g2" min="1" max="50" step="1" value="5" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>BW2 (kHz) <span id="lbl-bw2">200</span></label>
+      <input type="range" id="sl-bw2" min="1" max="5000" step="1" value="200" oninput="update()">
+    </div>
+    <div class="section-divider">Stage 3</div>
+    <div class="slider-row">
+      <label>G3 (nominal) <span id="lbl-g3">4</span></label>
+      <input type="range" id="sl-g3" min="1" max="50" step="1" value="4" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>BW3 (kHz) <span id="lbl-bw3">500</span></label>
+      <input type="range" id="sl-bw3" min="1" max="5000" step="1" value="500" oninput="update()">
+    </div>
+    <div class="section-divider">Test Signal</div>
+    <div class="slider-row">
+      <label>Test freq (kHz) <span id="lbl-ftst">1</span></label>
+      <input type="range" id="sl-ftst" min="0.1" max="1000" step="0.1" value="1" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Input amplitude (mV) <span id="lbl-ain">10</span></label>
+      <input type="range" id="sl-ain" min="1" max="1000" step="1" value="10" oninput="update()">
+    </div>
+  </div>
+</div>
+
+<div class="right-col">
+  <div class="panel">
+    <h3>Amplifier Chain — Click a Stage to Probe It</h3>
+    <div class="chain-row" id="chain-row">
+      <div>Vin</div>
+      <div>→</div>
+      <div class="stage-box" id="s1-box" onclick="setProbe(1)">
+        <div class="gain" id="s1-gain">G1</div>
+        <div class="bw" id="s1-bw">BW</div>
+        <div style="font-size:0.75em;margin-top:4px" id="s1-out">---</div>
+      </div>
+      <div>→</div>
+      <div class="stage-box" id="s2-box" onclick="setProbe(2)">
+        <div class="gain" id="s2-gain">G2</div>
+        <div class="bw" id="s2-bw">BW</div>
+        <div style="font-size:0.75em;margin-top:4px" id="s2-out">---</div>
+      </div>
+      <div>→</div>
+      <div class="stage-box" id="s3-box" onclick="setProbe(3)">
+        <div class="gain" id="s3-gain">G3</div>
+        <div class="bw" id="s3-bw">BW</div>
+        <div style="font-size:0.75em;margin-top:4px" id="s3-out">---</div>
+      </div>
+      <div>→</div>
+      <div>Vout</div>
+    </div>
+    <div id="divide-hint" style="font-size:0.82em;color:var(--accent);margin-top:6px"></div>
+  </div>
+
+  <div class="panel">
+    <h3>Bode Plot — All Stages (nominal dashed, faulted solid)</h3>
+    <canvas id="c1" height="220"></canvas>
+  </div>
+  <div class="panel">
+    <h3>Gain at Test Frequency — Stage-by-Stage</h3>
+    <canvas id="c2" height="160"></canvas>
+  </div>
+</div>
+</div>
+
+<script>
+let probeStage = 2; // which stage is currently being probed (divide & conquer)
+
+function setProbe(n) {
+  probeStage = n;
+  [1,2,3].forEach(i => document.getElementById('s'+i+'-box').classList.toggle('probed', i === n));
+  update();
+}
+
+function v(id) { return parseFloat(document.getElementById(id).value); }
+function lbl(id, val, dec) { const el = document.getElementById(id); if(el) el.textContent = typeof val==='number' ? val.toFixed(dec!==undefined?dec:1) : val; }
+
+const FAULT_DESCS = {
+  none: '',
+  s1_gain_low: 'Stage 1: Rf replaced with 50% value — gain is halved.',
+  s1_bw_low: 'Stage 1: 10 nF capacitor shunting output node — BW reduced 10×.',
+  s2_gain_low: 'Stage 2: Rf replaced with 20% value — gain reduced to 20%.',
+  s2_open: 'Stage 2: output trace open — no signal passes to Stage 3.',
+  s3_gain_high: 'Stage 3: R1 halved — gain is doubled.',
+  s3_bw_low: 'Stage 3: 10 nF across Rf — BW reduced 10×, gain drops at high freq.',
+  s2_peaking: 'Stage 2: phase margin = 20° — gain peaks 6 dB before rolloff.',
+};
+
+function stageGain(stage, f, fault) {
+  const g_nom = v('sl-g'+stage);
+  const bw_nom = v('sl-bw'+stage) * 1e3;
+
+  let g_eff = g_nom;
+  let bw_eff = bw_nom;
+  let peaking = false;
+
+  if (fault === 's'+stage+'_gain_low') g_eff = stage === 1 ? g_nom * 0.5 : g_nom * 0.2;
+  if (fault === 's'+stage+'_bw_low') bw_eff = bw_nom / 10;
+  if (fault === 's'+stage+'_gain_high') g_eff = g_nom * 2;
+  if (fault === 's'+stage+'_open') { return { mag: 0, phase: 0 }; }
+  if (fault === 's'+stage+'_peaking') { peaking = true; }
+
+  const jf = f / bw_eff;
+  let mag, phase;
+  if (peaking) {
+    // Second-order with Q ≈ 2.6 (PM ≈ 20°)
+    const Q = 2.6;
+    const fn = bw_eff / 2;  // natural freq below BW
+    const jfn = f / fn;
+    mag = g_eff / Math.sqrt((1 - jfn*jfn)**2 + (jfn/Q)**2);
+    phase = -Math.atan2(jfn/Q, 1 - jfn*jfn) * 180 / Math.PI;
+  } else {
+    mag = g_eff / Math.sqrt(1 + jf*jf);
+    phase = -Math.atan(jf) * 180 / Math.PI;
+  }
+  return { mag, phase };
+}
+
+function totalGain(upToStage, f, fault) {
+  let mag = 1, phase = 0;
+  for (let s = 1; s <= upToStage; s++) {
+    const sg = stageGain(s, f, fault);
+    mag *= sg.mag;
+    phase += sg.phase;
+  }
+  return { mag, phase };
+}
+
+function update() {
+  const fault = document.getElementById('sel-fault').value;
+  const ftst = v('sl-ftst') * 1e3;
+  const ain = v('sl-ain') * 1e-3;
+
+  lbl('lbl-g1', v('sl-g1'), 0);
+  lbl('lbl-bw1', v('sl-bw1'), 0);
+  lbl('lbl-g2', v('sl-g2'), 0);
+  lbl('lbl-bw2', v('sl-bw2'), 0);
+  lbl('lbl-g3', v('sl-g3'), 0);
+  lbl('lbl-bw3', v('sl-bw3'), 0);
+  lbl('lbl-ftst', v('sl-ftst'), 1);
+  lbl('lbl-ain', v('sl-ain'), 0);
+
+  document.getElementById('fault-desc').textContent = FAULT_DESCS[fault] || '';
+
+  // Compute stage outputs at test frequency
+  const stages = [1, 2, 3];
+  const stage_gains_nom = stages.map(s => stageGain(s, ftst, 'none').mag);
+  const stage_gains_flt = stages.map(s => stageGain(s, ftst, fault).mag);
+  const cumulative_nom = stages.map(s => totalGain(s, ftst, 'none').mag);
+  const cumulative_flt = stages.map(s => totalGain(s, ftst, fault).mag);
+
+  const vout_nom = ain * cumulative_nom[2];
+  const vout_flt = ain * cumulative_flt[2];
+  const total_gain_nom = cumulative_nom[2];
+  const total_gain_flt = cumulative_flt[2];
+
+  stages.forEach(s => {
+    const bw_nom = v('sl-bw'+s) * 1e3;
+    const g_nom = v('sl-g'+s);
+    const g_flt = stageGain(s, ftst, fault).mag;
+    const out_flt = ain * totalGain(s, ftst, fault).mag;
+    const is_faulted = fault.startsWith('s'+s+'_');
+
+    document.getElementById('s'+s+'-gain').textContent = 'G'+s+'='+g_nom.toFixed(0);
+    document.getElementById('s'+s+'-bw').textContent = (bw_nom/1e3).toFixed(0)+'kHz BW';
+    document.getElementById('s'+s+'-out').textContent = (out_flt*1000).toFixed(1)+'mV';
+    document.getElementById('s'+s+'-box').classList.toggle('faulted', is_faulted);
+  });
+
+  // Divide & conquer hint
+  const probed_out_nom = ain * cumulative_nom[probeStage-1];
+  const probed_out_flt = ain * cumulative_flt[probeStage-1];
+  const deviation = Math.abs((probed_out_flt - probed_out_nom) / (probed_out_nom + 1e-10));
+  let hint = '';
+  if (fault !== 'none') {
+    if (deviation > 0.1) {
+      const fault_stage = parseInt(fault.charAt(1));
+      if (probeStage > fault_stage) {
+        hint = `Probing after Stage ${probeStage}: signal is WRONG (${(deviation*100).toFixed(0)}% error). Fault is in stages 1-${probeStage}. Try probing Stage ${Math.ceil(probeStage/2)}.`;
+      } else {
+        hint = `Probing after Stage ${probeStage}: signal looks low. Fault stage (${fault_stage}) is ${fault_stage > probeStage ? 'after' : 'at or before'} your probe point.`;
+      }
+    } else {
+      hint = `Probing after Stage ${probeStage}: signal is CORRECT. Fault is after Stage ${probeStage}. Try probing Stage ${Math.min(3, probeStage+1)}.`;
+    }
+  }
+  document.getElementById('divide-hint').textContent = hint;
+
+  drawBode(fault);
+  drawStageBar(ain, cumulative_nom, cumulative_flt);
+}
+
+function getColors() {
+  const s = getComputedStyle(document.documentElement);
+  return ['--text','--muted','--accent','--pass','--fail','--warn','--border','--canvas-bg','--c1','--c2','--c3'].reduce((o,k)=>{o[k.slice(2)]=s.getPropertyValue(k).trim();return o;},{});
+}
+function getCtx(id) {
+  const c = document.getElementById(id); const dpr = window.devicePixelRatio||1;
+  const rect = c.getBoundingClientRect();
+  if (c._lw!==rect.width||c._lh!==rect.height){c.width=rect.width*dpr;c.height=rect.height*dpr;c._lw=rect.width;c._lh=rect.height;}
+  const ctx=c.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);
+  return [ctx,rect.width,rect.height];
+}
+
+function drawBode(fault) {
+  const [ctx, W, H] = getCtx('c1');
+  const C = getColors();
+  ctx.clearRect(0, 0, W, H);
+  const PAD = { l: 55, r: 20, t: 20, b: 40 };
+  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+  ctx.fillStyle = C['canvas-bg'];
+  ctx.fillRect(PAD.l, PAD.t, cW, cH);
+
+  const freqs = Array.from({length:200}, (_,i) => Math.pow(10, 1 + i/199 * 5));
+
+  function xp(f) { return PAD.l + (Math.log10(f)-1)/5 * cW; }
+  function yp(dB) { return PAD.t + (1 - (dB+20)/100) * cH; }
+
+  ctx.strokeStyle = C.border; ctx.lineWidth = 0.5; ctx.setLineDash([2,3]);
+  [0, 20, 40, 60, 80].forEach(db => {
+    const y = yp(db); ctx.beginPath(); ctx.moveTo(PAD.l,y); ctx.lineTo(PAD.l+cW,y); ctx.stroke();
+  });
+  ctx.setLineDash([]);
+
+  // Stage colors
+  const colors_nom = [C.c1, C.c2, C.c3];
+  const stages = [1,2,3];
+
+  // Nominal (dashed)
+  stages.forEach((s, si) => {
+    ctx.strokeStyle = colors_nom[si]; ctx.lineWidth = 1.5; ctx.setLineDash([5,3]);
+    ctx.beginPath();
+    freqs.forEach((f, i) => {
+      const g = totalGain(s, f, 'none').mag;
+      const dB = 20 * Math.log10(Math.max(0.001, g));
+      const x = xp(f), y = yp(dB);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke(); ctx.setLineDash([]);
+  });
+
+  // Faulted (solid)
+  if (fault !== 'none') {
+    stages.forEach((s, si) => {
+      ctx.strokeStyle = colors_nom[si]; ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      freqs.forEach((f, i) => {
+        const g = totalGain(s, f, fault).mag;
+        const dB = 20 * Math.log10(Math.max(0.001, g));
+        const x = xp(f), y = yp(dB);
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    });
+  }
+
+  // Test frequency marker
+  const ftst = v('sl-ftst') * 1e3;
+  const xf = xp(ftst);
+  ctx.strokeStyle = C.accent; ctx.lineWidth = 1; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(xf, PAD.t); ctx.lineTo(xf, PAD.t+cH); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Legend
+  stages.forEach((s, si) => {
+    ctx.fillStyle = colors_nom[si]; ctx.font = '10px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('Stage '+s+' (thru)', PAD.l + 5, PAD.t + 15 + si*14);
+  });
+  ctx.fillStyle = C.muted; ctx.textAlign = 'left';
+  ctx.fillText('Dashed=nominal, Solid=faulted', PAD.l + 5, PAD.t + 60);
+
+  // Axes
+  ctx.strokeStyle = C.border; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t); ctx.lineTo(PAD.l, PAD.t+cH); ctx.lineTo(PAD.l+cW, PAD.t+cH); ctx.stroke();
+  ctx.fillStyle = C.muted; ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+  [0, 20, 40, 60, 80].forEach(db => ctx.fillText(db+'dB', PAD.l-4, yp(db)+4));
+  ctx.textAlign = 'center';
+  ['100Hz','1kHz','10kHz','100kHz','1MHz'].forEach((l, i) => {
+    ctx.fillText(l, xp(Math.pow(10,2+i)), PAD.t+cH+14);
+  });
+  ctx.fillStyle = C.muted; ctx.fillText('Frequency', PAD.l+cW/2, H-4);
+}
+
+function drawStageBar(ain, cum_nom, cum_flt) {
+  const [ctx, W, H] = getCtx('c2');
+  const C = getColors();
+  ctx.clearRect(0, 0, W, H);
+  const PAD = { l: 50, r: 20, t: 20, b: 40 };
+  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+  ctx.fillStyle = C['canvas-bg'];
+  ctx.fillRect(PAD.l, PAD.t, cW, cH);
+
+  const maxVal = Math.max(...cum_nom, ...cum_flt) * ain;
+  const labels = ['After S1', 'After S2', 'After S3 (Vout)'];
+  const N = 3;
+  const groupW = cW / (N + 0.5);
+  const barW = groupW * 0.35;
+
+  function xp_group(i, offset) { return PAD.l + (i + 0.25) * groupW + offset; }
+  function yp(v2) { return PAD.t + cH - (v2 / (maxVal * 1.1)) * cH; }
+
+  labels.forEach((lbl2, i) => {
+    const vnom = cum_nom[i] * ain;
+    const vflt = cum_flt[i] * ain;
+    const x_nom = xp_group(i, 0);
+    const x_flt = xp_group(i, barW + 4);
+
+    ctx.fillStyle = C.c1 + '99';
+    ctx.fillRect(x_nom, yp(vnom), barW, PAD.t + cH - yp(vnom));
+    ctx.strokeStyle = C.c1; ctx.lineWidth = 1;
+    ctx.strokeRect(x_nom, yp(vnom), barW, PAD.t + cH - yp(vnom));
+
+    const fault = document.getElementById('sel-fault').value;
+    const s_faulted = i+1;
+    const flt_color = fault !== 'none' && (Math.abs(vflt - vnom) / (vnom + 1e-6)) > 0.05 ? C.fail : C.pass;
+    ctx.fillStyle = flt_color + '99';
+    ctx.fillRect(x_flt, yp(vflt), barW, PAD.t + cH - yp(vflt));
+    ctx.strokeStyle = flt_color; ctx.lineWidth = 1;
+    ctx.strokeRect(x_flt, yp(vflt), barW, PAD.t + cH - yp(vflt));
+
+    // Labels
+    ctx.fillStyle = C.muted; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(lbl2, x_nom + barW + 2, PAD.t + cH + 14);
+
+    ctx.fillStyle = C.c1; ctx.textAlign = 'center';
+    ctx.fillText((vnom*1000).toFixed(1)+'mV', x_nom + barW/2, yp(vnom) - 3);
+    ctx.fillStyle = flt_color;
+    if (Math.abs(vflt - vnom) > 0.001) {
+      ctx.fillText((vflt*1000).toFixed(1)+'mV', x_flt + barW/2, yp(vflt) - 3);
+    }
+  });
+
+  // Legend
+  ctx.fillStyle = C.c1; ctx.font = '10px system-ui'; ctx.textAlign = 'left';
+  ctx.fillText('Nominal', PAD.l, PAD.t + 12);
+  ctx.fillStyle = C.pass;
+  ctx.fillText('Faulted (pass)', PAD.l + 70, PAD.t + 12);
+  ctx.fillStyle = C.fail;
+  ctx.fillText('Faulted (fail)', PAD.l + 160, PAD.t + 12);
+
+  ctx.strokeStyle = C.border; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t); ctx.lineTo(PAD.l, PAD.t+cH); ctx.lineTo(PAD.l+cW, PAD.t+cH); ctx.stroke();
+  ctx.fillStyle = C.muted; ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+  [0, 0.5, 1].forEach(f => {
+    const vy = f * maxVal * ain;
+    ctx.fillText((vy*1000).toFixed(1)+'mV', PAD.l - 3, yp(vy) + 4);
+  });
+}
+
+window.addEventListener('resize', update);
+setProbe(2);
+update();
+</script>
+</body>
+</html>

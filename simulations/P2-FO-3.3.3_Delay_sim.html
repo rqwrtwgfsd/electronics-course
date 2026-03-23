@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-FO-3.3.3 — Delay</title>
+<style>
+  :root { --accent: #0066cc; --bg: #1a1a1a; --panel: #242424; --border: #333; --text: #e0e0e0; --muted: #888; }
+  @media (prefers-color-scheme: light) { :root { --bg: #f4f4f4; --panel: #fff; --border: #ccc; --text: #1a1a1a; --muted: #555; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+  h1 { font-size: 1.1rem; color: var(--accent); padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .subtitle { font-size: 0.8rem; color: var(--muted); padding: 0 16px 8px; }
+  .layout { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; }
+  .controls { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px; min-width: 230px; flex: 0 0 230px; }
+  .ctrl-group { margin-bottom: 14px; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .val { font-weight: bold; color: var(--accent); }
+  .readout { display: grid; grid-template-columns: 1fr; gap: 6px; margin-top: 10px; }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; }
+  .card-label { font-size: 0.7rem; color: var(--muted); }
+  .card-val { font-size: 0.88rem; font-weight: bold; color: var(--accent); }
+  .canvases { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 300px; }
+  canvas { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: block; }
+</style>
+</head>
+<body>
+<h1>P2-FO-3.3.3 — Propagation Delay & Group Delay</h1>
+<p class="subtitle">t_pd = 0.6931τ (50% crossing) &nbsp;|&nbsp; τ_g(ω) = τ/(1+(ωτ)²)</p>
+<div class="layout">
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>Time constant τ (ms): <span class="val" id="vTau">10.0</span></label>
+      <input type="range" id="sTau" min="1" max="50" step="0.5" value="10">
+    </div>
+    <div class="ctrl-group">
+      <label>Frequency for group delay (Hz): <span class="val" id="vFreq">10</span></label>
+      <input type="range" id="sFreq" min="1" max="200" step="1" value="10">
+    </div>
+    <div class="readout">
+      <div class="card"><div class="card-label">Propagation delay t_pd</div><div class="card-val" id="rTpd">6.93 ms</div></div>
+      <div class="card"><div class="card-label">t_pd = 0.6931τ</div><div class="card-val" id="rTpdRatio">0.693×τ</div></div>
+      <div class="card"><div class="card-label">Group delay τ_g at f</div><div class="card-val" id="rTg">9.75 ms</div></div>
+      <div class="card"><div class="card-label">ωτ = 2πfτ</div><div class="card-val" id="rOmegaTau">0.628</div></div>
+      <div class="card"><div class="card-label">Bandwidth 1/(2πτ)</div><div class="card-val" id="rBW">15.9 Hz</div></div>
+    </div>
+    <div style="margin-top:12px;font-size:0.78rem;color:var(--muted);line-height:1.7;">
+      Top: step response with 50% crossing<br>
+      Orange dot: propagation delay t_pd<br>
+      Bottom: group delay vs frequency<br>
+      Blue dot: τ_g at selected frequency
+    </div>
+  </div>
+  <div class="canvases">
+    <canvas id="cvStep" width="540" height="200"></canvas>
+    <canvas id="cvGD" width="540" height="200"></canvas>
+  </div>
+</div>
+<script>
+function getC() {
+  const d = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  return { bg: d?'#242424':'#fff', grid: d?'#2e2e2e':'#e8e8e8', mut: d?'#888':'#555' };
+}
+
+function drawStep(tau) {
+  const cv = document.getElementById('cvStep'), ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  const padL = 55, padR = 15, padT = 22, padB = 36;
+  const plotW = W-padL-padR, plotH = H-padT-padB;
+  const tMax = 5*tau, tpd = Math.log(2)*tau;
+  const c = getC();
+
+  ctx.fillStyle = c.bg; ctx.fillRect(0,0,W,H);
+  const tx = t => padL+(t/tMax)*plotW;
+  const ty = y => padT+(1-y)*plotH;
+
+  ctx.strokeStyle = c.grid; ctx.lineWidth = 1;
+  for(let i=0;i<=5;i++){ctx.beginPath();ctx.moveTo(tx(i*tMax/5),padT);ctx.lineTo(tx(i*tMax/5),padT+plotH);ctx.stroke();}
+  for(let i=0;i<=4;i++){ctx.beginPath();ctx.moveTo(padL,padT+i*plotH/4);ctx.lineTo(padL+plotW,padT+i*plotH/4);ctx.stroke();}
+
+  ctx.strokeStyle = c.mut; ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(padL,padT);ctx.lineTo(padL,padT+plotH);ctx.lineTo(padL+plotW,padT+plotH);ctx.stroke();
+
+  // 50% dashed
+  ctx.setLineDash([4,3]); ctx.strokeStyle='#88bbff'; ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,ty(0.5));ctx.lineTo(padL+plotW,ty(0.5));ctx.stroke();
+  // t_pd vertical
+  ctx.strokeStyle='#ff8844';
+  ctx.beginPath();ctx.moveTo(tx(tpd),padT);ctx.lineTo(tx(tpd),padT+plotH);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Input step (green)
+  ctx.strokeStyle='#44aa44'; ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(padL,ty(0));ctx.lineTo(tx(0.02*tMax),ty(0));ctx.lineTo(tx(0.02*tMax),ty(1));ctx.lineTo(padL+plotW,ty(1));ctx.stroke();
+
+  // Response
+  ctx.strokeStyle='#0066cc'; ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=400;i++){const t=i/400*tMax;const y=1-Math.exp(-t/tau);if(i===0)ctx.moveTo(tx(t),ty(y));else ctx.lineTo(tx(t),ty(y));}
+  ctx.stroke();
+
+  // dot at 50%
+  ctx.fillStyle='#ff8844';
+  ctx.beginPath();ctx.arc(tx(tpd),ty(0.5),6,0,Math.PI*2);ctx.fill();
+
+  ctx.fillStyle='#ff8844';ctx.font='10px sans-serif';
+  ctx.fillText(`t_pd=${tpd.toFixed(2)}ms`,tx(tpd)+4,padT+14);
+  ctx.fillStyle='#44aa44';ctx.fillText('input x(t)',padL+4,padT+12);
+
+  ctx.fillStyle=c.mut;ctx.font='10px sans-serif';
+  for(let i=0;i<=5;i++)ctx.fillText((i*tMax/5).toFixed(1),tx(i*tMax/5)-10,padT+plotH+16);
+  ctx.fillText('t (ms)',padL+plotW/2-15,padT+plotH+30);
+}
+
+function drawGD(tau, freqHz) {
+  const cv = document.getElementById('cvGD'), ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  const padL = 60, padR = 15, padT = 22, padB = 36;
+  const plotW = W-padL-padR, plotH = H-padT-padB;
+  const fMax = 5/(2*Math.PI*tau/1000);
+  const tgMax = tau*1.05;
+  const c = getC();
+
+  ctx.fillStyle = c.bg; ctx.fillRect(0,0,W,H);
+  const tx = f => padL+(f/fMax)*plotW;
+  const ty = tg => padT+(1-tg/tgMax)*plotH;
+
+  ctx.strokeStyle = c.grid; ctx.lineWidth=1;
+  for(let i=0;i<=5;i++){ctx.beginPath();ctx.moveTo(tx(i*fMax/5),padT);ctx.lineTo(tx(i*fMax/5),padT+plotH);ctx.stroke();}
+  for(let i=0;i<=4;i++){ctx.beginPath();ctx.moveTo(padL,padT+i*plotH/4);ctx.lineTo(padL+plotW,padT+i*plotH/4);ctx.stroke();}
+
+  ctx.strokeStyle=c.mut;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(padL,padT);ctx.lineTo(padL,padT+plotH);ctx.lineTo(padL+plotW,padT+plotH);ctx.stroke();
+
+  // Group delay curve
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=400;i++){
+    const f=i/400*fMax;
+    const wt=2*Math.PI*f*(tau/1000);
+    const tg=tau/(1+wt*wt);
+    if(i===0)ctx.moveTo(tx(f),ty(tg));else ctx.lineTo(tx(f),ty(tg));
+  }
+  ctx.stroke();
+
+  // dot at selected freq
+  const omegaTau=2*Math.PI*freqHz*(tau/1000);
+  const tgAt=tau/(1+omegaTau*omegaTau);
+  ctx.fillStyle='#ff8844';
+  ctx.beginPath();ctx.arc(tx(freqHz),ty(tgAt),6,0,Math.PI*2);ctx.fill();
+  ctx.setLineDash([3,3]);ctx.strokeStyle='#ff8844';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(tx(freqHz),padT);ctx.lineTo(tx(freqHz),ty(tgAt));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(padL,ty(tgAt));ctx.lineTo(tx(freqHz),ty(tgAt));ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle='#ff8844';ctx.font='10px sans-serif';
+  ctx.fillText(`τ_g=${tgAt.toFixed(2)}ms @ ${freqHz}Hz`,tx(freqHz)+4,ty(tgAt)-5);
+  ctx.fillStyle=c.mut;ctx.fillText('Group delay τ_g(f) = τ/(1+(2πfτ)²)',padL+4,padT+12);
+
+  ctx.fillStyle=c.mut;ctx.font='10px sans-serif';
+  for(let i=0;i<=5;i++)ctx.fillText((i*fMax/5).toFixed(0),tx(i*fMax/5)-10,padT+plotH+16);
+  ctx.fillText('f (Hz)',padL+plotW/2-15,padT+plotH+30);
+  for(let i=0;i<=4;i++)ctx.fillText((i*tgMax/4).toFixed(1),2,ty(i*tgMax/4)+4);
+  ctx.fillText('ms',2,padT+4);
+}
+
+function draw() {
+  const tau = parseFloat(document.getElementById('sTau').value);
+  const freq = parseFloat(document.getElementById('sFreq').value);
+  document.getElementById('vTau').textContent = tau.toFixed(1);
+  document.getElementById('vFreq').textContent = freq;
+  const tpd = Math.log(2)*tau;
+  const omegaTau = 2*Math.PI*freq*(tau/1000);
+  const tg = tau/(1+omegaTau*omegaTau);
+  const bw = 1/(2*Math.PI*tau/1000);
+  document.getElementById('rTpd').textContent = tpd.toFixed(2)+' ms';
+  document.getElementById('rTpdRatio').textContent = '0.693×'+tau.toFixed(1)+'ms';
+  document.getElementById('rTg').textContent = tg.toFixed(2)+' ms';
+  document.getElementById('rOmegaTau').textContent = omegaTau.toFixed(3);
+  document.getElementById('rBW').textContent = bw.toFixed(1)+' Hz';
+  drawStep(tau);
+  drawGD(tau, freq);
+}
+
+['sTau','sFreq'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',draw);
+draw();
+</script>
+</body>
+</html>

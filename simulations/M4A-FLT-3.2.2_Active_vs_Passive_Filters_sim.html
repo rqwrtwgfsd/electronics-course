@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-FLT-3.2.2 Active vs Passive Filters</title>
+<style>
+  :root{--bg:#f5f5f5;--panel:#fff;--text:#1a1a1a;--muted:#666;--border:#ddd;
+    --a:#2563eb;--a2:#16a34a;--a3:#dc2626;--a4:#9333ea;--a5:#ea580c;
+    --cb:#fafafa;--gr:#e5e7eb;--hi:#fef9c3;--tb:#bfdbfe;}
+  @media(prefers-color-scheme:dark){:root{
+    --bg:#0f1117;--panel:#1e2130;--text:#e8eaf0;--muted:#8892a4;--border:#2d3348;
+    --a:#60a5fa;--a2:#4ade80;--a3:#f87171;--a4:#c084fc;--a5:#fb923c;
+    --cb:#161926;--gr:#2d3348;--hi:#2d2a0f;--tb:#3b82f6;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px;}
+  h1{font-size:16px;font-weight:700;padding:12px 18px;border-bottom:1px solid var(--border);background:var(--panel);}
+  h1 span{color:var(--muted);font-size:13px;font-weight:400;margin-left:8px;}
+  .layout{display:flex;height:calc(100vh - 47px);}
+  .left{width:285px;background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
+  .right{flex:1;display:flex;flex-direction:column;padding:10px;gap:8px;overflow:hidden;}
+  .sec{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:10px;}
+  .sec h3{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;}
+  label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:3px;}
+  label span{font-weight:600;color:var(--a);}
+  input[type=range]{width:100%;accent-color:var(--a);cursor:pointer;margin-bottom:5px;}
+  .btn-row{display:flex;gap:4px;margin-bottom:5px;}
+  .tbtn{flex:1;padding:5px;text-align:center;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg);color:var(--muted);transition:all .15s;}
+  .tbtn.active{background:var(--a);color:#fff;border-color:var(--a);}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+  .card{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;}
+  .card .lb{font-size:10px;color:var(--muted);text-transform:uppercase;}
+  .card .vl{font-size:12px;font-weight:700;font-family:monospace;color:var(--a);margin-top:2px;}
+  .card.g .vl{color:var(--a2);}
+  .card.r .vl{color:var(--a3);}
+  .card.p .vl{color:var(--a4);}
+  canvas{display:block;border-radius:6px;background:var(--cb);border:1px solid var(--border);width:100%;}
+  .tip{background:var(--hi);border:1px solid var(--tb);border-radius:6px;padding:8px;font-size:11px;line-height:1.5;}
+  .legend-row{display:flex;gap:6px;align-items:center;font-size:11px;padding:2px 0;}
+</style>
+</head>
+<body>
+<h1>M4A-FLT-3.2.2 — Active vs Passive Filters <span>Load effects on passive RC, active filter isolation</span></h1>
+<div class="layout">
+<div class="left">
+
+  <div class="sec">
+    <h3>Comparison Mode</h3>
+    <div class="btn-row">
+      <div class="tbtn active" id="btn_load" onclick="setMode('load')">Load Effect</div>
+      <div class="tbtn" id="btn_order" onclick="setMode('order')">Order Comparison</div>
+      <div class="tbtn" id="btn_noise" onclick="setMode('noise')">Noise</div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3>Passive RC Filter</h3>
+    <label>R (kΩ) <span id="lbl_r">10</span></label>
+    <input type="range" id="rv" min="0.1" max="100" value="10" step="0.1" oninput="update()">
+    <label>C (nF) <span id="lbl_c">10</span></label>
+    <input type="range" id="cv" min="0.1" max="1000" value="10" step="0.1" oninput="update()">
+    <label>Load R_L (kΩ) <span id="lbl_rl">∞</span></label>
+    <input type="range" id="rl" min="0" max="100" value="100" step="1" oninput="update()">
+  </div>
+
+  <div class="sec">
+    <h3>Active Filter (Sallen-Key)</h3>
+    <label>Op-Amp GBW (MHz) <span id="lbl_gbw">10</span></label>
+    <input type="range" id="gbw" min="0.5" max="100" value="10" step="0.5" oninput="update()">
+    <label>Same R, C as passive</label>
+    <label>Load R_L (kΩ) <span id="lbl_al">1</span></label>
+    <input type="range" id="al" min="0.1" max="100" value="1" step="0.1" oninput="update()">
+  </div>
+
+  <div class="sec">
+    <h3>Results</h3>
+    <div class="grid2">
+      <div class="card"><div class="lb">Passive fp (no load)</div><div class="vl" id="r_fp">—</div></div>
+      <div class="card r"><div class="lb">Passive fp (with load)</div><div class="vl" id="r_fp_load">—</div></div>
+      <div class="card"><div class="lb">Passive passband gain</div><div class="vl" id="r_pass">—</div></div>
+      <div class="card g"><div class="lb">Active fp (with load)</div><div class="vl" id="r_afp">—</div></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3>Legend</h3>
+    <div class="legend-row"><div style="width:16px;height:3px;background:var(--a3);border-radius:2px;"></div> Passive (no load)</div>
+    <div class="legend-row"><div style="width:16px;height:3px;background:var(--a5);border-radius:2px;"></div> Passive (with load)</div>
+    <div class="legend-row"><div style="width:16px;height:3px;background:var(--a2);border-radius:2px;"></div> Active (with load)</div>
+  </div>
+
+  <div class="tip" id="tip">Load resistance shifts passive filter corner and attenuates passband. Active filter is immune.</div>
+
+</div>
+<div class="right">
+  <canvas id="c_bode" style="flex:3;"></canvas>
+  <canvas id="c_bar" style="flex:2;"></canvas>
+</div>
+</div>
+<script>
+let mode='load';
+function setMode(m){
+  mode=m;
+  ['load','order','noise'].forEach(x=>document.getElementById('btn_'+x).classList.toggle('active',x===m));
+  update();
+}
+
+function cv(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function getCtx(id){
+  const c=document.getElementById(id);
+  c.width=c.offsetWidth*devicePixelRatio;
+  c.height=c.offsetHeight*devicePixelRatio;
+  const ctx=c.getContext('2d');
+  ctx.scale(devicePixelRatio,devicePixelRatio);
+  ctx.W=c.offsetWidth;ctx.H=c.offsetHeight;
+  return ctx;
+}
+function fmtHz(f){
+  if(f>=1e6) return (f/1e6).toFixed(2)+' MHz';
+  if(f>=1e3) return (f/1e3).toFixed(f>1e5?0:1)+' kHz';
+  return f.toFixed(f>100?0:1)+' Hz';
+}
+
+function passiveGain(f, R_ohm, C_f, RL_ohm) {
+  // With load RL: parallel R||RL in series with C (as load effect)
+  const Reff = RL_ohm<1e12 ? R_ohm*RL_ohm/(R_ohm+RL_ohm) : R_ohm;
+  const pb_gain = RL_ohm<1e12 ? RL_ohm/(R_ohm+RL_ohm) : 1.0;
+  const fp_eff = 1/(2*Math.PI*Reff*C_f);
+  const u=f/fp_eff;
+  return pb_gain/Math.sqrt(1+u*u);
+}
+
+function activeGain(f, R_ohm, C_f, gbw_hz) {
+  // Sallen-Key 2nd order: fp = 1/(2pi*R*C) but limited by op-amp GBW
+  const fp = 1/(2*Math.PI*R_ohm*C_f);
+  // Model op-amp gain limitation as additional HF roll-off
+  const loop_gain = gbw_hz / Math.max(f, 1);
+  const correction = Math.min(1, loop_gain/10); // degrades when loop_gain < 10
+  // 2nd order butterworth at fp
+  const u=f/fp;
+  const g2 = 1/Math.sqrt(1+u*u*u*u); // approx 2nd order
+  return g2 * correction;
+}
+
+function update(){
+  const R_kohm=parseFloat(document.getElementById('rv').value);
+  const C_nf=parseFloat(document.getElementById('cv').value);
+  const RL_kohm=parseFloat(document.getElementById('rl').value);
+  const gbw_mhz=parseFloat(document.getElementById('gbw').value);
+  const AL_kohm=parseFloat(document.getElementById('al').value);
+
+  const R_ohm=R_kohm*1e3;
+  const C_f=C_nf*1e-9;
+  const RL_ohm=RL_kohm*1e3;
+  const gbw_hz=gbw_mhz*1e6;
+  const AL_ohm=AL_kohm*1e3;
+
+  document.getElementById('lbl_r').textContent=R_kohm.toFixed(1);
+  document.getElementById('lbl_c').textContent=C_nf.toFixed(1);
+  document.getElementById('lbl_rl').textContent=RL_kohm>=100?'∞':RL_kohm.toFixed(0)+' k';
+  document.getElementById('lbl_gbw').textContent=gbw_mhz.toFixed(1);
+  document.getElementById('lbl_al').textContent=AL_kohm.toFixed(1);
+
+  const fp_noload=1/(2*Math.PI*R_ohm*C_f);
+  const Reff=RL_kohm<100?R_ohm*RL_ohm/(R_ohm+RL_ohm):R_ohm;
+  const fp_load=1/(2*Math.PI*Reff*C_f);
+  const pb_gain=RL_kohm<100?RL_ohm/(R_ohm+RL_ohm):1.0;
+  const fp_active=1/(2*Math.PI*R_ohm*C_f); // active doesn't change with load
+
+  document.getElementById('r_fp').textContent=fmtHz(fp_noload);
+  document.getElementById('r_fp_load').textContent=fmtHz(fp_load);
+  document.getElementById('r_pass').textContent=(pb_gain*100).toFixed(0)+'% ('+( 20*Math.log10(pb_gain)).toFixed(1)+' dB)';
+  document.getElementById('r_afp').textContent=fmtHz(fp_active);
+
+  const shift_pct=((fp_load-fp_noload)/fp_noload*100);
+  document.getElementById('tip').textContent=
+    RL_kohm<100
+    ?`Load ${RL_kohm}kΩ shifts passive fp by +${shift_pct.toFixed(0)}% and attenuates passband by ${(20*Math.log10(pb_gain)).toFixed(1)} dB. Active filter is unaffected.`
+    :`No load. Passive and active have same fp. Add a load to see the difference.`;
+
+  drawBode(R_ohm,C_f,RL_ohm,gbw_hz,fp_noload,fp_load,pb_gain);
+  drawBar(R_ohm,C_f,RL_ohm,gbw_hz,fp_noload,fp_load,fp_active,pb_gain);
+}
+
+function drawBode(R,C,RL,gbw,fp_nl,fp_l,pb){
+  const ctx=getCtx('c_bode');
+  const W=ctx.W,H=ctx.H,pl=55,pr=18,pt=28,pb_m=32;
+  const pw=W-pl-pr,ph=H-pt-pb_m;
+  ctx.clearRect(0,0,W,H);
+
+  const fMin=fp_nl*0.01,fMax=fp_nl*100;
+  const lMin=Math.log10(fMin),lMax=Math.log10(fMax);
+  const dbMin=-50,dbMax=5;
+  const fx=f=>pl+(Math.log10(f)-lMin)/(lMax-lMin)*pw;
+  const fy=db=>pt+(1-(db-dbMin)/(dbMax-dbMin))*ph;
+
+  ctx.strokeStyle=cv('--gr');ctx.lineWidth=0.7;
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    if(x>=pl&&x<=pl+pw){ctx.beginPath();ctx.moveTo(x,pt);ctx.lineTo(x,pt+ph);ctx.stroke();}
+  }
+  [-50,-40,-30,-20,-10,0].forEach(db=>{
+    const y=fy(db);
+    ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+pw,y);ctx.stroke();
+    ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';ctx.fillText(db,2,y+4);
+  });
+
+  function drawCurve(gainFn, color, dash){
+    ctx.strokeStyle=color;ctx.lineWidth=2;
+    if(dash)ctx.setLineDash(dash);else ctx.setLineDash([]);
+    ctx.beginPath();let first=true;
+    for(let i=0;i<=500;i++){
+      const lf=lMin+i/500*(lMax-lMin);
+      const f=Math.pow(10,lf);
+      const g=gainFn(f);
+      const db=20*Math.log10(Math.max(g,1e-6));
+      const x=pl+i/500*pw,y=fy(Math.max(dbMin,Math.min(dbMax,db)));
+      if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+    }
+    ctx.stroke();ctx.setLineDash([]);
+  }
+
+  // Passive no load
+  drawCurve(f=>passiveGain(f,R,C,1e15), cv('--a3'), []);
+  // Passive with load
+  if(RL<1e12) drawCurve(f=>passiveGain(f,R,C,RL), cv('--a5'), []);
+  // Active with load (2nd order Sallen-Key)
+  drawCurve(f=>activeGain(f,R,C,gbw), cv('--a2'), []);
+
+  // -3 dB line
+  ctx.strokeStyle=cv('--muted');ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pl,fy(-3));ctx.lineTo(pl+pw,fy(-3));ctx.stroke();ctx.setLineDash([]);
+
+  // fp markers
+  [fp_nl, fp_l].forEach((fp,i)=>{
+    const x=fx(fp);
+    if(x>=pl&&x<=pl+pw){
+      ctx.strokeStyle=i===0?cv('--a3'):cv('--a5');
+      ctx.lineWidth=1;ctx.setLineDash([3,3]);
+      ctx.beginPath();ctx.moveTo(x,pt);ctx.lineTo(x,pt+ph);ctx.stroke();ctx.setLineDash([]);
+    }
+  });
+
+  // Labels
+  ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    const f=Math.pow(10,d);
+    const l=f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f;
+    if(x>=pl&&x<=pl+pw)ctx.fillText(l,x-6,pt+ph+14);
+  }
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Gain (dB)',4,pt-8);
+  ctx.fillText('Frequency',pl+pw/2-30,H-2);
+  ctx.fillText('Active vs Passive — Load Effect on Frequency Response',pl+4,pt-10);
+
+  // Legend
+  ctx.font='10px system-ui';
+  ctx.fillStyle=cv('--a3');ctx.fillText('Passive (no load)',pl+pw-110,pt+14);
+  ctx.fillStyle=cv('--a5');ctx.fillText('Passive (loaded)',pl+pw-108,pt+26);
+  ctx.fillStyle=cv('--a2');ctx.fillText('Active (loaded)',pl+pw-104,pt+38);
+}
+
+function drawBar(R,C,RL,gbw,fp_nl,fp_l,fp_active,pb){
+  const ctx=getCtx('c_bar');
+  const W=ctx.W,H=ctx.H,pl=18,pr=18,pt=30,pb_m=28;
+  const pw=W-pl-pr,ph=H-pt-pb_m;
+  ctx.clearRect(0,0,W,H);
+
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Comparison: fp and Passband Gain',pl+2,pt-10);
+
+  const labels=['Passive\n(no load)','Passive\n(loaded)','Active\n(loaded)'];
+  const fps=[fp_nl,fp_l,fp_active];
+  const gains=[1.0,pb,1.0];
+  const colors=[cv('--a3'),cv('--a5'),cv('--a2')];
+
+  const maxFp=Math.max(...fps)*1.2;
+  const nBars=3;
+  const barW=pw/(nBars*2);
+  const rowH=ph/2;
+
+  // fp bars (top half)
+  labels.forEach((lbl,i)=>{
+    const x=pl+(i*2+0.5)*barW;
+    const barH=fps[i]/maxFp*rowH*0.8;
+    ctx.fillStyle=colors[i];
+    ctx.fillRect(x,pt+rowH*0.1+rowH*0.8-barH,barW*1.2,barH);
+    ctx.fillStyle=cv('--text');ctx.font='10px system-ui';
+    ctx.fillText(fmtHz(fps[i]),x,pt+rowH*0.1+rowH*0.8-barH-3);
+    ctx.fillStyle=cv('--muted');ctx.font='9px system-ui';
+    ctx.fillText(lbl.split('\n')[0],x,pt+rowH+10);
+    ctx.fillText(lbl.split('\n')[1]||'',x,pt+rowH+20);
+  });
+
+  // gain bars (bottom half)
+  labels.forEach((lbl,i)=>{
+    const x=pl+(i*2+0.5)*barW;
+    const barH=gains[i]*rowH*0.7;
+    ctx.fillStyle=colors[i]+'99';
+    ctx.fillRect(x,pt+rowH+rowH*0.15+rowH*0.7-barH,barW*1.2,barH);
+    ctx.fillStyle=cv('--text');ctx.font='10px system-ui';
+    ctx.fillText((gains[i]*100).toFixed(0)+'%',x,pt+rowH+rowH*0.15+rowH*0.7-barH-3);
+  });
+
+  // Row labels
+  ctx.fillStyle=cv('--muted');ctx.font='bold 10px system-ui';
+  ctx.fillText('fp →',pl,pt+rowH*0.5);
+  ctx.fillText('Passband gain →',pl,pt+rowH+rowH*0.5);
+
+  // Divider
+  ctx.strokeStyle=cv('--border');ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pl,pt+rowH);ctx.lineTo(pl+pw,pt+rowH);ctx.stroke();
+}
+
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

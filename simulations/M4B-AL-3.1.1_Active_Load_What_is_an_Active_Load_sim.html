@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-AL-3.1.1 — What is an Active Load</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-AL-3.1.1</div>
+  <h1>Active Load — What is an Active Load</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Load Comparison</h2>
+      <label>g_m,n (mA/V): <b id="gm_l">1.65</b> <input type="range" id="gm" min="0.1" max="10" value="1.65" step="0.05"></label>
+      <label>R_D resistive (kΩ): <b id="rd_l">10</b> <input type="range" id="rd" min="1" max="100" value="10" step="1"></label>
+      <label>λ_n (V⁻¹): <b id="lamn_l">0.08</b> <input type="range" id="lamn" min="0.01" max="0.5" value="0.08" step="0.01"></label>
+      <label>λ_p (V⁻¹): <b id="lamp_l">0.10</b> <input type="range" id="lamp" min="0.01" max="0.5" value="0.10" step="0.01"></label>
+      <label>I_D (μA): <b id="id_l">100</b> μA <input type="range" id="id" min="5" max="500" value="100" step="5"></label>
+      <label>V_DD (V): <b id="vdd_l">1.8</b> V <input type="range" id="vdd" min="0.8" max="3.3" value="1.8" step="0.1"></label>
+
+      <div class="ro">r_o,n (kΩ): <span id="ron_d">--</span></div>
+      <div class="ro" style="margin-top:4px">r_o,p (kΩ): <span id="rop_d">--</span></div>
+      <div class="ro" style="margin-top:4px">A_v resistive (dB): <span id="avr_d">--</span></div>
+      <div class="ro g" style="margin-top:4px">A_v active load (dB): <span id="ava_d">--</span></div>
+      <div class="ro" style="margin-top:4px">Gain improvement (dB): <span id="imp_d">--</span></div>
+      <div class="insight">
+        Active load gain = g_m × (r_o,n ∥ r_o,p). Resistive gain = g_m × R_D. The improvement = 20×log10(r_o,parallel / R_D). Higher I_D shrinks r_o — there is an optimum I_D for maximum gain with active load.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>I_out vs V_out — Load Line Comparison</h2>
+      <canvas id="cv" height="300"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const gm=+document.getElementById('gm').value*1e-3;
+    const RD=+document.getElementById('rd').value*1e3;
+    const lamn=+document.getElementById('lamn').value;
+    const lamp=+document.getElementById('lamp').value;
+    const ID=+document.getElementById('id').value*1e-6;
+    const VDD=+document.getElementById('vdd').value;
+
+    document.getElementById('gm_l').textContent=(gm*1e3).toFixed(2);
+    document.getElementById('rd_l').textContent=(RD/1e3).toFixed(0);
+    document.getElementById('lamn_l').textContent=lamn.toFixed(2);
+    document.getElementById('lamp_l').textContent=lamp.toFixed(2);
+    document.getElementById('id_l').textContent=(ID*1e6).toFixed(0);
+    document.getElementById('vdd_l').textContent=VDD.toFixed(1);
+
+    const ron=1/(lamn*ID);
+    const rop=1/(lamp*ID);
+    const Rpar=ron*rop/(ron+rop);
+
+    const Av_res=gm*RD;
+    const Av_act=gm*Rpar;
+    const imp=20*Math.log10(Av_act)-20*Math.log10(Av_res);
+
+    document.getElementById('ron_d').textContent=(ron/1e3).toFixed(0);
+    document.getElementById('rop_d').textContent=(rop/1e3).toFixed(0);
+    document.getElementById('avr_d').textContent=(20*Math.log10(Av_res)).toFixed(1);
+    document.getElementById('ava_d').textContent=(20*Math.log10(Av_act)).toFixed(1);
+    document.getElementById('imp_d').textContent='+'+imp.toFixed(1);
+
+    draw(ID, lamn, lamp, RD, VDD, gm);
+  }
+
+  function draw(ID, lamn, lamp, RD, VDD, gm){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=300;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,300);
+    const pL=55,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=300-pT-pB;
+
+    // Y axis: I (μA), X axis: V_out (V)
+    const iMax=ID*1e6*2, iMin=0;
+    const vMax=VDD;
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText('I (μA)', 2, pT+ph/2);
+    ctx.fillText('V_out (V)', pL+pw/2-14, 300-4);
+
+    for(let i=0;i<=iMax;i+=ID*1e6/2){
+      const y=pT+ph-((i-iMin)/(iMax-iMin))*ph;
+      ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText(i.toFixed(0), 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+    [0,0.5,1.0,1.5,VDD].forEach(v=>{
+      const x=pL+(v/vMax)*pw;
+      ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText(v.toFixed(1), x-8, pT+ph+14);
+    });
+
+    // Resistive load line: I = (VDD - Vout)/RD
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2; ctx.setLineDash([5,4]);
+    ctx.beginPath();
+    {
+      const v0=0; const i0=(VDD-v0)/RD*1e6;
+      const v1=VDD; const i1=0;
+      const y0=pT+ph-((i0-iMin)/(iMax-iMin))*ph;
+      const y1=pT+ph-((i1-iMin)/(iMax-iMin))*ph;
+      ctx.moveTo(pL, y0); ctx.lineTo(pL+pw*(v1/vMax), y1);
+    }
+    ctx.stroke();
+
+    // Active load I_D(V_out): PMOS current = ID*(1+lamp*(VDD-Vout-VovP))... approximate as ID*(1+lamp*VSD)
+    const VovP=0.2;
+    ctx.strokeStyle='#00994d'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+    ctx.beginPath(); let first=true;
+    for(let px=0;px<=pw;px++){
+      const Vout=px/pw*vMax;
+      const VSD=VDD-Vout;
+      if(VSD<VovP) continue; // PMOS in triode, skip
+      const Ip=ID*(1+lamp*VSD)*1e6;
+      const y=pT+ph-((Ip-iMin)/(iMax-iMin))*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // NMOS output characteristic
+    ctx.strokeStyle='#cc2200'; ctx.lineWidth=2; ctx.setLineDash([4,3]);
+    ctx.beginPath(); first=true;
+    for(let px=0;px<=pw;px++){
+      const Vout=px/pw*vMax;
+      const VovN=0.2;
+      let In;
+      if(Vout<VovN){
+        In=ID*(2*Vout/VovN - (Vout/VovN)**2)*(1+lamn*Vout)*1e6; // triode
+      } else {
+        In=ID*(1+lamn*Vout)*1e6; // saturation
+      }
+      const y=pT+ph-((In-iMin)/(iMax-iMin))*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // Operating point intersection — active load
+    const Vop=VDD/2;
+    const xop=pL+(Vop/vMax)*pw;
+    const iop=ID*1e6;
+    const yop=pT+ph-((iop-iMin)/(iMax-iMin))*ph;
+    ctx.fillStyle='#00994d'; ctx.beginPath(); ctx.arc(xop,yop,6,0,2*Math.PI); ctx.fill();
+    ctx.fillStyle='#00994d'; ctx.font='9px system-ui'; ctx.fillText('Op pt', xop+8, yop-3);
+
+    // Legend
+    const items=[{c:'#0066cc',lbl:'Resistive load line',d:[5,4]},{c:'#00994d',lbl:'PMOS active load',d:[]},{c:'#cc2200',lbl:'NMOS output',d:[4,3]}];
+    items.forEach(({c,lbl,d},i)=>{
+      ctx.strokeStyle=c; ctx.lineWidth=1.8; ctx.setLineDash(d);
+      ctx.beginPath(); ctx.moveTo(pL+pw-130, pT+12+14*i); ctx.lineTo(pL+pw-110, pT+12+14*i); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle='#8888aa'; ctx.font='10px system-ui'; ctx.fillText(lbl, pL+pw-106, pT+16+14*i);
+    });
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

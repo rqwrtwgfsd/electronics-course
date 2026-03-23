@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CAS-4.2.2 — Folded Cascode</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#4d9fff;--green:#00cc66;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  .ro.warn span{color:#cc4400;}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CAS-4.2.2</div>
+  <h1>Cascode — Folded Cascode OTA</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>OTA Parameters</h2>
+      <label>V_DD (V): <b id="vdd_l">1.8</b> <input type="range" id="vdd" min="0.6" max="3.3" value="1.8" step="0.1"></label>
+      <label>V_ov per device (mV): <b id="vov_l">200</b> <input type="range" id="vov" min="50" max="400" value="200" step="10"></label>
+      <label>I_SS (μA): <b id="iss_l">200</b> <input type="range" id="iss" min="10" max="1000" value="200" step="10"></label>
+      <label>I_bias / (I_SS/2): <b id="ibr_l">1.4</b>× <input type="range" id="ibr" min="1.0" max="2.5" value="1.4" step="0.05"></label>
+      <label>g_m,M1 (mA/V): <b id="gm1_l">2.0</b> <input type="range" id="gm1" min="0.5" max="10" value="2.0" step="0.1"></label>
+      <label>C_L (pF): <b id="cl_l">2.0</b> <input type="range" id="cl" min="0.1" max="20" value="2.0" step="0.1"></label>
+      <label>C_fold (fF): <b id="cfold_l">80</b> <input type="range" id="cfold" min="10" max="500" value="80" step="5"></label>
+
+      <div class="ro" id="bias_ro">Bias margin: <span id="bias_margin">--</span> μA</div>
+      <div class="ro">Output swing: <span id="swing">--</span> V (folded) vs <span id="tele_swing">--</span> V (tele)</div>
+      <div class="ro g">GBW: <span id="gbw">--</span> MHz</div>
+      <div class="ro">Fold pole f_p,fold: <span id="fp_fold">--</span> MHz</div>
+      <div class="ro">Total I_bias: <span id="i_total">--</span> μA</div>
+
+      <div class="insight" id="insight_box">Adjust to compare folded vs telescopic topology.</div>
+    </div>
+
+    <div class="card">
+      <h2>Swing and Bias Margin Comparison</h2>
+      <canvas id="cv" height="320"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const VDD   = +document.getElementById('vdd').value;
+    const Vov   = +document.getElementById('vov').value / 1000;
+    const ISS   = +document.getElementById('iss').value * 1e-6;
+    const ibr   = +document.getElementById('ibr').value;
+    const gm1   = +document.getElementById('gm1').value * 1e-3;
+    const CL    = +document.getElementById('cl').value * 1e-12;
+    const Cfold = +document.getElementById('cfold').value * 1e-15;
+
+    document.getElementById('vdd_l').textContent  = VDD.toFixed(1);
+    document.getElementById('vov_l').textContent  = (Vov*1000).toFixed(0);
+    document.getElementById('iss_l').textContent  = (ISS*1e6).toFixed(0);
+    document.getElementById('ibr_l').textContent  = ibr.toFixed(2);
+    document.getElementById('gm1_l').textContent  = (gm1*1e3).toFixed(1);
+    document.getElementById('cl_l').textContent   = (CL/1e-12).toFixed(1);
+    document.getElementById('cfold_l').textContent= (Cfold/1e-15).toFixed(0);
+
+    const Ibias  = ibr * ISS / 2;
+    const margin = Ibias - ISS/2; // DC margin per branch
+    const swing_fold = VDD - 4 * Vov; // wide-swing: 2*Vov bottom + 2*Vov top
+    const swing_tele = VDD - 5 * Vov;
+    const GBW    = gm1 / (2 * Math.PI * CL);
+    // fold pole: r_o,M1 || r_o,Ibias ≈ r_o (assume same), use gm1-based estimate
+    const ro_fold = 1 / (gm1 * 0.1); // approximate r_o ≈ 10/gm
+    const fp_fold = 1 / (2 * Math.PI * ro_fold * Cfold);
+    const I_total = ISS + 2 * Ibias;
+
+    document.getElementById('bias_margin').textContent = (margin*1e6).toFixed(1);
+    document.getElementById('swing').textContent       = Math.max(0, swing_fold).toFixed(3);
+    document.getElementById('tele_swing').textContent  = Math.max(0, swing_tele).toFixed(3);
+    document.getElementById('gbw').textContent        = (GBW/1e6).toFixed(1);
+    document.getElementById('fp_fold').textContent    = (fp_fold/1e6).toFixed(1);
+    document.getElementById('i_total').textContent    = (I_total*1e6).toFixed(0);
+
+    const bias_ro = document.getElementById('bias_ro');
+    bias_ro.className = margin > 0 ? 'ro g' : 'ro warn';
+
+    const poleOK = fp_fold > 2 * GBW;
+    document.getElementById('insight_box').textContent =
+      'Bias margin = ' + (margin*1e6).toFixed(1) + ' μA (' + (margin<=0?'INSUFFICIENT — fold will fail!':'OK') + '). ' +
+      'Fold swing = ' + Math.max(0,swing_fold).toFixed(3) + ' V vs telescopic ' + Math.max(0,swing_tele).toFixed(3) + ' V. ' +
+      'Fold pole at ' + (fp_fold/1e6).toFixed(1) + ' MHz vs GBW = ' + (GBW/1e6).toFixed(1) + ' MHz — ' +
+      (poleOK ? 'OK (pole > 2×GBW).' : 'WARNING: fold pole < 2×GBW — phase margin degraded!');
+
+    draw(VDD, Vov, swing_fold, swing_tele, margin, ISS, GBW, fp_fold);
+  }
+
+  function draw(VDD, Vov, swing_fold, swing_tele, margin, ISS, GBW, fp_fold){
+    const cv  = document.getElementById('cv');
+    const W   = cv.parentElement.clientWidth - 36;
+    cv.width = W; cv.height = 320;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, W, 320);
+
+    const isDark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+    const axCol  = isDark ? '#8899bb' : '#8888aa';
+
+    const pL=50, pT=28, pB=44, pH=320-pT-pB, pW=W-pL-10;
+
+    // Bar chart: 3 bars — folded swing, telescopic swing, bias margin (normalized)
+    const bars = [
+      { label: 'Folded\nswing (V)', val: Math.max(0, swing_fold), max: VDD, color: '#00994d' },
+      { label: 'Tele\nswing (V)', val: Math.max(0, swing_tele), max: VDD, color: '#0066cc' },
+      { label: 'Bias margin\n(×ISS/2)', val: Math.max(0, (margin/(ISS/2))), max: 1.5, color: margin > 0 ? '#ff8800' : '#cc0000' },
+    ];
+
+    const barW = Math.floor(pW / bars.length / 1.8);
+    const groupW = pW / bars.length;
+
+    // Axes
+    ctx.strokeStyle = axCol; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pL, pT); ctx.lineTo(pL, pT+pH); ctx.lineTo(pL+pW, pT+pH); ctx.stroke();
+
+    bars.forEach((b, i) => {
+      const x   = pL + i * groupW + groupW/2 - barW/2;
+      const frac = Math.min(1, b.val / b.max);
+      const hh  = frac * pH;
+      const yT  = pT + pH - hh;
+
+      ctx.fillStyle = b.color + 'cc';
+      ctx.fillRect(x, yT, barW, hh);
+      ctx.strokeStyle = b.color;
+      ctx.strokeRect(x, yT, barW, hh);
+
+      // Value label inside bar
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center';
+      if(hh > 16) ctx.fillText(b.val.toFixed(3), x + barW/2, yT + 14);
+
+      // x label
+      const lines = b.label.split('\n');
+      ctx.fillStyle = axCol; ctx.font = '9px system-ui';
+      lines.forEach((ln, li) => ctx.fillText(ln, x+barW/2, pT+pH+14+li*12));
+    });
+
+    // Y axis labels
+    ctx.textAlign = 'right'; ctx.fillStyle = axCol; ctx.font = '9px system-ui';
+    [0, 0.5, 1.0, 1.5, 2.0].forEach(v => {
+      const y = pT + pH - (v/VDD)*pH;
+      if(y < pT || y > pT+pH) return;
+      ctx.fillText(v.toFixed(1)+'V', pL-3, y+3);
+      ctx.strokeStyle = axCol+'22'; ctx.lineWidth=0.5;
+      ctx.beginPath(); ctx.moveTo(pL, y); ctx.lineTo(pL+pW, y); ctx.stroke();
+    });
+
+    // Fold pole vs GBW visualization (right side annotation)
+    const annX = pL + pW * 0.62;
+    const annY = pT + 10;
+    const annH = 60;
+    ctx.fillStyle = isDark ? '#2a2a3a' : '#f0f0ff';
+    ctx.fillRect(annX, annY, W - annX - 8, annH);
+    ctx.strokeStyle = axCol; ctx.lineWidth = 0.5;
+    ctx.strokeRect(annX, annY, W - annX - 8, annH);
+    ctx.fillStyle = axCol; ctx.font = 'bold 9px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('Pole Analysis', annX+6, annY+14);
+    ctx.font = '9px system-ui';
+    ctx.fillText('GBW = ' + (GBW/1e6).toFixed(1) + ' MHz', annX+6, annY+28);
+    ctx.fillText('f_p,fold = ' + (fp_fold/1e6).toFixed(1) + ' MHz', annX+6, annY+42);
+    const ratio = fp_fold / GBW;
+    const poleColor = ratio > 2 ? '#00994d' : '#cc0000';
+    ctx.fillStyle = poleColor;
+    ctx.fillText(ratio > 2 ? 'OK: ratio = '+ratio.toFixed(1)+'×' : 'RISK: ratio = '+ratio.toFixed(1)+'×', annX+6, annY+56);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = axCol; ctx.font = 'bold 10px system-ui';
+    ctx.fillText('Folded vs Telescopic Swing + Bias Health', pL + pW/2, pT-12);
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e => e.addEventListener('input', compute));
+  compute();
+  window.addEventListener('resize', compute);
+</script>
+</body>
+</html>

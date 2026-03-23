@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-DA-2.9.1 — Optimize: Improve Gain</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-DA-2.9.1</div>
+  <h1>Differential Amplifier — Optimize: Improve Gain</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Gain Optimization Controls</h2>
+      <label>I_D (μA): <b id="id_l">100</b> μA <input type="range" id="id" min="5" max="500" value="100" step="5"></label>
+      <label>V_ov (mV): <b id="vov_l">200</b> mV <input type="range" id="vov" min="50" max="400" value="200" step="10"></label>
+      <label>λ base (V⁻¹, at L_min): <b id="lam_l">0.10</b> <input type="range" id="lam" min="0.01" max="0.5" value="0.10" step="0.01"></label>
+      <label>L ratio (L/L_min): <b id="lr_l">1</b>× <input type="range" id="lr" min="1" max="10" value="1" step="0.5"></label>
+      <label>Cascode: <b id="cas_l">OFF</b> <input type="range" id="cas" min="0" max="1" value="0" step="1"></label>
+      <label>Gain-boost factor: <b id="gb_l">1</b>× <input type="range" id="gb" min="1" max="50" value="1" step="1"></label>
+
+      <div class="ro">g_m (mA/V): <span id="gm_d">--</span></div>
+      <div class="ro" style="margin-top:4px">r_o (kΩ): <span id="ro_d">--</span></div>
+      <div class="ro" style="margin-top:4px">R_out (GΩ): <span id="rout_d">--</span></div>
+      <div class="ro g" style="margin-top:4px">A_v (dB): <span id="av_d">--</span></div>
+      <div class="insight">
+        Increasing I_D: g_m ↑, r_o ↓ — gain stays flat. Increasing L: r_o ↑ proportionally — gain ↑ 6 dB per L doubling. Adding cascode: R_out → g_m r_o² — gain ↑ by g_m × r_o factor. Gain-boost: R_out → A_boost × g_m r_o². These effects compound multiplicatively.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Gain Contribution Breakdown</h2>
+      <canvas id="cv" height="300"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const ID=+document.getElementById('id').value*1e-6;
+    const vov=+document.getElementById('vov').value/1000;
+    const lam_base=+document.getElementById('lam').value;
+    const lr=+document.getElementById('lr').value;
+    const cas=+document.getElementById('cas').value;
+    const gb=+document.getElementById('gb').value;
+
+    document.getElementById('id_l').textContent=(ID*1e6).toFixed(0);
+    document.getElementById('vov_l').textContent=(vov*1000).toFixed(0);
+    document.getElementById('lam_l').textContent=lam_base.toFixed(2);
+    document.getElementById('lr_l').textContent=lr.toFixed(1);
+    document.getElementById('cas_l').textContent=cas?'ON':'OFF';
+    document.getElementById('gb_l').textContent=gb.toFixed(0);
+
+    const gm=2*ID/vov;
+    const lam_eff=lam_base/lr;
+    const ro=1/(lam_eff*ID);
+    let Rout;
+    if(cas){
+      Rout = gb * gm * ro * ro / 2; // NMOS || PMOS: approximate ro,n=ro,p, so parallel halves
+    } else {
+      Rout = ro/2; // ro,n || ro,p
+    }
+    const Av=gm*Rout;
+
+    document.getElementById('gm_d').textContent=(gm*1e3).toFixed(3);
+    document.getElementById('ro_d').textContent=(ro/1e3).toFixed(0);
+    document.getElementById('rout_d').textContent=(Rout/1e9).toFixed(3);
+    document.getElementById('av_d').textContent=(20*Math.log10(Av)).toFixed(1);
+
+    draw(ID, vov, lam_base, lr, cas, gb, gm, ro, Rout, Av);
+  }
+
+  function draw(ID, vov, lam_base, lr, cas, gb, gm, ro, Rout, Av){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=300;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,300);
+    const pL=60,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=300-pT-pB;
+
+    // Show gain breakdown as stacked bars vs optimization technique
+    const stages=[
+      {name:'Simple\nactive', gm_f:gm, Rout_f:ro/2},
+      {name:'Longer L\n(L×'+lr.toFixed(1)+')', gm_f:gm, Rout_f:(ro/2)},
+      {name:cas?'Cascode\nON':'Cascode\n(if ON)', gm_f:gm, Rout_f:cas?gm*ro*ro/2:ro/2},
+      {name:gb>1?'Gain-boost\n×'+gb:'Gain-boost\n(×1=off)', gm_f:gm, Rout_f:cas?gb*gm*ro*ro/2:ro/2}
+    ];
+
+    // Compute gains
+    const avs=stages.map(s=>{
+      const base_Rout = 1/(lam_base*ID)/2; // simple
+      const lr_Rout = (1/(lam_base/lr*ID))/2; // longer L
+      if(s.name.startsWith('Simple')) return gm*base_Rout;
+      if(s.name.startsWith('Longer')) return gm*lr_Rout;
+      if(s.name.startsWith('Cascode')) return cas?gm*gm*lr_Rout*lr_Rout*2:gm*lr_Rout;
+      return gm*(cas?gb*gm*lr_Rout*lr_Rout*2:lr_Rout);
+    });
+
+    const avMax_dB=Math.max(...avs.map(a=>20*Math.log10(a)))+15;
+    const avMin_dB=0;
+    const N=stages.length;
+    const barW=Math.floor(pw/N)-8;
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText('A_v (dB)', 2, pT+ph/2);
+
+    for(let db=0;db<=Math.ceil(avMax_dB/20)*20;db+=20){
+      const y=pT+ph-((db-avMin_dB)/(avMax_dB-avMin_dB))*ph;
+      if(y<pT||y>pT+ph) continue;
+      ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText(db, 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+
+    const colors=['#0066cc','#0066cc99','#00994d','#ff8800'];
+    avs.forEach((Av_v,i)=>{
+      const dB=20*Math.log10(Math.max(Av_v,1));
+      const barH=((dB-avMin_dB)/(avMax_dB-avMin_dB))*ph;
+      const x=pL+i*(pw/N)+4;
+      const y=pT+ph-barH;
+      const isActive = i===3?gb>1&&cas: i===2?cas: i===1?lr>1: true;
+      ctx.fillStyle=isActive?colors[i]:colors[i]+'44';
+      ctx.fillRect(x, y, barW, barH);
+
+      // dB label
+      ctx.fillStyle='#fff'; ctx.font='10px system-ui'; ctx.textAlign='center';
+      if(barH>14) ctx.fillText(dB.toFixed(0), x+barW/2, y+12);
+      ctx.textAlign='left';
+
+      // X label
+      const lines=stages[i].name.split('\n');
+      lines.forEach((line,li)=>{
+        ctx.fillStyle='#8888aa'; ctx.font='8px system-ui'; ctx.textAlign='center';
+        ctx.fillText(line, x+barW/2, pT+ph+14+li*11);
+        ctx.textAlign='left';
+      });
+    });
+
+    // Arrow showing improvement
+    if(avs[avs.length-1]>avs[0]){
+      const y0=pT+ph-((20*Math.log10(avs[0])-avMin_dB)/(avMax_dB-avMin_dB))*ph;
+      const y1=pT+ph-((20*Math.log10(avs[avs.length-1])-avMin_dB)/(avMax_dB-avMin_dB))*ph;
+      const xA=pL+pw-8;
+      ctx.strokeStyle='#00994d'; ctx.lineWidth=1.5; ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(xA, y0); ctx.lineTo(xA, y1);
+      ctx.stroke();
+      const imp=20*Math.log10(avs[avs.length-1])-20*Math.log10(avs[0]);
+      ctx.fillStyle='#00994d'; ctx.font='9px system-ui'; ctx.textAlign='right';
+      ctx.fillText('+'+imp.toFixed(0)+' dB', xA-2, (y0+y1)/2+4);
+      ctx.textAlign='left';
+    }
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

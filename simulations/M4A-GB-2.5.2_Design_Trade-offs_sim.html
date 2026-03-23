@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-GB-2.5.2 — Design Trade-offs</title>
+<style>
+  :root{--bg:#ffffff;--surface:#f5f5f5;--border:#dddddd;--text:#1a1a1a;--accent:#0066cc;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Arial,sans-serif;font-size:14px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;display:flex;align-items:baseline;gap:16px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}
+  h1{font-size:17px;font-weight:600;}
+  .main{display:grid;grid-template-columns:300px 1fr;height:calc(100vh - 48px);}
+  .ctrl{background:var(--surface);border-right:1px solid var(--border);padding:18px;overflow-y:auto;}
+  .ctrl h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin-bottom:10px;margin-top:14px;}
+  .cg{margin-bottom:12px;}
+  .cg label{display:block;font-size:12px;margin-bottom:3px;}
+  .val{font-weight:700;color:var(--accent);}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rbox{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:8px;margin-bottom:7px;}
+  .rl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;opacity:.7;margin-bottom:2px;}
+  .rv{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .rv.met{color:#007700;} .rv.fail{color:#cc0000;}
+  @media(prefers-color-scheme:dark){.rv.met{color:#44bb44;}.rv.fail{color:#ff5555;}}
+  .carea{padding:16px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;}
+  canvas{border:1px solid var(--border);border-radius:6px;display:block;}
+  .clabel{font-size:12px;font-weight:600;margin-bottom:4px;opacity:.8;}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+</style>
+</head>
+<body>
+<header>
+  <span class="mid">M4A-GB-2.5.2</span>
+  <h1>Design Trade-offs — Interactive Multi-Constraint Explorer</h1>
+</header>
+<div class="main">
+  <div class="ctrl">
+    <h2>System Requirements</h2>
+    <div class="cg"><label>Required Gain: <span class="val" id="req-av-v">100</span> V/V</label><input type="range" id="req-av" min="1" max="1000" step="1" value="100"></div>
+    <div class="cg"><label>Required BW: <span class="val" id="req-bw-v">100 kHz</span></label><input type="range" id="req-bw" min="1" max="1000" step="1" value="100"></div>
+    <div class="cg"><label>Required Noise: <span class="val" id="req-en-v">20 nV/√Hz</span></label><input type="range" id="req-en" min="1" max="100" step="1" value="20"></div>
+    <div class="cg"><label>Required THD: <span class="val" id="req-thd-v">0.01%</span></label><input type="range" id="req-thd" min="0.001" max="1" step="0.001" value="0.01"></div>
+    <div class="cg"><label>Power Budget: <span class="val" id="req-pwr-v">1 mA</span></label><input type="range" id="req-pwr" min="0.01" max="10" step="0.01" value="1"></div>
+
+    <h2>Op-Amp Parameters</h2>
+    <div class="cg"><label>GBW: <span class="val" id="gbw-v">10 MHz</span></label><input type="range" id="gbw" min="1" max="500" step="1" value="10"></div>
+    <div class="cg"><label>Noise en: <span class="val" id="en-v">10 nV/√Hz</span></label><input type="range" id="en" min="1" max="100" step="1" value="10"></div>
+    <div class="cg"><label>OL THD: <span class="val" id="thd-v">0.5%</span></label><input type="range" id="thd" min="0.01" max="5" step="0.01" value="0.5"></div>
+    <div class="cg"><label>Supply Current: <span class="val" id="icc-v">0.5 mA</span></label><input type="range" id="icc" min="0.01" max="10" step="0.01" value="0.5"></div>
+
+    <h2>Compliance Check</h2>
+    <div class="rbox"><div class="rl">GBW Adequate?</div><div class="rv" id="gbw-pass">YES</div></div>
+    <div class="rbox"><div class="rl">Noise Adequate?</div><div class="rv" id="en-pass">YES</div></div>
+    <div class="rbox"><div class="rl">THD Adequate?</div><div class="rv" id="thd-pass">YES</div></div>
+    <div class="rbox"><div class="rl">Power Within Budget?</div><div class="rv" id="pwr-pass">YES</div></div>
+  </div>
+
+  <div class="carea">
+    <div class="two">
+      <div>
+        <div class="clabel">Trade-off Radar Chart — Required vs Available</div>
+        <canvas id="radarCanvas" width="400" height="280"></canvas>
+      </div>
+      <div>
+        <div class="clabel">Gain-BW-Noise Space — Feasibility Region</div>
+        <canvas id="feasCanvas" width="400" height="280"></canvas>
+      </div>
+    </div>
+    <div>
+      <div class="clabel">Multi-Stage vs Single Stage Comparison (same total gain)</div>
+      <canvas id="stageCanvas" width="820" height="160"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  function G(id){return document.getElementById(id);}
+  const reqAv=G('req-av'),reqBw=G('req-bw'),reqEn=G('req-en'),reqThd=G('req-thd'),reqPwr=G('req-pwr');
+  const gbwS=G('gbw'),enS=G('en'),thdS=G('thd'),iccS=G('icc');
+
+  function getC(){
+    const dk=window.matchMedia('(prefers-color-scheme:dark)').matches;
+    return{bg:dk?'#1a1a1a':'#fff',grid:dk?'#2e2e2e':'#eee',text:dk?'#ccc':'#555',blue:dk?'#4499ff':'#0066cc',orange:dk?'#ff9944':'#cc6600',red:dk?'#ff5555':'#cc0000',green:dk?'#44bb44':'#007700',purple:dk?'#bb88ff':'#7700cc'};
+  }
+  function fmtF(f){return f>=1e6?(f/1e6).toFixed(1)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f.toFixed(0);}
+
+  function update(){
+    const Av=parseFloat(reqAv.value);
+    const bwReq=parseFloat(reqBw.value)*1e3;
+    const enReq=parseFloat(reqEn.value);
+    const thdReq=parseFloat(reqThd.value);
+    const pwrReq=parseFloat(reqPwr.value);
+    const GBW=parseFloat(gbwS.value)*1e6;
+    const en=parseFloat(enS.value);
+    const thdOL=parseFloat(thdS.value);
+    const icc=parseFloat(iccS.value);
+
+    G('req-av-v').textContent=Av;
+    G('req-bw-v').textContent=fmtF(bwReq)+'Hz';
+    G('req-en-v').textContent=enReq+' nV/√Hz';
+    G('req-thd-v').textContent=thdReq.toFixed(3)+'%';
+    G('req-pwr-v').textContent=pwrReq.toFixed(2)+' mA';
+    G('gbw-v').textContent=(GBW/1e6).toFixed(0)+' MHz';
+    G('en-v').textContent=en+' nV/√Hz';
+    G('thd-v').textContent=thdOL.toFixed(2)+'%';
+    G('icc-v').textContent=icc.toFixed(2)+' mA';
+
+    const bwAvail=GBW/Av;
+    const T=bwAvail/bwReq;
+    const thdCL=thdOL/(1+T);
+    const gbwOk=bwAvail>=bwReq;
+    const enOk=en<=enReq;
+    const thdOk=thdCL<=thdReq;
+    const pwrOk=icc<=pwrReq;
+
+    function setPass(id,ok){const el=G(id);el.textContent=ok?'PASS':'FAIL';el.className='rv '+(ok?'met':'fail');}
+    setPass('gbw-pass',gbwOk);
+    setPass('en-pass',enOk);
+    setPass('thd-pass',thdOk);
+    setPass('pwr-pass',pwrOk);
+
+    drawRadar(gbwOk,enOk,thdOk,pwrOk,bwAvail,bwReq,en,enReq,thdCL,thdReq,icc,pwrReq);
+    drawFeas(GBW,Av,bwReq,enReq);
+    drawStage(GBW,Av);
+  }
+
+  function drawRadar(g,n,t,p,bwA,bwR,enA,enR,thdA,thdR,pA,pR){
+    const cv=G('radarCanvas');
+    const ctx=cv.getContext('2d');
+    const W=cv.width,H=cv.height;
+    const c=getC();
+    ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+    const cx=W/2,cy=H/2,r=Math.min(W,H)/2-40;
+    const axes=['GBW','Noise','THD','Power'];
+    const angles=axes.map((_,i)=>-Math.PI/2+i*2*Math.PI/axes.length);
+    // normalize: >1 means spec met, <1 means fails
+    const ratios=[bwA/bwR, enR/enA, thdR/thdA, pR/pA];
+
+    // draw grid
+    ctx.strokeStyle=c.grid; ctx.lineWidth=1;
+    [0.25,0.5,0.75,1.0].forEach(frac=>{
+      ctx.beginPath();
+      angles.forEach((a,i)=>{
+        const x=cx+Math.cos(a)*r*frac, y=cy+Math.sin(a)*r*frac;
+        i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+      });
+      ctx.closePath(); ctx.stroke();
+    });
+    // axes
+    angles.forEach((a,i)=>{
+      ctx.beginPath(); ctx.moveTo(cx,cy);
+      ctx.lineTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r); ctx.stroke();
+      ctx.fillStyle=c.text; ctx.font='11px sans-serif'; ctx.textAlign='center';
+      const lx=cx+Math.cos(a)*(r+20), ly=cy+Math.sin(a)*(r+20);
+      ctx.fillText(axes[i],lx,ly);
+    });
+
+    // requirement boundary (unit circle)
+    ctx.beginPath(); ctx.strokeStyle=c.orange; ctx.lineWidth=2; ctx.setLineDash([5,3]);
+    angles.forEach((a,i)=>{
+      const x=cx+Math.cos(a)*r, y=cy+Math.sin(a)*r;
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+
+    // available
+    ctx.beginPath(); ctx.strokeStyle=c.blue; ctx.lineWidth=2.5;
+    angles.forEach((a,i)=>{
+      const frac=Math.min(ratios[i],2)/2;
+      const x=cx+Math.cos(a)*r*frac, y=cy+Math.sin(a)*r*frac;
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.closePath();
+    ctx.fillStyle=ctx.strokeStyle+'44';
+    const allOk=ratios.every(r=>r>=1);
+    ctx.fillStyle=allOk?c.green+'44':c.red+'44';
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle=c.text; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(allOk?'All specs met':'Some specs fail',cx,cy+r+30);
+    ctx.fillStyle=c.orange; ctx.fillText('— = Requirement',cx-50,cy+r+44);
+    ctx.fillStyle=c.blue; ctx.fillText('— = Available',cx+60,cy+r+44);
+  }
+
+  function drawFeas(GBW,Av,bwReq,enReq){
+    const cv=G('feasCanvas');
+    const ctx=cv.getContext('2d');
+    const W=cv.width,H=cv.height;
+    const c=getC();
+    ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+    const pad={l:55,r:20,t:20,b:45};
+    const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+    // Show gain vs BW plane with feasibility region
+    const logAvMin=0,logAvMax=3;
+    const logBwMin=2,logBwMax=8;
+    function avX(av){return pad.l+(Math.log10(av)-logAvMin)/(logAvMax-logAvMin)*pw;}
+    function bwY(bw){return pad.t+ph-(Math.log10(bw)-logBwMin)/(logBwMax-logBwMin)*ph;}
+
+    ctx.strokeStyle=c.grid; ctx.lineWidth=1;
+    [1,10,100,1000].forEach(av=>{
+      const x=avX(av);
+      ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,pad.t+ph); ctx.stroke();
+      ctx.fillStyle=c.text; ctx.font='9px monospace'; ctx.textAlign='center';
+      ctx.fillText(av,x,pad.t+ph+14);
+    });
+    [100,1000,10000,100000,1000000,10000000].forEach(bw=>{
+      const y=bwY(bw);
+      if(y<pad.t||y>pad.t+ph) return;
+      ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+pw,y); ctx.stroke();
+      ctx.fillStyle=c.text; ctx.font='9px monospace'; ctx.textAlign='right';
+      ctx.fillText(fmtF(bw),pad.l-3,y+3);
+    });
+
+    // GBW hyperbola
+    ctx.beginPath(); ctx.strokeStyle=c.blue; ctx.lineWidth=2;
+    for(let px=0;px<=pw;px++){
+      const av=Math.pow(10,logAvMin+(px/pw)*(logAvMax-logAvMin));
+      const bw=GBW/av;
+      const x=pad.l+px,y=bwY(bw);
+      if(y<pad.t-5||y>pad.t+ph+5){px===0?ctx.moveTo(x,y):ctx.lineTo(x,y);continue;}
+      px===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    ctx.fillStyle=c.blue; ctx.font='10px monospace'; ctx.textAlign='center';
+    ctx.fillText('GBW='+(GBW/1e6).toFixed(0)+'M',avX(10),bwY(GBW/10)-8);
+
+    // requirement point
+    const xReq=avX(Av),yReq=bwY(bwReq);
+    const feasible=GBW/Av>=bwReq;
+    ctx.beginPath(); ctx.arc(xReq,yReq,8,0,2*Math.PI);
+    ctx.fillStyle=feasible?c.green:c.red; ctx.fill();
+    ctx.fillStyle=c.text; ctx.font='10px monospace'; ctx.textAlign='left';
+    ctx.fillText('Required: Av='+Av+' BW='+fmtF(bwReq)+'Hz',xReq+12,yReq+4);
+
+    ctx.fillStyle=c.text; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Gain |Av| →',pad.l+pw/2,H-8);
+    ctx.save(); ctx.translate(14,pad.t+ph/2); ctx.rotate(-Math.PI/2); ctx.fillText('BW (Hz)',0,0); ctx.restore();
+  }
+
+  function drawStage(GBW,Av){
+    const cv=G('stageCanvas');
+    const ctx=cv.getContext('2d');
+    const W=cv.width,H=cv.height;
+    const c=getC();
+    ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+    const pad={l:130,r:20,t:20,b:30};
+    const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+    const configs=[
+      {n:1,bw:GBW/Av,label:'1 stage, Av='+Av,col:c.red},
+      {n:2,bw:GBW/Math.sqrt(Av)*0.644,label:'2 stages, Av=√'+Av+'ea',col:c.orange},
+      {n:3,bw:GBW/Math.pow(Av,1/3)*0.51,label:'3 stages, Av=∛'+Av+'ea',col:c.green}
+    ];
+    const maxBW=configs[configs.length-1].bw*1.2;
+
+    configs.forEach((cfg,i)=>{
+      const y=pad.t+i*(ph/3);
+      const bwFrac=Math.min(cfg.bw/maxBW,1);
+      ctx.fillStyle=cfg.col;
+      ctx.fillRect(pad.l,y,bwFrac*pw,ph/3-6);
+      ctx.fillStyle=c.text; ctx.font='11px monospace'; ctx.textAlign='right';
+      ctx.fillText(cfg.label,pad.l-5,y+ph/6+4);
+      ctx.fillStyle=c.bg; ctx.font='bold 10px monospace'; ctx.textAlign='left';
+      ctx.fillText(fmtF(cfg.bw)+'Hz',pad.l+bwFrac*pw+5,y+ph/6+4);
+    });
+    ctx.fillStyle=c.text; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Bandwidth →',pad.l+pw/2,H-4);
+  }
+
+  [reqAv,reqBw,reqEn,reqThd,reqPwr,gbwS,enS,thdS,iccS].forEach(e=>e.addEventListener('input',update));
+  window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',update);
+  update();
+})();
+</script>
+</body>
+</html>

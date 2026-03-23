@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-FLT-3.2.1 RC Filter Transfer Function</title>
+<style>
+  :root{--bg:#f5f5f5;--panel:#fff;--text:#1a1a1a;--muted:#666;--border:#ddd;
+    --a:#2563eb;--a2:#16a34a;--a3:#dc2626;--a4:#9333ea;--a5:#ea580c;
+    --cb:#fafafa;--gr:#e5e7eb;--hi:#fef9c3;--tb:#bfdbfe;}
+  @media(prefers-color-scheme:dark){:root{
+    --bg:#0f1117;--panel:#1e2130;--text:#e8eaf0;--muted:#8892a4;--border:#2d3348;
+    --a:#60a5fa;--a2:#4ade80;--a3:#f87171;--a4:#c084fc;--a5:#fb923c;
+    --cb:#161926;--gr:#2d3348;--hi:#2d2a0f;--tb:#3b82f6;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px;}
+  h1{font-size:16px;font-weight:700;padding:12px 18px;border-bottom:1px solid var(--border);background:var(--panel);}
+  h1 span{color:var(--muted);font-size:13px;font-weight:400;margin-left:8px;}
+  .layout{display:flex;height:calc(100vh - 47px);}
+  .left{width:280px;background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
+  .right{flex:1;display:flex;flex-direction:column;padding:10px;gap:8px;overflow:hidden;}
+  .sec{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:10px;}
+  .sec h3{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;}
+  label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:3px;}
+  label span{font-weight:600;color:var(--a);}
+  input[type=range]{width:100%;accent-color:var(--a);cursor:pointer;margin-bottom:5px;}
+  .btn-row{display:flex;gap:4px;margin-bottom:6px;}
+  .tbtn{flex:1;padding:6px;text-align:center;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:5px;cursor:pointer;background:var(--bg);color:var(--muted);transition:all .15s;}
+  .tbtn.active{background:var(--a);color:#fff;border-color:var(--a);}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+  .card{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;}
+  .card .lb{font-size:10px;color:var(--muted);text-transform:uppercase;}
+  .card .vl{font-size:13px;font-weight:700;font-family:monospace;color:var(--a);margin-top:2px;}
+  .card.g .vl{color:var(--a2);}
+  .card.r .vl{color:var(--a3);}
+  .card.p .vl{color:var(--a4);}
+  canvas{display:block;border-radius:6px;background:var(--cb);border:1px solid var(--border);width:100%;}
+  .tip{background:var(--hi);border:1px solid var(--tb);border-radius:6px;padding:8px;font-size:11px;line-height:1.5;}
+  .formula{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px;font-family:monospace;font-size:12px;color:var(--a4);}
+</style>
+</head>
+<body>
+<h1>M4A-FLT-3.2.1 — RC Filter Transfer Function <span>Bode plot from H(s)=1/(1+sRC), derive fp, phase, attenuation</span></h1>
+<div class="layout">
+<div class="left">
+
+  <div class="sec">
+    <h3>Filter Type</h3>
+    <div class="btn-row">
+      <div class="tbtn active" id="btn_lp" onclick="setType('lp')">Low-Pass</div>
+      <div class="tbtn" id="btn_hp" onclick="setType('hp')">High-Pass</div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3>Component Values</h3>
+    <label>R (kΩ) <span id="lbl_r">10</span></label>
+    <input type="range" id="rv" min="0.1" max="1000" value="10" step="0.1" oninput="update()">
+    <label>C (nF) <span id="lbl_c">10</span></label>
+    <input type="range" id="cv" min="0.1" max="10000" value="10" step="0.1" oninput="update()">
+    <label>Source R_s (Ω) <span id="lbl_rs">0</span></label>
+    <input type="range" id="rs" min="0" max="10000" value="0" step="50" oninput="update()">
+  </div>
+
+  <div class="sec">
+    <h3>Transfer Function</h3>
+    <div class="formula" id="formula_box">H(s) = 1 / (1 + s·RC)</div>
+  </div>
+
+  <div class="sec">
+    <h3>Computed Values</h3>
+    <div class="grid2">
+      <div class="card"><div class="lb">τ = RC</div><div class="vl" id="r_tau">—</div></div>
+      <div class="card g"><div class="lb">fp (-3 dB)</div><div class="vl" id="r_fp">—</div></div>
+      <div class="card r"><div class="lb">Phase @fp</div><div class="vl" id="r_ph">—45°</div></div>
+      <div class="card p"><div class="lb">@ 10×fp</div><div class="vl" id="r_10x">—</div></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3>Marker Frequency</h3>
+    <label>f marker (×fp) <span id="lbl_fm">1.0</span></label>
+    <input type="range" id="fm_mult" min="-2" max="2" value="0" step="0.05" oninput="update()">
+    <div class="grid2">
+      <div class="card"><div class="lb">f marker</div><div class="vl" id="r_fm">—</div></div>
+      <div class="card"><div class="lb">Gain @ marker</div><div class="vl" id="r_fg">—</div></div>
+    </div>
+  </div>
+
+  <div class="tip" id="tip">Adjust R and C to see how corner frequency responds to RC product.</div>
+
+</div>
+<div class="right">
+  <canvas id="c_bode" style="flex:3;"></canvas>
+  <canvas id="c_time" style="flex:2;"></canvas>
+</div>
+</div>
+<script>
+let ftype='lp';
+function setType(t){
+  ftype=t;
+  document.getElementById('btn_lp').classList.toggle('active',t==='lp');
+  document.getElementById('btn_hp').classList.toggle('active',t==='hp');
+  update();
+}
+
+function cv2(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+
+function getCtx(id){
+  const c=document.getElementById(id);
+  c.width=c.offsetWidth*devicePixelRatio;
+  c.height=c.offsetHeight*devicePixelRatio;
+  const ctx=c.getContext('2d');
+  ctx.scale(devicePixelRatio,devicePixelRatio);
+  ctx.W=c.offsetWidth;ctx.H=c.offsetHeight;
+  return ctx;
+}
+
+function fmtHz(f){
+  if(f>=1e6) return (f/1e6).toFixed(2)+' MHz';
+  if(f>=1e3) return (f/1e3).toFixed(f>1e5?0:2)+' kHz';
+  return f.toFixed(f>100?0:2)+' Hz';
+}
+function fmtTime(t){
+  if(t>=1) return t.toFixed(2)+' s';
+  if(t>=1e-3) return (t*1e3).toFixed(2)+' ms';
+  if(t>=1e-6) return (t*1e6).toFixed(2)+' µs';
+  return (t*1e9).toFixed(2)+' ns';
+}
+
+function gainDB(f, fp, type){
+  const u=f/fp;
+  if(type==='lp') return -10*Math.log10(1+u*u);
+  else return 10*Math.log10(u*u/(1+u*u));
+}
+function phDeg(f, fp, type){
+  const u=f/fp;
+  if(type==='lp') return -Math.atan(u)*180/Math.PI;
+  else return 90-Math.atan(u)*180/Math.PI;
+}
+
+function update(){
+  const R_kohm=parseFloat(document.getElementById('rv').value);
+  const C_nf=parseFloat(document.getElementById('cv').value);
+  const Rs_ohm=parseFloat(document.getElementById('rs').value);
+  const fm_mult=parseFloat(document.getElementById('fm_mult').value);
+
+  const R_ohm=R_kohm*1e3+Rs_ohm;
+  const C_f=C_nf*1e-9;
+  const tau=R_ohm*C_f;
+  const fp=1/(2*Math.PI*tau);
+  const f_marker=fp*Math.pow(10,fm_mult);
+
+  document.getElementById('lbl_r').textContent=R_kohm.toFixed(1);
+  document.getElementById('lbl_c').textContent=C_nf.toFixed(1);
+  document.getElementById('lbl_rs').textContent=Rs_ohm;
+  document.getElementById('lbl_fm').textContent=(Math.pow(10,fm_mult)).toFixed(2)+'×';
+
+  const tau_str=fmtTime(tau);
+  document.getElementById('r_tau').textContent=tau_str;
+  document.getElementById('r_fp').textContent=fmtHz(fp);
+  document.getElementById('r_ph').textContent=phDeg(fp,fp,ftype).toFixed(1)+'°';
+  document.getElementById('r_10x').textContent=gainDB(10*fp,fp,ftype).toFixed(1)+' dB';
+
+  const fg=gainDB(f_marker,fp,ftype);
+  document.getElementById('r_fm').textContent=fmtHz(f_marker);
+  document.getElementById('r_fg').textContent=fg.toFixed(2)+' dB';
+
+  // Formula
+  const tauDisp=tau<1e-3?(tau*1e6).toFixed(1)+'µ':(tau*1e3).toFixed(2)+'m';
+  document.getElementById('formula_box').textContent=
+    ftype==='lp'
+    ?`H(s) = 1/(1 + sRC)\nRC = ${tauDisp}s → fp = ${fmtHz(fp)}`
+    :`H(s) = sRC/(1 + sRC)\nRC = ${tauDisp}s → fp = ${fmtHz(fp)}`;
+
+  // Tip
+  if(Rs_ohm>0){
+    document.getElementById('tip').textContent=
+      `Source R_s=${Rs_ohm}Ω shifts fp: effective R=${R_ohm.toFixed(0)}Ω vs ${(R_kohm*1000).toFixed(0)}Ω. fp moved from ${fmtHz(1/(2*Math.PI*R_kohm*1000*C_f))} to ${fmtHz(fp)}.`;
+  } else {
+    document.getElementById('tip').textContent=
+      `τ = RC = ${tau_str}. Corner frequency fp = 1/(2πτ) = ${fmtHz(fp)}. Phase = -45° at fp.`;
+  }
+
+  drawBode(fp,f_marker,fg);
+  drawStep(tau);
+}
+
+function drawBode(fp,f_marker,fg){
+  const ctx=getCtx('c_bode');
+  const W=ctx.W,H=ctx.H,pl=55,pr=18,pt=30,pb=34;
+  const pw=W-pl-pr,ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  const fMin=fp*0.01,fMax=fp*100;
+  const lMin=Math.log10(fMin),lMax=Math.log10(fMax);
+  const dbMin=-50,dbMax=5;
+  const fx=f=>pl+(Math.log10(f)-lMin)/(lMax-lMin)*pw;
+  const fy=db=>pt+(1-(db-dbMin)/(dbMax-dbMin))*ph;
+
+  // Grid
+  ctx.strokeStyle=cv2('--gr');ctx.lineWidth=0.7;
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    if(x>=pl&&x<=pl+pw){ctx.beginPath();ctx.moveTo(x,pt);ctx.lineTo(x,pt+ph);ctx.stroke();}
+  }
+  [-50,-40,-30,-20,-10,0].forEach(db=>{
+    const y=fy(db);
+    ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+pw,y);ctx.stroke();
+    ctx.fillStyle=cv2('--muted');ctx.font='10px system-ui';ctx.fillText(db,2,y+4);
+  });
+
+  // Asymptote
+  ctx.strokeStyle=cv2('--a5');ctx.lineWidth=1;ctx.setLineDash([5,4]);
+  ctx.beginPath();
+  if(ftype==='lp'){
+    ctx.moveTo(pl,fy(0));ctx.lineTo(fx(fp),fy(0));
+    ctx.moveTo(fx(fp),fy(0));ctx.lineTo(pl+pw,fy(0-(lMax-Math.log10(fp))*20));
+  } else {
+    ctx.moveTo(pl,fy((lMin-Math.log10(fp))*20+0));
+    ctx.lineTo(fx(fp),fy(0));
+    ctx.moveTo(fx(fp),fy(0));ctx.lineTo(pl+pw,fy(0));
+  }
+  ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=cv2('--a5');ctx.font='10px system-ui';
+  ctx.fillText('Asymptote',pl+pw-80,pt+14);
+
+  // Exact curve
+  const clr=ftype==='lp'?cv2('--a'):cv2('--a2');
+  ctx.strokeStyle=clr;ctx.lineWidth=2.5;
+  ctx.beginPath();let first=true;
+  for(let i=0;i<=600;i++){
+    const lf=lMin+i/600*(lMax-lMin);
+    const f=Math.pow(10,lf);
+    const db=gainDB(f,fp,ftype);
+    const x=pl+i/600*pw,y=fy(Math.max(dbMin,Math.min(dbMax,db)));
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // -3 dB line
+  ctx.strokeStyle=cv2('--a3');ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pl,fy(-3));ctx.lineTo(pl+pw,fy(-3));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=cv2('--a3');ctx.font='10px system-ui';ctx.fillText('-3 dB',pl+2,fy(-3)-3);
+
+  // fp marker
+  const xfp=fx(fp);
+  ctx.strokeStyle=cv2('--a3');ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(xfp,pt);ctx.lineTo(xfp,pt+ph);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=cv2('--a3');
+  ctx.beginPath();ctx.arc(xfp,fy(-3),5,0,2*Math.PI);ctx.fill();
+  ctx.font='10px system-ui';ctx.fillText('fp='+fmtHz(fp),xfp+3,fy(-3)-7);
+
+  // Marker
+  const xm=fx(f_marker);
+  const ym=fy(fg);
+  ctx.strokeStyle=cv2('--a4');ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(xm,pt);ctx.lineTo(xm,pt+ph);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=cv2('--a4');
+  ctx.beginPath();ctx.arc(xm,ym,5,0,2*Math.PI);ctx.fill();
+  ctx.font='bold 10px system-ui';ctx.fillText(fg.toFixed(1)+' dB',Math.min(xm+5,pl+pw-60),ym-7);
+
+  // Labels
+  ctx.fillStyle=cv2('--muted');ctx.font='10px system-ui';
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    const f=Math.pow(10,d);
+    const l=f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f;
+    if(x>=pl&&x<=pl+pw)ctx.fillText(l,x-6,pt+ph+14);
+  }
+  ctx.fillStyle=cv2('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Gain (dB)',4,pt-10);
+  ctx.fillText('Frequency',pl+pw/2-30,H-2);
+  ctx.fillText((ftype==='lp'?'Low-Pass':'High-Pass')+' RC — Bode Magnitude',pl+4,pt-10);
+}
+
+function drawStep(tau){
+  const ctx=getCtx('c_time');
+  const W=ctx.W,H=ctx.H,pl=55,pr=18,pt=26,pb=28;
+  const pw=W-pl-pr,ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  ctx.fillStyle=cv2('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Step Response (unit step input)',pl+4,pt-8);
+
+  const T_total=5*tau;
+  const tx=t=>pl+t/T_total*pw;
+  const ym_y=pt+ph, amp=ph*0.8, y0=pt+ph*0.1;
+
+  ctx.strokeStyle=cv2('--gr');ctx.lineWidth=0.7;
+  [0,0.25,0.5,0.75,1.0].forEach(v=>{
+    const y=y0+(1-v)*amp;
+    ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+pw,y);ctx.stroke();
+    ctx.fillStyle=cv2('--muted');ctx.font='10px system-ui';ctx.fillText(v.toFixed(2),2,y+4);
+  });
+
+  // Input step (red)
+  ctx.strokeStyle=cv2('--a3');ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+  ctx.beginPath();
+  ctx.moveTo(pl,y0+amp);ctx.lineTo(pl,y0+amp);
+  ctx.lineTo(pl,y0);ctx.lineTo(pl+pw,y0);
+  ctx.stroke();ctx.setLineDash([]);
+
+  // Output step response
+  const clr=ftype==='lp'?cv2('--a'):cv2('--a2');
+  ctx.strokeStyle=clr;ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=500;i++){
+    const t=i/500*T_total;
+    let v;
+    if(ftype==='lp') v=1-Math.exp(-t/tau);
+    else v=Math.exp(-t/tau); // high-pass: step then decay
+    const x=tx(t),y=y0+(1-v)*amp;
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // τ marker
+  const x_tau=tx(tau);
+  const v_tau=ftype==='lp'?0.632:0.368;
+  const y_tau=y0+(1-v_tau)*amp;
+  ctx.strokeStyle=cv2('--a4');ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(x_tau,pt);ctx.lineTo(x_tau,ym_y);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=cv2('--a4');
+  ctx.beginPath();ctx.arc(x_tau,y_tau,5,0,2*Math.PI);ctx.fill();
+  ctx.font='10px system-ui';
+  ctx.fillText('τ, v='+(v_tau*100).toFixed(0)+'%',x_tau+4,y_tau-5);
+
+  // Time labels
+  ctx.fillStyle=cv2('--muted');ctx.font='10px system-ui';
+  [0,1,2,3,4,5].forEach(k=>{
+    const t=k*tau,x=tx(t);
+    if(x>=pl&&x<=pl+pw) ctx.fillText(k+'τ',x-6,pt+ph+14);
+  });
+  ctx.fillStyle=cv2('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Amplitude',4,pt-4);
+}
+
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

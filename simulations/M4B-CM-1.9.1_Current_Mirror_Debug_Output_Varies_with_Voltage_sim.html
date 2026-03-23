@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CM-1.9.1 — Debug: Output Varies with Voltage</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.r span{color:#cc2200;}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CM-1.9.1</div>
+  <h1>Current Mirror — Debug: Output Varies with Voltage</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Short-Channel Effects</h2>
+      <label>I_D (μA): <b id="id_l">100</b> μA <input type="range" id="id" min="5" max="500" value="100" step="5"></label>
+      <label>λ long-channel (V⁻¹): <b id="lam_l">0.08</b> <input type="range" id="lam" min="0.01" max="0.5" value="0.08" step="0.01"></label>
+      <label>V_ov (mV): <b id="vov_l">150</b> mV <input type="range" id="vov" min="50" max="400" value="150" step="10"></label>
+      <label>DIBL η (mV/V): <b id="eta_l">60</b> <input type="range" id="eta" min="0" max="150" value="60" step="5"></label>
+      <label>Leakage I_leak (nA): <b id="leak_l">0</b> nA <input type="range" id="leak" min="0" max="5000" value="0" step="50"></label>
+
+      <div class="ro">λ_eff (with DIBL) (V⁻¹): <span id="lameff_d">--</span></div>
+      <div class="ro r" style="margin-top:4px">r_out with DIBL (kΩ): <span id="rout_d">--</span></div>
+      <div class="ro" style="margin-top:4px">r_out without DIBL (MΩ): <span id="rout_nd">--</span></div>
+      <div class="ro" style="margin-top:4px">Degradation factor: <span id="deg_d">--</span></div>
+      <div class="insight">
+        DIBL (Drain-Induced Barrier Lowering) dominates output variation in short-channel devices. η describes V_th reduction per volt of V_DS increase. Even moderate η values (60 mV/V) reduce r_out by 10–100× compared to long-channel prediction.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>I_out vs V_out: CLM + DIBL + Leakage</h2>
+      <canvas id="cv" height="280"></canvas>
+      <div class="insight">
+        Blue: long-channel CLM only. Red: with DIBL. Green dashed: with leakage current added. DIBL causes the steep upward slope. Leakage adds a superimposed upward bend at high V_out.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const ID=+document.getElementById('id').value*1e-6;
+    const lam=+document.getElementById('lam').value;
+    const vov=+document.getElementById('vov').value/1000;
+    const eta=+document.getElementById('eta').value/1000; // V/V
+    const Ileak=+document.getElementById('leak').value*1e-9;
+
+    document.getElementById('id_l').textContent=(ID*1e6).toFixed(0);
+    document.getElementById('lam_l').textContent=lam.toFixed(2);
+    document.getElementById('vov_l').textContent=(vov*1000).toFixed(0);
+    document.getElementById('eta_l').textContent=(eta*1000).toFixed(0);
+    document.getElementById('leak_l').textContent=(Ileak*1e9).toFixed(0);
+
+    const gm=2*ID/vov;
+    const lam_dibl=lam+eta*gm/ID;
+    const ro_lc=1/(lam*ID);
+    const ro_eff=1/(lam_dibl*ID);
+    const deg=ro_eff/ro_lc;
+
+    document.getElementById('lameff_d').textContent=lam_dibl.toFixed(3);
+    document.getElementById('rout_d').textContent=(ro_eff/1e3).toFixed(1);
+    document.getElementById('rout_nd').textContent=(ro_lc/1e6).toFixed(2);
+    document.getElementById('deg_d').textContent=deg.toFixed(3);
+
+    draw(ID,lam,lam_dibl,vov,Ileak,ro_eff);
+  }
+
+  function draw(ID,lam,lam_d,vov,Ileak,rout){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=280;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,280);
+    const pL=58,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=280-pT-pB;
+    const Vmax=1.8;
+    const vds1=0.65;
+    const Imax=ID*2.5*1e6;
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='10px system-ui';
+    ctx.fillText('I_out (μA)', 2, pT+ph/2);
+    ctx.fillText('V_out (V)', pL+pw/2-18, 280-4);
+    for(let i=0;i<=4;i++){
+      const v=i/4*Imax; const y=pT+ph-(i/4)*ph;
+      ctx.fillStyle='#8888aa'; ctx.fillText(v.toFixed(0), 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+    [0,0.3,0.6,0.9,1.2,1.5,1.8].forEach(v=>{
+      const x=pL+(v/Vmax)*pw; ctx.fillStyle='#8888aa'; ctx.fillText(v.toFixed(1), x-8, pT+ph+14);
+    });
+
+    const drawCurve=(lamVal,leakFn,color,dash)=>{
+      ctx.strokeStyle=color; ctx.lineWidth=2; ctx.setLineDash(dash||[]);
+      ctx.beginPath(); let first=true;
+      for(let px=0;px<=pw;px++){
+        const v=px/pw*Vmax;
+        let I=v<vov?(ID*(v/vov)**2):ID*(1+lamVal*(v-vds1));
+        I+=leakFn(v);
+        const y=pT+ph-(Math.min(I*1e6,Imax)/Imax)*ph;
+        if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    };
+
+    drawCurve(lam,()=>0,'#0066cc',[]);
+    drawCurve(lam_d,()=>0,'#cc2200',[]);
+    drawCurve(lam_d,v=>Ileak*(v/Vmax),'#00994d',[4,3]);
+
+    // Legend
+    const items=[{c:'#0066cc',lbl:'CLM only',d:[]},{c:'#cc2200',lbl:'CLM+DIBL',d:[]},{c:'#00994d',lbl:'+Leakage',d:[4,3]}];
+    items.forEach(({c,lbl,d},i)=>{
+      ctx.strokeStyle=c; ctx.lineWidth=1.8; ctx.setLineDash(d);
+      ctx.beginPath(); ctx.moveTo(pL+pw-90,pT+12+14*i); ctx.lineTo(pL+pw-70,pT+12+14*i); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle='#8888aa'; ctx.font='10px system-ui'; ctx.fillText(lbl, pL+pw-66, pT+16+14*i);
+    });
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

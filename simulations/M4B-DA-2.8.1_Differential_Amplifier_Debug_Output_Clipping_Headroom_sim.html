@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-DA-2.8.1 — Debug: Output Clipping</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  select{width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text);font-size:13px;margin-bottom:10px;}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  .ro.warn span{color:#cc4400;}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-DA-2.8.1</div>
+  <h1>Differential Amplifier — Debug: Output Clipping and Headroom</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Headroom Parameters</h2>
+      <label>V_DD (V): <b id="vdd_l">1.8</b> V <input type="range" id="vdd" min="0.6" max="3.3" value="1.8" step="0.1"></label>
+      <label>Topology:
+        <select id="topo">
+          <option value="0">Simple active load</option>
+          <option value="1">Telescopic cascode</option>
+          <option value="2">Folded-cascode (std bias)</option>
+          <option value="3">Folded-cascode (wide-swing)</option>
+        </select>
+      </label>
+      <label>V_ov,n (mV): <b id="vovn_l">200</b> mV <input type="range" id="vovn" min="50" max="400" value="200" step="10"></label>
+      <label>|V_ov,p| (mV): <b id="vovp_l">200</b> mV <input type="range" id="vovp" min="50" max="400" value="200" step="10"></label>
+      <label>Output DC bias offset (mV from center): <b id="off_l">0</b> mV <input type="range" id="off" min="-400" max="400" value="0" step="10"></label>
+
+      <div class="ro">V_out,min (mV): <span id="vmin_d">--</span></div>
+      <div class="ro" style="margin-top:4px">V_out,max (mV): <span id="vmax_d">--</span></div>
+      <div class="ro g" style="margin-top:4px">Max swing (mVpp): <span id="swing_d">--</span></div>
+      <div class="ro" id="viable_ro" style="margin-top:4px">Viable: <span id="viable_d">--</span></div>
+      <div class="insight">
+        Swing = V_DD − (bottom stack V_ov sum) − (top stack |V_ov| sum). Telescopic consumes 4× V_ov. Folded-cascode standard consumes 2+2 V_ov split across branches. Wide-swing cascode achieves V_comp = V_ov per rail.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>V_out vs V_id Transfer Curve</h2>
+      <canvas id="cv" height="300"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  function getHeadroom(topo, vovn, vovp, vdd){
+    let vmin, vmax;
+    if(topo===0){ vmin=vovn; vmax=vdd-vovp; }
+    else if(topo===1){ vmin=2*vovn; vmax=vdd-2*vovp; }
+    else if(topo===2){ vmin=2*vovn; vmax=vdd-2*vovp; }
+    else { vmin=vovn; vmax=vdd-vovp; } // wide-swing: same as simple but from a cascode
+    return {vmin, vmax};
+  }
+
+  function compute(){
+    const vdd=+document.getElementById('vdd').value;
+    const topo=+document.getElementById('topo').value;
+    const vovn=+document.getElementById('vovn').value/1000;
+    const vovp=+document.getElementById('vovp').value/1000;
+    const off=+document.getElementById('off').value/1000;
+
+    document.getElementById('vdd_l').textContent=vdd.toFixed(1);
+    document.getElementById('vovn_l').textContent=(vovn*1000).toFixed(0);
+    document.getElementById('vovp_l').textContent=(vovp*1000).toFixed(0);
+    document.getElementById('off_l').textContent=(off*1000).toFixed(0);
+
+    const {vmin, vmax}=getHeadroom(topo, vovn, vovp, vdd);
+    const midpoint=vdd/2+off;
+    const swing_pos=vmax-midpoint;
+    const swing_neg=midpoint-vmin;
+    const swing=2*Math.min(swing_pos, swing_neg)*1000;
+
+    document.getElementById('vmin_d').textContent=(vmin*1000).toFixed(0);
+    document.getElementById('vmax_d').textContent=(vmax*1000).toFixed(0);
+    document.getElementById('swing_d').textContent=Math.max(0,swing).toFixed(0);
+
+    const viable_ro=document.getElementById('viable_ro');
+    if(vmin>=vmax){
+      viable_ro.className='ro warn';
+      document.getElementById('viable_d').textContent='NOT VIABLE — headroom exhausted';
+    } else if(swing<200){
+      viable_ro.className='ro warn';
+      document.getElementById('viable_d').textContent='WARNING — swing < 200 mVpp';
+    } else {
+      viable_ro.className='ro g';
+      document.getElementById('viable_d').textContent='OK — '+Math.max(0,swing).toFixed(0)+' mVpp available';
+    }
+
+    draw(vdd, topo, vovn, vovp, off, vmin, vmax);
+  }
+
+  function draw(vdd, topo, vovn, vovp, off, vmin, vmax){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=300;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,300);
+    const pL=55,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=300-pT-pB;
+
+    // Y axis: V_out from 0 to V_DD
+    const yScale=(v)=>pT+ph-(v/vdd)*ph;
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText('V_out (V)', 2, pT+ph/2);
+    ctx.fillText('V_id', pL+pw/2-8, 300-4);
+
+    for(let v=0;v<=vdd;v+=0.2){
+      const y=yScale(v);
+      ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText(v.toFixed(1), 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+
+    // V_out,min and V_out,max lines
+    if(vmin<vmax){
+      const ymn=yScale(vmin);
+      const ymx=yScale(vmax);
+      ctx.strokeStyle='#cc220066'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(pL,ymn); ctx.lineTo(pL+pw,ymn); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(pL,ymx); ctx.lineTo(pL+pw,ymx); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle='#cc2200'; ctx.font='8px system-ui';
+      ctx.fillText('V_min='+( vmin*1000).toFixed(0)+'mV', pL+4, ymn-3);
+      ctx.fillText('V_max='+(vmax*1000).toFixed(0)+'mV', pL+4, ymx+10);
+    }
+
+    // Transfer curve (tanh-like, clipped at vmin/vmax)
+    const midpoint=vdd/2+off;
+    const Av_lin=50; // V/V — steep enough to show clipping
+    const vov_equiv=vovn; // linear range ≈ ±V_ov
+
+    const vidMax=vovn*4;
+    const vidScale=pw/(2*vidMax);
+
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+    ctx.beginPath(); let first=true;
+    for(let px=0;px<=pw;px++){
+      const vid=-vidMax+(px/pw)*2*vidMax;
+      // Simple tanh model
+      const vout_ideal=midpoint-Av_lin*vid;
+      const vout=Math.max(vmin, Math.min(vmax, vout_ideal));
+      const y=yScale(vout);
+      const x=pL+px;
+      if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    // Midpoint marker
+    const ymid=yScale(midpoint);
+    ctx.strokeStyle='#00994d66'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(pL,ymid); ctx.lineTo(pL+pw,ymid); ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle='#00994d'; ctx.font='8px system-ui';
+    ctx.fillText('V_out,DC='+(midpoint*1000).toFixed(0)+'mV', pL+pw-130, ymid-3);
+
+    // X axis labels
+    const vidLabels=[-4,-3,-2,-1,0,1,2,3,4].map(n=>n*vovn/2);
+    vidLabels.forEach(v=>{
+      const x=pL+(v+vidMax)/(2*vidMax)*pw;
+      if(x>=pL&&x<=pL+pw){
+        ctx.fillStyle='#8888aa'; ctx.font='8px system-ui'; ctx.fillText((v*1000).toFixed(0), x-8, pT+ph+14);
+      }
+    });
+  }
+
+  document.querySelectorAll('input[type=range],select').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

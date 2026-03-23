@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.4.3 — Op-Amp Ideal: Zero Output Impedance</title>
+<style>
+  :root {
+    --bg: #f5f5f5;
+    --card: #ffffff;
+    --text: #1a1a1a;
+    --subtext: #555555;
+    --accent: #0066cc;
+    --accent2: #cc3300;
+    --accent3: #007744;
+    --accent4: #aa5500;
+    --border: #cccccc;
+    --grid: #dddddd;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a;
+      --card: #242424;
+      --text: #e8e8e8;
+      --subtext: #aaaaaa;
+      --accent: #4da6ff;
+      --accent2: #ff6644;
+      --accent3: #44cc88;
+      --accent4: #ffaa44;
+      --border: #444444;
+      --grid: #333333;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 15px; line-height: 1.6; }
+  header { background: var(--card); border-bottom: 2px solid var(--accent); padding: 18px 28px; }
+  header h1 { font-size: 1.2rem; font-weight: 700; color: var(--accent); letter-spacing: 0.02em; }
+  header p { font-size: 0.85rem; color: var(--subtext); margin-top: 3px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 20px; padding: 20px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 18px; }
+  .card h2 { font-size: 0.95rem; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .card p.desc { font-size: 0.80rem; color: var(--subtext); margin-bottom: 10px; line-height: 1.4; }
+  canvas { display: block; width: 100%; border-radius: 4px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+  .ctrl { display: flex; flex-direction: column; font-size: 0.78rem; color: var(--subtext); min-width: 140px; }
+  .ctrl label { margin-bottom: 3px; }
+  input[type=range] { accent-color: var(--accent); width: 100%; }
+  .readout { font-size: 0.82rem; color: var(--accent); font-weight: 600; margin-top: 2px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; font-size: 0.78rem; }
+  .leg { display: flex; align-items: center; gap: 5px; }
+  .leg-dot { width: 20px; height: 3px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>M4A-AMP-1.4.3 — Op-Amp Ideal Property: Zero Output Impedance</h1>
+  <p>How negative feedback collapses output impedance — and what happens when loop gain runs out</p>
+</header>
+<div class="grid">
+
+  <!-- Plot 1: Zout_cl vs frequency -->
+  <div class="card">
+    <h2>Closed-Loop Output Impedance vs Frequency</h2>
+    <p class="desc">Z<sub>out,cl</sub>(f) = Z<sub>out,open</sub> / (1+T(f)). Loop gain T rolls off at the amplifier pole, so Z<sub>out,cl</sub> rises above the closed-loop bandwidth. Drag sliders to explore.</p>
+    <canvas id="c1" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>Open-loop Zout (Ω): <span id="v1a" class="readout">200</span></label>
+        <input type="range" id="s1a" min="10" max="1000" value="200" step="10">
+      </div>
+      <div class="ctrl">
+        <label>GBW (MHz): <span id="v1b" class="readout">10</span></label>
+        <input type="range" id="s1b" min="1" max="100" value="10" step="1">
+      </div>
+      <div class="ctrl">
+        <label>Closed-loop gain: <span id="v1c" class="readout">10</span></label>
+        <input type="range" id="s1c" min="1" max="100" value="10" step="1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Z<sub>out,cl</sub></div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2); opacity:0.5"></div> Z<sub>out,open</sub></div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3); border-top: 2px dashed var(--accent3)"></div> CL bandwidth</div>
+    </div>
+  </div>
+
+  <!-- Plot 2: Load regulation — Vout vs Iload -->
+  <div class="card">
+    <h2>Load Regulation: Output Voltage vs Load Current</h2>
+    <p class="desc">With finite loop gain T, output voltage droops under load. Z<sub>out,eff</sub> = Z<sub>out,open</sub>/(1+T). Higher T → flatter line → better regulation. Compare ideal vs real op-amp.</p>
+    <canvas id="c2" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>V<sub>set</sub> (V): <span id="v2a" class="readout">1.00</span></label>
+        <input type="range" id="s2a" min="0.1" max="3.0" value="1.0" step="0.05">
+      </div>
+      <div class="ctrl">
+        <label>Loop gain T: <span id="v2b" class="readout">1000</span></label>
+        <input type="range" id="s2b" min="1" max="10000" value="1000" step="1" oninput="this.value=Math.round(Math.exp(Math.log(10000)*this.value/10000)*1)">
+      </div>
+      <div class="ctrl">
+        <label>Z<sub>out,open</sub> (Ω): <span id="v2c" class="readout">200</span></label>
+        <input type="range" id="s2c" min="10" max="2000" value="200" step="10">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Ideal (T=∞)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> Real (finite T)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3)"></div> Open-loop</div>
+    </div>
+  </div>
+
+  <!-- Plot 3: Capacitive load — phase margin vs CL -->
+  <div class="card">
+    <h2>Capacitive Load Stability: Phase Margin vs C<sub>load</sub></h2>
+    <p class="desc">A capacitive load with Z<sub>out,open</sub> creates an additional pole at f<sub>p</sub> = 1/(2π·Z<sub>out</sub>·C<sub>L</sub>). When this pole falls below GBW, phase margin collapses — causing oscillation. Snubber R<sub>iso</sub> pushes the pole higher.</p>
+    <canvas id="c3" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>GBW (MHz): <span id="v3a" class="readout">10</span></label>
+        <input type="range" id="s3a" min="1" max="100" value="10" step="1">
+      </div>
+      <div class="ctrl">
+        <label>Z<sub>out,open</sub> (Ω): <span id="v3b" class="readout">200</span></label>
+        <input type="range" id="s3b" min="10" max="2000" value="200" step="10">
+      </div>
+      <div class="ctrl">
+        <label>R<sub>iso</sub> (Ω): <span id="v3c" class="readout">0</span></label>
+        <input type="range" id="s3c" min="0" max="200" value="0" step="5">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Phase margin (no R<sub>iso</sub>)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> Phase margin (with R<sub>iso</sub>)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3); opacity:0.5; border-top:2px dashed"></div> 45° margin limit</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ─── Utility ──────────────────────────────────────────────────────────────────
+function css(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+function setupCanvas(id) {
+  const canvas = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  function resize() {
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    return { ctx, w, h };
+  }
+  return { canvas, resize };
+}
+
+function drawGrid(ctx, w, h, pad, xLabel, yLabel, xTicks, yTicks, xLog, yLog) {
+  ctx.clearRect(0, 0, w, h);
+  const pw = w - pad.l - pad.r;
+  const ph = h - pad.t - pad.b;
+
+  ctx.fillStyle = css('--card');
+  ctx.fillRect(0, 0, w, h);
+
+  // grid lines
+  ctx.strokeStyle = css('--grid');
+  ctx.lineWidth = 0.7;
+
+  xTicks.forEach(tx => {
+    const x = pad.l + (xLog ? Math.log10(tx.v/xTicks[0].v)/Math.log10(xTicks[xTicks.length-1].v/xTicks[0].v) : (tx.v - xTicks[0].v)/(xTicks[xTicks.length-1].v - xTicks[0].v)) * pw;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
+  });
+  yTicks.forEach(ty => {
+    const y = pad.t + ph - (yLog ? Math.log10(ty.v/yTicks[0].v)/Math.log10(yTicks[yTicks.length-1].v/yTicks[0].v) : (ty.v - yTicks[0].v)/(yTicks[yTicks.length-1].v - yTicks[0].v)) * ph;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+  });
+
+  // axes
+  ctx.strokeStyle = css('--text');
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(pad.l, pad.t, pw, ph);
+
+  // tick labels
+  ctx.fillStyle = css('--subtext');
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'center';
+  xTicks.forEach(tx => {
+    const x = pad.l + (xLog ? Math.log10(tx.v/xTicks[0].v)/Math.log10(xTicks[xTicks.length-1].v/xTicks[0].v) : (tx.v - xTicks[0].v)/(xTicks[xTicks.length-1].v - xTicks[0].v)) * pw;
+    ctx.fillText(tx.label || tx.v, x, pad.t + ph + 13);
+  });
+  ctx.textAlign = 'right';
+  yTicks.forEach(ty => {
+    const y = pad.t + ph - (yLog ? Math.log10(ty.v/yTicks[0].v)/Math.log10(yTicks[yTicks.length-1].v/yTicks[0].v) : (ty.v - yTicks[0].v)/(yTicks[yTicks.length-1].v - yTicks[0].v)) * ph;
+    ctx.fillText(ty.label || ty.v, pad.l - 4, y + 3.5);
+  });
+
+  // axis labels
+  ctx.fillStyle = css('--text');
+  ctx.font = '11px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText(xLabel, pad.l + pw / 2, h - 2);
+  ctx.save();
+  ctx.translate(11, pad.t + ph / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText(yLabel, 0, 0);
+  ctx.restore();
+
+  return { pw, ph };
+}
+
+function toPixel(v, vMin, vMax, pMin, pMax, log) {
+  if (log) {
+    return pMin + (Math.log10(v/vMin) / Math.log10(vMax/vMin)) * (pMax - pMin);
+  }
+  return pMin + ((v - vMin) / (vMax - vMin)) * (pMax - pMin);
+}
+
+// ─── Plot 1: Zout_cl vs frequency ─────────────────────────────────────────────
+const p1 = setupCanvas('c1');
+const s1a = document.getElementById('s1a');
+const s1b = document.getElementById('s1b');
+const s1c = document.getElementById('s1c');
+
+function draw1() {
+  const { ctx, w, h } = p1.resize();
+  const Zopen = parseFloat(s1a.value);
+  const GBW = parseFloat(s1b.value) * 1e6;
+  const Acl = parseFloat(s1c.value);
+
+  document.getElementById('v1a').textContent = Zopen;
+  document.getElementById('v1b').textContent = s1b.value;
+  document.getElementById('v1c').textContent = Acl;
+
+  // fcl = GBW / Acl
+  const fcl = GBW / Acl;
+  // T(f) ≈ Avol_dc * 1/(1 + jf/fp_ol); Avol_dc*fp_ol = GBW; at CL BW: T = Acl-1 ≈ Acl
+  // Simplified: T(f) = (GBW/f) / Acl  for f >> fp_ol
+  // Zout_cl(f) = Zopen / (1 + T(f))
+  // T(f) = GBW / (Acl * f) for f > fp_ol  (loop gain)
+
+  const pad = { l: 52, r: 16, t: 18, b: 36 };
+  const fMin = 1e3, fMax = GBW * 10;
+  const ZMin = 0.001, ZMax = Zopen * 2;
+
+  const xTicks = [1e3,1e4,1e5,1e6,1e7,1e8,1e9].filter(f=>f>=fMin&&f<=fMax).map(f=>{
+    const e = Math.round(Math.log10(f));
+    return { v: f, label: ['1k','10k','100k','1M','10M','100M','1G'][e-3] };
+  });
+  const yTicks = [0.001,0.01,0.1,1,10,100,1000].filter(z=>z>=ZMin/2&&z<=ZMax*2).map(z=>{
+    return { v: z, label: z<1 ? z.toFixed(3) : z>=1000 ? (z/1000)+'k' : z };
+  });
+
+  const { pw, ph } = drawGrid(ctx, w, h, pad, 'Frequency (Hz)', 'Zout,cl (Ω)', xTicks, yTicks, true, true);
+
+  const xp = f => pad.l + toPixel(f, fMin, fMax, 0, pw, true);
+  const yp = z => pad.t + ph - toPixel(Math.max(ZMin, z), ZMin, ZMax, 0, ph, true);
+
+  // Open-loop Zout (dashed)
+  ctx.strokeStyle = css('--accent2');
+  ctx.globalAlpha = 0.45;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath();
+  ctx.moveTo(xp(fMin), yp(Zopen));
+  ctx.lineTo(xp(fMax), yp(Zopen));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+
+  // CL bandwidth marker
+  ctx.strokeStyle = css('--accent3');
+  ctx.globalAlpha = 0.7;
+  ctx.lineWidth = 1.2;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  ctx.moveTo(xp(fcl), pad.t);
+  ctx.lineTo(xp(fcl), pad.t + ph);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = css('--accent3');
+  ctx.font = '9px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText('f_cl', xp(fcl) + 3, pad.t + 12);
+
+  // Zout_cl curve
+  ctx.strokeStyle = css('--accent');
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  let first = true;
+  for (let i = 0; i <= 400; i++) {
+    const f = fMin * Math.pow(fMax / fMin, i / 400);
+    // T(f) = GBW / (f * Acl)  (loop gain seen by output)
+    const T = GBW / (f * Acl);
+    const Zcl = Zopen / (1 + T);
+    const x = xp(f);
+    const y = yp(Zcl);
+    if (first) { ctx.moveTo(x, y); first = false; } else { ctx.lineTo(x, y); }
+  }
+  ctx.stroke();
+
+  // label Zcl_dc
+  const Zdc = Zopen / (1 + GBW / (1e3 * Acl));
+  ctx.fillStyle = css('--accent');
+  ctx.font = 'bold 9px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Z_dc ≈ ${(Zopen * Acl / (GBW / 1e3)).toFixed(2)}mΩ`, pad.l + 4, pad.t + 24);
+}
+
+// ─── Plot 2: Load regulation ──────────────────────────────────────────────────
+const p2 = setupCanvas('c2');
+const s2a = document.getElementById('s2a');
+const s2b_raw = document.getElementById('s2b');
+const s2c = document.getElementById('s2c');
+
+// Log slider for T
+let T_val = 1000;
+s2b_raw.addEventListener('input', () => {
+  T_val = Math.round(Math.pow(10, s2b_raw.value / 10000 * 4));
+  T_val = Math.max(1, T_val);
+  document.getElementById('v2b').textContent = T_val >= 1000 ? (T_val >= 10000 ? T_val : T_val) : T_val;
+  draw2();
+});
+
+function draw2() {
+  const { ctx, w, h } = p2.resize();
+  const Vset = parseFloat(s2a.value);
+  const T = T_val;
+  const Zopen = parseFloat(s2c.value);
+  const Zcl = Zopen / (1 + T);
+
+  document.getElementById('v2a').textContent = Vset.toFixed(2);
+  document.getElementById('v2b').textContent = T;
+  document.getElementById('v2c').textContent = Zopen;
+
+  const pad = { l: 52, r: 16, t: 18, b: 36 };
+  const Imax = 0.1; // 100 mA
+  const Vmin = Vset - Zopen * Imax * 1.1;
+  const Vmax_plot = Vset * 1.05;
+
+  const xTicks = [0, 20, 40, 60, 80, 100].map(v => ({ v: v / 1000, label: v + 'mA' }));
+  const ySteps = 6;
+  const yStep = (Vmax_plot - Math.min(Vmin, Vset * 0.85)) / ySteps;
+  const yBase = Math.min(Vmin, Vset * 0.85);
+  const yTicks = Array.from({ length: ySteps + 1 }, (_, i) => ({
+    v: yBase + i * yStep,
+    label: (yBase + i * yStep).toFixed(2)
+  }));
+
+  const { pw, ph } = drawGrid(ctx, w, h, pad, 'Load current', 'Vout (V)', xTicks, yTicks, false, false);
+
+  const xp = I => pad.l + (I / Imax) * pw;
+  const yp = V => pad.t + ph - ((V - yBase) / (Vmax_plot - yBase)) * ph;
+
+  // Open-loop line
+  ctx.strokeStyle = css('--accent3');
+  ctx.lineWidth = 1.8;
+  ctx.globalAlpha = 0.7;
+  ctx.beginPath();
+  ctx.moveTo(xp(0), yp(Vset));
+  ctx.lineTo(xp(Imax), yp(Vset - Zopen * Imax));
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // Real (finite T)
+  ctx.strokeStyle = css('--accent2');
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.moveTo(xp(0), yp(Vset));
+  ctx.lineTo(xp(Imax), yp(Vset - Zcl * Imax));
+  ctx.stroke();
+
+  // Ideal
+  ctx.strokeStyle = css('--accent');
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(xp(0), yp(Vset));
+  ctx.lineTo(xp(Imax), yp(Vset));
+  ctx.stroke();
+
+  // Annotation
+  const dropReal = (Zcl * Imax * 1000).toFixed(2);
+  const dropOl = (Zopen * Imax * 1000).toFixed(0);
+  ctx.fillStyle = css('--accent2');
+  ctx.font = 'bold 9px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Z_cl = ${Zcl.toFixed(3)} Ω  (drop = ${dropReal} mV @ 100mA)`, pad.l + 4, pad.t + 14);
+  ctx.fillStyle = css('--accent3');
+  ctx.fillText(`Z_open = ${Zopen} Ω  (drop = ${dropOl} mV)`, pad.l + 4, pad.t + 27);
+}
+
+// ─── Plot 3: Phase margin vs CL ──────────────────────────────────────────────
+const p3 = setupCanvas('c3');
+const s3a = document.getElementById('s3a');
+const s3b = document.getElementById('s3b');
+const s3c = document.getElementById('s3c');
+
+function draw3() {
+  const { ctx, w, h } = p3.resize();
+  const GBW = parseFloat(s3a.value) * 1e6;
+  const Zout = parseFloat(s3b.value);
+  const Riso = parseFloat(s3c.value);
+
+  document.getElementById('v3a').textContent = s3a.value;
+  document.getElementById('v3b').textContent = Zout;
+  document.getElementById('v3c').textContent = Riso;
+
+  const pad = { l: 48, r: 16, t: 18, b: 36 };
+  // CL range: 1pF to 100nF
+  const CMin = 1e-12, CMax = 100e-9;
+
+  // phase margin: base 90° (single pole opamp), minus phase from CL pole
+  // fp_load = 1 / (2π * (Zout + Riso) * CL)  with Riso — zero at 1/(2πRiso*CL)
+  // at f = GBW (unity gain), extra phase shift from load pole:
+  // θ_extra = atan(GBW / fp_load)
+  // θ_zero  = atan(GBW / fz_load) (phase boost from Riso zero)
+  // PM = 90 - θ_extra + θ_zero (simplified unity-gain buffer)
+
+  const xTicks = [1e-12,1e-11,1e-10,1e-9,1e-8,1e-7].map(c => {
+    const labels = ['1p','10p','100p','1n','10n','100n'];
+    const idx = Math.round(Math.log10(c) + 12);
+    return { v: c, label: labels[idx] };
+  });
+  const yTicks = [0, 15, 30, 45, 60, 75, 90].map(v => ({ v, label: v + '°' }));
+
+  const { pw, ph } = drawGrid(ctx, w, h, pad, 'C_load (F)', 'Phase Margin (°)', xTicks, yTicks, true, false);
+
+  const xp = C => pad.l + toPixel(C, CMin, CMax, 0, pw, true);
+  const yp = pm => pad.t + ph - ((Math.max(0, Math.min(90, pm)) - 0) / 90) * ph;
+
+  // 45° line
+  ctx.strokeStyle = css('--accent3');
+  ctx.lineWidth = 1.2;
+  ctx.globalAlpha = 0.55;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  ctx.moveTo(pad.l, yp(45));
+  ctx.lineTo(pad.l + pw, yp(45));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = css('--accent3');
+  ctx.font = '9px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText('45° (marginal)', pad.l + 4, yp(45) - 3);
+
+  // Unstable region shading
+  ctx.fillStyle = css('--accent2');
+  ctx.globalAlpha = 0.07;
+  ctx.fillRect(pad.l, yp(45), pw, ph - (yp(45) - pad.t));
+  ctx.globalAlpha = 1;
+
+  // Without Riso
+  ctx.strokeStyle = css('--accent');
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  let first = true;
+  for (let i = 0; i <= 400; i++) {
+    const C = CMin * Math.pow(CMax / CMin, i / 400);
+    const fp = 1 / (2 * Math.PI * Zout * C);
+    const theta_extra = Math.atan(GBW / fp) * 180 / Math.PI;
+    const PM = 90 - theta_extra;
+    const x = xp(C), y = yp(PM);
+    if (first) { ctx.moveTo(x, y); first = false; } else { ctx.lineTo(x, y); }
+  }
+  ctx.stroke();
+
+  // With Riso
+  if (Riso > 0) {
+    ctx.strokeStyle = css('--accent2');
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    first = true;
+    for (let i = 0; i <= 400; i++) {
+      const C = CMin * Math.pow(CMax / CMin, i / 400);
+      const fp = 1 / (2 * Math.PI * (Zout + Riso) * C);
+      const fz = 1 / (2 * Math.PI * Riso * C);
+      const theta_extra = Math.atan(GBW / fp) * 180 / Math.PI;
+      const theta_zero = Math.atan(GBW / fz) * 180 / Math.PI;
+      const PM = 90 - theta_extra + theta_zero;
+      const x = xp(C), y = yp(PM);
+      if (first) { ctx.moveTo(x, y); first = false; } else { ctx.lineTo(x, y); }
+    }
+    ctx.stroke();
+  }
+
+  // critical CL annotation
+  const Ccrit = 1 / (2 * Math.PI * Zout * GBW / Math.tan(45 * Math.PI / 180));
+  if (Ccrit >= CMin && Ccrit <= CMax) {
+    ctx.strokeStyle = css('--accent');
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(xp(Ccrit), pad.t);
+    ctx.lineTo(xp(Ccrit), pad.t + ph);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    const Cstr = Ccrit < 1e-9 ? (Ccrit * 1e12).toFixed(1) + 'pF' : (Ccrit * 1e9).toFixed(2) + 'nF';
+    ctx.fillStyle = css('--accent');
+    ctx.font = '9px system-ui';
+    ctx.textAlign = 'left';
+    ctx.fillText('C_crit=' + Cstr, xp(Ccrit) + 3, pad.t + 12);
+  }
+}
+
+// ─── Wire up all sliders ──────────────────────────────────────────────────────
+[s1a, s1b, s1c].forEach(s => s.addEventListener('input', draw1));
+[s2a, s2c].forEach(s => s.addEventListener('input', draw2));
+[s3a, s3b, s3c].forEach(s => s.addEventListener('input', draw3));
+
+window.addEventListener('resize', () => { draw1(); draw2(); draw3(); });
+
+draw1(); draw2(); draw3();
+</script>
+</body>
+</html>

@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-5T-9.2.2 — 5T OTA Swing, Input Range & Large-Signal Simulator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; }
+  header { background: #1a1d2e; padding: 16px 24px; border-bottom: 2px solid #3a7bd5; }
+  header h1 { font-size: 1.15rem; color: #7eb3ff; font-weight: 600; }
+  header p { font-size: 0.8rem; color: #888; margin-top: 3px; }
+  .tabs { display: flex; background: #13151f; border-bottom: 1px solid #2a2d3e; }
+  .tab { padding: 11px 22px; cursor: pointer; font-size: 0.85rem; color: #888; border-bottom: 2px solid transparent; transition: all .2s; }
+  .tab.active { color: #7eb3ff; border-bottom-color: #3a7bd5; background: #1a1d2e; }
+  .tab:hover:not(.active) { color: #ccc; background: #1a1d2e55; }
+  .panel { display: none; padding: 20px 24px; }
+  .panel.active { display: block; }
+  .row { display: flex; gap: 20px; flex-wrap: wrap; }
+  .card { background: #1a1d2e; border: 1px solid #2a2d3e; border-radius: 8px; padding: 16px; flex: 1; min-width: 280px; }
+  .card h3 { font-size: 0.85rem; color: #7eb3ff; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .slider-row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+  .slider-row label { font-size: 0.78rem; color: #aaa; width: 175px; flex-shrink: 0; }
+  .slider-row input[type=range] { flex: 1; accent-color: #3a7bd5; }
+  .slider-row span { font-size: 0.78rem; color: #7eb3ff; width: 65px; text-align: right; }
+  canvas { display: block; width: 100%; border-radius: 6px; background: #12141e; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
+  .metric { background: #12141e; border: 1px solid #2a2d3e; border-radius: 6px; padding: 8px 12px; }
+  .metric .label { font-size: 0.7rem; color: #888; }
+  .metric .value { font-size: 1.05rem; color: #4ecdc4; font-weight: 700; margin-top: 2px; }
+  .metric .value.warn { color: #f6ad55; }
+  .metric .value.bad { color: #fc8181; }
+  .metric .value.good { color: #68d391; }
+  .info-box { background: #12141e; border-left: 3px solid #3a7bd5; padding: 10px 14px; border-radius: 0 6px 6px 0; margin-top: 10px; font-size: 0.78rem; color: #bbb; line-height: 1.6; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #aaa; }
+  .legend-dot { width: 12px; height: 3px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>M4B-5T-9.2.2 — 5T OTA: Output Swing, Input Common-Mode Range, and Large-Signal Behavior</h1>
+  <p>Voltage budget visualization, ICMR calculator, and differential pair nonlinearity</p>
+</header>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">Swing & ICMR Budget</div>
+  <div class="tab" onclick="showTab(1)">Large-Signal Behavior</div>
+  <div class="tab" onclick="showTab(2)">Supply Scaling</div>
+</div>
+
+<!-- TAB 0: Swing & ICMR Budget -->
+<div class="panel active" id="tab0">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:310px;">
+      <h3>Device Parameters</h3>
+      <div class="slider-row"><label>VDD (V)</label><input type="range" id="t0_VDD" min="0.8" max="3.6" step="0.05" value="1.8"><span id="v_t0_VDD">1.80</span></div>
+      <div class="slider-row"><label>Vth_n (V)</label><input type="range" id="t0_Vthn" min="0.2" max="0.7" step="0.01" value="0.5"><span id="v_t0_Vthn">0.50</span></div>
+      <div class="slider-row"><label>|Vth_p| (V)</label><input type="range" id="t0_Vthp" min="0.2" max="0.7" step="0.01" value="0.45"><span id="v_t0_Vthp">0.45</span></div>
+      <div class="slider-row"><label>Vov_M1 = Vov_M2 (V)</label><input type="range" id="t0_Vov1" min="0.05" max="0.4" step="0.01" value="0.15"><span id="v_t0_Vov1">0.150</span></div>
+      <div class="slider-row"><label>Vov_M4 PMOS load (V)</label><input type="range" id="t0_Vov4" min="0.05" max="0.4" step="0.01" value="0.15"><span id="v_t0_Vov4">0.150</span></div>
+      <div class="slider-row"><label>Vov_M5 tail (V)</label><input type="range" id="t0_Vov5" min="0.05" max="0.4" step="0.01" value="0.15"><span id="v_t0_Vov5">0.150</span></div>
+      <div class="slider-row"><label>Cascode load (PMOS)</label>
+        <select id="t0_casc" style="flex:1; background:#12141e; color:#e0e0e0; border:1px solid #2a2d3e; border-radius:4px; padding:3px 6px; font-size:0.78rem;">
+          <option value="0">No cascode</option>
+          <option value="1">Cascode M3/M4</option>
+        </select>
+        <span style="width:65px;"></span>
+      </div>
+      <div class="metrics" style="grid-template-columns:1fr 1fr;">
+        <div class="metric"><div class="label">Vout_max</div><div class="value" id="m0_vmax">—</div></div>
+        <div class="metric"><div class="label">Vout_min</div><div class="value" id="m0_vmin">—</div></div>
+        <div class="metric"><div class="label">Output swing</div><div class="value good" id="m0_swing">—</div></div>
+        <div class="metric"><div class="label">Swing / VDD</div><div class="value" id="m0_swpct">—</div></div>
+        <div class="metric"><div class="label">Vicm_max</div><div class="value" id="m0_cmmax">—</div></div>
+        <div class="metric"><div class="label">Vicm_min</div><div class="value" id="m0_cmmin">—</div></div>
+        <div class="metric"><div class="label">ICMR</div><div class="value warn" id="m0_icmr">—</div></div>
+        <div class="metric"><div class="label">ICMR / VDD</div><div class="value" id="m0_icmrpct">—</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Voltage Budget Bar Chart</h3>
+      <canvas id="c_budget" height="350"></canvas>
+      <div class="info-box">
+        <strong>Output swing</strong> is limited below by Vov_M5 + Vov_M2 (NMOS stack) and above by |Vov_M4| (PMOS load).
+        The cascode load option adds one more Vov of headroom loss at the top.
+        <strong>ICMR</strong> is bounded below by Vth_n + Vov_M1 + Vov_M5 and above by VDD − |Vth_p| − |Vov_M3| + Vth_n.
+        Reduce Vov to improve ICMR and swing at the cost of lower gm/ISS ratio and more susceptibility to mismatch.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: Large-Signal Behavior -->
+<div class="panel" id="tab1">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:310px;">
+      <h3>Differential Pair Parameters</h3>
+      <div class="slider-row"><label>ISS (µA)</label><input type="range" id="t1_ISS" min="10" max="500" step="5" value="100"><span id="v_t1_ISS">100</span></div>
+      <div class="slider-row"><label>Vov1 (mV)</label><input type="range" id="t1_Vov1" min="50" max="400" step="10" value="150"><span id="v_t1_Vov1">150</span></div>
+      <div class="slider-row"><label>Input amplitude A (mV)</label><input type="range" id="t1_Amp" min="5" max="600" step="5" value="50"><span id="v_t1_Amp">50</span></div>
+      <div class="metrics" style="grid-template-columns:1fr;">
+        <div class="metric"><div class="label">gm1 = ISS/Vov</div><div class="value" id="m1_gm">—</div></div>
+        <div class="metric"><div class="label">Linear range (1dB)</div><div class="value" id="m1_lin">—</div></div>
+        <div class="metric"><div class="label">Full-scale (tail steering)</div><div class="value" id="m1_fs">—</div></div>
+        <div class="metric"><div class="label">THD at A (approx)</div><div class="value warn" id="m1_thd">—</div></div>
+        <div class="metric"><div class="label">Slewing? (A vs Vlin)</div><div class="value" id="m1_slew">—</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Differential Output Current ΔIout vs Vid</h3>
+      <canvas id="c_lsig" height="350"></canvas>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#4ecdc4;"></div>ΔIout (exact square-law)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#3a7bd5; border-top: 2px dashed #3a7bd5; height:2px;"></div>Linear (gm1·Vid)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f6ad55;"></div>Input amplitude A</div>
+      </div>
+      <div class="info-box">
+        The square-law result: ΔIout = ISS × (Vid/√2·Vov) × √(1 − (Vid/√2·Vov)²).
+        It is linear near Vid = 0 (slope = gm1 = ISS/Vov), then compresses and saturates at ±ISS when |Vid| = √2·Vov.
+        The 1 dB compression point occurs at |Vid| ≈ 0.4·Vov.
+        THD ≈ (A/4Vov)² for a single-tone sinusoidal input.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: Supply Scaling -->
+<div class="panel" id="tab2">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:310px;">
+      <h3>Process Node</h3>
+      <div class="slider-row"><label>Vov (all devices, V)</label><input type="range" id="t2_Vov" min="0.05" max="0.35" step="0.01" value="0.15"><span id="v_t2_Vov">0.15</span></div>
+      <div class="slider-row"><label>Vth_n (V)</label><input type="range" id="t2_Vthn" min="0.25" max="0.55" step="0.01" value="0.45"><span id="v_t2_Vthn">0.45</span></div>
+      <div class="slider-row"><label>|Vth_p| (V)</label><input type="range" id="t2_Vthp" min="0.25" max="0.55" step="0.01" value="0.42"><span id="v_t2_Vthp">0.42</span></div>
+      <div class="info-box" style="margin-top:12px;">
+        Preset nodes:
+        <button onclick="setNode(3.3,0.55,0.50,0.25)" style="background:#1e2136;color:#7eb3ff;border:1px solid #3a7bd5;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:0.75rem;margin:3px;">180nm</button>
+        <button onclick="setNode(1.8,0.50,0.45,0.18)" style="background:#1e2136;color:#7eb3ff;border:1px solid #3a7bd5;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:0.75rem;margin:3px;">130nm</button>
+        <button onclick="setNode(1.2,0.40,0.38,0.12)" style="background:#1e2136;color:#7eb3ff;border:1px solid #3a7bd5;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:0.75rem;margin:3px;">65nm</button>
+        <button onclick="setNode(1.0,0.35,0.33,0.10)" style="background:#1e2136;color:#7eb3ff;border:1px solid #3a7bd5;border-radius:4px;padding:4px 8px;cursor:pointer;font-size:0.75rem;margin:3px;">28nm</button>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Swing & ICMR vs VDD</h3>
+      <canvas id="c_scale" height="350"></canvas>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#4ecdc4;"></div>Output swing</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#3a7bd5;"></div>ICMR</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f6ad55;"></div>50% VDD reference</div>
+      </div>
+      <div class="info-box">
+        At low VDD, both swing and ICMR shrink. The swing scales as VDD − 3·Vov, so it hits zero when VDD = 3·Vov (minimum viable VDD).
+        The ICMR lower limit is fixed by Vth + 2·Vov and does NOT scale with VDD — it is an absolute floor.
+        Below ~1.0–1.2V on many processes, the NMOS-input 5T OTA cannot achieve an ICMR that includes VDD/2.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+// ─── Tab 0: Budget ─────────────────────────────────────────────────────────
+function updateTab0() {
+  const VDD    = parseFloat(document.getElementById('t0_VDD').value);
+  const Vthn   = parseFloat(document.getElementById('t0_Vthn').value);
+  const Vthp   = parseFloat(document.getElementById('t0_Vthp').value);
+  const Vov1   = parseFloat(document.getElementById('t0_Vov1').value);
+  const Vov4   = parseFloat(document.getElementById('t0_Vov4').value);
+  const Vov5   = parseFloat(document.getElementById('t0_Vov5').value);
+  const casc   = parseInt(document.getElementById('t0_casc').value);
+
+  document.getElementById('v_t0_VDD').textContent   = VDD.toFixed(2);
+  document.getElementById('v_t0_Vthn').textContent  = Vthn.toFixed(2);
+  document.getElementById('v_t0_Vthp').textContent  = Vthp.toFixed(2);
+  document.getElementById('v_t0_Vov1').textContent  = Vov1.toFixed(3);
+  document.getElementById('v_t0_Vov4').textContent  = Vov4.toFixed(3);
+  document.getElementById('v_t0_Vov5').textContent  = Vov5.toFixed(3);
+
+  const Vout_max = VDD - Vov4 - (casc ? Vov4 : 0);
+  const Vout_min = Vov5 + Vov1;
+  const swing    = Vout_max - Vout_min;
+  const Vicm_max = VDD - Vthp - Vov4 + Vthn;
+  const Vicm_min = Vthn + Vov1 + Vov5;
+  const ICMR     = Vicm_max - Vicm_min;
+
+  const fmt = v => v.toFixed(3)+'V';
+  document.getElementById('m0_vmax').textContent    = fmt(Vout_max);
+  document.getElementById('m0_vmin').textContent    = fmt(Vout_min);
+  document.getElementById('m0_swing').textContent   = fmt(Math.max(0,swing));
+  document.getElementById('m0_swpct').textContent   = (Math.max(0,swing)/VDD*100).toFixed(0)+'%';
+  document.getElementById('m0_cmmax').textContent   = fmt(Vicm_max);
+  document.getElementById('m0_cmmin').textContent   = fmt(Vicm_min);
+  document.getElementById('m0_icmr').textContent    = fmt(Math.max(0,ICMR));
+  document.getElementById('m0_icmrpct').textContent = (Math.max(0,ICMR)/VDD*100).toFixed(0)+'%';
+
+  // Color coding
+  const swEl = document.getElementById('m0_swing');
+  swEl.className = 'value ' + (swing/VDD > 0.5 ? 'good' : swing/VDD > 0.3 ? 'warn' : 'bad');
+  const icEl = document.getElementById('m0_icmr');
+  icEl.className = 'value ' + (ICMR/VDD > 0.4 ? 'warn' : 'bad');
+
+  // Draw budget bar
+  const cv = document.getElementById('c_budget');
+  const ctx = cv.getContext('2d');
+  const W = cv.clientWidth * devicePixelRatio || 600;
+  const H = 350;
+  cv.width = W; cv.height = H;
+  ctx.fillStyle = '#12141e'; ctx.fillRect(0,0,W,H);
+
+  const barW = 80;
+  const margin = 60;
+  const totalH = H - 2*margin;
+  const toY = v => margin + (1 - v/VDD) * totalH;
+
+  // Draw two bars: left = output swing, right = ICMR
+  const bars = [
+    { x: W*0.25, label: 'Output Range', min: Vout_min, max: Vout_max,
+      bands: [
+        { lo: 0, hi: Vout_min, color: '#e05252', label: 'Vov_M5+Vov_M2 ('+((Vout_min)*1000).toFixed(0)+'mV)' },
+        { lo: Vout_min, hi: casc ? Vout_max-Vov4 : Vout_max, color: '#4ecdc4', label: 'Swing ('+(Math.max(0,swing)*1000).toFixed(0)+'mV)' },
+        { lo: casc ? Vout_max-Vov4 : Vout_max, hi: Vout_max, color: casc ? '#e05252' : null, label: casc ? 'Cascode headroom' : null },
+        { lo: Vout_max, hi: VDD, color: '#e05252', label: '|Vov_M4'+(casc?'+Vov_M4c':'')+' ('+(((VDD-Vout_max))*1000).toFixed(0)+'mV)' }
+      ]
+    },
+    { x: W*0.65, label: 'ICMR', min: Vicm_min, max: Vicm_max,
+      bands: [
+        { lo: 0, hi: Vicm_min, color: '#e08832', label: 'Vth+Vov stack ('+(Vicm_min*1000).toFixed(0)+'mV)' },
+        { lo: Vicm_min, hi: Vicm_max, color: '#3a7bd5', label: 'ICMR ('+(Math.max(0,ICMR)*1000).toFixed(0)+'mV)' },
+        { lo: Vicm_max, hi: VDD, color: '#e08832', label: '|Vthp|+|Vov| headroom' }
+      ]
+    }
+  ];
+
+  bars.forEach(bar => {
+    bar.bands.forEach(b => {
+      if(!b.color) return;
+      const y1 = toY(Math.min(b.hi, VDD));
+      const y2 = toY(Math.max(b.lo, 0));
+      ctx.fillStyle = b.color;
+      ctx.fillRect(bar.x - barW/2, y1, barW, y2-y1);
+      if(b.label) {
+        ctx.fillStyle = '#ccc'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+        ctx.fillText(b.label, bar.x + barW/2 + 5, (y1+y2)/2+4);
+      }
+    });
+    // Outline
+    ctx.strokeStyle = '#555'; ctx.lineWidth = 1;
+    ctx.strokeRect(bar.x - barW/2, margin, barW, totalH);
+    // Label
+    ctx.fillStyle = '#7eb3ff'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(bar.label, bar.x, H - margin + 18);
+  });
+
+  // Y axis labels (voltage)
+  ctx.fillStyle = '#666'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+  for(let v=0; v<=VDD+0.01; v+=VDD/4) {
+    const y = toY(v);
+    ctx.fillText(v.toFixed(2)+'V', 52, y+4);
+    ctx.strokeStyle='#1e2136'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(54,y); ctx.lineTo(W-20,y); ctx.stroke();
+  }
+}
+
+// ─── Tab 1: Large-Signal ───────────────────────────────────────────────────
+function updateTab1() {
+  const ISS  = parseFloat(document.getElementById('t1_ISS').value)*1e-6;
+  const Vov1 = parseFloat(document.getElementById('t1_Vov1').value)*1e-3;
+  const Amp  = parseFloat(document.getElementById('t1_Amp').value)*1e-3;
+
+  document.getElementById('v_t1_ISS').textContent  = (ISS*1e6).toFixed(0);
+  document.getElementById('v_t1_Vov1').textContent = (Vov1*1e3).toFixed(0);
+  document.getElementById('v_t1_Amp').textContent  = (Amp*1e3).toFixed(0);
+
+  const gm1    = ISS/Vov1;
+  const Vlin   = 0.4*Vov1;
+  const Vfs    = Math.sqrt(2)*Vov1;
+  const THD    = Math.pow(Amp/(4*Vov1), 2);
+  const THD_dB = 20*Math.log10(Math.max(THD, 1e-12));
+
+  document.getElementById('m1_gm').textContent   = (gm1*1e3).toFixed(2)+' mA/V';
+  document.getElementById('m1_lin').textContent  = (Vlin*1e3).toFixed(1)+' mV';
+  document.getElementById('m1_fs').textContent   = (Vfs*1e3).toFixed(1)+' mV';
+  document.getElementById('m1_thd').textContent  = THD_dB.toFixed(1)+' dB';
+  const slewing = Amp > Vlin;
+  const sEl = document.getElementById('m1_slew');
+  sEl.textContent = slewing ? 'Yes — nonlinear!' : 'No — linear';
+  sEl.className = 'value ' + (slewing ? 'bad' : 'good');
+
+  const cv = document.getElementById('c_lsig');
+  const ctx = cv.getContext('2d');
+  const W = cv.clientWidth * devicePixelRatio || 600;
+  const H = 350;
+  cv.width = W; cv.height = H;
+  ctx.fillStyle = '#12141e'; ctx.fillRect(0,0,W,H);
+
+  const pad = {l:55, r:20, t:20, b:35};
+  const xRange = Vfs * 1.5;
+  const xMin = -xRange, xMax = xRange;
+  const yMin = -ISS*1.1, yMax = ISS*1.1;
+  const px = x => pad.l + (x-xMin)/(xMax-xMin)*(W-pad.l-pad.r);
+  const py = y => H - pad.b - (y-yMin)/(yMax-yMin)*(H-pad.t-pad.b);
+
+  // Grid
+  ctx.strokeStyle='#1e2136'; ctx.lineWidth=1;
+  for(let p=-1; p<=1; p+=0.5) {
+    const I = p*ISS;
+    ctx.beginPath(); ctx.moveTo(pad.l, py(I)); ctx.lineTo(W-pad.r, py(I)); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='right';
+    ctx.fillText((I*1e6).toFixed(0)+'µA', pad.l-3, py(I)+3);
+  }
+  ctx.beginPath(); ctx.moveTo(px(0),pad.t); ctx.lineTo(px(0),H-pad.b); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pad.l,py(0)); ctx.lineTo(W-pad.r,py(0)); ctx.stroke();
+
+  // Exact ΔIout
+  const pts=[];
+  for(let i=0;i<=400;i++) {
+    const Vid = xMin + i/400*(xMax-xMin);
+    const ratio = Vid/Vfs;
+    if(Math.abs(ratio) >= 1) { pts.push([px(Vid), py(Vid>0?ISS:-ISS)]); continue; }
+    const dI = ISS * ratio * Math.sqrt(1-ratio*ratio);
+    pts.push([px(Vid), py(clamp(dI, yMin*0.99, yMax*0.99))]);
+  }
+  ctx.strokeStyle='#4ecdc4'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
+  for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i][0],pts[i][1]);
+  ctx.stroke();
+
+  // Linear approximation
+  ctx.strokeStyle='#3a7bd5'; ctx.lineWidth=1.5; ctx.setLineDash([7,4]);
+  ctx.beginPath();
+  ctx.moveTo(px(xMin), py(clamp(gm1*xMin, yMin, yMax)));
+  ctx.lineTo(px(xMax), py(clamp(gm1*xMax, yMin, yMax)));
+  ctx.stroke(); ctx.setLineDash([]);
+
+  // Input amplitude marker
+  if(Math.abs(Amp) <= xMax) {
+    ctx.strokeStyle='#f6ad55'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(px(Amp),pad.t); ctx.lineTo(px(Amp),H-pad.b); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(px(-Amp),pad.t); ctx.lineTo(px(-Amp),H-pad.b); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#f6ad55'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('±A='+(Amp*1e3).toFixed(0)+'mV', px(Amp), pad.t+12);
+  }
+
+  // Axis labels
+  ctx.fillStyle='#555'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('Vid (V)', (pad.l+W-pad.r)/2, H-2);
+  ctx.save(); ctx.translate(12, (pad.t+H-pad.b)/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('ΔIout', 0, 0); ctx.restore();
+}
+
+// ─── Tab 2: Supply Scaling ─────────────────────────────────────────────────
+function setNode(vdd, vthn, vthp, vov) {
+  document.getElementById('t2_Vov').value  = vov;  document.getElementById('v_t2_Vov').textContent  = vov.toFixed(2);
+  document.getElementById('t2_Vthn').value = vthn; document.getElementById('v_t2_Vthn').textContent = vthn.toFixed(2);
+  document.getElementById('t2_Vthp').value = vthp; document.getElementById('v_t2_Vthp').textContent = vthp.toFixed(2);
+  updateTab2();
+}
+
+function updateTab2() {
+  const Vov  = parseFloat(document.getElementById('t2_Vov').value);
+  const Vthn = parseFloat(document.getElementById('t2_Vthn').value);
+  const Vthp = parseFloat(document.getElementById('t2_Vthp').value);
+
+  document.getElementById('v_t2_Vov').textContent  = Vov.toFixed(2);
+  document.getElementById('v_t2_Vthn').textContent = Vthn.toFixed(2);
+  document.getElementById('v_t2_Vthp').textContent = Vthp.toFixed(2);
+
+  const cv = document.getElementById('c_scale');
+  const ctx = cv.getContext('2d');
+  const W = cv.clientWidth * devicePixelRatio || 600;
+  const H = 350;
+  cv.width = W; cv.height = H;
+  ctx.fillStyle = '#12141e'; ctx.fillRect(0,0,W,H);
+
+  const pad = {l:50, r:20, t:20, b:35};
+  const vddArr = [];
+  for(let v=0.5; v<=3.6; v+=0.05) vddArr.push(v);
+
+  const swingArr = vddArr.map(v => Math.max(0, v - 3*Vov));
+  const icmrArr  = vddArr.map(v => {
+    const cmax = v - Vthp - Vov + Vthn;
+    const cmin = Vthn + 2*Vov;
+    return Math.max(0, cmax - cmin);
+  });
+
+  const xMin=0.5, xMax=3.6, yMin=0, yMax=3.6;
+  const px = x => pad.l + (x-xMin)/(xMax-xMin)*(W-pad.l-pad.r);
+  const py = y => H - pad.b - (y-yMin)/(yMax-yMin)*(H-pad.t-pad.b);
+
+  // Grid
+  ctx.strokeStyle='#1e2136'; ctx.lineWidth=1;
+  for(let v=0; v<=3.5; v+=0.5) {
+    ctx.beginPath(); ctx.moveTo(pad.l,py(v)); ctx.lineTo(W-pad.r,py(v)); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='right';
+    ctx.fillText(v.toFixed(1)+'V', pad.l-4, py(v)+3);
+    ctx.beginPath(); ctx.moveTo(px(v+0.5),pad.t); ctx.lineTo(px(v+0.5),H-pad.b); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='center';
+    ctx.fillText((v+0.5).toFixed(1)+'V', px(v+0.5), H-pad.b+12);
+  }
+
+  // VDD reference line (y=x)
+  ctx.strokeStyle='#333'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(px(xMin),py(yMin)); ctx.lineTo(px(xMax),py(xMax)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // 50% line
+  const pts50 = vddArr.map((v,i) => [px(v), py(v/2)]);
+  ctx.strokeStyle='#f6ad55'; ctx.lineWidth=1.2; ctx.setLineDash([5,4]);
+  ctx.beginPath(); ctx.moveTo(pts50[0][0],pts50[0][1]);
+  pts50.forEach(p => ctx.lineTo(p[0],p[1])); ctx.stroke(); ctx.setLineDash([]);
+
+  // Swing
+  const ptsSwing = vddArr.map((v,i) => [px(v), py(swingArr[i])]);
+  ctx.strokeStyle='#4ecdc4'; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(ptsSwing[0][0],ptsSwing[0][1]);
+  ptsSwing.forEach(p => ctx.lineTo(p[0],p[1])); ctx.stroke();
+
+  // ICMR
+  const ptsICMR = vddArr.map((v,i) => [px(v), py(icmrArr[i])]);
+  ctx.strokeStyle='#3a7bd5'; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(ptsICMR[0][0],ptsICMR[0][1]);
+  ptsICMR.forEach(p => ctx.lineTo(p[0],p[1])); ctx.stroke();
+
+  // Axis labels
+  ctx.fillStyle='#555'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('VDD (V)', (pad.l+W-pad.r)/2, H-2);
+  ctx.save(); ctx.translate(12, (pad.t+H-pad.b)/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('Voltage Range (V)', 0, 0); ctx.restore();
+}
+
+// ─── Tab switching ──────────────────────────────────────────────────────────
+function showTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
+  if(n===0) updateTab0();
+  else if(n===1) updateTab1();
+  else updateTab2();
+}
+
+function wire(ids, fn) {
+  ids.forEach(id => { const el=document.getElementById(id); if(el) el.addEventListener('input', fn); });
+}
+wire(['t0_VDD','t0_Vthn','t0_Vthp','t0_Vov1','t0_Vov4','t0_Vov5','t0_casc'], updateTab0);
+wire(['t1_ISS','t1_Vov1','t1_Amp'], updateTab1);
+wire(['t2_Vov','t2_Vthn','t2_Vthp'], updateTab2);
+
+window.addEventListener('load', () => updateTab0());
+window.addEventListener('resize', () => {
+  const active = document.querySelector('.panel.active');
+  if(active) { const i = ['tab0','tab1','tab2'].indexOf(active.id); showTab(i); }
+});
+</script>
+</body>
+</html>

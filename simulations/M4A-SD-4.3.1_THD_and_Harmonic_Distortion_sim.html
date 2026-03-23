@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-SD-4.3.1 — THD and Harmonic Distortion</title>
+<style>
+:root {
+  --bg:#f5f5f5;--panel:#fff;--border:#d0d0d0;
+  --text:#1a1a1a;--text2:#555;--accent:#1a6fc4;
+  --green:#2a9d2a;--orange:#e07b00;--red:#c42a2a;--grid:#e0e0e0;
+  --h1:#1a6fc4;--h2:#2a9d2a;--h3:#c47a00;--h4:#9a2ac4;--h5:#c42a2a;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#1a1a1a;--panel:#252525;--border:#404040;
+  --text:#e8e8e8;--text2:#aaa;--accent:#4a9fe8;
+  --green:#4acd4a;--orange:#f0a030;--red:#e85050;--grid:#333;
+  --h1:#4a9fe8;--h2:#4acd4a;--h3:#f0a030;--h4:#d06af0;--h5:#e85050;
+}}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px;}
+h1{font-size:1.1rem;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--border);}
+h1 span{color:var(--text2);font-weight:normal;font-size:.85rem;}
+.layout{display:grid;grid-template-columns:270px 1fr;gap:0;height:calc(100vh - 44px);}
+.controls{background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:12px;}
+.plots{display:grid;grid-template-rows:1fr 1fr;overflow:hidden;}
+.plot-wrap{position:relative;background:var(--bg);border-bottom:1px solid var(--border);}
+.plot-wrap:last-child{border-bottom:none;}
+canvas{display:block;width:100%;height:100%;}
+.section{margin-bottom:14px;}
+.section-title{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);margin-bottom:8px;border-bottom:1px solid var(--border);padding-bottom:4px;}
+.ctrl{margin-bottom:8px;}
+.ctrl label{display:flex;justify-content:space-between;font-size:.8rem;margin-bottom:3px;}
+.ctrl label span{color:var(--accent);font-weight:600;font-family:monospace;}
+input[type=range]{width:100%;accent-color:var(--accent);}
+.preset-row{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;}
+.preset-btn{background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:3px 7px;font-size:.75rem;cursor:pointer;}
+.preset-btn.active,.preset-btn:hover{background:var(--accent);color:#fff;border-color:var(--accent);}
+.readout-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
+.readout{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:5px 7px;}
+.readout .label{font-size:.7rem;color:var(--text2);}
+.readout .value{font-size:.85rem;font-weight:700;font-family:monospace;}
+.ok{color:var(--green);}.warn{color:var(--orange);}.bad{color:var(--red);}
+.plot-label{position:absolute;top:6px;left:10px;font-size:.75rem;color:var(--text2);pointer-events:none;}
+.legend{display:flex;flex-wrap:wrap;gap:6px;font-size:.72rem;margin-top:4px;}
+.leg-item{display:flex;align-items:center;gap:4px;}
+.leg-dot{width:12px;height:3px;border-radius:2px;}
+</style>
+</head>
+<body>
+<h1>M4A-SD-4.3.1 — THD and Harmonic Distortion <span>| Spectrum &amp; THD vs Frequency</span></h1>
+<div class="layout">
+  <div class="controls">
+    <div class="section">
+      <div class="section-title">Presets</div>
+      <div class="preset-row">
+        <button class="preset-btn active" data-preset="audio">Audio Op-Amp</button>
+        <button class="preset-btn" data-preset="high-dist">High Distortion</button>
+        <button class="preset-btn" data-preset="rf">RF Amplifier</button>
+        <button class="preset-btn" data-preset="clip">Clipping</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Amplifier Parameters</div>
+      <div class="ctrl">
+        <label>GBW Product <span id="val-gbw">10 MHz</span></label>
+        <input type="range" id="sl-gbw" min="1" max="200" step="1" value="10">
+      </div>
+      <div class="ctrl">
+        <label>Closed-Loop Gain <span id="val-gain">1×</span></label>
+        <input type="range" id="sl-gain" min="1" max="40" step="1" value="1">
+      </div>
+      <div class="ctrl">
+        <label>Open-Loop THD (at 1kHz) <span id="val-ol-thd">0.5%</span></label>
+        <input type="range" id="sl-ol-thd" min="0.01" max="5" step="0.01" value="0.5">
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Signal</div>
+      <div class="ctrl">
+        <label>Signal Frequency <span id="val-freq">1000 Hz</span></label>
+        <input type="range" id="sl-freq" min="20" max="20000" step="20" value="1000">
+      </div>
+      <div class="ctrl">
+        <label>Output Amplitude <span id="val-amp">1.0 V</span></label>
+        <input type="range" id="sl-amp" min="0.1" max="5" step="0.1" value="1.0">
+      </div>
+      <div class="ctrl">
+        <label>Clipping Level <span id="val-clip">5.0 V</span></label>
+        <input type="range" id="sl-clip" min="0.5" max="10" step="0.1" value="5">
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Nonlinearity Type</div>
+      <div class="preset-row" id="nl-btns">
+        <button class="preset-btn active" data-nl="sym">Symmetric (3rd dom.)</button>
+        <button class="preset-btn" data-nl="asym">Asymmetric (2nd dom.)</button>
+        <button class="preset-btn" data-nl="xover">Crossover (AB)</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Results</div>
+      <div class="readout-grid">
+        <div class="readout"><div class="label">THD</div><div class="value" id="ro-thd">—</div></div>
+        <div class="readout"><div class="label">THD (dBc)</div><div class="value" id="ro-thd-db">—</div></div>
+        <div class="readout"><div class="label">2nd Harm</div><div class="value" id="ro-h2">—</div></div>
+        <div class="readout"><div class="label">3rd Harm</div><div class="value" id="ro-h3">—</div></div>
+        <div class="readout"><div class="label">Loop Gain</div><div class="value" id="ro-lg">—</div></div>
+        <div class="readout"><div class="label">Headroom</div><div class="value" id="ro-hr">—</div></div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="leg-item"><div class="leg-dot" style="background:var(--h1)"></div><span>Fundamental</span></div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--h2)"></div><span>2nd</span></div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--h3)"></div><span>3rd</span></div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--h4)"></div><span>4th</span></div>
+      <div class="leg-item"><div class="leg-dot" style="background:var(--h5)"></div><span>5th</span></div>
+    </div>
+
+  </div>
+
+  <div class="plots">
+    <div class="plot-wrap">
+      <div class="plot-label">Harmonic Spectrum (dBc relative to fundamental)</div>
+      <canvas id="spec-canvas"></canvas>
+    </div>
+    <div class="plot-wrap">
+      <div class="plot-label">THD vs. Frequency</div>
+      <canvas id="thd-canvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+let nlType = 'sym';
+
+function getParams() {
+  return {
+    gbw:     +document.getElementById('sl-gbw').value   * 1e6,
+    gain:    +document.getElementById('sl-gain').value,
+    olThd:   +document.getElementById('sl-ol-thd').value / 100,
+    freq:    +document.getElementById('sl-freq').value,
+    amp:     +document.getElementById('sl-amp').value,
+    clip:    +document.getElementById('sl-clip').value,
+  };
+}
+
+function loopGain(freq, p) {
+  const Ao = Math.max(1, p.gbw / freq);
+  const noiseGain = p.gain + 1;
+  return Ao / noiseGain;
+}
+
+// Compute harmonic amplitudes (normalized to fundamental = 1)
+function computeHarmonics(p, freq) {
+  const lg = loopGain(freq, p);
+  const clRatio = p.amp / p.clip; // how close to clipping
+
+  // Open-loop nonlinearity model
+  // a2, a3 coefficients (relative to a1=1)
+  let a2, a3, a4, a5;
+  switch(nlType) {
+    case 'sym':
+      a2 = 0.01 * p.olThd / 0.005;
+      a3 = 0.05 * p.olThd / 0.005;
+      a4 = a2 * 0.1;
+      a5 = a3 * 0.1;
+      break;
+    case 'asym':
+      a2 = 0.08 * p.olThd / 0.005;
+      a3 = 0.01 * p.olThd / 0.005;
+      a4 = a2 * 0.15;
+      a5 = a3 * 0.05;
+      break;
+    case 'xover':
+      a2 = 0.02 * p.olThd / 0.005;
+      a3 = 0.06 * p.olThd / 0.005;
+      a4 = a2 * 0.05;
+      a5 = a3 * 0.4;
+      break;
+  }
+
+  const A = p.amp;
+  // Harmonic amplitudes ∝ A^n
+  const h2_ol = a2 * A * A / 2;
+  const h3_ol = a3 * A * A * A / 4;
+  const h4_ol = a4 * A**4 / 8;
+  const h5_ol = a5 * A**5 / 16;
+
+  // Clipping adds strong odd harmonics
+  const clipBoost = Math.max(1, Math.exp(5 * (clRatio - 0.8)));
+  const h3_clip = h3_ol * clipBoost;
+  const h5_clip = h5_ol * clipBoost * clipBoost;
+
+  // Closed-loop: divide by loop gain
+  const clFactor = 1 + lg;
+  return {
+    h2: h2_ol / clFactor,
+    h3: h3_clip / clFactor,
+    h4: h4_ol / clFactor,
+    h5: h5_clip / clFactor,
+    lg,
+  };
+}
+
+function getColors() {
+  const s = getComputedStyle(document.documentElement);
+  return ['--bg','--panel','--text','--text2','--grid','--h1','--h2','--h3','--h4','--h5','--green','--orange','--red','--accent']
+    .reduce((o,k)=>{o[k.slice(2)]=s.getPropertyValue(k).trim();return o;},{});
+}
+
+function drawSpectrum(canvas) {
+  const W = canvas.offsetWidth*devicePixelRatio, H = canvas.offsetHeight*devicePixelRatio;
+  canvas.width=W; canvas.height=H;
+  const ctx = canvas.getContext('2d');
+  const C = getColors();
+  const p = getParams();
+  const PAD = {l:55*devicePixelRatio,r:20*devicePixelRatio,t:20*devicePixelRatio,b:30*devicePixelRatio};
+  const pW=W-PAD.l-PAD.r, pH=H-PAD.t-PAD.b;
+  ctx.fillStyle=C.bg; ctx.fillRect(0,0,W,H);
+
+  const {h2,h3,h4,h5} = computeHarmonics(p, p.freq);
+  // Fundamental = 1 = 0 dBc, harmonics in dBc
+  const bars = [
+    { label:'f₁', db: 0,                     color: C.h1 },
+    { label:'2f', db: 20*Math.log10(Math.max(h2,1e-7)), color: C.h2 },
+    { label:'3f', db: 20*Math.log10(Math.max(h3,1e-7)), color: C.h3 },
+    { label:'4f', db: 20*Math.log10(Math.max(h4,1e-7)), color: C.h4 },
+    { label:'5f', db: 20*Math.log10(Math.max(h5,1e-7)), color: C.h5 },
+  ];
+
+  const dbMin = -140, dbMax = 10;
+  function dbY(db) { return PAD.t + pH*(1-(db-dbMin)/(dbMax-dbMin)); }
+
+  // Grid
+  [-140,-120,-100,-80,-60,-40,-20,0].forEach(db=>{
+    const y=dbY(db);
+    ctx.strokeStyle=C.grid;ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(W-PAD.r,y);ctx.stroke();
+    ctx.fillStyle=C.text2;ctx.font=`${9*devicePixelRatio}px monospace`;ctx.textAlign='right';
+    ctx.fillText(db+'dBc',PAD.l-4,y+3);
+  });
+
+  const barW = pW/7;
+  bars.forEach(({label,db,color},i)=>{
+    const xCenter = PAD.l + barW*(i+1);
+    const bW = barW * 0.5;
+    const yTop = dbY(db), yBot = dbY(dbMin);
+    ctx.fillStyle=color+'cc';
+    ctx.fillRect(xCenter-bW/2, yTop, bW, yBot-yTop);
+    // dBc label on bar
+    ctx.fillStyle=C.text;ctx.font=`bold ${9*devicePixelRatio}px monospace`;ctx.textAlign='center';
+    ctx.fillText(db.toFixed(1)+'dBc', xCenter, yTop-4*devicePixelRatio);
+    // freq label below
+    ctx.fillStyle=C.text2;ctx.font=`${9*devicePixelRatio}px sans-serif`;ctx.textAlign='center';
+    ctx.fillText(label, xCenter, H-PAD.b+12*devicePixelRatio);
+    // Hz label
+    const fHz = p.freq*(i+1);
+    const fLabel = fHz>=1e3?(fHz/1e3).toFixed(1)+'k':fHz+'';
+    ctx.fillStyle=C.text2;ctx.font=`${8*devicePixelRatio}px monospace`;
+    ctx.fillText(fLabel+'Hz', xCenter, H-PAD.b+22*devicePixelRatio);
+  });
+
+  // THD annotation
+  const thd = Math.sqrt(h2*h2+h3*h3+h4*h4+h5*h5);
+  const thdDb = 20*Math.log10(Math.max(thd,1e-8));
+  ctx.fillStyle=C.accent; ctx.font=`bold ${10*devicePixelRatio}px sans-serif`; ctx.textAlign='left';
+  ctx.fillText(`THD = ${(thd*100).toFixed(4)}% = ${thdDb.toFixed(1)} dBc`, PAD.l+4, PAD.t+14*devicePixelRatio);
+}
+
+function drawTHDvFreq(canvas) {
+  const W=canvas.offsetWidth*devicePixelRatio,H=canvas.offsetHeight*devicePixelRatio;
+  canvas.width=W;canvas.height=H;
+  const ctx=canvas.getContext('2d');
+  const C=getColors();
+  const p=getParams();
+  const PAD={l:55*devicePixelRatio,r:20*devicePixelRatio,t:15*devicePixelRatio,b:30*devicePixelRatio};
+  const pW=W-PAD.l-PAD.r,pH=H-PAD.t-PAD.b;
+  ctx.fillStyle=C.bg;ctx.fillRect(0,0,W,H);
+
+  const fLo=20, fHi=20000;
+  function freqX(f){return PAD.l+pW*(Math.log10(f)-Math.log10(fLo))/(Math.log10(fHi)-Math.log10(fLo));}
+  const dbMin=-140,dbMax=0;
+  function dbY(db){return PAD.t+pH*(1-(db-dbMin)/(dbMax-dbMin));}
+
+  // Grid
+  [-140,-120,-100,-80,-60,-40,-20,0].forEach(db=>{
+    const y=dbY(db);
+    if(y<PAD.t||y>H-PAD.b) return;
+    ctx.strokeStyle=C.grid;ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(W-PAD.r,y);ctx.stroke();
+    ctx.fillStyle=C.text2;ctx.font=`${9*devicePixelRatio}px monospace`;ctx.textAlign='right';
+    ctx.fillText(db+'dBc',PAD.l-4,y+3);
+  });
+  [20,100,1000,10000,20000].forEach(f=>{
+    const x=freqX(f);
+    ctx.strokeStyle=C.grid;ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,H-PAD.b);ctx.stroke();
+    const lbl=f>=1000?(f/1000).toFixed(0)+'kHz':f+'Hz';
+    ctx.fillStyle=C.text2;ctx.font=`${8*devicePixelRatio}px monospace`;ctx.textAlign='center';
+    ctx.fillText(lbl,x,H-PAD.b+12*devicePixelRatio);
+  });
+
+  // Draw THD, H2, H3 vs frequency
+  const curves = [
+    { key:'thd', color:C.accent, label:'THD' },
+    { key:'h2',  color:C.h2,    label:'2nd' },
+    { key:'h3',  color:C.h3,    label:'3rd' },
+  ];
+
+  curves.forEach(({key,color,label})=>{
+    ctx.strokeStyle=color;ctx.lineWidth=2*devicePixelRatio;ctx.beginPath();
+    let first=true;
+    for(let i=0;i<=400;i++){
+      const f=Math.pow(10,Math.log10(fLo)+(Math.log10(fHi)-Math.log10(fLo))*i/400);
+      const {h2,h3,h4,h5}=computeHarmonics(p,f);
+      let val;
+      if(key==='thd') val=Math.sqrt(h2*h2+h3*h3+h4*h4+h5*h5);
+      else if(key==='h2') val=h2;
+      else val=h3;
+      const db=20*Math.log10(Math.max(val,1e-10));
+      const x=freqX(f),y=dbY(db);
+      if(y<PAD.t-4||y>H-PAD.b+4){first=true;continue;}
+      if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    // Label at right
+    const fEnd=fHi*0.9;
+    const {h2,h3,h4,h5}=computeHarmonics(p,fEnd);
+    let vEnd;
+    if(key==='thd') vEnd=Math.sqrt(h2*h2+h3*h3+h4*h4+h5*h5);
+    else if(key==='h2') vEnd=h2; else vEnd=h3;
+    const dbEnd=20*Math.log10(Math.max(vEnd,1e-10));
+    const yEnd=dbY(dbEnd);
+    if(yEnd>=PAD.t&&yEnd<=H-PAD.b){
+      ctx.fillStyle=color;ctx.font=`${8*devicePixelRatio}px sans-serif`;ctx.textAlign='right';
+      ctx.fillText(label,W-PAD.r-2,yEnd-3);
+    }
+  });
+
+  // Marker at current frequency
+  const {h2,h3,h4,h5}=computeHarmonics(p,p.freq);
+  const thd=Math.sqrt(h2*h2+h3*h3+h4*h4+h5*h5);
+  const thdDb=20*Math.log10(Math.max(thd,1e-10));
+  const xMark=freqX(p.freq),yMark=dbY(thdDb);
+  ctx.fillStyle=C.accent;
+  ctx.beginPath();ctx.arc(xMark,yMark,5*devicePixelRatio,0,2*Math.PI);ctx.fill();
+  ctx.fillStyle=C.text2;ctx.font=`${8*devicePixelRatio}px sans-serif`;ctx.textAlign='left';
+  ctx.fillText(`${(p.freq/1000).toFixed(2)}kHz: ${(thd*100).toFixed(4)}%`,xMark+6,yMark-3);
+
+  ctx.fillStyle=C.text;ctx.font=`bold ${9*devicePixelRatio}px sans-serif`;ctx.textAlign='left';
+  ctx.fillText('THD vs Frequency — Loop gain falls → distortion rises',PAD.l+4,PAD.t+13*devicePixelRatio);
+}
+
+function updateLabels() {
+  const p = getParams();
+  document.getElementById('val-gbw').textContent=  document.getElementById('sl-gbw').value+'MHz';
+  document.getElementById('val-gain').textContent= document.getElementById('sl-gain').value+'×';
+  document.getElementById('val-ol-thd').textContent=document.getElementById('sl-ol-thd').value+'%';
+  document.getElementById('val-freq').textContent= (p.freq>=1000?(p.freq/1000).toFixed(1)+'kHz':p.freq+'Hz');
+  document.getElementById('val-amp').textContent=  p.amp.toFixed(1)+'V';
+  document.getElementById('val-clip').textContent= p.clip.toFixed(1)+'V';
+}
+
+function updateReadouts() {
+  const p = getParams();
+  const {h2,h3,h4,h5,lg} = computeHarmonics(p, p.freq);
+  const thd = Math.sqrt(h2*h2+h3*h3+h4*h4+h5*h5);
+  const thdDb = 20*Math.log10(Math.max(thd,1e-10));
+  const h2Db = 20*Math.log10(Math.max(h2,1e-10));
+  const h3Db = 20*Math.log10(Math.max(h3,1e-10));
+  const hr = 20*Math.log10(p.clip/p.amp);
+
+  document.getElementById('ro-thd').textContent=(thd*100).toFixed(5)+'%';
+  document.getElementById('ro-thd').className='value '+(thdDb<-80?'ok':thdDb<-60?'warn':'bad');
+  document.getElementById('ro-thd-db').textContent=thdDb.toFixed(1)+'dBc';
+  document.getElementById('ro-thd-db').className='value '+(thdDb<-80?'ok':thdDb<-60?'warn':'bad');
+  document.getElementById('ro-h2').textContent=h2Db.toFixed(1)+'dBc';
+  document.getElementById('ro-h3').textContent=h3Db.toFixed(1)+'dBc';
+  document.getElementById('ro-lg').textContent=lg.toFixed(0)+'×';
+  document.getElementById('ro-hr').textContent=hr.toFixed(1)+'dB';
+  document.getElementById('ro-hr').className='value '+(hr>20?'ok':hr>10?'warn':'bad');
+}
+
+function redraw() {
+  updateLabels();
+  updateReadouts();
+  drawSpectrum(document.getElementById('spec-canvas'));
+  drawTHDvFreq(document.getElementById('thd-canvas'));
+}
+
+const PRESETS = {
+  'audio':     {gbw:10,  gain:1,  olThd:0.5,  freq:1000, amp:1.0, clip:5.0},
+  'high-dist': {gbw:2,   gain:10, olThd:3.0,  freq:5000, amp:2.0, clip:5.0},
+  'rf':        {gbw:100, gain:1,  olThd:0.1,  freq:1000, amp:0.5, clip:3.0},
+  'clip':      {gbw:10,  gain:1,  olThd:0.5,  freq:1000, amp:4.5, clip:5.0},
+};
+
+document.querySelectorAll('[data-preset]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('[data-preset]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    const pr=PRESETS[btn.dataset.preset];
+    document.getElementById('sl-gbw').value=pr.gbw;
+    document.getElementById('sl-gain').value=pr.gain;
+    document.getElementById('sl-ol-thd').value=pr.olThd;
+    document.getElementById('sl-freq').value=pr.freq;
+    document.getElementById('sl-amp').value=pr.amp;
+    document.getElementById('sl-clip').value=pr.clip;
+    redraw();
+  });
+});
+
+document.querySelectorAll('[data-nl]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('[data-nl]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    nlType=btn.dataset.nl;
+    redraw();
+  });
+});
+
+['sl-gbw','sl-gain','sl-ol-thd','sl-freq','sl-amp','sl-clip'].forEach(id=>{
+  document.getElementById(id).addEventListener('input',()=>{
+    document.querySelectorAll('[data-preset]').forEach(b=>b.classList.remove('active'));
+    redraw();
+  });
+});
+
+const ro=new ResizeObserver(redraw);
+ro.observe(document.getElementById('spec-canvas').parentElement);
+ro.observe(document.getElementById('thd-canvas').parentElement);
+redraw();
+</script>
+</body>
+</html>

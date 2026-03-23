@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M3-D-1.5.1 — Half-Wave Rectifier</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--text2:#8b949e;--accent:#0066cc;--accent2:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922}
+@media(prefers-color-scheme:light){:root{--bg:#ffffff;--surface:#f6f8fa;--border:#d0d7de;--text:#24292f;--text2:#656d76;--accent:#0066cc;--accent2:#0969da;--green:#2da44e;--red:#cf222e;--yellow:#9a6700}}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;font-size:14px;padding:16px}
+h2{color:var(--accent2);font-size:16px;margin-bottom:12px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px}
+canvas{width:100%;border-radius:6px;background:var(--bg);display:block}
+.controls{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px}
+.ctrl{flex:1;min-width:180px}
+label{display:block;color:var(--text2);font-size:12px;margin-bottom:4px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.readout{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.ro{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;font-size:12px;font-family:monospace}
+.ro span{color:var(--accent2);font-weight:bold}
+.note{color:var(--text2);font-size:12px;margin-top:8px;line-height:1.5}
+</style></head>
+<body>
+<h2>M3-D-1.5.1 — Half-Wave Rectifier</h2>
+<div class="panel">
+<canvas id="cv1" height="260"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>V_rms (V): <b id="lVrms">12</b></label>
+    <input type="range" id="Vrms" min="1" max="50" step="0.5" value="12"></div>
+  <div class="ctrl"><label>Frequency (Hz): <b id="lFreq">60</b></label>
+    <input type="range" id="Freq" min="50" max="400" step="10" value="60"></div>
+  <div class="ctrl"><label>V_F (V): <b id="lVf">0.7</b></label>
+    <input type="range" id="Vf" min="0" max="1.0" step="0.05" value="0.7"></div>
+</div>
+<div class="readout">
+  <div class="ro">V_peak: <span id="rvpk">0.00</span> V</div>
+  <div class="ro">V_DC: <span id="rvdc">0.00</span> V</div>
+  <div class="ro">PIV required: <span id="rpiv">0.00</span> V</div>
+  <div class="ro">Ripple freq: <span id="rrfq">60</span> Hz</div>
+</div>
+<p class="note">Half-wave rectifier passes only positive half-cycles. V_DC = 0.318 × (V_peak − V_F). PIV = V_peak. Ripple frequency = input frequency.</p>
+</div>
+
+<div class="panel">
+<canvas id="cv2" height="260"></canvas>
+<p class="note">Input (blue) and output (green) waveforms. Note the missing negative half-cycles and the 0.7 V offset due to diode forward drop.</p>
+</div>
+
+<script>
+
+const isDark=()=>window.matchMedia('(prefers-color-scheme:dark)').matches;
+function gs(id){return parseFloat(document.getElementById(id).value);}
+function sv(id,val){document.getElementById(id).textContent=val;}
+function resize(cv,draw){cv.width=cv.offsetWidth*devicePixelRatio;cv.height=260*devicePixelRatio;cv.getContext('2d').scale(devicePixelRatio,devicePixelRatio);draw();}
+function drawAxes(ctx,W,H,pad,xl,yl,color){
+  ctx.strokeStyle=color;ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  ctx.fillStyle=color;ctx.font='11px system-ui';
+  ctx.fillText(yl,pad+4,pad+12);ctx.fillText(xl,W-pad-2,H-pad-4);
+}
+
+const cv1=document.getElementById('cv1'),ctx1=cv1.getContext('2d');
+const cv2=document.getElementById('cv2'),ctx2=cv2.getContext('2d');
+
+function draw(){
+  const vrms=gs('Vrms'),freq=gs('Freq'),vf=gs('Vf');
+  document.getElementById('lVrms').textContent=vrms.toFixed(1);
+  document.getElementById('lFreq').textContent=freq.toFixed(0);
+  document.getElementById('lVf').textContent=vf.toFixed(2);
+  const vpk=vrms*Math.SQRT2;
+  const vdc=0.318*(vpk-vf);
+  sv('rvpk',vpk.toFixed(2));sv('rvdc',vdc.toFixed(2));
+  sv('rpiv',vpk.toFixed(2));sv('rrfq',freq.toFixed(0));
+
+  const W=cv1.offsetWidth,H=260,pad=40;
+  const bg=isDark()?'#0d1117':'#fff',fg=isDark()?'#8b949e':'#656d76';
+
+  // Panel 1: Key metrics visualization
+  ctx1.clearRect(0,0,W,H);ctx1.fillStyle=bg;ctx1.fillRect(0,0,W,H);
+  const metrics=[
+    ['V_peak',vpk,'#58a6ff',vpk],
+    ['V_DC',vdc,'#3fb950',vpk],
+    ['PIV',vpk,'#d29922',vpk]
+  ];
+  const bw=(W-2*pad)/metrics.length-15;
+  metrics.forEach(([name,val,color,maxv],i)=>{
+    const bh=Math.min((H-2*pad)*val/maxv,(H-2*pad));
+    const bx=pad+i*(bw+15);
+    const by=H-pad-bh;
+    ctx1.fillStyle=color+'33';ctx1.fillRect(bx,H-pad-(H-2*pad),bw,(H-2*pad));
+    ctx1.fillStyle=color;ctx1.fillRect(bx,by,bw,bh);
+    ctx1.fillStyle=fg;ctx1.font='11px system-ui';
+    ctx1.fillText(name,bx+4,H-pad+14);
+    ctx1.fillText(val.toFixed(1)+'V',bx+4,by-4);
+  });
+  ctx1.fillStyle=fg;ctx1.font='12px system-ui';
+  ctx1.fillText('Half-Wave Rectifier: V_rms='+vrms+'V, f='+freq+'Hz',pad,pad-5);
+
+  // Panel 2: Waveform
+  ctx2.clearRect(0,0,W,H);ctx2.fillStyle=bg;ctx2.fillRect(0,0,W,H);
+  drawAxes(ctx2,W,H,pad,'t →','V ↑',fg);
+  const yc=H/2,ysc=(H/2-pad-5)/vpk;
+  // Zero line
+  ctx2.setLineDash([4,4]);ctx2.strokeStyle=fg;ctx2.globalAlpha=0.3;
+  ctx2.beginPath();ctx2.moveTo(pad,yc);ctx2.lineTo(W-pad,yc);ctx2.stroke();
+  ctx2.globalAlpha=1;ctx2.setLineDash([]);
+  // Input sine
+  ctx2.strokeStyle='#58a6ff';ctx2.lineWidth=2;ctx2.beginPath();
+  for(let i=0;i<W-2*pad;i++){
+    const t=i/(W-2*pad)*4*Math.PI;
+    const v=vpk*Math.sin(t);
+    const x=pad+i,y=yc-v*ysc;
+    if(i===0)ctx2.moveTo(x,y);else ctx2.lineTo(x,y);
+  }
+  ctx2.stroke();
+  // Output half-wave
+  ctx2.strokeStyle='#3fb950';ctx2.lineWidth=2;ctx2.beginPath();
+  for(let i=0;i<W-2*pad;i++){
+    const t=i/(W-2*pad)*4*Math.PI;
+    const vin=vpk*Math.sin(t);
+    const vout=Math.max(0,vin-vf);
+    const x=pad+i,y=yc-vout*ysc;
+    if(i===0)ctx2.moveTo(x,y);else ctx2.lineTo(x,y);
+  }
+  ctx2.stroke();
+  // VDC line
+  ctx2.strokeStyle='#d29922';ctx2.lineWidth=1;ctx2.setLineDash([6,3]);
+  ctx2.beginPath();ctx2.moveTo(pad,yc-vdc*ysc);ctx2.lineTo(W-pad,yc-vdc*ysc);ctx2.stroke();
+  ctx2.setLineDash([]);
+  ctx2.fillStyle='#d29922';ctx2.font='11px system-ui';
+  ctx2.fillText('V_DC='+vdc.toFixed(1)+'V',W-pad-100,yc-vdc*ysc-5);
+  ctx2.fillStyle='#58a6ff';ctx2.fillText('Input (V_rms='+vrms+'V)',pad+5,pad+10);
+  ctx2.fillStyle='#3fb950';ctx2.fillText('Output',pad+5,pad+24);
+}
+
+document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',draw));
+window.addEventListener('resize',()=>{resize(cv1,draw);resize(cv2,draw);});
+resize(cv1,draw);resize(cv2,draw);
+</script>
+</body></html>

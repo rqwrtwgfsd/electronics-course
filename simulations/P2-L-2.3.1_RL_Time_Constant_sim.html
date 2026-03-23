@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-L-2.3.1 — RL Time Constant</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+h1 { color: #0066cc; font-size: 1.3em; margin-bottom: 4px; }
+.subtitle { color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }
+.layout { display: flex; gap: 20px; flex-wrap: wrap; }
+.panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+.controls { width: 280px; flex-shrink: 0; }
+.viz { flex: 1; min-width: 360px; }
+label { display: block; color: #8b949e; font-size: 0.8em; margin-bottom: 4px; margin-top: 12px; }
+input[type=range] { width: 100%; accent-color: #0066cc; }
+.val { color: #0066cc; font-weight: bold; }
+canvas { background: #0d1117; border-radius: 6px; display: block; }
+.readouts { margin-top: 14px; }
+.readout-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #21262d; font-size: 0.82em; }
+.readout-label { color: #8b949e; }
+.readout-val { color: #39d353; font-weight: bold; font-family: monospace; }
+.eq { background: #21262d; border-left: 3px solid #0066cc; padding: 10px 12px; border-radius: 4px; margin-top: 14px; font-family: monospace; font-size: 0.82em; color: #a5d6ff; }
+.compare-table { margin-top: 12px; border-collapse: collapse; width: 100%; font-size: 0.78em; }
+.compare-table th { color: #8b949e; padding: 4px 6px; border-bottom: 1px solid #30363d; text-align: left; }
+.compare-table td { padding: 3px 6px; border-bottom: 1px solid #21262d; }
+.rl-col { color: #0066cc; }
+.rc-col { color: #e3b341; }
+@media (prefers-color-scheme: light) {
+  body { background: #f6f8fa; color: #24292f; }
+  .panel { background: #fff; border-color: #d0d7de; }
+  canvas { background: #f6f8fa; }
+  .eq { background: #eef2ff; }
+  .readout-row, .compare-table td { border-color: #d0d7de; }
+}
+</style>
+</head>
+<body>
+<h1>P2-L-2.3.1 — RL Time Constant (τ = L/R)</h1>
+<div class="subtitle">τ = L/R charging curve · milestone markers · RC vs RL dual comparison table</div>
+<div class="layout">
+  <div class="panel controls">
+    <label>Inductance L: <span class="val" id="lLbl">1 mH</span></label>
+    <input type="range" id="lSlider" min="1" max="1000" value="100" step="1">
+    <label>Resistance R (Ω): <span class="val" id="rLbl">10 Ω</span></label>
+    <input type="range" id="rSlider" min="1" max="200" value="10" step="1">
+    <label>Supply Voltage V_s (V): <span class="val" id="vsLbl">12 V</span></label>
+    <input type="range" id="vsSlider" min="1" max="48" value="12" step="1">
+    <div class="readouts">
+      <div class="readout-row"><span class="readout-label">τ = L/R</span><span class="readout-val" id="tau">—</span></div>
+      <div class="readout-row"><span class="readout-label">I_final = V/R</span><span class="readout-val" id="ifin">—</span></div>
+      <div class="readout-row"><span class="readout-label">I at 1τ (63.2%)</span><span class="readout-val" id="i1t">—</span></div>
+      <div class="readout-row"><span class="readout-label">I at 2τ (86.5%)</span><span class="readout-val" id="i2t">—</span></div>
+      <div class="readout-row"><span class="readout-label">I at 3τ (95.0%)</span><span class="readout-val" id="i3t">—</span></div>
+      <div class="readout-row"><span class="readout-label">I at 5τ (99.3%)</span><span class="readout-val" id="i5t">—</span></div>
+    </div>
+    <table class="compare-table">
+      <thead><tr><th>Property</th><th class="rl-col">RL</th><th class="rc-col">RC</th></tr></thead>
+      <tbody>
+        <tr><td>Time const.</td><td class="rl-col">L/R</td><td class="rc-col">R×C</td></tr>
+        <tr><td>State var.</td><td class="rl-col">I_L</td><td class="rc-col">V_C</td></tr>
+        <tr><td>At DC</td><td class="rl-col">Short</td><td class="rc-col">Open</td></tr>
+        <tr><td>Inc. R →</td><td class="rl-col">Faster τ</td><td class="rc-col">Slower τ</td></tr>
+      </tbody>
+    </table>
+    <div class="eq">τ = L/R (RL circuit)<br>τ = R×C (RC circuit)<br>I(t) = I_f×(1−e^(−t/τ))</div>
+  </div>
+  <div class="panel viz">
+    <canvas id="cv" width="580" height="420"></canvas>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const W = 580, H = 420;
+
+function getP() {
+  const Lraw = parseFloat(document.getElementById('lSlider').value);
+  const L = Lraw * 1e-6; // µH
+  const R = parseFloat(document.getElementById('rSlider').value);
+  const Vs = parseFloat(document.getElementById('vsSlider').value);
+  return { L, R, Vs };
+}
+
+function fmtT(t) {
+  if (t >= 1) return t.toFixed(3) + ' s';
+  if (t >= 1e-3) return (t * 1000).toFixed(2) + ' ms';
+  if (t >= 1e-6) return (t * 1e6).toFixed(2) + ' µs';
+  return (t * 1e9).toFixed(1) + ' ns';
+}
+function fmtA(a) {
+  if (Math.abs(a) >= 1) return a.toFixed(4) + ' A';
+  return (a * 1000).toFixed(2) + ' mA';
+}
+
+function draw() {
+  const p = getP();
+  const tau = p.L / p.R;
+  const Ifin = p.Vs / p.R;
+
+  document.getElementById('lLbl').textContent = (p.L >= 1e-3) ? (p.L * 1000).toFixed(0) + ' mH' : (p.L * 1e6).toFixed(0) + ' µH';
+  document.getElementById('rLbl').textContent = p.R.toFixed(0) + ' Ω';
+  document.getElementById('vsLbl').textContent = p.Vs.toFixed(0) + ' V';
+  document.getElementById('tau').textContent = fmtT(tau);
+  document.getElementById('ifin').textContent = fmtA(Ifin);
+  document.getElementById('i1t').textContent = fmtA(Ifin * (1 - Math.exp(-1)));
+  document.getElementById('i2t').textContent = fmtA(Ifin * (1 - Math.exp(-2)));
+  document.getElementById('i3t').textContent = fmtA(Ifin * (1 - Math.exp(-3)));
+  document.getElementById('i5t').textContent = fmtA(Ifin * (1 - Math.exp(-5)));
+
+  ctx.clearRect(0, 0, W, H);
+
+  const pad = { l: 70, r: 20, t: 35, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+  const tMax = 6 * tau;
+  const Imax = Ifin * 1.12;
+
+  function tx(t) { return pad.l + (t / tMax) * pw; }
+  function ty(i) { return pad.t + ph - (i / Imax) * ph; }
+
+  // Grid
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let g = 0; g <= 5; g++) {
+    const Ig = Imax * g / 5;
+    const yi = ty(Ig);
+    ctx.beginPath(); ctx.moveTo(pad.l, yi); ctx.lineTo(pad.l + pw, yi); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(fmtA(Ig), pad.l - 4, yi + 4);
+  }
+  for (let g = 0; g <= 6; g++) {
+    const xi = tx(tMax * g / 6);
+    ctx.beginPath(); ctx.moveTo(xi, pad.t); ctx.lineTo(xi, pad.t + ph); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(fmtT(tMax * g / 6), xi, pad.t + ph + 16);
+  }
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t + ph); ctx.lineTo(pad.l + pw, pad.t + ph); ctx.stroke();
+
+  // I_final line
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.moveTo(pad.l, ty(Ifin)); ctx.lineTo(pad.l + pw, ty(Ifin)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // RL exponential (blue)
+  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let px = 0; px <= pw; px++) {
+    const t = (px / pw) * tMax;
+    const I = Ifin * (1 - Math.exp(-t / tau));
+    if (px === 0) ctx.moveTo(pad.l, ty(I));
+    else ctx.lineTo(pad.l + px, ty(I));
+  }
+  ctx.stroke();
+
+  // RC dual (yellow dashed, same percentage milestones)
+  ctx.strokeStyle = '#e3b341'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 3]);
+  ctx.beginPath();
+  for (let px = 0; px <= pw; px++) {
+    const t = (px / pw) * tMax;
+    const V = Ifin * p.R * (1 - Math.exp(-t / tau)); // same tau, normalized to match RL scale
+    const I_equiv = V / p.R; // = Ifin * (1 - e^-t/tau) — same shape, show as second curve
+    if (px === 0) ctx.moveTo(pad.l, ty(I_equiv * 0.7)); // offset for visibility
+    else ctx.lineTo(pad.l + px, ty(I_equiv * 0.7));
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#e3b341'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('RC dual (same τ, V_C normalized)', tx(tMax * 0.05), ty(Ifin * 0.7 * 0.8) - 10);
+
+  // τ vertical line
+  ctx.strokeStyle = '#39d353'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
+  ctx.beginPath(); ctx.moveTo(tx(tau), pad.t); ctx.lineTo(tx(tau), pad.t + ph); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#39d353'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('τ = ' + fmtT(tau), tx(tau), pad.t + 14);
+
+  // Milestone dots with colors
+  const milestones = [
+    { m: 1, pct: 63.2, color: '#39d353' },
+    { m: 2, pct: 86.5, color: '#56d364' },
+    { m: 3, pct: 95.0, color: '#7ee787' },
+    { m: 5, pct: 99.3, color: '#c3e88d' }
+  ];
+  milestones.forEach(mi => {
+    const t = mi.m * tau;
+    const I = Ifin * (1 - Math.exp(-mi.m));
+    const x = tx(t), y = ty(I);
+    ctx.fillStyle = mi.color;
+    ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#0d1117'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = mi.color; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(mi.m + 'τ (' + mi.pct + '%)', x + 8, y - 4);
+    // Dotted drop lines
+    ctx.strokeStyle = mi.color + '60'; ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(x, y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, pad.t + ph); ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  ctx.fillStyle = '#0066cc'; ctx.font = '11px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('RL: τ = L/R', pad.l + pw - 4, ty(Ifin) - 8);
+
+  ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Time', pad.l + pw / 2, H - 8);
+  ctx.save(); ctx.translate(16, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = '#8b949e'; ctx.fillText('Current (A)', 0, 0); ctx.restore();
+  ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('RL Time Constant — Exponential Current Rise with τ = L/R', W / 2, 20);
+}
+
+['lSlider', 'rSlider', 'vsSlider'].forEach(id =>
+  document.getElementById(id).addEventListener('input', draw));
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-GB-2.3.1 — Gain-Bandwidth Product</title>
+<style>
+  :root{--bg:#ffffff;--surface:#f5f5f5;--border:#dddddd;--text:#1a1a1a;--accent:#0066cc;--accent2:#cc6600;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--accent2:#ff9944;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Arial,sans-serif;font-size:14px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;display:flex;align-items:baseline;gap:16px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}
+  h1{font-size:17px;font-weight:600;}
+  .main{display:grid;grid-template-columns:280px 1fr;height:calc(100vh - 48px);}
+  .ctrl{background:var(--surface);border-right:1px solid var(--border);padding:18px;overflow-y:auto;}
+  .ctrl h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin-bottom:10px;margin-top:14px;}
+  .cg{margin-bottom:14px;}
+  .cg label{display:block;font-size:12px;margin-bottom:4px;}
+  .val{font-weight:700;color:var(--accent);}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rbox{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:8px;margin-bottom:8px;}
+  .rl{font-size:10px;text-transform:uppercase;letter-spacing:.05em;opacity:.7;margin-bottom:2px;}
+  .rv{font-size:18px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ru{font-size:11px;opacity:.7;}
+  .carea{padding:16px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;}
+  canvas{border:1px solid var(--border);border-radius:6px;display:block;}
+  .clabel{font-size:12px;font-weight:600;margin-bottom:4px;opacity:.8;}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+</style>
+</head>
+<body>
+<header>
+  <span class="mid">M4A-GB-2.3.1</span>
+  <h1>Gain-Bandwidth Product — GBW Hyperbola Explorer</h1>
+</header>
+<div class="main">
+  <div class="ctrl">
+    <h2>Op-Amp</h2>
+    <div class="cg">
+      <label>GBW: <span class="val" id="gbw-v">10 MHz</span></label>
+      <input type="range" id="gbw-s" min="0.1" max="100" step="0.1" value="10">
+    </div>
+
+    <h2>Closed-Loop Configuration</h2>
+    <div class="cg">
+      <label>Closed-Loop Gain |Av|: <span class="val" id="av-v">10 V/V</span></label>
+      <input type="range" id="av-s" min="1" max="1000" step="1" value="10">
+    </div>
+
+    <h2>Readouts</h2>
+    <div class="rbox"><div class="rl">Closed-Loop BW</div><div class="rv" id="bw-out">1.00 MHz</div><div class="ru">= GBW / |Av|</div></div>
+    <div class="rbox"><div class="rl">GBW Product Check</div><div class="rv" id="gbw-check">10.0 MHz</div><div class="ru">= Av × BW</div></div>
+    <div class="rbox"><div class="rl">Gain at 1× BW</div><div class="rv" id="g-at-bw">0.707</div><div class="ru">× midband (−3 dB)</div></div>
+    <div class="rbox"><div class="rl">Gain at 0.1× BW</div><div class="rv" id="g-at-01bw">0.995</div><div class="ru">× midband (flat)</div></div>
+
+    <h2>3-Stage Cascade</h2>
+    <div class="cg"><label>Stage 1 Gain: <span class="val" id="s1v">10</span></label><input type="range" id="s1" min="1" max="100" value="10"></div>
+    <div class="cg"><label>Stage 2 Gain: <span class="val" id="s2v">10</span></label><input type="range" id="s2" min="1" max="100" value="10"></div>
+    <div class="cg"><label>Stage 3 Gain: <span class="val" id="s3v">1</span></label><input type="range" id="s3" min="1" max="100" value="1"></div>
+    <div class="rbox"><div class="rl">Total Gain</div><div class="rv" id="tot-av">100</div><div class="ru">V/V</div></div>
+    <div class="rbox"><div class="rl">Total BW (estimated)</div><div class="rv" id="tot-bw">640</div><div class="ru">kHz (cascaded -3dB)</div></div>
+  </div>
+
+  <div class="carea">
+    <div class="two">
+      <div>
+        <div class="clabel">GBW Hyperbola — Gain vs Bandwidth Trade-off</div>
+        <canvas id="hyperCanvas" width="400" height="280"></canvas>
+      </div>
+      <div>
+        <div class="clabel">Closed-Loop Bode Plot at Selected Gain</div>
+        <canvas id="bodeCanvas" width="400" height="280"></canvas>
+      </div>
+    </div>
+    <div>
+      <div class="clabel">Cascade Stage Bandwidth Narrowing (GBW = <span id="gbw-label">10</span> MHz per stage)</div>
+      <canvas id="cascadeCanvas" width="820" height="160"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const gbwS=document.getElementById('gbw-s');
+  const avS=document.getElementById('av-s');
+  const s1=document.getElementById('s1'),s2=document.getElementById('s2'),s3=document.getElementById('s3');
+
+  function getC(){
+    const dk=window.matchMedia('(prefers-color-scheme:dark)').matches;
+    return{bg:dk?'#1a1a1a':'#fff',grid:dk?'#2e2e2e':'#eee',text:dk?'#ccc':'#555',blue:dk?'#4499ff':'#0066cc',orange:dk?'#ff9944':'#cc6600',red:dk?'#ff5555':'#cc0000',green:dk?'#44bb44':'#007700',purple:dk?'#bb88ff':'#7700cc'};
+  }
+
+  function fmtF(f){return f>=1e6?(f/1e6).toFixed(2)+' MHz':f>=1e3?(f/1e3).toFixed(1)+' kHz':f.toFixed(0)+' Hz';}
+
+  function update(){
+    const GBW=parseFloat(gbwS.value)*1e6;
+    const Av=parseFloat(avS.value);
+    const BW=GBW/Av;
+    document.getElementById('gbw-v').textContent=(GBW/1e6).toFixed(1)+' MHz';
+    document.getElementById('av-v').textContent=Av+' V/V';
+    document.getElementById('bw-out').textContent=fmtF(BW);
+    document.getElementById('gbw-check').textContent=((Av*BW)/1e6).toFixed(1)+' MHz';
+    document.getElementById('g-at-bw').textContent='0.707';
+    document.getElementById('g-at-01bw').textContent=(1/Math.sqrt(1+0.01)).toFixed(3);
+    document.getElementById('gbw-label').textContent=(GBW/1e6).toFixed(1);
+
+    const g1=parseFloat(s1.value),g2=parseFloat(s2.value),g3=parseFloat(s3.value);
+    document.getElementById('s1v').textContent=g1;
+    document.getElementById('s2v').textContent=g2;
+    document.getElementById('s3v').textContent=g3;
+    const totAv=g1*g2*g3;
+    const bw1=GBW/g1,bw2=GBW/g2,bw3=GBW/g3;
+    // cascaded -3dB: 1/f_total = sqrt(1/f1^2+1/f2^2+1/f3^2)
+    const totBW=1/Math.sqrt(1/bw1**2+1/bw2**2+1/bw3**2);
+    document.getElementById('tot-av').textContent=totAv;
+    document.getElementById('tot-bw').textContent=fmtF(totBW);
+
+    drawHyperbola(GBW,Av,BW);
+    drawBode(GBW,Av,BW);
+    drawCascade(GBW,g1,g2,g3);
+  }
+
+  function drawHyperbola(GBW,Av,BW){
+    const cv=document.getElementById('hyperCanvas');
+    const ctx=cv.getContext('2d');
+    const W=cv.width,H=cv.height;
+    const c=getC();
+    ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+
+    const pad={l:60,r:20,t:20,b:50};
+    const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+    // log-log axes: gain 1-1000, BW 1kHz - GBW
+    const logAvMin=0,logAvMax=3; // 1 to 1000
+    const logBwMin=Math.log10(GBW/1e6)-1, logBwMax=Math.log10(GBW/1e6)+1; // MHz range
+
+    function avX(av){return pad.l+(Math.log10(av)-logAvMin)/(logAvMax-logAvMin)*pw;}
+    function bwY(bw_mhz){return pad.t+ph-(Math.log10(bw_mhz)-logBwMin)/(logBwMax-logBwMin)*ph;}
+
+    ctx.strokeStyle=c.grid; ctx.lineWidth=1;
+    for(let la=0;la<=3;la++){
+      const x=avX(Math.pow(10,la));
+      ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,pad.t+ph); ctx.stroke();
+      ctx.fillStyle=c.text; ctx.font='10px monospace'; ctx.textAlign='center';
+      ctx.fillText(Math.pow(10,la)+'V/V',x,pad.t+ph+14);
+    }
+    for(let lb=Math.ceil(logBwMin);lb<=Math.floor(logBwMax);lb++){
+      const y=bwY(Math.pow(10,lb));
+      ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+pw,y); ctx.stroke();
+      ctx.fillStyle=c.text; ctx.font='10px monospace'; ctx.textAlign='right';
+      ctx.fillText(Math.pow(10,lb)+'MHz',pad.l-4,y+4);
+    }
+
+    ctx.fillStyle=c.text; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Closed-Loop Gain |Av| →',pad.l+pw/2,H-8);
+    ctx.save(); ctx.translate(14,pad.t+ph/2); ctx.rotate(-Math.PI/2);
+    ctx.fillText('Bandwidth (MHz) →',0,0); ctx.restore();
+
+    // hyperbola: BW = GBW/Av
+    ctx.beginPath(); ctx.strokeStyle=c.blue; ctx.lineWidth=2.5;
+    for(let px=0;px<=pw;px++){
+      const logAv=logAvMin+(px/pw)*(logAvMax-logAvMin);
+      const av=Math.pow(10,logAv);
+      const bw_mhz=GBW/av/1e6;
+      const x=pad.l+px;
+      const y=bwY(bw_mhz);
+      if(y<pad.t-5||y>pad.t+ph+5){px===0?ctx.moveTo(x,y):ctx.lineTo(x,y); continue;}
+      px===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    // operating point
+    const xOp=avX(Av);
+    const yOp=bwY(BW/1e6);
+    if(xOp>=pad.l&&xOp<=pad.l+pw&&yOp>=pad.t&&yOp<=pad.t+ph){
+      ctx.beginPath(); ctx.arc(xOp,yOp,7,0,2*Math.PI);
+      ctx.fillStyle=c.orange; ctx.fill();
+      ctx.fillStyle=c.orange; ctx.font='bold 11px monospace'; ctx.textAlign='left';
+      ctx.fillText(fmtF(BW),xOp+10,yOp+4);
+    }
+
+    // GBW label
+    ctx.fillStyle=c.blue; ctx.font='bold 11px monospace'; ctx.textAlign='center';
+    ctx.fillText('GBW = '+(GBW/1e6).toFixed(1)+' MHz',pad.l+pw/2,pad.t+12);
+  }
+
+  function drawBode(GBW,Av,BW){
+    const cv=document.getElementById('bodeCanvas');
+    const ctx=cv.getContext('2d');
+    const W=cv.width,H=cv.height;
+    const c=getC();
+    ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+
+    const pad={l:55,r:20,t:20,b:50};
+    const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+    const fMin=BW/1000,fMax=GBW*10;
+    const logMin=Math.log10(fMin),logMax=Math.log10(fMax);
+    const A_dB=20*Math.log10(Av);
+
+    function fX(f){return pad.l+(Math.log10(f)-logMin)/(logMax-logMin)*pw;}
+    function dY(db){return pad.t+ph-(db-(A_dB-80))/90*ph;}
+
+    ctx.strokeStyle=c.grid; ctx.lineWidth=1;
+    for(let lf=Math.ceil(logMin);lf<=Math.floor(logMax);lf++){
+      const x=fX(Math.pow(10,lf));
+      ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,pad.t+ph); ctx.stroke();
+      const f=Math.pow(10,lf);
+      ctx.fillStyle=c.text; ctx.font='9px monospace'; ctx.textAlign='center';
+      ctx.fillText(f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f,x,pad.t+ph+14);
+    }
+
+    // open-loop
+    ctx.beginPath(); ctx.strokeStyle=c.grid; ctx.lineWidth=1.5; ctx.setLineDash([6,3]);
+    for(let px=0;px<=pw;px++){
+      const logF=logMin+(px/pw)*(logMax-logMin);
+      const f=Math.pow(10,logF);
+      const aol_db=20*Math.log10(GBW/f);
+      const x=pad.l+px;
+      const y=dY(aol_db);
+      px===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=c.grid; ctx.font='10px monospace'; ctx.textAlign='left';
+    ctx.fillText('Open-loop',fX(fMin)+4,dY(A_dB+35));
+
+    // closed-loop
+    ctx.beginPath(); ctx.strokeStyle=c.blue; ctx.lineWidth=2.5;
+    for(let px=0;px<=pw;px++){
+      const logF=logMin+(px/pw)*(logMax-logMin);
+      const f=Math.pow(10,logF);
+      const g=Av/Math.sqrt(1+(f/BW)**2);
+      const db=20*Math.log10(g);
+      const x=pad.l+px;
+      const y=dY(db);
+      px===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    // -3dB marker
+    const xBW=fX(BW);
+    const y3=dY(A_dB-3);
+    ctx.beginPath(); ctx.strokeStyle=c.orange; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+    ctx.moveTo(xBW,pad.t); ctx.lineTo(xBW,pad.t+ph); ctx.stroke();
+    ctx.moveTo(pad.l,y3); ctx.lineTo(pad.l+pw,y3); ctx.stroke(); ctx.setLineDash([]);
+    ctx.beginPath(); ctx.arc(xBW,y3,6,0,2*Math.PI); ctx.fillStyle=c.orange; ctx.fill();
+    ctx.fillStyle=c.orange; ctx.font='bold 10px monospace'; ctx.textAlign='left';
+    ctx.fillText(fmtF(BW),xBW+8,y3-4);
+
+    // axes labels
+    ctx.fillStyle=c.text; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('Frequency →',pad.l+pw/2,H-8);
+    ctx.save(); ctx.translate(14,pad.t+ph/2); ctx.rotate(-Math.PI/2);
+    ctx.fillText('Gain (dB)',0,0); ctx.restore();
+
+    // dB ticks
+    for(let db=Math.ceil((A_dB-80)/20)*20;db<=A_dB+10;db+=20){
+      const y=dY(db);
+      if(y<pad.t||y>pad.t+ph) continue;
+      ctx.fillStyle=c.text; ctx.font='9px monospace'; ctx.textAlign='right';
+      ctx.fillText(db,pad.l-3,y+4);
+    }
+  }
+
+  function drawCascade(GBW,g1,g2,g3){
+    const cv=document.getElementById('cascadeCanvas');
+    const ctx=cv.getContext('2d');
+    const W=cv.width,H=cv.height;
+    const c=getC();
+    ctx.fillStyle=c.bg; ctx.fillRect(0,0,W,H);
+
+    const bw1=GBW/g1,bw2=GBW/g2,bw3=GBW/g3;
+    const totBW=1/Math.sqrt(1/bw1**2+1/bw2**2+1/bw3**2);
+    const maxBW=Math.max(bw1,bw2,bw3)*1.2;
+
+    const pad={l:140,r:20,t:20,b:30};
+    const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+    const bars=[
+      {label:'Stage 1 (Av='+g1+')',bw:bw1,col:c.blue},
+      {label:'Stage 2 (Av='+g2+')',bw:bw2,col:c.green},
+      {label:'Stage 3 (Av='+g3+')',bw:bw3,col:c.purple},
+      {label:'Total (cascaded)',bw:totBW,col:c.orange}
+    ];
+
+    const barH=(ph-10)/4;
+    bars.forEach((b,i)=>{
+      const y=pad.t+i*(barH+3);
+      const bw=b.bw/maxBW*pw;
+      ctx.fillStyle=b.col;
+      ctx.fillRect(pad.l,y,bw,barH);
+      ctx.fillStyle=c.text; ctx.font='11px monospace'; ctx.textAlign='right';
+      ctx.fillText(b.label,pad.l-6,y+barH/2+4);
+      ctx.font='bold 10px monospace'; ctx.textAlign='left';
+      ctx.fillText(fmtF(b.bw),pad.l+bw+5,y+barH/2+4);
+    });
+  }
+
+  [gbwS,avS,s1,s2,s3].forEach(e=>e.addEventListener('input',update));
+  window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',update);
+  update();
+})();
+</script>
+</body>
+</html>

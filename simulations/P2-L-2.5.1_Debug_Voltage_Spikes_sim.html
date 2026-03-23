@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-L-2.5.1 — Debug: Voltage Spikes and Protection</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+h1 { color: #0066cc; font-size: 1.3em; margin-bottom: 4px; }
+.subtitle { color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }
+.layout { display: flex; gap: 20px; flex-wrap: wrap; }
+.panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+.controls { width: 280px; flex-shrink: 0; }
+.viz { flex: 1; min-width: 360px; }
+label { display: block; color: #8b949e; font-size: 0.8em; margin-bottom: 4px; margin-top: 12px; }
+input[type=range] { width: 100%; accent-color: #0066cc; }
+select { width: 100%; background: #21262d; color: #e6edf3; border: 1px solid #30363d; border-radius: 4px; padding: 5px; font-size: 0.85em; margin-top: 4px; }
+.val { color: #0066cc; font-weight: bold; }
+canvas { background: #0d1117; border-radius: 6px; display: block; }
+.readouts { margin-top: 14px; }
+.readout-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #21262d; font-size: 0.82em; }
+.readout-label { color: #8b949e; }
+.readout-val { color: #39d353; font-weight: bold; font-family: monospace; }
+.readout-val.warn { color: #f85149; }
+.eq { background: #21262d; border-left: 3px solid #0066cc; padding: 10px 12px; border-radius: 4px; margin-top: 14px; font-family: monospace; font-size: 0.82em; color: #a5d6ff; }
+@media (prefers-color-scheme: light) {
+  body { background: #f6f8fa; color: #24292f; }
+  .panel { background: #fff; border-color: #d0d7de; }
+  canvas { background: #f6f8fa; }
+  .eq { background: #eef2ff; }
+  select { background: #f6f8fa; color: #24292f; }
+}
+</style>
+</head>
+<body>
+<h1>P2-L-2.5.1 — Debug: Voltage Spikes and Protection</h1>
+<div class="subtitle">V_spike = L×I₀/t_off · TVS clamp voltage · energy dissipated in protection device · MOSFET safe operating limit</div>
+<div class="layout">
+  <div class="panel controls">
+    <label>Inductance L (µH): <span class="val" id="lLbl">100 µH</span></label>
+    <input type="range" id="lSlider" min="1" max="1000" value="100" step="1">
+    <label>Steady-state Current I₀ (mA): <span class="val" id="iLbl">500 mA</span></label>
+    <input type="range" id="iSlider" min="10" max="5000" value="500" step="10">
+    <label>Switch-off Time t_off (ns): <span class="val" id="toffLbl">100 ns</span></label>
+    <input type="range" id="toffSlider" min="1" max="1000" value="100" step="1">
+    <label>Supply Voltage V_supply (V): <span class="val" id="vsLbl">12 V</span></label>
+    <input type="range" id="vsSlider" min="3" max="48" value="12" step="1">
+    <label>TVS Clamp Voltage V_clamp (V):</label>
+    <select id="tvsSel">
+      <option value="0">None (no protection)</option>
+      <option value="15">15 V TVS</option>
+      <option value="20">20 V TVS</option>
+      <option value="30">30 V TVS</option>
+      <option value="40">40 V TVS</option>
+      <option value="58">58 V TVS (near MOSFET limit)</option>
+    </select>
+    <div class="readouts">
+      <div class="readout-row"><span class="readout-label">V_spike (unprotected)</span><span class="readout-val" id="vspike">—</span></div>
+      <div class="readout-row"><span class="readout-label">V_spike (with TVS)</span><span class="readout-val" id="vprotected">—</span></div>
+      <div class="readout-row"><span class="readout-label">Energy E = ½LI²</span><span class="readout-val" id="energy">—</span></div>
+      <div class="readout-row"><span class="readout-label">MOSFET V_DS limit (60 V)</span><span class="readout-val" id="safety">—</span></div>
+      <div class="readout-row"><span class="readout-label">E in TVS (dissipated)</span><span class="readout-val" id="etvs">—</span></div>
+    </div>
+    <div class="eq">V_spike = L × I₀ / t_off<br>E = ½ × L × I₀²<br>TVS clamps at V_clamp<br>E_TVS ≈ E × V_clamp / V_spike</div>
+  </div>
+  <div class="panel viz">
+    <canvas id="cv" width="580" height="420"></canvas>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const W = 580, H = 420;
+const MOSFET_LIMIT = 60;
+
+function getP() {
+  const L = parseFloat(document.getElementById('lSlider').value) * 1e-6;
+  const I0 = parseFloat(document.getElementById('iSlider').value) * 1e-3;
+  const toff = parseFloat(document.getElementById('toffSlider').value) * 1e-9;
+  const Vs = parseFloat(document.getElementById('vsSlider').value);
+  const Vclamp = parseFloat(document.getElementById('tvsSel').value);
+  return { L, I0, toff, Vs, Vclamp };
+}
+
+function fmtV(v) {
+  if (v >= 1e3) return (v / 1e3).toFixed(1) + ' kV';
+  return v.toFixed(1) + ' V';
+}
+function fmtE(e) {
+  if (e >= 1e-3) return (e * 1e3).toFixed(3) + ' mJ';
+  if (e >= 1e-6) return (e * 1e6).toFixed(2) + ' µJ';
+  return (e * 1e9).toFixed(1) + ' nJ';
+}
+
+function draw() {
+  const p = getP();
+  const Vspike = p.L * p.I0 / p.toff;
+  const E = 0.5 * p.L * p.I0 * p.I0;
+  const Veff = p.Vclamp > 0 ? Math.min(Vspike, p.Vclamp) : Vspike;
+  const safe = (p.Vs + Veff) < MOSFET_LIMIT;
+  const Etvs = p.Vclamp > 0 ? E * Math.min(1, p.Vclamp / Vspike) : 0;
+
+  document.getElementById('lLbl').textContent = (p.L * 1e6).toFixed(0) + ' µH';
+  document.getElementById('iLbl').textContent = (p.I0 * 1000).toFixed(0) + ' mA';
+  document.getElementById('toffLbl').textContent = (p.toff * 1e9).toFixed(0) + ' ns';
+  document.getElementById('vsLbl').textContent = p.Vs.toFixed(0) + ' V';
+  document.getElementById('vspike').textContent = fmtV(Vspike + p.Vs);
+
+  const protEl = document.getElementById('vprotected');
+  if (p.Vclamp > 0) {
+    protEl.textContent = fmtV(p.Vs + p.Vclamp);
+    protEl.className = 'readout-val';
+  } else {
+    protEl.textContent = 'No protection';
+    protEl.className = 'readout-val warn';
+  }
+
+  document.getElementById('energy').textContent = fmtE(E);
+  const safeEl = document.getElementById('safety');
+  const totalV = p.Vs + (p.Vclamp > 0 ? p.Vclamp : Vspike);
+  safeEl.textContent = totalV.toFixed(1) + ' V — ' + (totalV < MOSFET_LIMIT ? 'SAFE' : 'DANGER!');
+  safeEl.className = 'readout-val' + (totalV < MOSFET_LIMIT ? '' : ' warn');
+  document.getElementById('etvs').textContent = p.Vclamp > 0 ? fmtE(Etvs) : '—';
+
+  ctx.clearRect(0, 0, W, H);
+
+  const pad = { l: 70, r: 20, t: 40, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  // Time axis: show the switch-off event
+  const tTotal = p.toff * 20;
+  const tSwitch = p.toff * 4; // switch event happens at t=4*toff
+  const Vmax = Math.max(Vspike + p.Vs, MOSFET_LIMIT + 10, p.Vclamp + p.Vs + 5) * 1.15;
+  const Vmin = 0;
+
+  function tx(t) { return pad.l + (t / tTotal) * pw; }
+  function ty(v) { return pad.t + ph - ((v - Vmin) / (Vmax - Vmin)) * ph; }
+
+  // Grid
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  const nGridV = 5;
+  for (let g = 0; g <= nGridV; g++) {
+    const Vv = Vmin + (Vmax - Vmin) * g / nGridV;
+    const yi = ty(Vv);
+    ctx.beginPath(); ctx.moveTo(pad.l, yi); ctx.lineTo(pad.l + pw, yi); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(fmtV(Vv), pad.l - 4, yi + 4);
+  }
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t + ph); ctx.lineTo(pad.l + pw, pad.t + ph); ctx.stroke();
+
+  // V_supply reference
+  ctx.strokeStyle = '#444c56'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.moveTo(pad.l, ty(p.Vs)); ctx.lineTo(pad.l + pw, ty(p.Vs)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#8b949e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('V_supply = ' + p.Vs + ' V', pad.l + 4, ty(p.Vs) - 4);
+
+  // MOSFET V_DS limit line
+  ctx.strokeStyle = '#f85149'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 3]);
+  ctx.beginPath(); ctx.moveTo(pad.l, ty(MOSFET_LIMIT)); ctx.lineTo(pad.l + pw, ty(MOSFET_LIMIT)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#f85149'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('V_DS_max = ' + MOSFET_LIMIT + ' V (60V MOSFET)', pad.l + pw - 4, ty(MOSFET_LIMIT) - 4);
+
+  // Clamp line (if TVS selected)
+  if (p.Vclamp > 0) {
+    ctx.strokeStyle = '#39d353'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(pad.l, ty(p.Vs + p.Vclamp)); ctx.lineTo(pad.l + pw, ty(p.Vs + p.Vclamp)); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#39d353'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText('V_clamp = ' + (p.Vs + p.Vclamp).toFixed(0) + ' V', pad.l + pw - 4, ty(p.Vs + p.Vclamp) + 14);
+  }
+
+  // Unprotected voltage waveform (red spike)
+  const spikeV = Math.min(p.Vs + Vspike, Vmax * 0.95);
+  ctx.strokeStyle = '#f85149'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(pad.l, ty(p.Vs));
+  ctx.lineTo(tx(tSwitch), ty(p.Vs)); // flat at V_supply
+  // spike up
+  ctx.lineTo(tx(tSwitch + p.toff * 0.1), ty(spikeV * 0.5));
+  ctx.lineTo(tx(tSwitch + p.toff * 0.3), ty(spikeV));
+  ctx.lineTo(tx(tSwitch + p.toff * 0.6), ty(p.Vs + Vspike * 0.3));
+  ctx.lineTo(tx(tSwitch + p.toff * 1.0), ty(p.Vs));
+  ctx.lineTo(tx(tSwitch + p.toff * 2.0), ty(p.Vs * 0.5));
+  ctx.lineTo(tx(tSwitch + p.toff * 4.0), ty(0));
+  ctx.lineTo(tx(tTotal), ty(0));
+  ctx.stroke();
+
+  if (p.Vclamp > 0) {
+    // Clamped waveform (green)
+    const clampedV = p.Vs + p.Vclamp;
+    ctx.strokeStyle = '#39d353'; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(pad.l, ty(p.Vs));
+    ctx.lineTo(tx(tSwitch), ty(p.Vs));
+    ctx.lineTo(tx(tSwitch + p.toff * 0.1), ty(clampedV * 0.9));
+    ctx.lineTo(tx(tSwitch + p.toff * 0.3), ty(clampedV)); // clipped flat
+    ctx.lineTo(tx(tSwitch + p.toff * 0.8), ty(clampedV));
+    ctx.lineTo(tx(tSwitch + p.toff * 1.5), ty(p.Vs * 0.7));
+    ctx.lineTo(tx(tSwitch + p.toff * 3.0), ty(0));
+    ctx.lineTo(tx(tTotal), ty(0));
+    ctx.stroke();
+    ctx.fillStyle = '#39d353'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('With TVS: clamped', tx(tSwitch + p.toff * 0.9), ty(clampedV) + 14);
+  }
+
+  // Switch event marker
+  ctx.strokeStyle = '#e3b341'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.moveTo(tx(tSwitch), pad.t); ctx.lineTo(tx(tSwitch), pad.t + ph); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#e3b341'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('SWITCH OFF', tx(tSwitch), pad.t + 14);
+
+  // Spike annotation
+  const spikeX = tx(tSwitch + p.toff * 0.3);
+  if (ty(spikeV) > pad.t) {
+    ctx.fillStyle = '#f85149'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('V_spike = ' + fmtV(p.Vs + Vspike), spikeX + 4, ty(spikeV) - 6);
+  }
+
+  // Legend
+  ctx.fillStyle = '#f85149'; ctx.font = '11px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('Unprotected (DANGER)', pad.l + pw - 4, pad.t + 30);
+  if (p.Vclamp > 0) {
+    ctx.fillStyle = '#39d353';
+    ctx.fillText('With TVS clamp (SAFE)', pad.l + pw - 4, pad.t + 46);
+  }
+
+  ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Time (t_off = ' + (p.toff * 1e9).toFixed(0) + ' ns)', pad.l + pw / 2, H - 8);
+  ctx.save(); ctx.translate(16, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = '#8b949e'; ctx.fillText('Voltage at Switch Drain', 0, 0); ctx.restore();
+  ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Inductive Voltage Spike — Switch Node Voltage vs Time', W / 2, 20);
+}
+
+['lSlider', 'iSlider', 'toffSlider', 'vsSlider', 'tvsSel'].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener(id === 'tvsSel' ? 'change' : 'input', draw);
+});
+draw();
+</script>
+</body>
+</html>

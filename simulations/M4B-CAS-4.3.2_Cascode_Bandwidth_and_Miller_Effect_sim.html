@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CAS-4.3.2 — Cascode Bandwidth and Miller Effect</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#4d9fff;--green:#00cc66;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CAS-4.3.2</div>
+  <h1>Cascode — Bandwidth and Miller Effect</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Amplifier Parameters</h2>
+      <label>g_m,M1 (mA/V): <b id="gm1_l">2.0</b> <input type="range" id="gm1" min="0.1" max="10" value="2.0" step="0.1"></label>
+      <label>g_m,M2/g_m,M1: <b id="gmr_l">1.0</b> <input type="range" id="gmr" min="0.2" max="3" value="1.0" step="0.05"></label>
+      <label>r_o (kΩ, per device): <b id="ro_l">200</b> <input type="range" id="ro" min="10" max="2000" value="200" step="10"></label>
+      <label>C_gs,M1 (fF): <b id="cgs_l">200</b> <input type="range" id="cgs" min="20" max="1000" value="200" step="10"></label>
+      <label>C_gd,M1 (fF): <b id="cgd_l">50</b> <input type="range" id="cgd" min="5" max="300" value="50" step="5"></label>
+      <label>R_source (Ω): <b id="rs_l">500</b> <input type="range" id="rs" min="50" max="10000" value="500" step="50"></label>
+      <label>C_L (pF): <b id="cl_l">2.0</b> <input type="range" id="cl" min="0.1" max="20" value="2.0" step="0.1"></label>
+
+      <div class="ro">C_in CS (Miller): <span id="cin_cs">--</span> fF</div>
+      <div class="ro g">C_in Cascode: <span id="cin_cas">--</span> fF</div>
+      <div class="ro">f_p,in CS: <span id="fpin_cs">--</span> MHz</div>
+      <div class="ro g">f_p,in Cascode: <span id="fpin_cas">--</span> MHz</div>
+      <div class="ro">GBW (same for both): <span id="gbw">--</span> MHz</div>
+      <div class="ro">BW improvement: <span id="bw_imp">--</span> ×</div>
+
+      <div class="insight" id="insight_box">Adjust to compare CS vs cascode bandwidth.</div>
+    </div>
+
+    <div class="card">
+      <h2>Bode Plot: CS vs Cascode (Input Pole)</h2>
+      <canvas id="cv" height="320"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const gm1 = +document.getElementById('gm1').value * 1e-3;
+    const gmr = +document.getElementById('gmr').value;
+    const ro  = +document.getElementById('ro').value  * 1e3;
+    const Cgs = +document.getElementById('cgs').value * 1e-15;
+    const Cgd = +document.getElementById('cgd').value * 1e-15;
+    const Rs  = +document.getElementById('rs').value;
+    const CL  = +document.getElementById('cl').value  * 1e-12;
+
+    document.getElementById('gm1_l').textContent = (gm1*1e3).toFixed(1);
+    document.getElementById('gmr_l').textContent = gmr.toFixed(2);
+    document.getElementById('ro_l').textContent  = (ro/1e3).toFixed(0);
+    document.getElementById('cgs_l').textContent = (Cgs/1e-15).toFixed(0);
+    document.getElementById('cgd_l').textContent = (Cgd/1e-15).toFixed(0);
+    document.getElementById('rs_l').textContent  = Rs.toFixed(0);
+    document.getElementById('cl_l').textContent  = (CL/1e-12).toFixed(1);
+
+    const gm2 = gm1 * gmr;
+    const Av_cs  = gm1 * ro; // simple CS gain
+    const Av_cas = gm1 * (gm2 * ro * ro); // cascode gain
+
+    // Input capacitance
+    const Cin_cs  = Cgs + Cgd * (1 + Av_cs);
+    const Cin_cas = Cgs + Cgd * (1 + gm1/gm2);
+
+    // Input pole
+    const fpin_cs  = 1 / (2 * Math.PI * Rs * Cin_cs);
+    const fpin_cas = 1 / (2 * Math.PI * Rs * Cin_cas);
+
+    // GBW (same)
+    const GBW = gm1 / (2 * Math.PI * CL);
+
+    // Cascode internal pole
+    const Cint = Cgs * 0.3; // ~C_sb,M2 + C_gs,M2 estimates as 30% of Cgs for simplicity
+    const fp_int = gm2 / (2 * Math.PI * Cint);
+
+    const bw_imp = fpin_cas / fpin_cs;
+
+    document.getElementById('cin_cs').textContent  = (Cin_cs/1e-15).toFixed(0);
+    document.getElementById('cin_cas').textContent = (Cin_cas/1e-15).toFixed(0);
+    document.getElementById('fpin_cs').textContent  = (fpin_cs/1e6).toFixed(2);
+    document.getElementById('fpin_cas').textContent = (fpin_cas/1e6).toFixed(2);
+    document.getElementById('gbw').textContent     = (GBW/1e6).toFixed(1);
+    document.getElementById('bw_imp').textContent  = bw_imp.toFixed(1);
+
+    document.getElementById('insight_box').textContent =
+      'Miller C reduction: ' + (Cin_cs/1e-15).toFixed(0) + ' fF → ' + (Cin_cas/1e-15).toFixed(0) + ' fF (' +
+      bw_imp.toFixed(1) + '× improvement). GBW = ' + (GBW/1e6).toFixed(1) + ' MHz (invariant). ' +
+      'Cascode internal pole ≈ ' + (fp_int/1e9).toFixed(2) + ' GHz — ' +
+      (fp_int > 5*GBW ? 'well above GBW.' : 'potentially close to GBW!');
+
+    draw(gm1, gm2, ro, Cgs, Cgd, Rs, CL, Av_cs, Av_cas, fpin_cs, fpin_cas, GBW, fp_int);
+  }
+
+  function draw(gm1, gm2, ro, Cgs, Cgd, Rs, CL, Av_cs, Av_cas, fpin_cs, fpin_cas, GBW, fp_int){
+    const cv  = document.getElementById('cv');
+    const W   = cv.parentElement.clientWidth - 36;
+    cv.width = W; cv.height = 320;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, W, 320);
+
+    const isDark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+    const axCol  = isDark ? '#8899bb' : '#8888aa';
+
+    const pL=50, pT=14, pB=36, pH=320-pT-pB, pW=W-pL-10;
+
+    // Frequency range: 100 Hz to 100 GHz
+    const fMin_log = 2, fMax_log = 11;
+
+    // Gain range
+    const Av_cs_dB  = 20*Math.log10(Av_cs);
+    const Av_cas_dB = 20*Math.log10(Av_cas);
+    const gMin = -20, gMax = Math.max(Av_cas_dB + 10, 20);
+
+    function xPos(f){ return pL + ((Math.log10(f) - fMin_log)/(fMax_log-fMin_log)) * pW; }
+    function yPos(dB){ return pT + pH - ((dB - gMin)/(gMax - gMin)) * pH; }
+
+    // Axes
+    ctx.strokeStyle = axCol; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pL, pT); ctx.lineTo(pL, pT+pH); ctx.lineTo(pL+pW, pT+pH); ctx.stroke();
+
+    // Grid
+    for(let dB = Math.ceil(gMin/20)*20; dB <= Math.floor(gMax/20)*20; dB += 20){
+      const y = yPos(dB);
+      if(y < pT || y > pT+pH) continue;
+      ctx.fillStyle = axCol; ctx.font = '8px system-ui'; ctx.textAlign = 'right';
+      ctx.fillText(dB, pL-3, y+3);
+      ctx.strokeStyle = axCol+'22'; ctx.lineWidth=0.5;
+      ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pW,y); ctx.stroke();
+    }
+    [1e2,1e3,1e4,1e5,1e6,1e7,1e8,1e9,1e10,1e11].forEach(f=>{
+      const x = xPos(f);
+      const lbl = f>=1e9?(f/1e9).toFixed(0)+'G':f>=1e6?(f/1e6).toFixed(0)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f.toFixed(0);
+      ctx.fillStyle = axCol; ctx.font = '8px system-ui'; ctx.textAlign = 'center';
+      ctx.fillText(lbl, x, pT+pH+14);
+      ctx.strokeStyle = axCol+'22'; ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(x, pT); ctx.lineTo(x, pT+pH); ctx.stroke();
+    });
+    ctx.textAlign = 'left';
+
+    // Transfer function: |H_CS(f)| = Av_cs / sqrt(1 + (f/fpin_cs)^2)
+    // Transfer function: |H_cas(f)| = Av_cas / sqrt(1 + (f/fpin_cas)^2) / sqrt(1 + (f/fp_int)^2)
+    // Both roll off at GBW: at GBW, gain = 1
+    function H_cs_dB(f){ return 20*Math.log10(Av_cs) - 10*Math.log10(1+(f/fpin_cs)**2); }
+    function H_cas_dB(f){ return 20*Math.log10(Av_cas) - 10*Math.log10(1+(f/fpin_cas)**2) - 10*Math.log10(1+(f/fp_int)**2); }
+
+    // CS curve
+    ctx.strokeStyle = '#cc4400'; ctx.lineWidth = 1.8; ctx.setLineDash([]);
+    ctx.beginPath(); let first = true;
+    for(let px=0; px<=pW; px++){
+      const f = Math.pow(10, fMin_log + (px/pW)*(fMax_log-fMin_log));
+      const dB = H_cs_dB(f);
+      const y = yPos(dB);
+      if(y < pT-8 || y > pT+pH+8){ first=true; continue; }
+      first ? ctx.moveTo(pL+px, y) : ctx.lineTo(pL+px, y);
+      first = false;
+    }
+    ctx.stroke();
+
+    // Cascode curve
+    ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2;
+    ctx.beginPath(); first = true;
+    for(let px=0; px<=pW; px++){
+      const f = Math.pow(10, fMin_log + (px/pW)*(fMax_log-fMin_log));
+      const dB = H_cas_dB(f);
+      const y = yPos(dB);
+      if(y < pT-8 || y > pT+pH+8){ first=true; continue; }
+      first ? ctx.moveTo(pL+px, y) : ctx.lineTo(pL+px, y);
+      first = false;
+    }
+    ctx.stroke();
+
+    // GBW line
+    const xGBW = xPos(GBW);
+    ctx.strokeStyle = '#00994d88'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(xGBW, pT); ctx.lineTo(xGBW, pT+pH); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#00994d'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('GBW', xGBW, pT+pH+26);
+
+    // 0 dB line
+    const y0 = yPos(0);
+    ctx.strokeStyle = axCol+'55'; ctx.lineWidth=0.5; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(pL, y0); ctx.lineTo(pL+pW, y0); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Annotations for f_p,in
+    [fpin_cs, fpin_cas].forEach((fp, i)=>{
+      if(fp < Math.pow(10,fMin_log) || fp > Math.pow(10,fMax_log)) return;
+      const x = xPos(fp);
+      const col = i === 0 ? '#cc4400' : '#0066cc';
+      ctx.strokeStyle = col + '88'; ctx.lineWidth=1; ctx.setLineDash([2,3]);
+      ctx.beginPath(); ctx.moveTo(x, pT); ctx.lineTo(x, pT+pH); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = col; ctx.font = '8px system-ui'; ctx.textAlign = 'center';
+      ctx.fillText(i===0?'f_p CS':'f_p Cas', x, pT+(i===0?20:34));
+    });
+
+    // Legend
+    ctx.fillStyle = '#cc4400'; ctx.lineWidth=1.8;
+    ctx.beginPath(); ctx.moveTo(pL+pW-130, pT+10); ctx.lineTo(pL+pW-110, pT+10); ctx.stroke();
+    ctx.fillStyle = axCol; ctx.font = '9px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText('CS (Miller)', pL+pW-106, pT+14);
+    ctx.strokeStyle = '#0066cc'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(pL+pW-130, pT+26); ctx.lineTo(pL+pW-110, pT+26); ctx.stroke();
+    ctx.fillText('Cascode', pL+pW-106, pT+30);
+
+    ctx.textAlign = 'center'; ctx.fillStyle=axCol; ctx.font='9px system-ui';
+    ctx.fillText('Frequency →', pL+pW/2, pT+pH+28);
+    ctx.save(); ctx.translate(12, pT+pH/2); ctx.rotate(-Math.PI/2);
+    ctx.fillText('Gain (dB) →', 0, 0); ctx.restore();
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e => e.addEventListener('input', compute));
+  compute();
+  window.addEventListener('resize', compute);
+</script>
+</body>
+</html>

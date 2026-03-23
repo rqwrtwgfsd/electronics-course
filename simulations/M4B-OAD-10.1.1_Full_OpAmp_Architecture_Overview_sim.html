@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-OAD-10.1.1 — Full Op-Amp Architecture Overview Simulator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; }
+  header { background: #1a1d2e; padding: 16px 24px; border-bottom: 2px solid #3a7bd5; }
+  header h1 { font-size: 1.15rem; color: #7eb3ff; font-weight: 600; }
+  header p { font-size: 0.8rem; color: #888; margin-top: 3px; }
+  .tabs { display: flex; background: #13151f; border-bottom: 1px solid #2a2d3e; }
+  .tab { padding: 11px 22px; cursor: pointer; font-size: 0.85rem; color: #888; border-bottom: 2px solid transparent; transition: all .2s; }
+  .tab.active { color: #7eb3ff; border-bottom-color: #3a7bd5; background: #1a1d2e; }
+  .tab:hover:not(.active) { color: #ccc; background: #1a1d2e55; }
+  .panel { display: none; padding: 20px 24px; }
+  .panel.active { display: block; }
+  .row { display: flex; gap: 20px; flex-wrap: wrap; }
+  .card { background: #1a1d2e; border: 1px solid #2a2d3e; border-radius: 8px; padding: 16px; flex: 1; min-width: 280px; }
+  .card h3 { font-size: 0.85rem; color: #7eb3ff; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .slider-row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+  .slider-row label { font-size: 0.78rem; color: #aaa; width: 190px; flex-shrink: 0; }
+  .slider-row input[type=range] { flex: 1; accent-color: #3a7bd5; }
+  .slider-row span { font-size: 0.78rem; color: #7eb3ff; width: 75px; text-align: right; }
+  canvas { display: block; width: 100%; border-radius: 6px; background: #12141e; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 8px; margin-top: 12px; }
+  .metric { background: #12141e; border: 1px solid #2a2d3e; border-radius: 6px; padding: 8px 12px; }
+  .metric .label { font-size: 0.7rem; color: #888; }
+  .metric .value { font-size: 1.05rem; color: #4ecdc4; font-weight: 700; margin-top: 2px; }
+  .metric .value.warn { color: #f6ad55; }
+  .metric .value.bad  { color: #fc8181; }
+  .metric .value.good { color: #68d391; }
+  .info-box { background: #12141e; border-left: 3px solid #3a7bd5; padding: 10px 14px; border-radius: 0 6px 6px 0; margin-top: 10px; font-size: 0.78rem; color: #bbb; line-height: 1.6; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #aaa; }
+  .legend-dot { width: 14px; height: 3px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>M4B-OAD-10.1.1 — Full Op-Amp Architecture: Gain, Poles, and Phase Margin</h1>
+  <p>Three-stage op-amp Bode plot, pole allocation, and stability analysis</p>
+</header>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">Bode Plot & Stability</div>
+  <div class="tab" onclick="showTab(1)">Gain Allocation</div>
+  <div class="tab" onclick="showTab(2)">Specification Checker</div>
+</div>
+
+<!-- TAB 0: Bode Plot & Stability -->
+<div class="panel active" id="tab0">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:310px;">
+      <h3>Op-Amp Parameters</h3>
+      <div class="slider-row"><label>gm1 (µA/V)</label><input type="range" id="t0_gm1" min="50" max="5000" step="50" value="500"><span id="v_t0_gm1">500</span></div>
+      <div class="slider-row"><label>gm6 (mA/V)</label><input type="range" id="t0_gm6" min="0.1" max="20" step="0.1" value="2"><span id="v_t0_gm6">2.0</span></div>
+      <div class="slider-row"><label>Cc (pF)</label><input type="range" id="t0_Cc" min="0.1" max="20" step="0.1" value="2"><span id="v_t0_Cc">2.0</span></div>
+      <div class="slider-row"><label>CL (pF)</label><input type="range" id="t0_CL" min="0.5" max="200" step="0.5" value="10"><span id="v_t0_CL">10.0</span></div>
+      <div class="slider-row"><label>Rout1 (kΩ)</label><input type="range" id="t0_Ro1" min="10" max="2000" step="10" value="100"><span id="v_t0_Ro1">100</span></div>
+      <div class="slider-row"><label>Rout2 (kΩ)</label><input type="range" id="t0_Ro2" min="10" max="2000" step="10" value="100"><span id="v_t0_Ro2">100</span></div>
+      <div class="metrics" style="grid-template-columns:1fr 1fr;">
+        <div class="metric"><div class="label">GBW</div><div class="value" id="m0_GBW">—</div></div>
+        <div class="metric"><div class="label">fp1 (after Miller)</div><div class="value" id="m0_fp1">—</div></div>
+        <div class="metric"><div class="label">fp2 (Stage 2 out)</div><div class="value" id="m0_fp2">—</div></div>
+        <div class="metric"><div class="label">Av1 × Av2 (dB)</div><div class="value" id="m0_Av">—</div></div>
+        <div class="metric"><div class="label">Phase Margin</div><div class="value" id="m0_PM">—</div></div>
+        <div class="metric"><div class="label">Stable?</div><div class="value" id="m0_stable">—</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Open-Loop Bode Plot (Gain + Phase)</h3>
+      <canvas id="c_bode" height="360"></canvas>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#4ecdc4;"></div>Gain (dB)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f6ad55;"></div>Phase (°)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#3a7bd5;"></div>0 dB crossing (GBW)</div>
+      </div>
+      <div class="info-box">
+        Two-stage op-amp (no output buffer shown). After Miller compensation: fp1 = gm1/(2π·Av2·Cc) — very low.
+        fp2 = gm6/(2π·CL) — the non-dominant pole.
+        Phase margin = 90° − arctan(GBW/fp2) − arctan(GBW/fp1) ≈ 90° − arctan(GBW/fp2) when fp1 ≪ GBW.
+        PM ≥ 60°: GBW ≤ fp2/tan(30°) = fp2/0.577.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: Gain Allocation -->
+<div class="panel" id="tab1">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:310px;">
+      <h3>Gain Budget</h3>
+      <div class="slider-row"><label>Required total Av (dB)</label><input type="range" id="t1_Avtot" min="40" max="120" step="1" value="80"><span id="v_t1_Avtot">80</span></div>
+      <div class="slider-row"><label>gm1 (µA/V)</label><input type="range" id="t1_gm1" min="50" max="5000" step="50" value="500"><span id="v_t1_gm1">500</span></div>
+      <div class="slider-row"><label>Rout1 (kΩ)</label><input type="range" id="t1_Ro1" min="10" max="2000" step="10" value="100"><span id="v_t1_Ro1">100</span></div>
+      <div class="slider-row"><label>gm6 (mA/V)</label><input type="range" id="t1_gm6" min="0.1" max="20" step="0.1" value="2"><span id="v_t1_gm6">2.0</span></div>
+      <div class="slider-row"><label>Rout2 (kΩ)</label><input type="range" id="t1_Ro2" min="10" max="2000" step="10" value="100"><span id="v_t1_Ro2">100</span></div>
+      <div class="metrics" style="grid-template-columns:1fr;">
+        <div class="metric"><div class="label">Av1 = gm1·Rout1</div><div class="value" id="m1_Av1">—</div></div>
+        <div class="metric"><div class="label">Av2 = gm6·Rout2</div><div class="value" id="m1_Av2">—</div></div>
+        <div class="metric"><div class="label">Total Av</div><div class="value" id="m1_Avt">—</div></div>
+        <div class="metric"><div class="label">Gap to target</div><div class="value warn" id="m1_gap">—</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Gain Budget Waterfall Chart</h3>
+      <canvas id="c_gain" height="350"></canvas>
+      <div class="info-box">
+        The waterfall chart shows each stage's gain contribution building up to the total.
+        Stage 1 is limited by gm1·Rout1. Stage 2 by gm6·Rout2. The output buffer contributes ~0 dB.
+        Increase Rout by using cascode loads. Increase gm by increasing bias current (costs power).
+        If total gain is still insufficient, consider a gain-boosted cascode or a third gain stage.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: Specification Checker -->
+<div class="panel" id="tab2">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:310px;">
+      <h3>Op-Amp Specification</h3>
+      <div class="slider-row"><label>Required Av (dB)</label><input type="range" id="t2_Av_req" min="40" max="120" step="1" value="80"><span id="v_t2_Av_req">80</span></div>
+      <div class="slider-row"><label>Required GBW (MHz)</label><input type="range" id="t2_GBW_req" min="1" max="1000" step="1" value="10"><span id="v_t2_GBW_req">10</span></div>
+      <div class="slider-row"><label>Required PM (°)</label><input type="range" id="t2_PM_req" min="30" max="80" step="1" value="60"><span id="v_t2_PM_req">60</span></div>
+      <div class="slider-row"><label>Required SR (V/µs)</label><input type="range" id="t2_SR_req" min="1" max="500" step="1" value="20"><span id="v_t2_SR_req">20</span></div>
+      <div class="slider-row"><label>Required Vn (nV/√Hz)</label><input type="range" id="t2_Vn_req" min="1" max="50" step="0.5" value="10"><span id="v_t2_Vn_req">10.0</span></div>
+      <div class="slider-row"><label>Power budget (mW)</label><input type="range" id="t2_Pwr" min="0.01" max="10" step="0.01" value="1"><span id="v_t2_Pwr">1.00</span></div>
+      <div class="slider-row"><label>VDD (V)</label><input type="range" id="t2_VDD" min="0.8" max="5" step="0.1" value="1.8"><span id="v_t2_VDD">1.8</span></div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Specification Feasibility Dashboard</h3>
+      <canvas id="c_spec" height="350"></canvas>
+      <div class="info-box">
+        Each bar shows how close the spec target comes to a practical single-stage 5T OTA or two-stage op-amp limit.
+        Green = easily achievable. Yellow = requires careful design. Red = very challenging, may need advanced topology.
+        Key constraints: SR = 2π×GBW×Vov, Vn = √(16kT×0.7/gm1), power = VDD×ISS.
+        Meeting all specs simultaneously may require topology decisions (rail-to-rail, chopper, gain boosting).
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const kB=1.38e-23, T=300;
+
+function fmtHz(f) {
+  if(f>=1e9) return (f/1e9).toFixed(2)+'GHz';
+  if(f>=1e6) return (f/1e6).toFixed(1)+'MHz';
+  if(f>=1e3) return (f/1e3).toFixed(1)+'kHz';
+  return f.toFixed(0)+'Hz';
+}
+function dB(x) { return 20*Math.log10(Math.max(Math.abs(x),1e-12)); }
+
+// ─── TAB 0: Bode Plot ─────────────────────────────────────────────────────
+function updateTab0() {
+  const gm1 = parseFloat(document.getElementById('t0_gm1').value)*1e-6;
+  const gm6 = parseFloat(document.getElementById('t0_gm6').value)*1e-3;
+  const Cc  = parseFloat(document.getElementById('t0_Cc').value)*1e-12;
+  const CL  = parseFloat(document.getElementById('t0_CL').value)*1e-12;
+  const Ro1 = parseFloat(document.getElementById('t0_Ro1').value)*1e3;
+  const Ro2 = parseFloat(document.getElementById('t0_Ro2').value)*1e3;
+
+  document.getElementById('v_t0_gm1').textContent = (gm1*1e6).toFixed(0);
+  document.getElementById('v_t0_gm6').textContent = (gm6*1e3).toFixed(1);
+  document.getElementById('v_t0_Cc').textContent  = (Cc*1e12).toFixed(1);
+  document.getElementById('v_t0_CL').textContent  = (CL*1e12).toFixed(1);
+  document.getElementById('v_t0_Ro1').textContent = (Ro1/1e3).toFixed(0);
+  document.getElementById('v_t0_Ro2').textContent = (Ro2/1e3).toFixed(0);
+
+  const GBW  = gm1/(2*Math.PI*Cc);
+  const Av1  = gm1*Ro1;
+  const Av2  = gm6*Ro2;
+  const Av   = Av1*Av2;
+  const fp1  = 1/(2*Math.PI*Ro1*Cc*(1+Av2)); // with Miller effect
+  const fp2  = gm6/(2*Math.PI*CL);
+  const PM   = 90 - Math.atan(GBW/fp2)*180/Math.PI;
+
+  document.getElementById('m0_GBW').textContent   = fmtHz(GBW);
+  document.getElementById('m0_fp1').textContent   = fmtHz(fp1);
+  document.getElementById('m0_fp2').textContent   = fmtHz(fp2);
+  document.getElementById('m0_Av').textContent    = dB(Av).toFixed(0)+' dB';
+  const pmEl = document.getElementById('m0_PM');
+  pmEl.textContent = PM.toFixed(1)+'°';
+  pmEl.className = 'value ' + (PM>=60?'good':PM>=45?'warn':'bad');
+  const stEl = document.getElementById('m0_stable');
+  stEl.textContent = PM>=45 ? 'Yes' : 'No';
+  stEl.className = 'value ' + (PM>=45?'good':'bad');
+
+  const cv = document.getElementById('c_bode');
+  const ctx = cv.getContext('2d');
+  const W=cv.clientWidth*devicePixelRatio||600, H=360;
+  cv.width=W; cv.height=H;
+
+  const pad={l:55,r:20,t:25,b:35};
+  const fMin=1e2, fMax=1e11;
+  const gMax = Math.ceil(dB(Av)/20)*20+20;
+  const gMin = -40;
+  const px = f => pad.l + (Math.log10(f)-Math.log10(fMin))/(Math.log10(fMax)-Math.log10(fMin))*(W-pad.l-pad.r);
+  const pyG = g => H/2 - pad.t/2 - (g-gMin)/(gMax-gMin)*(H/2-pad.t-10);
+  const pyPh= p => H - pad.b - (p+200)/(360)*(H/2-pad.b-10);
+
+  ctx.fillStyle='#12141e'; ctx.fillRect(0,0,W,H);
+  // divider
+  ctx.strokeStyle='#2a2d3e'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(0,H/2); ctx.lineTo(W,H/2); ctx.stroke();
+
+  // Grid gain
+  ctx.strokeStyle='#1e2136'; ctx.lineWidth=0.8;
+  for(let g=gMin;g<=gMax;g+=20) {
+    const y=pyG(g);
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(W-pad.r,y); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='right';
+    ctx.fillText(g+'dB',pad.l-3,y+3);
+  }
+  for(let e=2;e<=11;e++) {
+    const f=Math.pow(10,e);
+    ctx.beginPath(); ctx.moveTo(px(f),pad.t); ctx.lineTo(px(f),H-pad.b); ctx.stroke();
+    if(e<=10){ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='center'; ctx.fillText(fmtHz(f),px(f),H-pad.b+12);}
+  }
+
+  // 0dB line on gain half
+  const y0=pyG(0);
+  if(y0>pad.t && y0<H/2) {
+    ctx.strokeStyle='#555'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(pad.l,y0); ctx.lineTo(W-pad.r,y0); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='right'; ctx.fillText('0dB',pad.l-3,y0+3);
+  }
+
+  // Transfer function: A(s) = (gm1*Ro1) * (gm6*Ro2) / ((1+s/ωp1)(1+s/ωp2))
+  const ωp1 = 2*Math.PI*fp1, ωp2 = 2*Math.PI*fp2;
+  const ptsG=[], ptsPh=[];
+  for(let i=0;i<=500;i++) {
+    const f=Math.pow(10, Math.log10(fMin)+i/500*(Math.log10(fMax)-Math.log10(fMin)));
+    const ω=2*Math.PI*f;
+    const mag = Av / Math.sqrt(1+Math.pow(ω/ωp1,2)) / Math.sqrt(1+Math.pow(ω/ωp2,2));
+    const ph  = -Math.atan(ω/ωp1)*180/Math.PI - Math.atan(ω/ωp2)*180/Math.PI;
+    const gv = Math.max(gMin, Math.min(gMax, dB(mag)));
+    const pv = Math.max(-200, Math.min(0, ph));
+    ptsG.push([px(f), pyG(gv)]);
+    ptsPh.push([px(f), pyPh(pv)]);
+  }
+  ctx.strokeStyle='#4ecdc4'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(ptsG[0][0],ptsG[0][1]);
+  ptsG.forEach(p=>ctx.lineTo(p[0],p[1])); ctx.stroke();
+
+  ctx.strokeStyle='#f6ad55'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(ptsPh[0][0],ptsPh[0][1]);
+  ptsPh.forEach(p=>ctx.lineTo(p[0],p[1])); ctx.stroke();
+
+  // GBW marker
+  if(GBW>=fMin && GBW<=fMax) {
+    ctx.strokeStyle='#3a7bd5'; ctx.lineWidth=1.5; ctx.setLineDash([5,3]);
+    ctx.beginPath(); ctx.moveTo(px(GBW),pad.t); ctx.lineTo(px(GBW),H-pad.b); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#3a7bd5'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+    ctx.fillText('GBW', px(GBW)+3, pad.t+12);
+  }
+  // fp2 marker
+  if(fp2>=fMin && fp2<=fMax) {
+    ctx.strokeStyle='#888'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(px(fp2),pad.t); ctx.lineTo(px(fp2),H-pad.b); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#888'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+    ctx.fillText('fp2', px(fp2)+3, pad.t+24);
+  }
+
+  // PM annotation
+  ctx.fillStyle='#fc8181'; ctx.font='11px bold sans-serif'; ctx.textAlign='right';
+  ctx.fillText('PM='+PM.toFixed(0)+'°', W-pad.r-5, pyPh(-180)+16);
+  ctx.strokeStyle='#fc8181'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(pad.l, pyPh(-180)); ctx.lineTo(W-pad.r, pyPh(-180)); ctx.stroke(); ctx.setLineDash([]);
+}
+
+// ─── TAB 1: Gain Allocation ────────────────────────────────────────────────
+function updateTab1() {
+  const Avtot = parseFloat(document.getElementById('t1_Avtot').value);
+  const gm1   = parseFloat(document.getElementById('t1_gm1').value)*1e-6;
+  const Ro1   = parseFloat(document.getElementById('t1_Ro1').value)*1e3;
+  const gm6   = parseFloat(document.getElementById('t1_gm6').value)*1e-3;
+  const Ro2   = parseFloat(document.getElementById('t1_Ro2').value)*1e3;
+
+  document.getElementById('v_t1_Avtot').textContent= Avtot.toFixed(0);
+  document.getElementById('v_t1_gm1').textContent  = (gm1*1e6).toFixed(0);
+  document.getElementById('v_t1_Ro1').textContent  = (Ro1/1e3).toFixed(0);
+  document.getElementById('v_t1_gm6').textContent  = (gm6*1e3).toFixed(1);
+  document.getElementById('v_t1_Ro2').textContent  = (Ro2/1e3).toFixed(0);
+
+  const Av1 = gm1*Ro1, Av2 = gm6*Ro2, Avt = Av1*Av2;
+  const Av1_dB = dB(Av1), Av2_dB = dB(Av2), Avt_dB = dB(Avt);
+  const gap = Avtot - Avt_dB;
+
+  document.getElementById('m1_Av1').textContent = Av1_dB.toFixed(1)+' dB';
+  document.getElementById('m1_Av2').textContent = Av2_dB.toFixed(1)+' dB';
+  const avEl = document.getElementById('m1_Avt');
+  avEl.textContent = Avt_dB.toFixed(1)+' dB';
+  avEl.className = 'value ' + (Avt_dB >= Avtot ? 'good' : Avt_dB >= Avtot-10 ? 'warn' : 'bad');
+  const gEl = document.getElementById('m1_gap');
+  gEl.textContent = gap > 0 ? '+'+gap.toFixed(1)+'dB needed' : 'Exceeds by '+Math.abs(gap).toFixed(1)+'dB';
+  gEl.className = 'value ' + (gap <= 0 ? 'good' : gap <= 10 ? 'warn' : 'bad');
+
+  const cv = document.getElementById('c_gain');
+  const ctx = cv.getContext('2d');
+  const W=cv.clientWidth*devicePixelRatio||600, H=350;
+  cv.width=W; cv.height=H;
+  ctx.fillStyle='#12141e'; ctx.fillRect(0,0,W,H);
+
+  const yMax = Math.max(Avt_dB, Avtot)*1.1;
+  const pad={l:55,r:20,t:30,b:40};
+  const totalH=H-pad.t-pad.b;
+  const py = v => H - pad.b - (v/yMax)*totalH;
+
+  ctx.strokeStyle='#1e2136'; ctx.lineWidth=1;
+  for(let y=0; y<=yMax; y+=20) {
+    ctx.beginPath(); ctx.moveTo(pad.l,py(y)); ctx.lineTo(W-pad.r,py(y)); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='right';
+    ctx.fillText(y+'dB', pad.l-3, py(y)+3);
+  }
+
+  // Waterfall bars
+  const barW = (W-pad.l-pad.r)/5;
+  const stages = [
+    {label:'Start', val:0, base:0, color:'#333'},
+    {label:'Stage 1\ngm1·Ro1', val:Av1_dB, base:0, color:'#4ecdc4'},
+    {label:'+ Stage 2\ngm6·Ro2', val:Av2_dB, base:Av1_dB, color:'#3a7bd5'},
+    {label:'+ Buffer\n≈0dB', val:0, base:Av1_dB+Av2_dB, color:'#555'},
+    {label:'Total', val:Avt_dB, base:0, color: Avt_dB>=Avtot?'#68d391':'#fc8181'},
+  ];
+
+  stages.forEach((s,i) => {
+    const x = pad.l + i*barW + barW*0.1;
+    const bw = barW*0.7;
+    if(s.val <= 0 && s.base === 0) {
+      ctx.fillStyle='#333'; ctx.fillRect(x, py(1), bw, 2);
+    } else {
+      const yTop = py(s.base + s.val);
+      const yBot = py(s.base);
+      ctx.fillStyle = s.color;
+      ctx.fillRect(x, Math.min(yTop,yBot), bw, Math.abs(yBot-yTop));
+      ctx.fillStyle='#eee'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+      ctx.fillText((s.base+s.val).toFixed(0)+'dB', x+bw/2, Math.min(yTop,yBot)-4);
+    }
+    ctx.fillStyle='#aaa'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+    const lines = s.label.split('\n');
+    lines.forEach((l,li) => ctx.fillText(l, x+bw/2, H-pad.b+12+li*12));
+  });
+
+  // Target line
+  ctx.strokeStyle='#f6ad55'; ctx.lineWidth=1.5; ctx.setLineDash([5,4]);
+  ctx.beginPath(); ctx.moveTo(pad.l,py(Avtot)); ctx.lineTo(W-pad.r,py(Avtot)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#f6ad55'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('Target '+Avtot+'dB', pad.l+4, py(Avtot)-4);
+}
+
+// ─── TAB 2: Spec Checker ──────────────────────────────────────────────────
+function updateTab2() {
+  const Av_req  = parseFloat(document.getElementById('t2_Av_req').value);
+  const GBW_req = parseFloat(document.getElementById('t2_GBW_req').value)*1e6;
+  const PM_req  = parseFloat(document.getElementById('t2_PM_req').value);
+  const SR_req  = parseFloat(document.getElementById('t2_SR_req').value)*1e6;
+  const Vn_req  = parseFloat(document.getElementById('t2_Vn_req').value)*1e-9;
+  const Pwr_max = parseFloat(document.getElementById('t2_Pwr').value)*1e-3;
+  const VDD     = parseFloat(document.getElementById('t2_VDD').value);
+
+  document.getElementById('v_t2_Av_req').textContent = Av_req.toFixed(0);
+  document.getElementById('v_t2_GBW_req').textContent= (GBW_req/1e6).toFixed(0);
+  document.getElementById('v_t2_PM_req').textContent = PM_req.toFixed(0);
+  document.getElementById('v_t2_SR_req').textContent = (SR_req/1e6).toFixed(0);
+  document.getElementById('v_t2_Vn_req').textContent = (Vn_req*1e9).toFixed(1);
+  document.getElementById('v_t2_Pwr').textContent    = (Pwr_max*1e3).toFixed(2);
+  document.getElementById('v_t2_VDD').textContent    = VDD.toFixed(1);
+
+  // Check feasibility
+  const ISS_budget = Pwr_max / VDD;
+  const Vov_nom = 0.12;
+  const gm1_budget = ISS_budget / Vov_nom;
+  const GBW_achievable_1stage = gm1_budget / (2*Math.PI*1e-12); // for CL=1pF as reference
+  const Vn_achievable = Math.sqrt(16*kB*T*0.7/gm1_budget)*1e9;
+  const SR_achievable = ISS_budget / 2e-12 * 1e-6; // ISS/Cc at Cc=2pF
+  // Gain from 2-stage: Av = (gm1 * ro_est) * (gm6 * ro_est) with ro≈100kΩ
+  const Av_achievable_dB = 2*20*Math.log10(gm1_budget * 100e3);
+
+  const checks = [
+    {
+      label: 'DC Gain',
+      req: Av_req,
+      ach: Av_achievable_dB,
+      note: Av_req+'dB req, '+Av_achievable_dB.toFixed(0)+'dB est',
+      units: 'dB'
+    },
+    {
+      label: 'Phase Margin',
+      req: PM_req,
+      ach: 60, // typical achievable with good design
+      note: PM_req+'° required',
+      units: '°'
+    },
+    {
+      label: 'Noise',
+      req: 1/(Vn_req*1e9), // higher is better
+      ach: 1/Vn_achievable,
+      note: Vn_req*1e9+'nV/√Hz req, '+Vn_achievable.toFixed(1)+' est',
+      units: '1/nV'
+    },
+    {
+      label: 'Slew Rate',
+      req: SR_req/1e6,
+      ach: SR_achievable,
+      note: (SR_req/1e6).toFixed(0)+'V/µs req',
+      units: 'V/µs'
+    },
+  ];
+
+  const cv = document.getElementById('c_spec');
+  const ctx = cv.getContext('2d');
+  const W=cv.clientWidth*devicePixelRatio||600, H=350;
+  cv.width=W; cv.height=H;
+  ctx.fillStyle='#12141e'; ctx.fillRect(0,0,W,H);
+
+  const barW = (W-80)/(checks.length+1);
+  const pad={l:50,r:20,t:30,b:60};
+  const totalH=H-pad.t-pad.b;
+  const yMax=3;
+  const py = v => H-pad.b-(Math.min(v,yMax)/yMax)*totalH;
+
+  ctx.strokeStyle='#1e2136'; ctx.lineWidth=1;
+  for(let v=0;v<=yMax;v+=0.5) {
+    ctx.beginPath(); ctx.moveTo(pad.l,py(v)); ctx.lineTo(W-pad.r,py(v)); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='right';
+    ctx.fillText(v.toFixed(1)+'×', pad.l-3, py(v)+3);
+  }
+
+  // 1.0 line
+  ctx.strokeStyle='#68d391'; ctx.lineWidth=1.5; ctx.setLineDash([5,4]);
+  ctx.beginPath(); ctx.moveTo(pad.l,py(1)); ctx.lineTo(W-pad.r,py(1)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#68d391'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('Meets spec', pad.l+4, py(1)-4);
+
+  checks.forEach((c,i) => {
+    const ratio = c.ach / c.req;
+    const x = pad.l + (i+0.5)*barW + barW*0.1;
+    const bw = barW*0.7;
+    const bh = (Math.min(ratio,yMax)/yMax)*totalH;
+    const yTop = H-pad.b-bh;
+    const color = ratio>=1.5 ? '#68d391' : ratio>=1.0 ? '#f6ad55' : '#fc8181';
+    ctx.fillStyle=color; ctx.fillRect(x, yTop, bw, bh);
+    ctx.fillStyle='#eee'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(ratio.toFixed(1)+'×', x+bw/2, yTop-4);
+    ctx.fillStyle='#aaa'; ctx.font='9px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(c.label, x+bw/2, H-pad.b+14);
+    ctx.fillStyle='#666'; ctx.font='8px sans-serif';
+    ctx.fillText(c.note, x+bw/2, H-pad.b+26);
+  });
+}
+
+function showTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
+  if(n===0) updateTab0(); else if(n===1) updateTab1(); else updateTab2();
+}
+function wire(ids,fn){ ids.forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('input',fn);}); }
+wire(['t0_gm1','t0_gm6','t0_Cc','t0_CL','t0_Ro1','t0_Ro2'], updateTab0);
+wire(['t1_Avtot','t1_gm1','t1_Ro1','t1_gm6','t1_Ro2'], updateTab1);
+wire(['t2_Av_req','t2_GBW_req','t2_PM_req','t2_SR_req','t2_Vn_req','t2_Pwr','t2_VDD'], updateTab2);
+window.addEventListener('load', () => updateTab0());
+window.addEventListener('resize', () => {
+  const a=document.querySelector('.panel.active');
+  if(a) showTab(['tab0','tab1','tab2'].indexOf(a.id));
+});
+</script>
+</body>
+</html>

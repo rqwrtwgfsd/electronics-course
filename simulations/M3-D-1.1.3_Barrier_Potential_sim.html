@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M3-D-1.1.3 Barrier Potential Calculator</title>
+<style>
+  :root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--accent:#0066cc;--accent2:#58a6ff;--text:#e6edf3;--subtext:#8b949e;--green:#3fb950;--red:#f85149;--orange:#d29922;}
+  @media(prefers-color-scheme:light){:root{--bg:#fff;--surface:#f6f8fa;--border:#d0d7de;--accent:#0066cc;--accent2:#0969da;--text:#24292f;--subtext:#57606a;--green:#1a7f37;--red:#d1242f;--orange:#9a6700;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;padding:20px;}
+  h1{color:var(--accent2);font-size:1.3rem;margin-bottom:4px;}
+  .subtitle{color:var(--subtext);font-size:0.85rem;margin-bottom:16px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;}
+  .card h2{font-size:0.95rem;color:var(--accent2);margin-bottom:12px;}
+  canvas{display:block;width:100%;border-radius:6px;}
+  .controls{display:flex;flex-direction:column;gap:10px;}
+  label{font-size:0.82rem;color:var(--subtext);}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .readout{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;font-family:monospace;font-size:0.83rem;}
+  .ro{display:flex;justify-content:space-between;margin-bottom:5px;}
+  .ro span:last-child{color:var(--accent2);font-weight:bold;}
+  .hl{color:var(--green)!important;}
+  .bar-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+  .bar-label{font-size:0.82rem;width:80px;flex-shrink:0;}
+  .bar-track{flex:1;height:22px;background:var(--bg);border:1px solid var(--border);border-radius:4px;overflow:hidden;}
+  .bar-fill{height:100%;border-radius:4px;display:flex;align-items:center;padding-left:6px;font-size:0.78rem;font-weight:bold;color:#fff;transition:width 0.3s;}
+  .bar-val{font-size:0.82rem;width:55px;text-align:right;font-family:monospace;}
+</style>
+</head>
+<body>
+<h1>M3-D-1.1.3 — Barrier Potential Calculator</h1>
+<p class="subtitle">V_bi for Si, Ge, and Schottky — with doping and temperature effects</p>
+<div class="grid">
+  <div class="card">
+    <h2>V_bi Comparison Bar Chart</h2>
+    <div id="bars" style="padding:8px 0;">
+      <div class="bar-row"><span class="bar-label">Silicon</span><div class="bar-track"><div class="bar-fill" id="bSi" style="background:#0066cc;width:70%">0.70 V</div></div><span class="bar-val" id="vSi">0.70V</span></div>
+      <div class="bar-row"><span class="bar-label">Germanium</span><div class="bar-track"><div class="bar-fill" id="bGe" style="background:#d29922;width:30%">0.30V</div></div><span class="bar-val" id="vGe">0.30V</span></div>
+      <div class="bar-row"><span class="bar-label">Schottky</span><div class="bar-track"><div class="bar-fill" id="bSch" style="background:#3fb950;width:35%">0.35V</div></div><span class="bar-val" id="vSch">0.35V</span></div>
+      <div class="bar-row"><span class="bar-label">GaAs Sch.</span><div class="bar-track"><div class="bar-fill" id="bGaAs" style="background:#f85149;width:75%">0.75V</div></div><span class="bar-val" id="vGaAs">0.75V</span></div>
+    </div>
+    <canvas id="tempCanvas" height="160"></canvas>
+  </div>
+  <div class="card">
+    <h2>Controls</h2>
+    <div class="controls">
+      <div>
+        <label>N_A (×10¹⁵ cm⁻³): <strong id="naLbl">100</strong></label>
+        <input type="range" id="naS" min="1" max="1000" value="100">
+      </div>
+      <div>
+        <label>N_D (×10¹⁵ cm⁻³): <strong id="ndLbl">100</strong></label>
+        <input type="range" id="ndS" min="1" max="1000" value="100">
+      </div>
+      <div>
+        <label>Temperature T: <strong id="tLbl">300 K (27°C)</strong></label>
+        <input type="range" id="tS" min="250" max="450" value="300" step="5">
+      </div>
+      <div>
+        <label>Schottky barrier height φ_B (eV): <strong id="phiLbl">0.35</strong></label>
+        <input type="range" id="phiS" min="20" max="90" value="35" step="1">
+      </div>
+    </div>
+    <div class="readout" style="margin-top:12px;">
+      <div class="ro"><span>N_A / N_D</span><span id="ro_na">—</span></div>
+      <div class="ro"><span>Temperature</span><span id="ro_t">—</span></div>
+      <div class="ro"><span>V_T = kT/q</span><span id="ro_vt">—</span></div>
+      <div class="ro"><span>ni (Si)</span><span id="ro_ni_si">—</span></div>
+      <div class="ro"><span>ni (Ge)</span><span id="ro_ni_ge">—</span></div>
+      <div class="ro hl"><span>V_bi Si</span><span id="ro_si" class="hl">—</span></div>
+      <div class="ro"><span>V_bi Ge</span><span id="ro_ge">—</span></div>
+      <div class="ro"><span>Schottky V_bi ≈ φ_B</span><span id="ro_sch">—</span></div>
+      <div class="ro"><span>dV_bi/dT (Si)</span><span id="ro_tc">—</span></div>
+    </div>
+  </div>
+</div>
+<script>
+const k=1.381e-23, q_e=1.602e-19;
+
+function ni_si(T){
+  const ni300=1.5e10;
+  return ni300*Math.pow(T/300,1.5)*Math.exp(-1.12*q_e/(2*k)*(1/T-1/300));
+}
+function ni_ge(T){
+  const ni300=2.4e13;
+  return ni300*Math.pow(T/300,1.5)*Math.exp(-0.67*q_e/(2*k)*(1/T-1/300));
+}
+function Vbi(NA,ND,ni){ const VT=k*300/q_e; const a=NA*ND/(ni*ni); return a>1?VT*Math.log(a):0; }
+function Vbi_T(NA,ND,ni,T){ const VT=k*T/q_e; const a=NA*ND/(ni*ni); return a>1?VT*Math.log(a):0; }
+
+function fmtSci(v){ const e=Math.floor(Math.log10(Math.abs(v))); return `${(v/Math.pow(10,e)).toFixed(2)}×10^${e}`; }
+
+const tC=document.getElementById('tempCanvas');
+const tx=tC.getContext('2d');
+
+function resize(){ tC.width=tC.offsetWidth*devicePixelRatio; tC.height=160*devicePixelRatio; tx.scale(devicePixelRatio,devicePixelRatio); draw(); }
+
+function draw(){
+  const NA=parseFloat(document.getElementById('naS').value)*1e15;
+  const ND=parseFloat(document.getElementById('ndS').value)*1e15;
+  const T=parseFloat(document.getElementById('tS').value);
+  const phi=parseFloat(document.getElementById('phiS').value)/100;
+
+  document.getElementById('naLbl').textContent=parseFloat(document.getElementById('naS').value);
+  document.getElementById('ndLbl').textContent=parseFloat(document.getElementById('ndS').value);
+  document.getElementById('tLbl').textContent=`${T} K (${T-273}°C)`;
+  document.getElementById('phiLbl').textContent=phi.toFixed(2);
+
+  const VT=k*T/q_e;
+  const niSi=ni_si(T), niGe=ni_ge(T);
+  const vSi=Vbi_T(NA,ND,niSi,T);
+  const vGe=Vbi_T(NA,ND,niGe,T);
+  const vSch=phi; // Schottky barrier = phi_B
+  const vGaAs=0.75; // approximate fixed
+
+  // Temperature coefficient (numerical dV/dT)
+  const dT=1;
+  const vSi2=Vbi_T(NA,ND,ni_si(T+dT),T+dT);
+  const tc=(vSi2-vSi)/dT*1000; // mV/°C
+
+  document.getElementById('ro_na').textContent=`${fmtSci(NA)} / ${fmtSci(ND)} cm⁻³`;
+  document.getElementById('ro_t').textContent=`${T} K`;
+  document.getElementById('ro_vt').textContent=`${(VT*1000).toFixed(2)} mV`;
+  document.getElementById('ro_ni_si').textContent=`${fmtSci(niSi)} cm⁻³`;
+  document.getElementById('ro_ni_ge').textContent=`${fmtSci(niGe)} cm⁻³`;
+  document.getElementById('ro_si').textContent=`${vSi.toFixed(3)} V`;
+  document.getElementById('ro_ge').textContent=`${vGe.toFixed(3)} V`;
+  document.getElementById('ro_sch').textContent=`${vSch.toFixed(2)} V`;
+  document.getElementById('ro_tc').textContent=`${tc.toFixed(2)} mV/°C`;
+
+  // Update bars
+  const maxV=1.4;
+  function setBar(id,val,valId){
+    document.getElementById(id).style.width=Math.min(val/maxV*100,100)+'%';
+    document.getElementById(id).textContent=val.toFixed(2)+'V';
+    document.getElementById(valId).textContent=val.toFixed(3)+'V';
+  }
+  setBar('bSi',vSi,'vSi'); setBar('bGe',vGe,'vGe'); setBar('bSch',vSch,'vSch'); setBar('bGaAs',vGaAs,'vGaAs');
+
+  drawTempCurve(tC.width/devicePixelRatio,160,NA,ND,T);
+}
+
+function drawTempCurve(W,H,NA,ND,Tcur){
+  tx.clearRect(0,0,W,H);
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const pad={l:40,r:10,t:20,b:30};
+  const pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
+  const Tmin=250, Tmax=450;
+
+  // Axes
+  tx.strokeStyle=isDark?'#444':'#ccc'; tx.lineWidth=1;
+  tx.strokeRect(pad.l,pad.t,pw,ph);
+
+  // Grid
+  for(let i=1;i<4;i++){
+    tx.beginPath(); tx.moveTo(pad.l,pad.t+ph*i/4); tx.lineTo(pad.l+pw,pad.t+ph*i/4);
+    tx.strokeStyle=isDark?'#222':'#eee'; tx.stroke();
+  }
+
+  // Si curve
+  tx.strokeStyle='#0066cc'; tx.lineWidth=2; tx.beginPath();
+  for(let i=0;i<=pw;i++){
+    const T=Tmin+(Tmax-Tmin)*i/pw;
+    const v=Vbi_T(NA,ND,ni_si(T),T);
+    const y=pad.t+ph*(1-v/1.2);
+    if(i===0) tx.moveTo(pad.l+i,y); else tx.lineTo(pad.l+i,y);
+  }
+  tx.stroke();
+
+  // Ge curve
+  tx.strokeStyle='#d29922'; tx.lineWidth=2; tx.beginPath();
+  for(let i=0;i<=pw;i++){
+    const T=Tmin+(Tmax-Tmin)*i/pw;
+    const v=Vbi_T(NA,ND,ni_ge(T),T);
+    const y=pad.t+ph*(1-v/1.2);
+    if(i===0) tx.moveTo(pad.l+i,y); else tx.lineTo(pad.l+i,y);
+  }
+  tx.stroke();
+
+  // Current T marker
+  const xT=(Tcur-Tmin)/(Tmax-Tmin)*pw;
+  tx.strokeStyle='#f85149'; tx.lineWidth=1; tx.setLineDash([3,3]);
+  tx.beginPath(); tx.moveTo(pad.l+xT,pad.t); tx.lineTo(pad.l+xT,pad.t+ph); tx.stroke();
+  tx.setLineDash([]);
+
+  // Labels
+  tx.fillStyle=isDark?'#888':'#666'; tx.font='10px system-ui';
+  tx.textAlign='center'; tx.fillText('Temperature (K)',pad.l+pw/2,H-3);
+  tx.fillText(Tmin,pad.l,pad.t+ph+12); tx.fillText(Tmax,pad.l+pw,pad.t+ph+12);
+  tx.textAlign='left';
+  tx.fillStyle='#0066cc'; tx.fillText('Si',pad.l+pw-20,pad.t+12);
+  tx.fillStyle='#d29922'; tx.fillText('Ge',pad.l+pw-20,pad.t+24);
+  tx.fillStyle=isDark?'#888':'#666'; tx.fillText('V_bi vs T',pad.l+4,pad.t+12);
+}
+
+document.querySelectorAll('input[type=range]').forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',resize);
+resize();
+</script>
+</body>
+</html>

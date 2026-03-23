@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-FLT-3.3.2 MFB Topology</title>
+<style>
+  :root{--bg:#f5f5f5;--panel:#fff;--text:#1a1a1a;--muted:#666;--border:#ddd;
+    --a:#2563eb;--a2:#16a34a;--a3:#dc2626;--a4:#9333ea;--a5:#ea580c;
+    --cb:#fafafa;--gr:#e5e7eb;--hi:#fef9c3;--tb:#bfdbfe;}
+  @media(prefers-color-scheme:dark){:root{
+    --bg:#0f1117;--panel:#1e2130;--text:#e8eaf0;--muted:#8892a4;--border:#2d3348;
+    --a:#60a5fa;--a2:#4ade80;--a3:#f87171;--a4:#c084fc;--a5:#fb923c;
+    --cb:#161926;--gr:#2d3348;--hi:#2d2a0f;--tb:#3b82f6;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px;}
+  h1{font-size:16px;font-weight:700;padding:12px 18px;border-bottom:1px solid var(--border);background:var(--panel);}
+  h1 span{color:var(--muted);font-size:13px;font-weight:400;margin-left:8px;}
+  .layout{display:flex;height:calc(100vh - 47px);}
+  .left{width:285px;background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
+  .right{flex:1;display:flex;flex-direction:column;padding:10px;gap:8px;overflow:hidden;}
+  .sec{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:10px;}
+  .sec h3{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;}
+  label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:3px;}
+  label span{font-weight:600;color:var(--a);}
+  input[type=range]{width:100%;accent-color:var(--a);cursor:pointer;margin-bottom:5px;}
+  select{width:100%;padding:5px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);font-size:12px;margin-bottom:5px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+  .card{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;}
+  .card .lb{font-size:10px;color:var(--muted);text-transform:uppercase;}
+  .card .vl{font-size:12px;font-weight:700;font-family:monospace;color:var(--a);margin-top:2px;}
+  .card.g .vl{color:var(--a2);}
+  .card.r .vl{color:var(--a3);}
+  .card.p .vl{color:var(--a4);}
+  canvas{display:block;border-radius:6px;background:var(--cb);border:1px solid var(--border);width:100%;}
+  .tip{background:var(--hi);border:1px solid var(--tb);border-radius:6px;padding:8px;font-size:11px;line-height:1.5;}
+</style>
+</head>
+<body>
+<h1>M4A-FLT-3.3.2 — Multiple Feedback (MFB) Topology <span>MFB vs Sallen-Key: gain, Q accuracy, noise gain</span></h1>
+<div class="layout">
+<div class="left">
+
+  <div class="sec">
+    <h3>Design Preset</h3>
+    <select id="preset" onchange="applyPreset()">
+      <option value="butter_unity">Butterworth, Gain=-1</option>
+      <option value="butter_gain">Butterworth, Gain=-10</option>
+      <option value="high_q">High-Q (Q=3)</option>
+      <option value="low_freq">Low-Frequency 10 Hz</option>
+    </select>
+  </div>
+
+  <div class="sec">
+    <h3>MFB Components</h3>
+    <label>R1 (kΩ) <span id="lbl_r1">22.5</span></label>
+    <input type="range" id="r1" min="1" max="1000" value="22.5" step="0.5" oninput="update()">
+    <label>R2 (kΩ) <span id="lbl_r2">22.5</span></label>
+    <input type="range" id="r2" min="1" max="1000" value="22.5" step="0.5" oninput="update()">
+    <label>C1 (nF) <span id="lbl_c1">10</span></label>
+    <input type="range" id="c1" min="0.1" max="1000" value="10" step="0.1" oninput="update()">
+    <label>C2 (nF) <span id="lbl_c2">10</span></label>
+    <input type="range" id="c2" min="0.1" max="1000" value="10" step="0.1" oninput="update()">
+  </div>
+
+  <div class="sec">
+    <h3>Comparison</h3>
+    <label style="font-size:11px;">Show Sallen-Key overlay (same fp)</label>
+    <input type="checkbox" id="show_sk" onchange="update()" style="width:auto;margin-bottom:0;">
+  </div>
+
+  <div class="sec">
+    <h3>Computed Values</h3>
+    <div class="grid2">
+      <div class="card"><div class="lb">ωn</div><div class="vl" id="r_wn">—</div></div>
+      <div class="card g"><div class="lb">fp</div><div class="vl" id="r_fp">—</div></div>
+      <div class="card p"><div class="lb">Q factor</div><div class="vl" id="r_q">—</div></div>
+      <div class="card r"><div class="lb">Midband Gain</div><div class="vl" id="r_gain">—</div></div>
+      <div class="card"><div class="lb">Noise Gain @HF</div><div class="vl" id="r_ng">—</div></div>
+      <div class="card"><div class="lb">Response</div><div class="vl" id="r_type">—</div></div>
+    </div>
+  </div>
+
+  <div class="tip" id="tip">MFB inverts signal. Two stages restore polarity.</div>
+
+</div>
+<div class="right">
+  <canvas id="c_bode" style="flex:3;"></canvas>
+  <canvas id="c_compare" style="flex:2;"></canvas>
+</div>
+</div>
+<script>
+function applyPreset(){
+  const p=document.getElementById('preset').value;
+  const m={
+    butter_unity: {r1:22.5,r2:22.5,c1:10,c2:10},
+    butter_gain:  {r1:2.25,r2:22.5,c1:10,c2:10},
+    high_q:       {r1:5,r2:180,c1:10,c2:10},
+    low_freq:     {r1:1000,r2:1000,c1:15,c2:15},
+  };
+  const s=m[p];
+  document.getElementById('r1').value=s.r1;
+  document.getElementById('r2').value=s.r2;
+  document.getElementById('c1').value=s.c1;
+  document.getElementById('c2').value=s.c2;
+  update();
+}
+
+function cv(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function getCtx(id){
+  const c=document.getElementById(id);
+  c.width=c.offsetWidth*devicePixelRatio;
+  c.height=c.offsetHeight*devicePixelRatio;
+  const ctx=c.getContext('2d');
+  ctx.scale(devicePixelRatio,devicePixelRatio);
+  ctx.W=c.offsetWidth;ctx.H=c.offsetHeight;
+  return ctx;
+}
+function fmtHz(f){
+  if(f>=1e6) return (f/1e6).toFixed(2)+' MHz';
+  if(f>=1e3) return (f/1e3).toFixed(1)+' kHz';
+  return f.toFixed(f>100?0:2)+' Hz';
+}
+
+function mfbGain_dB(f, R1, R2, C1, C2) {
+  // MFB LP: H(jw) = -(1/(R1C2)) / (jw)^2 + jw*(1/C2)*(1/R1+1/R2) + 1/(R1*R2*C1*C2))
+  // = -wn^2*Av / ((jw)^2 + jw*wn/Q + wn^2)  where Av = -R2/R1 at DC
+  const w=2*Math.PI*f;
+  const wn=1/Math.sqrt(R1*R2*C1*C2);
+  const Q=Math.sqrt(R1*R2*C1*C2)/(C2*(R1+R2));
+  const Av=-R2/R1;
+  const re=wn*wn-w*w;
+  const im=w*wn/Q;
+  const mag_H=wn*wn/Math.sqrt(re*re+im*im);
+  const total=Math.abs(Av)*mag_H;
+  return 20*Math.log10(Math.max(total,1e-10));
+}
+
+function skGainDB(f, wn, Q) {
+  const w=2*Math.PI*f;
+  const re=wn*wn-w*w;
+  const im=w*wn/Q;
+  return 20*Math.log10(Math.max(wn*wn/Math.sqrt(re*re+im*im),1e-10));
+}
+
+function update(){
+  const R1=parseFloat(document.getElementById('r1').value)*1e3;
+  const R2=parseFloat(document.getElementById('r2').value)*1e3;
+  const C1=parseFloat(document.getElementById('c1').value)*1e-9;
+  const C2=parseFloat(document.getElementById('c2').value)*1e-9;
+
+  document.getElementById('lbl_r1').textContent=parseFloat(document.getElementById('r1').value).toFixed(1);
+  document.getElementById('lbl_r2').textContent=parseFloat(document.getElementById('r2').value).toFixed(1);
+  document.getElementById('lbl_c1').textContent=parseFloat(document.getElementById('c1').value).toFixed(1);
+  document.getElementById('lbl_c2').textContent=parseFloat(document.getElementById('c2').value).toFixed(1);
+
+  const wn=1/Math.sqrt(R1*R2*C1*C2);
+  const Q=Math.sqrt(R1*R2*C1*C2)/(C2*(R1+R2));
+  const fn=wn/(2*Math.PI);
+  const Av_db=20*Math.log10(R2/R1);
+  const noise_gain_hf=1+R2/R1; // inverting amplifier noise gain
+
+  let f3db=fn;
+  let lo=fn*0.001,hi=fn*100;
+  for(let i=0;i<60;i++){
+    const m=Math.sqrt(lo*hi);
+    if(mfbGain_dB(m,R1,R2,C1,C2)>(Av_db-3)) lo=m; else hi=m;
+  }
+  f3db=Math.sqrt(lo*hi);
+
+  const type=Q<0.5?'Overdamped':Q<0.71?'Near-Butter':Q<2?'Underdamp':Q<5?'High-Q':'Very High-Q';
+
+  document.getElementById('r_wn').textContent=(wn/1000).toFixed(1)+'k';
+  document.getElementById('r_fp').textContent=fmtHz(f3db);
+  document.getElementById('r_q').textContent=Q.toFixed(3);
+  document.getElementById('r_gain').textContent='-'+(R2/R1).toFixed(1)+'× ('+Av_db.toFixed(1)+' dB)';
+  document.getElementById('r_ng').textContent=(noise_gain_hf).toFixed(1)+'×';
+  document.getElementById('r_type').textContent=type;
+
+  document.getElementById('tip').textContent=
+    Q>2
+    ?`High Q=${Q.toFixed(2)}: MFB preferred over SK here. SK would need op-amp gain exactly 1 within ${(1/Q/Q*100).toFixed(1)}% for this Q accuracy.`
+    :`MFB gain = -${(R2/R1).toFixed(1)}×, inverting. Two MFB stages in series → +${(R2/R1).toFixed(1)}× total. Noise gain at HF = ${noise_gain_hf.toFixed(1)}×.`;
+
+  drawBode(R1,R2,C1,C2,wn,Q,fn,Av_db,f3db);
+  drawCompare(Q,fn,Av_db);
+}
+
+function drawBode(R1,R2,C1,C2,wn,Q,fn,Av_db,f3db){
+  const ctx=getCtx('c_bode');
+  const W=ctx.W,H=ctx.H,pl=55,pr=18,pt=28,pb=34;
+  const pw=W-pl-pr,ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  const fMin=fn*0.01,fMax=fn*100;
+  const lMin=Math.log10(fMin),lMax=Math.log10(fMax);
+  const dbMin=-60,dbMax=Av_db+20;
+  const fx=f=>pl+(Math.log10(f)-lMin)/(lMax-lMin)*pw;
+  const fy=db=>pt+(1-(db-dbMin)/(dbMax-dbMin))*ph;
+
+  ctx.strokeStyle=cv('--gr');ctx.lineWidth=0.7;
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    if(x>=pl&&x<=pl+pw){ctx.beginPath();ctx.moveTo(x,pt);ctx.lineTo(x,pt+ph);ctx.stroke();}
+  }
+  for(let db=Math.ceil(dbMin/20)*20;db<=dbMax;db+=20){
+    const y=fy(db);
+    if(y>=pt&&y<=pt+ph){
+      ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+pw,y);ctx.stroke();
+      ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';ctx.fillText(db,2,y+4);
+    }
+  }
+
+  // -3 dB reference from Av_db
+  ctx.strokeStyle=cv('--a3');ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pl,fy(Av_db-3));ctx.lineTo(pl+pw,fy(Av_db-3));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=cv('--a3');ctx.font='10px system-ui';ctx.fillText('-3 dB',pl+2,fy(Av_db-3)-3);
+
+  // Sallen-Key overlay
+  if(document.getElementById('show_sk').checked){
+    ctx.strokeStyle=cv('--a5');ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+    ctx.beginPath();let first=true;
+    for(let i=0;i<=500;i++){
+      const lf=lMin+i/500*(lMax-lMin);
+      const f=Math.pow(10,lf);
+      const db=skGainDB(f,wn,Q); // unity gain SK
+      const x=pl+i/500*pw,y=fy(Math.max(dbMin,Math.min(dbMax,db)));
+      if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+    }
+    ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=cv('--a5');ctx.font='10px system-ui';ctx.fillText('SK (unity gain)',pl+pw-100,pt+26);
+  }
+
+  // MFB curve
+  ctx.strokeStyle=cv('--a');ctx.lineWidth=2.5;
+  ctx.beginPath();let first=true;
+  for(let i=0;i<=600;i++){
+    const lf=lMin+i/600*(lMax-lMin);
+    const f=Math.pow(10,lf);
+    const db=mfbGain_dB(f,R1,R2,C1,C2);
+    const x=pl+i/600*pw,y=fy(Math.max(dbMin,Math.min(dbMax,db)));
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // fn marker
+  const xfn=fx(fn);
+  ctx.strokeStyle=cv('--a2');ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(xfn,pt);ctx.lineTo(xfn,pt+ph);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=cv('--a2');ctx.font='10px system-ui';ctx.fillText('fn',xfn+3,pt+12);
+
+  // f3db marker
+  if(f3db>fMin&&f3db<fMax){
+    const xf3=fx(f3db);
+    ctx.fillStyle=cv('--a3');ctx.beginPath();ctx.arc(xf3,fy(Av_db-3),5,0,2*Math.PI);ctx.fill();
+    ctx.font='10px system-ui';ctx.fillText(fmtHz(f3db),xf3+4,fy(Av_db-3)-5);
+  }
+
+  ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    const f=Math.pow(10,d);
+    const l=f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f;
+    if(x>=pl&&x<=pl+pw)ctx.fillText(l,x-6,pt+ph+14);
+  }
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Gain (dB)',4,pt-8);
+  ctx.fillText('Frequency',pl+pw/2-30,H-2);
+  const qv=parseFloat(document.getElementById('r_q').textContent);
+  ctx.fillText('MFB Low-Pass — Gain='+(-R2/R1).toFixed(1)+'×, Q='+qv.toFixed(3),pl+4,pt-10);
+}
+
+function drawCompare(Q, fn, Av_db) {
+  const ctx=getCtx('c_compare');
+  const W=ctx.W,H=ctx.H,pl=18,pr=18,pt=30,pb=28;
+  const pw=W-pl-pr,ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('MFB vs Sallen-Key: Q Sensitivity to Op-Amp Gain Error',pl+2,pt-10);
+
+  // Show Q error as function of gain error for MFB vs SK
+  const gainErrors=[-5,-4,-3,-2,-1,0,1,2,3,4,5]; // percent gain error
+  const nE=gainErrors.length;
+  const barW=pw/(nE*3+2);
+  const maxErr=15; // max Q% error to show
+
+  gainErrors.forEach((ge,i)=>{
+    const x=pl+(i*3+1)*barW;
+    // SK: Q error ≈ Q × gain_error / (some coefficient)
+    const sk_dQ_pct=Math.abs(ge*Q*Q); // SK is very sensitive at high Q
+    const mfb_dQ_pct=Math.abs(ge*0.5); // MFB is less sensitive
+
+    // SK bar (red)
+    const sk_h=Math.min(sk_dQ_pct/maxErr,1)*ph*0.85;
+    ctx.fillStyle=cv('--a3')+'bb';
+    ctx.fillRect(x,pt+ph-sk_h,barW,sk_h);
+
+    // MFB bar (blue)
+    const mfb_h=Math.min(mfb_dQ_pct/maxErr,1)*ph*0.85;
+    ctx.fillStyle=cv('--a')+'bb';
+    ctx.fillRect(x+barW,pt+ph-mfb_h,barW,mfb_h);
+
+    // Label
+    ctx.fillStyle=cv('--muted');ctx.font='9px system-ui';
+    ctx.fillText((ge>0?'+':'')+ge+'%',x,pt+ph+12);
+  });
+
+  // Y axis
+  [0,5,10,15].forEach(pct=>{
+    const y=pt+ph-pct/maxErr*ph*0.85;
+    ctx.strokeStyle=cv('--gr');ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+pw,y);ctx.stroke();
+    ctx.fillStyle=cv('--muted');ctx.font='9px system-ui';
+    ctx.fillText(pct+'%',0,y+3);
+  });
+
+  ctx.fillStyle=cv('--a3');ctx.font='10px system-ui';
+  ctx.fillText('SK Q error',pl+pw-80,pt+20);
+  ctx.fillStyle=cv('--a');
+  ctx.fillText('MFB Q error',pl+pw-80,pt+32);
+  ctx.fillStyle=cv('--muted');
+  ctx.fillText('% Op-Amp Gain Error',pl+pw/2-60,H-2);
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('ΔQ/Q (%)',0,pt-8);
+}
+
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

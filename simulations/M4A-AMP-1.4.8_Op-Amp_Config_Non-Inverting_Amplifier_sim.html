@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.4.8 — Non-Inverting Amplifier Configuration</title>
+<style>
+  :root{--bg:#f5f5f5;--card:#fff;--text:#1a1a1a;--subtext:#555;--accent:#0066cc;--accent2:#cc3300;--accent3:#007744;--accent4:#aa5500;--border:#ccc;--grid:#ddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--card:#242424;--text:#e8e8e8;--subtext:#aaa;--accent:#4da6ff;--accent2:#ff6644;--accent3:#44cc88;--accent4:#ffaa44;--border:#444;--grid:#333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;line-height:1.6;}
+  header{background:var(--card);border-bottom:2px solid var(--accent);padding:18px 28px;}
+  header h1{font-size:1.2rem;font-weight:700;color:var(--accent);}
+  header p{font-size:0.85rem;color:var(--subtext);margin-top:3px;}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:20px;padding:20px;}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px;}
+  .card h2{font-size:0.95rem;font-weight:600;margin-bottom:4px;}
+  .card p.desc{font-size:0.80rem;color:var(--subtext);margin-bottom:10px;line-height:1.4;}
+  canvas{display:block;width:100%;border-radius:4px;}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;}
+  .ctrl{display:flex;flex-direction:column;font-size:0.78rem;color:var(--subtext);min-width:140px;}
+  .ctrl label{margin-bottom:3px;}
+  input[type=range]{accent-color:var(--accent);width:100%;}
+  .readout{font-size:0.82rem;color:var(--accent);font-weight:600;margin-top:2px;}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px;font-size:0.78rem;}
+  .leg{display:flex;align-items:center;gap:5px;}
+  .leg-dot{width:20px;height:3px;border-radius:2px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>M4A-AMP-1.4.8 — Non-Inverting Amplifier Configuration</h1>
+  <p>High-impedance input, positive gain, and the gain-bandwidth budget — interactive exploration</p>
+</header>
+<div class="grid">
+
+  <!-- Plot 1: Gain vs R2/R1 with BW overlay -->
+  <div class="card">
+    <h2>Gain and Bandwidth vs R2/R1 Ratio</h2>
+    <p class="desc">Acl = 1 + R2/R1. As gain increases, bandwidth decreases. The product Acl × f_3dB = GBW. The minimum gain is 1 (buffer). The gain and bandwidth trade exactly linearly on this log-log plot.</p>
+    <canvas id="c1" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>GBW (MHz): <span id="v1a" class="readout">10</span></label>
+        <input type="range" id="s1a" min="1" max="200" value="10" step="1">
+      </div>
+      <div class="ctrl">
+        <label>Operating R2/R1: <span id="v1b" class="readout">9</span></label>
+        <input type="range" id="s1b" min="0" max="999" value="9" step="0.1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Acl (gain)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> f_3dB (bandwidth)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3);opacity:0.3;height:8px"></div> GBW = const product</div>
+    </div>
+  </div>
+
+  <!-- Plot 2: Frequency response comparison: non-inv vs inv at same gain -->
+  <div class="card">
+    <h2>Non-Inverting vs Inverting: Bandwidth at Same Gain</h2>
+    <p class="desc">At the same gain magnitude, the non-inverting amplifier always has slightly wider bandwidth because its noise gain is 1 less than the inverting equivalent. This matters at low gains (2–10×).</p>
+    <canvas id="c2" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>|Gain| target: <span id="v2a" class="readout">10</span></label>
+        <input type="range" id="s2a" min="1" max="100" value="10" step="1">
+      </div>
+      <div class="ctrl">
+        <label>GBW (MHz): <span id="v2b" class="readout">10</span></label>
+        <input type="range" id="s2b" min="1" max="200" value="10" step="1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Non-inverting (NG = Acl)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2)"></div> Inverting (NG = 1 + Acl)</div>
+    </div>
+  </div>
+
+  <!-- Plot 3: Input impedance vs frequency -->
+  <div class="card">
+    <h2>Input Impedance vs Frequency</h2>
+    <p class="desc">Zin(f) = Zcm / (1 + 1/T(f)). At DC, loop gain boosts Zin by T. At the GBW frequency, T = 1 and Zin ≈ Zcm/2. Above GBW, Zin = Zcm (just the bare op-amp input). Drag to see the transition.</p>
+    <canvas id="c3" height="240"></canvas>
+    <div class="controls">
+      <div class="ctrl">
+        <label>Zcm (GΩ): <span id="v3a" class="readout">1</span></label>
+        <input type="range" id="s3a" min="0.001" max="100" value="1" step="0.001">
+      </div>
+      <div class="ctrl">
+        <label>GBW (MHz): <span id="v3b" class="readout">10</span></label>
+        <input type="range" id="s3b" min="1" max="200" value="10" step="1">
+      </div>
+      <div class="ctrl">
+        <label>Acl (gain): <span id="v3c" class="readout">1</span></label>
+        <input type="range" id="s3c" min="1" max="100" value="1" step="1">
+      </div>
+    </div>
+    <div class="legend">
+      <div class="leg"><div class="leg-dot" style="background:var(--accent)"></div> Zin,cl(f)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent2);opacity:0.5"></div> Zcm (bare op-amp)</div>
+      <div class="leg"><div class="leg-dot" style="background:var(--accent3)"></div> GBW marker</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function sc(id){const c=document.getElementById(id);const dpr=window.devicePixelRatio||1;return{canvas:c,resize:()=>{const w=c.clientWidth,h=c.clientHeight;c.width=w*dpr;c.height=h*dpr;const ctx=c.getContext('2d');ctx.scale(dpr,dpr);return{ctx,w,h};}};}
+
+function axes(ctx,w,h,pad,xL,yL,xT,yT){
+  ctx.clearRect(0,0,w,h);ctx.fillStyle=css('--card');ctx.fillRect(0,0,w,h);
+  const pw=w-pad.l-pad.r,ph=h-pad.t-pad.b;
+  ctx.strokeStyle=css('--grid');ctx.lineWidth=0.7;
+  xT.forEach(t=>{const x=pad.l+t.px*pw;ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();});
+  yT.forEach(t=>{const y=pad.t+ph-t.py*ph;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();});
+  ctx.strokeStyle=css('--text');ctx.lineWidth=1.5;ctx.strokeRect(pad.l,pad.t,pw,ph);
+  ctx.fillStyle=css('--subtext');ctx.font='10px system-ui';
+  ctx.textAlign='center';xT.forEach(t=>ctx.fillText(t.label,pad.l+t.px*pw,pad.t+ph+13));
+  ctx.textAlign='right';yT.forEach(t=>ctx.fillText(t.label,pad.l-4,pad.t+ph-t.py*ph+3.5));
+  ctx.fillStyle=css('--text');ctx.font='11px system-ui';ctx.textAlign='center';
+  ctx.fillText(xL,pad.l+pw/2,h-2);
+  ctx.save();ctx.translate(11,pad.t+ph/2);ctx.rotate(-Math.PI/2);ctx.fillText(yL,0,0);ctx.restore();
+  return{pw,ph};
+}
+
+// ─── Plot 1: Gain and BW vs R2/R1 ────────────────────────────────────────────
+const p1=sc('c1');
+function draw1(){
+  const {ctx,w,h}=p1.resize();
+  const GBW=parseFloat(document.getElementById('s1a').value)*1e6;
+  const r=parseFloat(document.getElementById('s1b').value);
+  document.getElementById('v1a').textContent=document.getElementById('s1a').value;
+  document.getElementById('v1b').textContent=r.toFixed(1);
+  const Acl_op=1+r;
+  const f3_op=GBW/Acl_op;
+
+  const pad={l:60,r:16,t:18,b:36};
+  const rMin=0.001,rMax=1000;
+  const AMin=1,AMax=1010;
+  const xTicks=[{v:0.01,px:Math.log10(0.01/rMin)/Math.log10(rMax/rMin),label:'0.01'},
+                {v:0.1,px:Math.log10(0.1/rMin)/Math.log10(rMax/rMin),label:'0.1'},
+                {v:1,px:Math.log10(1/rMin)/Math.log10(rMax/rMin),label:'1'},
+                {v:10,px:Math.log10(10/rMin)/Math.log10(rMax/rMin),label:'10'},
+                {v:100,px:Math.log10(100/rMin)/Math.log10(rMax/rMin),label:'100'},
+                {v:1000,px:1,label:'1000'}];
+  const yTicks=[{v:1,py:0,label:'1'},{v:10,py:1/3,label:'10'},{v:100,py:2/3,label:'100'},{v:1000,py:3/3,label:'1000'}];
+  const {pw,ph}=axes(ctx,w,h,pad,'R2/R1 ratio','Gain (V/V)',xTicks,yTicks);
+  const xp=r2=>pad.l+Math.log10(r2/rMin)/Math.log10(rMax/rMin)*pw;
+  const yp=a=>pad.t+ph-Math.log10(Math.max(a,AMin)/AMin)/Math.log10(AMax/AMin)*ph;
+
+  // GBW shading
+  ctx.fillStyle=css('--accent3');ctx.globalAlpha=0.1;
+  ctx.fillRect(pad.l,pad.t,pw,ph);
+  ctx.globalAlpha=1;
+
+  // BW curve (secondary)
+  const BWMax=GBW,BWMin=GBW/1001;
+  ctx.strokeStyle=css('--accent2');ctx.lineWidth=2;
+  ctx.beginPath();let f=true;
+  for(let i=0;i<=200;i++){
+    const rv=rMin*Math.pow(rMax/rMin,i/200);
+    const bw=GBW/(1+rv);
+    // Map BW to same axis as gain (both go 1-1000)
+    const x=xp(rv),y=yp(bw);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Gain curve
+  ctx.strokeStyle=css('--accent');ctx.lineWidth=2.5;
+  ctx.beginPath();f=true;
+  for(let i=0;i<=200;i++){
+    const rv=rMin*Math.pow(rMax/rMin,i/200);
+    const acl=1+rv;
+    const x=xp(rv),y=yp(acl);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Operating point
+  ctx.fillStyle=css('--accent');
+  ctx.beginPath();ctx.arc(xp(r),yp(Acl_op),5,0,2*Math.PI);ctx.fill();
+  ctx.fillStyle=css('--accent2');
+  ctx.beginPath();ctx.arc(xp(r),yp(f3_op),5,0,2*Math.PI);ctx.fill();
+
+  const GBWstr=GBW>=1e6?(GBW/1e6).toFixed(0)+'M':(GBW/1e3).toFixed(0)+'k';
+  const f3str=f3_op>=1e6?(f3_op/1e6).toFixed(1)+'MHz':f3_op>=1e3?(f3_op/1e3).toFixed(1)+'kHz':f3_op.toFixed(0)+'Hz';
+  ctx.fillStyle=css('--accent');ctx.font='bold 9px system-ui';ctx.textAlign='left';
+  ctx.fillText(`Acl = ${Acl_op.toFixed(1)}  f_3dB = ${f3str}  GBW=${GBWstr}Hz`,pad.l+4,pad.t+14);
+
+  // Secondary axis label
+  ctx.fillStyle=css('--accent2');ctx.font='9px system-ui';ctx.textAlign='right';
+  ctx.fillText('↑ f_3dB (Hz)',pad.l+pw-2,pad.t+10);
+}
+
+// ─── Plot 2: BW comparison non-inv vs inv ─────────────────────────────────────
+const p2=sc('c2');
+function draw2(){
+  const {ctx,w,h}=p2.resize();
+  const Atarget=parseFloat(document.getElementById('s2a').value);
+  const GBW=parseFloat(document.getElementById('s2b').value)*1e6;
+  document.getElementById('v2a').textContent=Atarget;
+  document.getElementById('v2b').textContent=document.getElementById('s2b').value;
+
+  const f3_ninv=GBW/Atarget;       // non-inverting NG = Acl
+  const f3_inv=GBW/(1+Atarget);    // inverting NG = 1 + |Acl|
+
+  const pad={l:52,r:16,t:18,b:36};
+  const fMin=100,fMax=GBW*5;
+  const dBmin=0,dBmax=20*Math.log10(Atarget)+20;
+
+  const xDec=[100,1e3,1e4,1e5,1e6,1e7,1e8].filter(f=>f>=fMin&&f<=fMax);
+  const xTicks=xDec.map(f=>{const e=Math.round(Math.log10(f));const l={2:'100',3:'1k',4:'10k',5:'100k',6:'1M',7:'10M',8:'100M'};return{px:Math.log10(f/fMin)/Math.log10(fMax/fMin),label:l[e]||f};});
+  const yStep=20;
+  const yTicks=[];for(let y=0;y<=dBmax;y+=yStep)yTicks.push({py:(y-dBmin)/(dBmax-dBmin),label:y+'dB'});
+
+  const {pw,ph}=axes(ctx,w,h,pad,'Frequency (Hz)','|Gain| (dB)',xTicks,yTicks);
+  const xp=fv=>pad.l+Math.log10(fv/fMin)/Math.log10(fMax/fMin)*pw;
+  const yp=dB=>pad.t+ph-(Math.max(dB,dBmin)-dBmin)/(dBmax-dBmin)*ph;
+
+  // Non-inverting
+  ctx.strokeStyle=css('--accent');ctx.lineWidth=2.5;
+  ctx.beginPath();let f=true;
+  for(let i=0;i<=300;i++){
+    const fv=fMin*Math.pow(fMax/fMin,i/300);
+    const dB=20*Math.log10(Atarget/Math.sqrt(1+(fv/f3_ninv)**2));
+    if(dB<dBmin-5){f=true;continue;}
+    const x=xp(fv),y=yp(dB);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Inverting
+  ctx.strokeStyle=css('--accent2');ctx.lineWidth=2.5;ctx.setLineDash([5,4]);
+  ctx.beginPath();f=true;
+  for(let i=0;i<=300;i++){
+    const fv=fMin*Math.pow(fMax/fMin,i/300);
+    const dB=20*Math.log10(Atarget/Math.sqrt(1+(fv/f3_inv)**2));
+    if(dB<dBmin-5){f=true;continue;}
+    const x=xp(fv),y=yp(dB);
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();ctx.setLineDash([]);
+
+  // BW markers
+  const f3nStr=f3_ninv>=1e6?(f3_ninv/1e6).toFixed(1)+'MHz':f3_ninv>=1e3?(f3_ninv/1e3).toFixed(1)+'kHz':f3_ninv.toFixed(0)+'Hz';
+  const f3iStr=f3_inv>=1e6?(f3_inv/1e6).toFixed(1)+'MHz':f3_inv>=1e3?(f3_inv/1e3).toFixed(1)+'kHz':f3_inv.toFixed(0)+'Hz';
+  const diff_pct=((f3_ninv-f3_inv)/f3_inv*100).toFixed(1);
+
+  ctx.fillStyle=css('--accent');ctx.font='bold 9px system-ui';ctx.textAlign='left';
+  ctx.fillText('Non-inv f_3dB = '+f3nStr,pad.l+4,pad.t+14);
+  ctx.fillStyle=css('--accent2');
+  ctx.fillText('Inverting f_3dB = '+f3iStr+'  (+'+diff_pct+'% wider non-inv)',pad.l+4,pad.t+27);
+
+  [f3_ninv, f3_inv].forEach((f3,idx)=>{
+    if(f3<fMin||f3>fMax)return;
+    ctx.strokeStyle=idx===0?css('--accent'):css('--accent2');
+    ctx.lineWidth=1;ctx.globalAlpha=0.5;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(xp(f3),pad.t);ctx.lineTo(xp(f3),pad.t+ph);ctx.stroke();
+    ctx.setLineDash([]);ctx.globalAlpha=1;
+  });
+}
+
+// ─── Plot 3: Input impedance vs frequency ─────────────────────────────────────
+const p3=sc('c3');
+function draw3(){
+  const {ctx,w,h}=p3.resize();
+  const Zcm=parseFloat(document.getElementById('s3a').value)*1e9;
+  const GBW=parseFloat(document.getElementById('s3b').value)*1e6;
+  const Acl=parseFloat(document.getElementById('s3c').value);
+  document.getElementById('v3a').textContent=parseFloat(document.getElementById('s3a').value).toFixed(3);
+  document.getElementById('v3b').textContent=document.getElementById('s3b').value;
+  document.getElementById('v3c').textContent=Acl;
+
+  const pad={l:62,r:16,t:18,b:36};
+  const fMin=1,fMax=GBW*20;
+  const ZMin=Zcm*0.001,ZMax=Zcm*1e5;
+
+  const xDec=[1,10,100,1e3,1e4,1e5,1e6,1e7,1e8,1e9,1e10].filter(f=>f>=fMin&&f<=fMax);
+  const xTicks=xDec.map(f=>{const e=Math.round(Math.log10(f));const l={'0':'1','1':'10','2':'100','3':'1k','4':'10k','5':'100k','6':'1M','7':'10M','8':'100M','9':'1G','10':'10G'};return{px:Math.log10(f/fMin)/Math.log10(fMax/fMin),label:l[e]||f};});
+  const yDec=[1e3,1e6,1e9,1e12,1e15,1e18,1e21].filter(v=>v>=ZMin*0.1&&v<=ZMax*10).slice(0,6);
+  const yTicks=yDec.map(v=>{const e=Math.round(Math.log10(v));const l={'3':'kΩ','6':'MΩ','9':'GΩ','12':'TΩ','15':'PΩ','18':'EΩ','21':'ZΩ'};return{py:Math.log10(v/ZMin)/Math.log10(ZMax/ZMin),label:l[e]||v};});
+
+  const {pw,ph}=axes(ctx,w,h,pad,'Frequency (Hz)','Zin',xTicks,yTicks);
+  const xp=fv=>pad.l+Math.log10(fv/fMin)/Math.log10(fMax/fMin)*pw;
+  const yp=z=>pad.t+ph-Math.log10(Math.max(z,ZMin)/ZMin)/Math.log10(ZMax/ZMin)*ph;
+
+  // Zcm line (bare)
+  ctx.strokeStyle=css('--accent2');ctx.lineWidth=1.5;ctx.globalAlpha=0.5;ctx.setLineDash([5,4]);
+  ctx.beginPath();ctx.moveTo(xp(fMin),yp(Zcm));ctx.lineTo(xp(fMax),yp(Zcm));ctx.stroke();
+  ctx.setLineDash([]);ctx.globalAlpha=1;
+
+  // GBW marker
+  ctx.strokeStyle=css('--accent3');ctx.lineWidth=1;ctx.globalAlpha=0.6;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(xp(GBW),pad.t);ctx.lineTo(xp(GBW),pad.t+ph);ctx.stroke();
+  ctx.setLineDash([]);ctx.globalAlpha=1;
+  ctx.fillStyle=css('--accent3');ctx.font='9px system-ui';ctx.textAlign='left';
+  ctx.fillText('GBW',xp(GBW)+3,pad.t+10);
+
+  // Zin curve: T(f) = GBW/(f*Acl); Zin(f) = Zcm*(1+T)
+  ctx.strokeStyle=css('--accent');ctx.lineWidth=2.5;
+  ctx.beginPath();let f=true;
+  for(let i=0;i<=400;i++){
+    const fv=fMin*Math.pow(fMax/fMin,i/400);
+    const T=GBW/(fv*Acl);
+    const Zin=Zcm*(1+T);
+    const x=xp(fv),y=yp(Math.min(ZMax,Math.max(ZMin,Zin)));
+    if(f){ctx.moveTo(x,y);f=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // DC Zin annotation
+  const Zin_DC=Zcm*(1+GBW/(1*Acl));
+  const ZinStr=Zin_DC>=1e21?'>ZΩ':Zin_DC>=1e18?(Zin_DC/1e18).toFixed(1)+'EΩ':Zin_DC>=1e15?(Zin_DC/1e15).toFixed(1)+'PΩ':Zin_DC>=1e12?(Zin_DC/1e12).toFixed(1)+'TΩ':(Zin_DC/1e9).toFixed(1)+'GΩ';
+  ctx.fillStyle=css('--accent');ctx.font='bold 9px system-ui';ctx.textAlign='left';
+  ctx.fillText('Z_in(DC) ≈ '+ZinStr,pad.l+4,pad.t+14);
+}
+
+['s1a','s1b'].forEach(id=>document.getElementById(id).addEventListener('input',draw1));
+['s2a','s2b'].forEach(id=>document.getElementById(id).addEventListener('input',draw2));
+['s3a','s3b','s3c'].forEach(id=>document.getElementById(id).addEventListener('input',draw3));
+window.addEventListener('resize',()=>{draw1();draw2();draw3();});
+draw1();draw2();draw3();
+</script>
+</body>
+</html>

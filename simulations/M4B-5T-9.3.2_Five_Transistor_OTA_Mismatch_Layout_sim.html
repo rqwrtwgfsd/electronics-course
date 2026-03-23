@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-5T-9.3.2 — 5T OTA Mismatch, Offset & Layout Simulator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; }
+  header { background: #1a1d2e; padding: 16px 24px; border-bottom: 2px solid #3a7bd5; }
+  header h1 { font-size: 1.15rem; color: #7eb3ff; font-weight: 600; }
+  header p { font-size: 0.8rem; color: #888; margin-top: 3px; }
+  .tabs { display: flex; background: #13151f; border-bottom: 1px solid #2a2d3e; }
+  .tab { padding: 11px 22px; cursor: pointer; font-size: 0.85rem; color: #888; border-bottom: 2px solid transparent; transition: all .2s; }
+  .tab.active { color: #7eb3ff; border-bottom-color: #3a7bd5; background: #1a1d2e; }
+  .tab:hover:not(.active) { color: #ccc; background: #1a1d2e55; }
+  .panel { display: none; padding: 20px 24px; }
+  .panel.active { display: block; }
+  .row { display: flex; gap: 20px; flex-wrap: wrap; }
+  .card { background: #1a1d2e; border: 1px solid #2a2d3e; border-radius: 8px; padding: 16px; flex: 1; min-width: 280px; }
+  .card h3 { font-size: 0.85rem; color: #7eb3ff; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .slider-row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+  .slider-row label { font-size: 0.78rem; color: #aaa; width: 185px; flex-shrink: 0; }
+  .slider-row input[type=range] { flex: 1; accent-color: #3a7bd5; }
+  .slider-row span { font-size: 0.78rem; color: #7eb3ff; width: 75px; text-align: right; }
+  canvas { display: block; width: 100%; border-radius: 6px; background: #12141e; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 8px; margin-top: 12px; }
+  .metric { background: #12141e; border: 1px solid #2a2d3e; border-radius: 6px; padding: 8px 12px; }
+  .metric .label { font-size: 0.7rem; color: #888; }
+  .metric .value { font-size: 1.05rem; color: #4ecdc4; font-weight: 700; margin-top: 2px; }
+  .metric .value.warn { color: #f6ad55; }
+  .metric .value.bad  { color: #fc8181; }
+  .metric .value.good { color: #68d391; }
+  .info-box { background: #12141e; border-left: 3px solid #3a7bd5; padding: 10px 14px; border-radius: 0 6px 6px 0; margin-top: 10px; font-size: 0.78rem; color: #bbb; line-height: 1.6; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #aaa; }
+  .legend-dot { width: 14px; height: 3px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>M4B-5T-9.3.2 — Five-Transistor OTA: Mismatch, Input Offset, and Layout</h1>
+  <p>Pelgrom model, offset budget, σ(VOS) vs W×L, and common-centroid effectiveness</p>
+</header>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">Offset Budget</div>
+  <div class="tab" onclick="showTab(1)">σ(VOS) vs W×L</div>
+  <div class="tab" onclick="showTab(2)">Common-Centroid Visualizer</div>
+</div>
+
+<!-- TAB 0: Offset Budget -->
+<div class="panel active" id="tab0">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:320px;">
+      <h3>Device & Process Parameters</h3>
+      <div class="slider-row"><label>W×L of M1/M2 (µm²)</label><input type="range" id="t0_WL1" min="1" max="1000" step="1" value="20"><span id="v_t0_WL1">20</span></div>
+      <div class="slider-row"><label>W×L of M3/M4 (µm²)</label><input type="range" id="t0_WL3" min="1" max="1000" step="1" value="20"><span id="v_t0_WL3">20</span></div>
+      <div class="slider-row"><label>A_Vth NMOS (mV·µm)</label><input type="range" id="t0_AVth_n" min="1" max="15" step="0.1" value="6"><span id="v_t0_AVth_n">6.0</span></div>
+      <div class="slider-row"><label>A_Vth PMOS (mV·µm)</label><input type="range" id="t0_AVth_p" min="1" max="15" step="0.1" value="5"><span id="v_t0_AVth_p">5.0</span></div>
+      <div class="slider-row"><label>gm3/gm1 ratio</label><input type="range" id="t0_gmratio" min="0.1" max="3" step="0.05" value="1"><span id="v_t0_gmratio">1.00</span></div>
+      <div class="slider-row"><label>Vov1 input pair (mV)</label><input type="range" id="t0_Vov1" min="30" max="400" step="5" value="150"><span id="v_t0_Vov1">150</span></div>
+      <div class="slider-row"><label>A_β NMOS (% µm)</label><input type="range" id="t0_Abeta" min="0.5" max="5" step="0.1" value="1.5"><span id="v_t0_Abeta">1.5</span></div>
+      <div class="metrics" style="grid-template-columns:1fr 1fr;">
+        <div class="metric"><div class="label">σ(ΔVth1) M1/M2</div><div class="value" id="m0_dv1">—</div></div>
+        <div class="metric"><div class="label">σ(ΔVth3) M3/M4</div><div class="value" id="m0_dv3">—</div></div>
+        <div class="metric"><div class="label">VOS from M1/M2</div><div class="value" id="m0_vos1">—</div></div>
+        <div class="metric"><div class="label">VOS from M3/M4</div><div class="value warn" id="m0_vos3">—</div></div>
+        <div class="metric"><div class="label">σ(VOS_total)</div><div class="value bad" id="m0_vos_tot">—</div></div>
+        <div class="metric"><div class="label">3σ(VOS_total)</div><div class="value bad" id="m0_vos_3s">—</div></div>
+        <div class="metric"><div class="label">σ(VOS_β)</div><div class="value" id="m0_vos_b">—</div></div>
+        <div class="metric"><div class="label">W for 3σ<1mV</div><div class="value good" id="m0_W_req">—</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Offset Contribution Bar Chart</h3>
+      <canvas id="c_budget" height="350"></canvas>
+      <div class="info-box">
+        Each bar shows the σ contribution to input-referred offset VOS.
+        M3/M4 contribution is scaled by gm3/gm1 — the load-to-input transconductance ratio.
+        The total σ(VOS) is the quadrature sum.
+        3σ = 99.7% of chips fall within this limit; size for 3σ to cover the population.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: σ(VOS) vs W×L -->
+<div class="panel" id="tab1">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:310px;">
+      <h3>Process Parameters</h3>
+      <div class="slider-row"><label>A_Vth NMOS (mV·µm)</label><input type="range" id="t1_AVth" min="1" max="15" step="0.1" value="6"><span id="v_t1_AVth">6.0</span></div>
+      <div class="slider-row"><label>gm3/gm1</label><input type="range" id="t1_gmr" min="0.1" max="2" step="0.05" value="1"><span id="v_t1_gmr">1.00</span></div>
+      <div class="slider-row"><label>σ(VOS) target (mV)</label><input type="range" id="t1_tgt" min="0.1" max="5" step="0.05" value="1"><span id="v_t1_tgt">1.00</span></div>
+      <div class="metrics" style="grid-template-columns:1fr;">
+        <div class="metric"><div class="label">W×L for target σ (µm²)</div><div class="value good" id="m1_WL_req">—</div></div>
+        <div class="metric"><div class="label">W at L=0.5µm (µm)</div><div class="value" id="m1_W_req">—</div></div>
+        <div class="metric"><div class="label">W at L=1µm (µm)</div><div class="value" id="m1_W1_req">—</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>σ(VOS) vs W×L (Pelgrom Scaling)</h3>
+      <canvas id="c_pelgrom" height="350"></canvas>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#4ecdc4;"></div>gm3/gm1 = current</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#3a7bd5;"></div>gm3/gm1 = 0.5</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f6ad55;"></div>gm3/gm1 = 1.5</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#fc8181;"></div>M1/M2 only</div>
+      </div>
+      <div class="info-box">
+        σ(VOS) = A_Vth / √(W×L) × √(1 + (gm3/gm1)²).
+        The curve falls as 1/√(W×L) — halving σ requires 4× more area.
+        The gm3/gm1 factor shifts the entire curve up; reduce it by increasing |Vov3| relative to Vov1.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: Common-Centroid Visualizer -->
+<div class="panel" id="tab2">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:310px;">
+      <h3>Layout Setup</h3>
+      <div class="slider-row"><label>Number of sub-cells N</label><input type="range" id="t2_N" min="2" max="16" step="2" value="8"><span id="v_t2_N">8</span></div>
+      <div class="slider-row"><label>Gradient (mV/mm)</label><input type="range" id="t2_grad" min="0" max="10" step="0.1" value="2"><span id="v_t2_grad">2.0</span></div>
+      <div class="slider-row"><label>Array span (µm)</label><input type="range" id="t2_span" min="10" max="500" step="5" value="100"><span id="v_t2_span">100</span></div>
+      <div class="metrics" style="grid-template-columns:1fr;">
+        <div class="metric"><div class="label">Vth at left edge</div><div class="value" id="m2_vl">—</div></div>
+        <div class="metric"><div class="label">Vth at right edge</div><div class="value" id="m2_vr">—</div></div>
+        <div class="metric"><div class="label">ΔVth linear placement</div><div class="value bad" id="m2_dv_lin">—</div></div>
+        <div class="metric"><div class="label">ΔVth common-centroid</div><div class="value good" id="m2_dv_cc">—</div></div>
+        <div class="metric"><div class="label">Gradient rejection</div><div class="value good" id="m2_rej">—</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Common-Centroid Layout Visualization</h3>
+      <canvas id="c_cc" height="380"></canvas>
+      <div class="info-box">
+        The A-B-B-A / B-A-A-B pattern interleaves M1 (A) and M2 (B) sub-cells symmetrically.
+        Each color-shaded cell shows the Vth at its position (gradient from blue = low to red = high).
+        The average Vth of all M1 cells equals the average of all M2 cells exactly for a linear gradient —
+        systematic mismatch is fully cancelled.
+        Residual error is second-order and proportional to gradient × span².
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── TAB 0: Offset Budget ──────────────────────────────────────────────────
+function updateTab0() {
+  const WL1    = parseFloat(document.getElementById('t0_WL1').value);
+  const WL3    = parseFloat(document.getElementById('t0_WL3').value);
+  const AVth_n = parseFloat(document.getElementById('t0_AVth_n').value);
+  const AVth_p = parseFloat(document.getElementById('t0_AVth_p').value);
+  const gmr    = parseFloat(document.getElementById('t0_gmratio').value);
+  const Vov1   = parseFloat(document.getElementById('t0_Vov1').value)*1e-3;
+  const Abeta  = parseFloat(document.getElementById('t0_Abeta').value)/100;
+
+  document.getElementById('v_t0_WL1').textContent   = WL1.toFixed(0);
+  document.getElementById('v_t0_WL3').textContent   = WL3.toFixed(0);
+  document.getElementById('v_t0_AVth_n').textContent= AVth_n.toFixed(1);
+  document.getElementById('v_t0_AVth_p').textContent= AVth_p.toFixed(1);
+  document.getElementById('v_t0_gmratio').textContent= gmr.toFixed(2);
+  document.getElementById('v_t0_Vov1').textContent  = (Vov1*1e3).toFixed(0);
+  document.getElementById('v_t0_Abeta').textContent = (Abeta*100).toFixed(1);
+
+  const dv1  = AVth_n / Math.sqrt(WL1);      // σ(ΔVth1) mV
+  const dv3  = AVth_p / Math.sqrt(WL3);      // σ(ΔVth3) mV
+  const vos1 = dv1;                           // M1/M2 input-referred
+  const vos3 = gmr * dv3;                    // M3/M4 input-referred
+  const vos_tot = Math.sqrt(vos1*vos1 + vos3*vos3);
+  const vos_beta = (Vov1*1e3/2) * (Abeta / Math.sqrt(WL1));
+  // W required for 3σ_tot < 1mV → σ = 1/3 mV
+  const tgt = 1/3; // mV σ
+  // simplified: assume WL1 = WL3, gmr fixed → σ = AVth_n/√WL × √(1 + gmr²(AVth_p/AVth_n)²)
+  const factor = Math.sqrt(1 + gmr*gmr*(AVth_p/AVth_n)*(AVth_p/AVth_n));
+  const WL_req = Math.pow(AVth_n * factor / tgt, 2);
+
+  document.getElementById('m0_dv1').textContent    = dv1.toFixed(3)+' mV';
+  document.getElementById('m0_dv3').textContent    = dv3.toFixed(3)+' mV';
+  document.getElementById('m0_vos1').textContent   = vos1.toFixed(3)+' mV';
+  document.getElementById('m0_vos3').textContent   = vos3.toFixed(3)+' mV';
+  document.getElementById('m0_vos_tot').textContent= vos_tot.toFixed(3)+' mV';
+  document.getElementById('m0_vos_3s').textContent = (3*vos_tot).toFixed(2)+' mV';
+  document.getElementById('m0_vos_b').textContent  = vos_beta.toFixed(3)+' mV';
+  document.getElementById('m0_W_req').textContent  = (WL_req/0.5).toFixed(0)+' µm';
+
+  // Color
+  const t = document.getElementById('m0_vos_3s');
+  t.className = 'value ' + (3*vos_tot < 1 ? 'good' : 3*vos_tot < 3 ? 'warn' : 'bad');
+
+  // Bar chart
+  const cv = document.getElementById('c_budget');
+  const ctx = cv.getContext('2d');
+  const W = cv.clientWidth*devicePixelRatio||600, H=350;
+  cv.width=W; cv.height=H;
+  ctx.fillStyle='#12141e'; ctx.fillRect(0,0,W,H);
+
+  const contributions = [
+    { label: 'σ(ΔVth1) M1/M2', value: vos1, color: '#4ecdc4' },
+    { label: 'σ(VOS M3/M4)', value: vos3, color: '#f6ad55' },
+    { label: 'σ(VOS β)', value: vos_beta, color: '#3a7bd5' },
+    { label: 'σ(VOS total)', value: vos_tot, color: '#fc8181' },
+    { label: '3σ(VOS)', value: 3*vos_tot, color: '#e84393' },
+  ];
+
+  const maxV = Math.max(...contributions.map(c=>c.value), 0.1)*1.2;
+  const barW = (W - 80) / (contributions.length + 1);
+  const pad = {l:50, r:20, t:30, b:60};
+  const totalH = H - pad.t - pad.b;
+
+  // Grid lines
+  ctx.strokeStyle='#1e2136'; ctx.lineWidth=1;
+  for(let v=0; v<=maxV; v+=maxV/5) {
+    const y = H - pad.b - (v/maxV)*totalH;
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(W-pad.r,y); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='10px sans-serif'; ctx.textAlign='right';
+    ctx.fillText(v.toFixed(2)+'mV', pad.l-3, y+3);
+  }
+
+  contributions.forEach((c,i) => {
+    const x = pad.l + (i+0.5)*barW + barW*0.1;
+    const bw = barW*0.7;
+    const bh = (c.value/maxV)*totalH;
+    const y = H - pad.b - bh;
+    ctx.fillStyle = c.color;
+    ctx.fillRect(x, y, bw, bh);
+    ctx.fillStyle = '#eee'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(c.value.toFixed(2)+'mV', x+bw/2, y-5);
+    // Rotated label
+    ctx.save(); ctx.translate(x+bw/2, H-pad.b+8); ctx.rotate(-Math.PI/4);
+    ctx.fillStyle='#aaa'; ctx.font='10px sans-serif'; ctx.textAlign='right';
+    ctx.fillText(c.label, 0, 0); ctx.restore();
+  });
+
+  // 1mV line
+  if(1 <= maxV) {
+    const y1 = H - pad.b - (1/maxV)*totalH;
+    ctx.strokeStyle='#68d391'; ctx.lineWidth=1.2; ctx.setLineDash([5,4]);
+    ctx.beginPath(); ctx.moveTo(pad.l,y1); ctx.lineTo(W-pad.r,y1); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#68d391'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+    ctx.fillText('1mV limit', pad.l+4, y1-4);
+  }
+}
+
+// ─── TAB 1: Pelgrom Scaling ────────────────────────────────────────────────
+function updateTab1() {
+  const AVth = parseFloat(document.getElementById('t1_AVth').value);
+  const gmr  = parseFloat(document.getElementById('t1_gmr').value);
+  const tgt  = parseFloat(document.getElementById('t1_tgt').value);
+
+  document.getElementById('v_t1_AVth').textContent = AVth.toFixed(1);
+  document.getElementById('v_t1_gmr').textContent  = gmr.toFixed(2);
+  document.getElementById('v_t1_tgt').textContent  = tgt.toFixed(2);
+
+  const factor_cur = Math.sqrt(1 + gmr*gmr);
+  const WL_req = Math.pow(AVth * factor_cur / tgt, 2);
+  document.getElementById('m1_WL_req').textContent = WL_req.toFixed(0)+' µm²';
+  document.getElementById('m1_W_req').textContent  = (WL_req/0.5).toFixed(0)+' µm';
+  document.getElementById('m1_W1_req').textContent = (WL_req/1.0).toFixed(0)+' µm';
+
+  const cv = document.getElementById('c_pelgrom');
+  const ctx = cv.getContext('2d');
+  const W = cv.clientWidth*devicePixelRatio||600, H=350;
+  cv.width=W; cv.height=H;
+
+  const pad={l:55,r:20,t:20,b:35};
+  const xMin=1, xMax=1000, yMin=0, yMax=25;
+  const px = x => pad.l + (Math.log10(x)-Math.log10(xMin))/(Math.log10(xMax)-Math.log10(xMin))*(W-pad.l-pad.r);
+  const py = y => H - pad.b - (y-yMin)/(yMax-yMin)*(H-pad.t-pad.b);
+
+  ctx.fillStyle='#12141e'; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#1e2136'; ctx.lineWidth=1;
+  for(let y=0;y<=yMax;y+=5) {
+    ctx.beginPath(); ctx.moveTo(pad.l,py(y)); ctx.lineTo(W-pad.r,py(y)); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='right';
+    ctx.fillText(y+'mV', pad.l-3, py(y)+3);
+  }
+  [1,10,100,1000].forEach(x=>{
+    ctx.beginPath(); ctx.moveTo(px(x),pad.t); ctx.lineTo(px(x),H-pad.b); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(x+'µm²', px(x), H-pad.b+12);
+  });
+
+  const curves = [
+    {gmr:1.0,  color:'#4ecdc4', dash:[],    label:'current gm3/gm1'},
+    {gmr:0.5,  color:'#3a7bd5', dash:[6,3], label:'gm3/gm1=0.5'},
+    {gmr:1.5,  color:'#f6ad55', dash:[4,4], label:'gm3/gm1=1.5'},
+    {gmr:0.0,  color:'#fc8181', dash:[3,5], label:'M1/M2 only'},
+  ];
+  // Override first curve with current gmr
+  curves[0].gmr = gmr;
+
+  curves.forEach(c => {
+    const pts=[];
+    for(let e=0;e<=3;e+=0.05) {
+      const WL=Math.pow(10,e);
+      const vos = AVth/Math.sqrt(WL)*Math.sqrt(1+c.gmr*c.gmr);
+      pts.push([px(WL), py(Math.min(Math.max(vos,yMin),yMax))]);
+    }
+    ctx.strokeStyle=c.color; ctx.lineWidth=2; ctx.setLineDash(c.dash);
+    ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
+    pts.forEach(p=>ctx.lineTo(p[0],p[1])); ctx.stroke(); ctx.setLineDash([]);
+  });
+
+  // Target line
+  if(tgt<=yMax) {
+    ctx.strokeStyle='#68d391'; ctx.lineWidth=1.2; ctx.setLineDash([5,4]);
+    ctx.beginPath(); ctx.moveTo(pad.l,py(tgt)); ctx.lineTo(W-pad.r,py(tgt)); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#68d391'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+    ctx.fillText('Target '+tgt.toFixed(1)+'mV', pad.l+4, py(tgt)-4);
+  }
+
+  ctx.fillStyle='#555'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('W×L (µm²)', (pad.l+W-pad.r)/2, H-2);
+}
+
+// ─── TAB 2: Common-Centroid ────────────────────────────────────────────────
+function updateTab2() {
+  const N    = parseInt(document.getElementById('t2_N').value);
+  const grad = parseFloat(document.getElementById('t2_grad').value); // mV/mm
+  const span = parseFloat(document.getElementById('t2_span').value); // µm
+
+  document.getElementById('v_t2_N').textContent   = N;
+  document.getElementById('v_t2_grad').textContent= grad.toFixed(1);
+  document.getElementById('v_t2_span').textContent= span.toFixed(0);
+
+  const gradmV_um = grad * 1e-3; // mV/µm
+  const vLeft  = 500; // mV, arbitrary baseline
+  const vRight = vLeft + grad*(span/1000);
+
+  // Build common-centroid pattern for N/2 M1, N/2 M2
+  // Classic 4-cell: A B B A / B A A B
+  // For N cells in 2 rows of N/2: use A B B A... pattern
+  const half = N/2;
+  // Row 1: A B B A repeating
+  const row1 = [], row2 = [];
+  for(let i=0;i<half;i++) {
+    // A-B-B-A pattern: cell i in row1
+    // Simple alternating with reflection at center
+    if(i < half/2) { row1.push('A'); row2.push('B'); }
+    else { row1.push('B'); row2.push('A'); }
+  }
+  // Interleave for better cancellation: A B B A A B B A...
+  for(let i=0;i<half;i++) {
+    const pos = i % 4;
+    row1[i] = (pos===0||pos===3) ? 'A' : 'B';
+    row2[i] = (pos===0||pos===3) ? 'B' : 'A';
+  }
+
+  // Compute average Vth for M1 and M2 in each layout
+  const cellPositions_lin_A = [span/4]; // M1 in simple linear: left half
+  const cellPositions_lin_B = [3*span/4]; // M2 in simple linear: right half
+  const dVth_linear = Math.abs(
+    gradmV_um * span/4 - gradmV_um * 3*span/4
+  ); // |V(pos_M1) - V(pos_M2)|
+
+  // For common-centroid: compute average positions
+  const allCells = 2*half;
+  let sumA_cc = 0, sumB_cc = 0, nA=0, nB=0;
+  [...row1, ...row2].forEach((c,i) => {
+    const col = i % half;
+    const x_pos = (col + 0.5) / half * span;
+    const Vth = vLeft + gradmV_um * x_pos;
+    if(c==='A') { sumA_cc += Vth; nA++; }
+    else { sumB_cc += Vth; nB++; }
+  });
+  const avgA = sumA_cc/nA, avgB = sumB_cc/nB;
+  const dVth_cc = Math.abs(avgA - avgB);
+  const rejection = dVth_linear > 0 ? dVth_linear / Math.max(dVth_cc, 0.0001) : 999;
+
+  document.getElementById('m2_vl').textContent    = vLeft.toFixed(1)+' mV';
+  document.getElementById('m2_vr').textContent    = vRight.toFixed(1)+' mV';
+  document.getElementById('m2_dv_lin').textContent= dVth_linear.toFixed(3)+' mV';
+  document.getElementById('m2_dv_cc').textContent = dVth_cc.toFixed(4)+' mV';
+  document.getElementById('m2_rej').textContent   = rejection > 999 ? '∞' : rejection.toFixed(0)+'×';
+
+  // Draw
+  const cv = document.getElementById('c_cc');
+  const ctx = cv.getContext('2d');
+  const W = cv.clientWidth*devicePixelRatio||600, H=380;
+  cv.width=W; cv.height=H;
+  ctx.fillStyle='#12141e'; ctx.fillRect(0,0,W,H);
+
+  const cellW = (W - 80) / half;
+  const cellH = 100;
+  const startY = 50;
+  const startX = 50;
+
+  // Draw gradient background hint
+  const grad_bg = ctx.createLinearGradient(startX, 0, startX + cellW*half, 0);
+  grad_bg.addColorStop(0, 'rgba(58,123,213,0.08)');
+  grad_bg.addColorStop(1, 'rgba(252,129,74,0.08)');
+  ctx.fillStyle = grad_bg;
+  ctx.fillRect(startX, startY-10, cellW*half, cellH*2+40);
+
+  // Draw cells
+  [[row1, startY, 'Row 1'], [row2, startY+cellH+20, 'Row 2']].forEach(([row, ry, rLabel]) => {
+    ctx.fillStyle='#666'; ctx.font='11px sans-serif'; ctx.textAlign='right';
+    ctx.fillText(rLabel, startX-5, ry+cellH/2+4);
+    row.forEach((cell, col) => {
+      const x = startX + col*cellW;
+      const x_pos = (col + 0.5) / half * span;
+      const t = x_pos / span; // 0 to 1
+      const r = Math.floor(58 + t*(252-58));
+      const g = Math.floor(123 + t*(129-123));
+      const b = Math.floor(213 + t*(74-213));
+      ctx.fillStyle = cell==='A' ? `rgba(78,205,196,0.85)` : `rgba(58,123,213,0.85)`;
+      ctx.fillRect(x+3, ry+3, cellW-6, cellH-6);
+      ctx.strokeStyle = cell==='A' ? '#4ecdc4' : '#3a7bd5';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x+3, ry+3, cellW-6, cellH-6);
+      ctx.fillStyle='#fff'; ctx.font='bold 14px sans-serif'; ctx.textAlign='center';
+      ctx.fillText(cell==='A'?'M1':'M2', x+cellW/2, ry+cellH/2+5);
+      // Vth label
+      const Vth_cell = vLeft + gradmV_um * x_pos;
+      ctx.fillStyle='rgba(255,255,255,0.6)'; ctx.font='9px sans-serif';
+      ctx.fillText(Vth_cell.toFixed(1), x+cellW/2, ry+cellH-10);
+    });
+  });
+
+  // Legend
+  ctx.fillStyle='#4ecdc4'; ctx.fillRect(startX, startY+2*cellH+35, 14, 14);
+  ctx.fillStyle='#eee'; ctx.font='11px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('M1 (A)', startX+18, startY+2*cellH+46);
+  ctx.fillStyle='#3a7bd5'; ctx.fillRect(startX+80, startY+2*cellH+35, 14, 14);
+  ctx.fillText('M2 (B)', startX+98, startY+2*cellH+46);
+
+  // Gradient arrow
+  ctx.strokeStyle='#888'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(startX, H-20); ctx.lineTo(startX+cellW*half, H-20); ctx.stroke();
+  ctx.fillStyle='#888'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('Process gradient →  Vth increases from left to right ('+grad.toFixed(1)+' mV/mm)', startX+cellW*half/2, H-5);
+}
+
+function showTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
+  if(n===0) updateTab0(); else if(n===1) updateTab1(); else updateTab2();
+}
+function wire(ids,fn){ ids.forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('input',fn);}); }
+wire(['t0_WL1','t0_WL3','t0_AVth_n','t0_AVth_p','t0_gmratio','t0_Vov1','t0_Abeta'], updateTab0);
+wire(['t1_AVth','t1_gmr','t1_tgt'], updateTab1);
+wire(['t2_N','t2_grad','t2_span'], updateTab2);
+window.addEventListener('load', () => updateTab0());
+window.addEventListener('resize', () => {
+  const a=document.querySelector('.panel.active');
+  if(a) showTab(['tab0','tab1','tab2'].indexOf(a.id));
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CM-1.6.2 — Accuracy vs. Complexity</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:15px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+  table{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px;}
+  th,td{border:1px solid var(--border);padding:5px 8px;text-align:center;}
+  th{background:var(--bg2);color:var(--accent);font-weight:700;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CM-1.6.2</div>
+  <h1>Current Mirror — Accuracy vs. Complexity Trade-Off</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Design Parameters</h2>
+      <label>λ (V⁻¹): <b id="lam_l">0.08</b> <input type="range" id="lam" min="0.01" max="0.5" value="0.08" step="0.01"></label>
+      <label>V_ov (mV): <b id="vov_l">200</b> mV <input type="range" id="vov" min="50" max="500" value="200" step="10"></label>
+      <label>ΔV_DS (V): <b id="dvds_l">1.5</b> V <input type="range" id="dvds" min="0.1" max="4" value="1.5" step="0.1"></label>
+      <label>A_VT (mV·μm): <b id="avt_l">4.0</b> <input type="range" id="avt" min="1" max="10" value="4" step="0.1"></label>
+      <label>W×L (μm²): <b id="wl_l">10</b> <input type="range" id="wl" min="1" max="400" value="10" step="1"></label>
+      <label>Boost gain A: <b id="ga_l">10</b> <input type="range" id="ga" min="1" max="500" value="10" step="1"></label>
+
+      <table id="tbl">
+        <thead><tr><th>Topology</th><th>ΔI/I CLM%</th><th>Transistors</th><th>V_comp (mV)</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div class="ro g" style="margin-top:8px">σ(ΔI/I) mismatch: <span id="mism_d">--</span> %</div>
+    </div>
+
+    <div class="card">
+      <h2>Error vs. Topology (Log Scale)</h2>
+      <canvas id="cv" height="280"></canvas>
+      <div class="insight">
+        Blue bars: CLM error (output resistance limited). Orange line: Pelgrom mismatch (sizing limited). The gain-boosted cascode can reduce CLM error below the mismatch floor — at that point, adding more gain boost gives no benefit.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const lam=+document.getElementById('lam').value;
+    const vov=+document.getElementById('vov').value/1000;
+    const dvds=+document.getElementById('dvds').value;
+    const avt=+document.getElementById('avt').value/1000;
+    const wl=+document.getElementById('wl').value*1e-12;
+    const ga=+document.getElementById('ga').value;
+    const ID=100e-6;
+    const vds1=0.65;
+
+    document.getElementById('lam_l').textContent=lam.toFixed(2);
+    document.getElementById('vov_l').textContent=(vov*1000).toFixed(0);
+    document.getElementById('dvds_l').textContent=dvds.toFixed(1);
+    document.getElementById('avt_l').textContent=(avt*1000).toFixed(1);
+    document.getElementById('wl_l').textContent=(wl/1e-12).toFixed(0);
+    document.getElementById('ga_l').textContent=ga;
+
+    const ro=1/(lam*ID);
+    const gm=2*ID/vov;
+    const rcas=gm*ro*ro;
+    const Vth=0.45;
+    const vds2=vds1+dvds;
+
+    // CLM errors per topology
+    const clm_simple=Math.abs(((1+lam*vds2)/(1+lam*vds1)-1)*100);
+    const clm_cas=Math.abs((dvds/rcas)*1e2); // fraction = dvds/rcas/ID * ID
+    const clm_reg=clm_cas/ga;
+
+    const vcomp_simple=vov*1000;
+    const vcomp_ws=2*vov*1000;
+    const vcomp_std=(Vth+2*vov)*1000;
+
+    const tbody=document.getElementById('tbody');
+    tbody.innerHTML=[
+      ['Simple',clm_simple.toFixed(2),2,vcomp_simple.toFixed(0)],
+      ['Cascode (WS)',clm_cas.toFixed(3),4,vcomp_ws.toFixed(0)],
+      ['Std Cascode',clm_cas.toFixed(3),4,vcomp_std.toFixed(0)],
+      ['Reg. Cascode',clm_reg.toFixed(4),'4+amp',vcomp_ws.toFixed(0)],
+    ].map(([t,e,n,v])=>`<tr><td>${t}</td><td>${e}</td><td>${n}</td><td>${v}</td></tr>`).join('');
+
+    // Mismatch
+    const sigma_dvth=avt/Math.sqrt(wl);
+    const sigma_diI=2*sigma_dvth/vov*100;
+    document.getElementById('mism_d').textContent=sigma_diI.toFixed(3);
+
+    draw(clm_simple,clm_cas,clm_reg,sigma_diI);
+  }
+
+  function draw(c_s,c_c,c_r,mism){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=280;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,280);
+    const pL=60,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=280-pT-pB;
+
+    const topos=['Simple','Cascode','Reg.Cas'];
+    const errs=[c_s,c_c,c_r];
+    const maxLog=Math.log10(Math.max(c_s,mism)*1.5);
+    const minLog=Math.log10(Math.min(c_r,mism)*0.5);
+
+    // axes
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='10px system-ui';
+    ctx.fillText('ΔI/I Error %', 2, pT+ph/2);
+
+    // Log Y axis
+    const logToY=(logv)=>pT+ph-(logv-minLog)/(maxLog-minLog)*ph;
+    for(let e=Math.floor(minLog);e<=Math.ceil(maxLog);e++){
+      const y=logToY(e);
+      if(y<pT||y>pT+ph) continue;
+      ctx.fillStyle='#8888aa'; ctx.fillText('1e'+e, 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+
+    const bw=pw/topos.length*0.5;
+    topos.forEach((t,i)=>{
+      const x=pL+(i+0.5)/topos.length*pw;
+      const y1=logToY(Math.log10(Math.max(errs[i],1e-6)));
+      ctx.fillStyle='#0066cc88';
+      ctx.fillRect(x-bw/2, y1, bw, pT+ph-y1);
+      ctx.fillStyle='var(--text,#333)'; ctx.font='11px system-ui';
+      ctx.fillText(t, x-bw/2, pT+ph+14);
+      ctx.fillStyle='#0066cc'; ctx.font='10px system-ui';
+      ctx.fillText(errs[i].toExponential(2)+'%', x-bw/2, y1-3);
+    });
+
+    // Mismatch floor line
+    const ym=logToY(Math.log10(mism));
+    ctx.strokeStyle='#ff8800'; ctx.lineWidth=2; ctx.setLineDash([5,4]);
+    ctx.beginPath(); ctx.moveTo(pL,ym); ctx.lineTo(pL+pw,ym); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#ff8800'; ctx.font='10px system-ui';
+    ctx.fillText('σ mismatch: '+mism.toFixed(3)+'%', pL+4, ym-4);
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

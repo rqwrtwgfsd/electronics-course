@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-AL-3.6.1 — Noise from Active Load</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-AL-3.6.1</div>
+  <h1>Active Load — Noise from Active Load</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Noise Parameters</h2>
+      <label>g_m,n (mA/V): <b id="gmn_l">1.65</b> <input type="range" id="gmn" min="0.1" max="10" value="1.65" step="0.05"></label>
+      <label>g_m,p / g_m,n: <b id="gmr_l">0.55</b> <input type="range" id="gmr" min="0.1" max="3" value="0.55" step="0.05"></label>
+      <label>γ: <b id="gam_l">0.67</b> <input type="range" id="gam" min="0.5" max="2.0" value="0.67" step="0.01"></label>
+      <label>K_f,n (×10⁻²⁶ J): <b id="kfn_l">3.0</b> <input type="range" id="kfn" min="0.1" max="30" value="3.0" step="0.1"></label>
+      <label>K_f,p ratio (K_f,p/K_f,n): <b id="kfr_l">0.10</b> <input type="range" id="kfr" min="0.01" max="1.0" value="0.10" step="0.01"></label>
+      <label>W×L pair (μm²): <b id="wln_l">50</b> μm² <input type="range" id="wln" min="1" max="2000" value="50" step="1"></label>
+      <label>W×L load (μm²): <b id="wlp_l">50</b> μm² <input type="range" id="wlp" min="1" max="2000" value="50" step="1"></label>
+      <label>C_ox (fF/μm²): <b id="cox_l">8.6</b> <input type="range" id="cox" min="1" max="30" value="8.6" step="0.1"></label>
+
+      <div class="ro">S_vn,thermal pair (nV/√Hz): <span id="tn_pair">--</span></div>
+      <div class="ro" style="margin-top:4px">S_vn,thermal load (nV/√Hz): <span id="tn_load">--</span></div>
+      <div class="ro g" style="margin-top:4px">S_vn,thermal total (nV/√Hz): <span id="tn_tot">--</span></div>
+      <div class="ro" style="margin-top:4px">Noise corner f_c (kHz): <span id="fc_d">--</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Input-Referred Noise Spectrum</h2>
+      <canvas id="cv" height="300"></canvas>
+      <div class="insight">
+        Blue: pair thermal (flat). Orange: load thermal (flat). Green: total thermal. Dashed: pair flicker (1/f). Dotted: load flicker. Red: total. Load flicker is lower than pair flicker when K_f,p &lt; K_f,n.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const gmn=+document.getElementById('gmn').value*1e-3;
+    const gmr=+document.getElementById('gmr').value;
+    const gam=+document.getElementById('gam').value;
+    const kfn=+document.getElementById('kfn').value*1e-26;
+    const kfr=+document.getElementById('kfr').value;
+    const wln=+document.getElementById('wln').value;
+    const wlp=+document.getElementById('wlp').value;
+    const cox=+document.getElementById('cox').value*1e-15;
+
+    document.getElementById('gmn_l').textContent=(gmn*1e3).toFixed(2);
+    document.getElementById('gmr_l').textContent=gmr.toFixed(2);
+    document.getElementById('gam_l').textContent=gam.toFixed(2);
+    document.getElementById('kfn_l').textContent=(kfn/1e-26).toFixed(1);
+    document.getElementById('kfr_l').textContent=kfr.toFixed(2);
+    document.getElementById('wln_l').textContent=wln.toFixed(0);
+    document.getElementById('wlp_l').textContent=wlp.toFixed(0);
+    document.getElementById('cox_l').textContent=(cox*1e15).toFixed(1);
+
+    const kT=1.38e-23*300;
+    const gmp=gmr*gmn;
+    const svn_pair=Math.sqrt(8*kT*gam/gmn)*1e9; // nV/√Hz
+    const svn_load=Math.sqrt(8*kT*gam*gmp/gmn/gmn)*1e9;
+    const svn_tot=Math.sqrt(svn_pair**2+svn_load**2);
+
+    // 1/f: at 1kHz
+    const kfp=kfr*kfn;
+    const f1k=1000;
+    const svf_pair=Math.sqrt(2*kfn/(cox*wln*1e-12*f1k))*1e9;
+    const svf_load=Math.sqrt(2*kfp/(cox*wlp*1e-12*f1k))*1e9*(gmp/gmn);
+
+    // Noise corner for total
+    const fc=(svn_pair/svn_tot)**2 * 2*kfn/(cox*wln*1e-12) / (svn_pair*1e-9)**2 / 1e3; // simplified
+
+    document.getElementById('tn_pair').textContent=svn_pair.toFixed(2);
+    document.getElementById('tn_load').textContent=svn_load.toFixed(2);
+    document.getElementById('tn_tot').textContent=svn_tot.toFixed(2);
+    document.getElementById('fc_d').textContent=(fc).toFixed(2);
+
+    draw(gmn, gmp, gam, kfn, kfp, wln, wlp, cox, svn_tot, svn_pair, svn_load);
+  }
+
+  function draw(gmn, gmp, gam, kfn, kfp, wln, wlp, cox, svn_tot, svn_pair, svn_load){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=300;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,300);
+    const pL=55,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=300-pT-pB;
+
+    const fmin=1, fmax=1e8;
+    const logFmin=0, logFmax=8;
+    const snMax=200, snMin=0;
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText('S_vn (nV/√Hz)', 2, pT+ph/2);
+    ctx.fillText('Frequency (Hz)', pL+pw/2-20, 300-4);
+
+    for(let i=0;i<=5;i++){
+      const v=i/5*snMax; const y=pT+ph-(i/5)*ph;
+      ctx.fillStyle='#8888aa'; ctx.fillText(v.toFixed(0), 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+    ['1','100','10k','1M','100M'].forEach((lbl,i)=>{
+      const x=pL+(i*2/logFmax)*pw;
+      ctx.fillStyle='#8888aa'; ctx.font='8px system-ui'; ctx.fillText(lbl, x-10, pT+ph+14);
+    });
+
+    // Pair thermal
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=1.5; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(pL,pT+ph-(svn_pair/snMax)*ph); ctx.lineTo(pL+pw,pT+ph-(svn_pair/snMax)*ph); ctx.stroke();
+
+    // Load thermal
+    ctx.strokeStyle='#ff8800'; ctx.lineWidth=1.5; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(pL,pT+ph-(svn_load/snMax)*ph); ctx.lineTo(pL+pw,pT+ph-(svn_load/snMax)*ph); ctx.stroke();
+
+    // Pair 1/f
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2; ctx.setLineDash([6,3]);
+    ctx.beginPath(); let first=true;
+    for(let px=0;px<=pw;px++){
+      const f=Math.pow(10,logFmin+(px/pw)*(logFmax-logFmin));
+      const sv=Math.sqrt(2*kfn/(cox*wln*1e-12*f))*1e9;
+      const y=pT+ph-(Math.min(sv,snMax)/snMax)*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // Load 1/f (input-referred via g_m ratio)
+    ctx.strokeStyle='#ff8800'; ctx.lineWidth=2; ctx.setLineDash([4,2]);
+    ctx.beginPath(); first=true;
+    for(let px=0;px<=pw;px++){
+      const f=Math.pow(10,logFmin+(px/pw)*(logFmax-logFmin));
+      const sv=(gmp/gmn)*Math.sqrt(2*kfp/(cox*wlp*1e-12*f))*1e9;
+      const y=pT+ph-(Math.min(sv,snMax)/snMax)*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // Total noise
+    ctx.strokeStyle='#00994d'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+    ctx.beginPath(); first=true;
+    for(let px=0;px<=pw;px++){
+      const f=Math.pow(10,logFmin+(px/pw)*(logFmax-logFmin));
+      const svfn=Math.sqrt(2*kfn/(cox*wln*1e-12*f))*1e9;
+      const svfp=(gmp/gmn)*Math.sqrt(2*kfp/(cox*wlp*1e-12*f))*1e9;
+      const sv=Math.sqrt(svn_pair**2+svfn**2+svn_load**2+svfp**2);
+      const y=pT+ph-(Math.min(sv,snMax)/snMax)*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const items=[{c:'#0066cc',lbl:'Pair thermal',d:[]},{c:'#0066cc',lbl:'Pair 1/f',d:[6,3]},{c:'#ff8800',lbl:'Load thermal',d:[]},{c:'#ff8800',lbl:'Load 1/f',d:[4,2]},{c:'#00994d',lbl:'Total',d:[]}];
+    items.forEach(({c,lbl,d},i)=>{
+      ctx.strokeStyle=c; ctx.lineWidth=1.6; ctx.setLineDash(d);
+      ctx.beginPath(); ctx.moveTo(pL+pw-110, pT+12+13*i); ctx.lineTo(pL+pw-93, pT+12+13*i); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText(lbl, pL+pw-89, pT+16+13*i);
+    });
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

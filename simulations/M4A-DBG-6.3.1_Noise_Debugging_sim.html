@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-DBG-6.3.1 Noise Debugging</title>
+<style>
+  :root {
+    --bg: #f5f5f5; --panel: #ffffff; --border: #d0d0d0;
+    --text: #1a1a1a; --muted: #666; --accent: #1a6eb5;
+    --pass: #2d7a2d; --fail: #b52a2a; --warn: #b57a00;
+    --pass-bg: #e8f5e8; --fail-bg: #fde8e8; --warn-bg: #fff3cd;
+    --canvas-bg: #fafafa; --c1: #1a6eb5; --c2: #e07b00; --c3: #2d7a2d; --c4: #8b1a8b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a; --panel: #242424; --border: #3a3a3a;
+      --text: #e8e8e8; --muted: #999; --accent: #4da3f5;
+      --pass: #4caf50; --fail: #ef5350; --warn: #ffb300;
+      --pass-bg: #1a2e1a; --fail-bg: #2e1a1a; --warn-bg: #2e2200;
+      --canvas-bg: #1e1e1e; --c1: #4da3f5; --c2: #ffb300; --c3: #4caf50; --c4: #ce93d8;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; padding: 16px; }
+  h1 { font-size: 1.2em; color: var(--accent); margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 0.85em; margin-bottom: 16px; }
+  .layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .panel h3 { font-size: 0.9em; color: var(--accent); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .slider-row { margin-bottom: 9px; }
+  .slider-row label { display: flex; justify-content: space-between; font-size: 0.82em; color: var(--muted); margin-bottom: 3px; }
+  .slider-row label span { color: var(--text); font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .right-col { display: flex; flex-direction: column; gap: 14px; }
+  canvas { width: 100%; display: block; background: var(--canvas-bg); border-radius: 6px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.78em; font-weight: 700; }
+  .badge.pass { background: var(--pass-bg); color: var(--pass); }
+  .badge.fail { background: var(--fail-bg); color: var(--fail); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  select { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px; font-size: 0.85em; width: 100%; margin-bottom: 8px; }
+  .section-divider { font-size: 0.75em; color: var(--muted); margin: 8px 0 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .readout-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .readout { flex: 1; min-width: 90px; background: var(--canvas-bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; text-align: center; }
+  .readout .val { font-size: 1.1em; font-weight: 700; }
+  .readout .lbl { font-size: 0.72em; color: var(--muted); margin-top: 2px; }
+  @media (max-width: 720px) { .layout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<h1>M4A-DBG-6.3.1 — Noise Debugging</h1>
+<p class="subtitle">Noise breakdown by source: thermal, op-amp en/in, 1/f, supply coupling, and external interference</p>
+
+<div class="layout">
+<div>
+  <div class="panel" style="margin-bottom:12px">
+    <h3>Noise Scenario</h3>
+    <select id="sel-scenario" onchange="applyScenario()">
+      <option value="custom">Custom</option>
+      <option value="dominated_thermal">Resistor-dominated (R = 100kΩ)</option>
+      <option value="dominated_en">Op-amp en dominated (G=10)</option>
+      <option value="dominated_1f">1/f noise dominated (CMOS)</option>
+      <option value="dominated_supply">Supply coupling dominated</option>
+      <option value="dominated_ext">External 60 Hz interference</option>
+    </select>
+  </div>
+
+  <div class="panel" style="margin-bottom:12px">
+    <h3>Circuit Parameters</h3>
+    <div class="section-divider">Amplifier</div>
+    <div class="slider-row">
+      <label>Gain (V/V) <span id="lbl-gain">10</span></label>
+      <input type="range" id="sl-gain" min="1" max="1000" step="1" value="10" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>R1 (kΩ) <span id="lbl-r1">10</span></label>
+      <input type="range" id="sl-r1" min="0.1" max="1000" step="0.1" value="10" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Bandwidth fl–fh <span style="font-weight:600" id="lbl-bw">10Hz–10kHz</span></label>
+      <input type="range" id="sl-bw" min="0" max="5" step="1" value="3" oninput="update()">
+    </div>
+    <div class="section-divider">Op-Amp Noise</div>
+    <div class="slider-row">
+      <label>en (nV/√Hz) <span id="lbl-en">5</span></label>
+      <input type="range" id="sl-en" min="0.3" max="100" step="0.1" value="5" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>in (fA/√Hz) <span id="lbl-in">500</span></label>
+      <input type="range" id="sl-in" min="1" max="10000" step="1" value="500" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>1/f corner (Hz) <span id="lbl-fc">100</span></label>
+      <input type="range" id="sl-fc" min="1" max="10000" step="1" value="100" oninput="update()">
+    </div>
+    <div class="section-divider">External Noise Sources</div>
+    <div class="slider-row">
+      <label>Supply ripple (mV) <span id="lbl-vrip">10</span></label>
+      <input type="range" id="sl-vrip" min="0" max="200" step="1" value="10" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>PSRR at ripple freq (dB) <span id="lbl-psrr">60</span></label>
+      <input type="range" id="sl-psrr" min="20" max="100" step="1" value="60" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>EMI pickup (µV) <span id="lbl-emi">0</span></label>
+      <input type="range" id="sl-emi" min="0" max="1000" step="1" value="0" oninput="update()">
+    </div>
+    <div class="section-divider">Specification</div>
+    <div class="slider-row">
+      <label>Max noise spec (µV rms) <span id="lbl-spec">50</span></label>
+      <input type="range" id="sl-spec" min="1" max="1000" step="1" value="50" oninput="update()">
+    </div>
+  </div>
+</div>
+
+<div class="right-col">
+  <div class="readout-row" id="readouts"></div>
+  <div class="panel">
+    <h3>Noise Source Breakdown</h3>
+    <canvas id="c1" height="180"></canvas>
+  </div>
+  <div class="panel">
+    <h3>Noise Spectral Density — Input-Referred (log scale)</h3>
+    <canvas id="c2" height="200"></canvas>
+  </div>
+</div>
+</div>
+
+<script>
+const BW_OPTIONS = [
+  { label: '10Hz–100Hz', fl: 10, fh: 100 },
+  { label: '10Hz–1kHz', fl: 10, fh: 1e3 },
+  { label: '10Hz–10kHz', fl: 10, fh: 10e3 },
+  { label: '10Hz–100kHz', fl: 10, fh: 100e3 },
+  { label: '1Hz–1MHz', fl: 1, fh: 1e6 },
+  { label: '1Hz–10MHz', fl: 1, fh: 10e6 },
+];
+
+function applyScenario() {
+  const sc = document.getElementById('sel-scenario').value;
+  const sets = {
+    dominated_thermal: { gain: 10, r1: 100, bw: 2, en: 5, inn: 500, fc: 100, vrip: 1, psrr: 60, emi: 0, spec: 100 },
+    dominated_en:      { gain: 100, r1: 1, bw: 2, en: 20, inn: 500, fc: 100, vrip: 5, psrr: 60, emi: 0, spec: 200 },
+    dominated_1f:      { gain: 10, r1: 10, bw: 0, en: 5, inn: 500, fc: 3000, vrip: 5, psrr: 60, emi: 0, spec: 20 },
+    dominated_supply:  { gain: 10, r1: 10, bw: 2, en: 5, inn: 500, fc: 100, vrip: 100, psrr: 40, emi: 0, spec: 50 },
+    dominated_ext:     { gain: 10, r1: 10, bw: 2, en: 5, inn: 500, fc: 100, vrip: 10, psrr: 60, emi: 500, spec: 50 },
+  };
+  if (sets[sc]) {
+    const s = sets[sc];
+    document.getElementById('sl-gain').value = s.gain;
+    document.getElementById('sl-r1').value = s.r1;
+    document.getElementById('sl-bw').value = s.bw;
+    document.getElementById('sl-en').value = s.en;
+    document.getElementById('sl-in').value = s.inn;
+    document.getElementById('sl-fc').value = s.fc;
+    document.getElementById('sl-vrip').value = s.vrip;
+    document.getElementById('sl-psrr').value = s.psrr;
+    document.getElementById('sl-emi').value = s.emi;
+    document.getElementById('sl-spec').value = s.spec;
+  }
+  update();
+}
+
+function v(id) { return parseFloat(document.getElementById(id).value); }
+function lbl(id, val, dec) { const el = document.getElementById(id); if(el) el.textContent = typeof val==='number' ? val.toFixed(dec!==undefined?dec:1) : val; }
+function getColors() {
+  const s = getComputedStyle(document.documentElement);
+  return ['--text','--muted','--accent','--pass','--fail','--warn','--border','--canvas-bg','--c1','--c2','--c3','--c4'].reduce((o,k)=>{o[k.slice(2)]=s.getPropertyValue(k).trim();return o;},{});
+}
+function getCtx(id) {
+  const c = document.getElementById(id); const dpr = window.devicePixelRatio||1;
+  const rect = c.getBoundingClientRect();
+  if (c._lw!==rect.width||c._lh!==rect.height){c.width=rect.width*dpr;c.height=rect.height*dpr;c._lw=rect.width;c._lh=rect.height;}
+  const ctx=c.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);
+  return [ctx,rect.width,rect.height];
+}
+
+function update() {
+  const gain = v('sl-gain');
+  const r1 = v('sl-r1') * 1e3;
+  const rf = r1 * gain;
+  const bw_idx = Math.round(v('sl-bw'));
+  const bw_opt = BW_OPTIONS[Math.min(bw_idx, BW_OPTIONS.length-1)];
+  const fl = bw_opt.fl, fh = bw_opt.fh;
+  const en = v('sl-en') * 1e-9;
+  const inn = v('sl-in') * 1e-15;
+  const fc_1f = v('sl-fc');
+  const vrip = v('sl-vrip') * 1e-3;
+  const psrr_dB = v('sl-psrr');
+  const emi = v('sl-emi') * 1e-6;
+  const spec = v('sl-spec') * 1e-6;
+
+  lbl('lbl-gain', gain, 0);
+  lbl('lbl-r1', v('sl-r1'), 1);
+  document.getElementById('lbl-bw').textContent = bw_opt.label;
+  lbl('lbl-en', v('sl-en'), 1);
+  lbl('lbl-in', v('sl-in'), 0);
+  lbl('lbl-fc', v('sl-fc'), 0);
+  lbl('lbl-vrip', v('sl-vrip'), 0);
+  lbl('lbl-psrr', psrr_dB, 0);
+  lbl('lbl-emi', v('sl-emi'), 0);
+  lbl('lbl-spec', v('sl-spec'), 0);
+
+  const kT4 = 4 * 1.38e-23 * 298;
+  const bw = fh - fl;
+  const ng = 1 + gain;
+
+  // Noise density sources at midband (input-referred)
+  const en_thermal_r1 = Math.sqrt(kT4 * r1); // thermal R1
+  const en_thermal_rf = Math.sqrt(kT4 * rf) / gain; // thermal Rf referred to input
+  const en_opamp = en; // en at midband
+  const en_incurrent = inn * r1; // in * Rs
+
+  // Integrated noise contributions (output-referred)
+  const int_r1_therm = en_thermal_r1 * ng * Math.sqrt(bw);
+  const int_rf_therm = en_thermal_rf * gain * Math.sqrt(bw);
+  const int_en_midband = en * ng * Math.sqrt(bw);
+  // 1/f integrated from fl to fh: ∫fl^fh fc/f df = fc * ln(fh/fl)
+  const en_1f_rms = en * ng * Math.sqrt(fc_1f * Math.log(fh / Math.max(fl, 0.001)));
+  const int_in = inn * r1 * ng * Math.sqrt(bw);
+  const supply_noise = vrip * Math.pow(10, -psrr_dB / 20) * gain; // output-referred
+  const ext_interference = emi * gain;
+
+  // Total output noise (RSS)
+  const int_total = Math.sqrt(int_r1_therm**2 + int_rf_therm**2 + int_en_midband**2 + en_1f_rms**2 + int_in**2 + supply_noise**2 + ext_interference**2);
+  const int_total_input = int_total / gain;
+
+  const pass = int_total <= spec;
+
+  // Breakdown contributions (output-referred µV)
+  const sources = [
+    { name: 'Thermal R1', val: int_r1_therm * 1e6, color: 'c1' },
+    { name: 'Thermal Rf', val: int_rf_therm * 1e6, color: 'c2' },
+    { name: 'en (midband)', val: int_en_midband * 1e6, color: 'c3' },
+    { name: '1/f noise', val: en_1f_rms * 1e6, color: 'c4' },
+    { name: 'in × R1', val: int_in * 1e6, color: 'warn' },
+    { name: 'Supply coupling', val: supply_noise * 1e6, color: 'fail' },
+    { name: 'EMI/Interference', val: ext_interference * 1e6, color: 'fail' },
+  ];
+  const total_µV = int_total * 1e6;
+
+  document.getElementById('readouts').innerHTML = [
+    { val: total_µV.toFixed(2)+' µV', lbl: 'Total Output Noise', cls: pass ? 'pass' : 'fail' },
+    { val: (int_total_input * 1e6).toFixed(2)+' µV', lbl: 'Input-Referred', cls: 'accent' },
+    { val: spec*1e6+'µV spec', lbl: 'Specification', cls: '' },
+    { val: (total_µV/(spec*1e6)*100).toFixed(0)+'%', lbl: '% of Budget Used', cls: pass ? 'pass' : 'fail' },
+  ].map(r => `<div class="readout"><div class="val" style="color:var(--${r.cls})">${r.val}</div><div class="lbl">${r.lbl}</div></div>`).join('');
+
+  drawBreakdown(sources, total_µV, spec * 1e6);
+  drawSpectrum(en, inn, fc_1f, r1, rf, gain, fl, fh);
+}
+
+function drawBreakdown(sources, total_µV, spec_µV) {
+  const [ctx, W, H] = getCtx('c1');
+  const C = getColors();
+  ctx.clearRect(0, 0, W, H);
+  const PAD = { l: 110, r: 20, t: 20, b: 35 };
+  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+  ctx.fillStyle = C['canvas-bg'];
+  ctx.fillRect(PAD.l, PAD.t, cW, cH);
+
+  const maxX = Math.max(total_µV, spec_µV) * 1.1;
+  function xp(v2) { return PAD.l + (v2 / maxX) * cW; }
+
+  const barH = cH / sources.length - 3;
+
+  // Spec line
+  const xspec = xp(spec_µV);
+  ctx.strokeStyle = C.fail; ctx.lineWidth = 1.5; ctx.setLineDash([5,3]);
+  ctx.beginPath(); ctx.moveTo(xspec, PAD.t); ctx.lineTo(xspec, PAD.t + cH); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = C.fail; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Spec', xspec, PAD.t + 9);
+
+  sources.forEach((s, i) => {
+    const y = PAD.t + i * (barH + 3);
+    const bw2 = xp(s.val) - PAD.l;
+    const color = C[s.color] || C.accent;
+    ctx.fillStyle = color + '99';
+    ctx.fillRect(PAD.l, y, bw2, barH);
+    ctx.strokeStyle = color; ctx.lineWidth = 1;
+    ctx.strokeRect(PAD.l, y, bw2, barH);
+
+    ctx.fillStyle = C.text; ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+    ctx.fillText(s.name, PAD.l - 5, y + barH/2 + 4);
+    if (bw2 > 20) {
+      ctx.fillStyle = color; ctx.textAlign = 'left';
+      ctx.fillText(s.val.toFixed(2)+'µV', PAD.l + bw2 + 3, y + barH/2 + 4);
+    }
+  });
+
+  // Total marker
+  const xTot = xp(total_µV);
+  ctx.strokeStyle = C.text; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(xTot, PAD.t); ctx.lineTo(xTot, PAD.t + cH); ctx.stroke();
+  ctx.fillStyle = C.text; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Total:'+total_µV.toFixed(1)+'µV', xTot, PAD.t + cH + 14);
+
+  ctx.strokeStyle = C.border; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t); ctx.lineTo(PAD.l, PAD.t+cH); ctx.lineTo(PAD.l+cW, PAD.t+cH); ctx.stroke();
+  ctx.fillStyle = C.muted; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Output-Referred Noise (µV rms)', PAD.l + cW/2, H - 4);
+}
+
+function drawSpectrum(en, inn, fc_1f, r1, rf, gain, fl, fh) {
+  const [ctx, W, H] = getCtx('c2');
+  const C = getColors();
+  ctx.clearRect(0, 0, W, H);
+  const PAD = { l: 55, r: 20, t: 20, b: 40 };
+  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+  ctx.fillStyle = C['canvas-bg'];
+  ctx.fillRect(PAD.l, PAD.t, cW, cH);
+
+  const kT4 = 4 * 1.38e-23 * 298;
+  const nMin = 0.1e-9, nMax = 100e-9;
+  const logNMin = Math.log10(nMin), logNMax = Math.log10(nMax);
+  const logFMin = -1, logFMax = 7;
+
+  function xp(f) { return PAD.l + (Math.log10(f) - logFMin) / (logFMax - logFMin) * cW; }
+  function yp(n) { const lv = Math.log10(Math.max(nMin, n)); return PAD.t + (1 - (lv-logNMin)/(logNMax-logNMin)) * cH; }
+
+  // Grid
+  ctx.strokeStyle = C.border; ctx.lineWidth = 0.5; ctx.setLineDash([2,3]);
+  for (let i = logFMin; i <= logFMax; i++) {
+    const x = xp(Math.pow(10,i));
+    ctx.beginPath(); ctx.moveTo(x,PAD.t); ctx.lineTo(x,PAD.t+cH); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  const sources_spec = [
+    { label: 'Thermal R1', color: C.c1, fn: f => Math.sqrt(kT4 * r1) },
+    { label: 'Thermal Rf (in)', color: C.c2, fn: f => Math.sqrt(kT4 * rf) / gain },
+    { label: 'en (1/f)', color: C.c3, fn: f => en * Math.sqrt(1 + fc_1f / f) },
+    { label: 'in × R1', color: C.c4, fn: f => inn * r1 },
+    { label: 'Total (in-ref)', color: C.text, fn: f => {
+      const eTR1 = Math.sqrt(kT4*r1);
+      const eTRf = Math.sqrt(kT4*rf)/gain;
+      const eEN = en * Math.sqrt(1+fc_1f/f);
+      const eIN = inn * r1;
+      return Math.sqrt(eTR1**2 + eTRf**2 + eEN**2 + eIN**2);
+    }},
+  ];
+
+  sources_spec.forEach(s => {
+    ctx.strokeStyle = s.color; ctx.lineWidth = s.label.includes('Total') ? 2.5 : 1.5;
+    ctx.beginPath();
+    for (let i = 0; i <= 100; i++) {
+      const f = Math.pow(10, logFMin + i/100 * (logFMax - logFMin));
+      const n = s.fn(f);
+      const x = xp(f), y = yp(n);
+      i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    // Label
+    const f_lbl = Math.pow(10, (logFMin + logFMax) / 2);
+    ctx.fillStyle = s.color; ctx.font = '9px system-ui'; ctx.textAlign = 'left';
+    ctx.fillText(s.label, xp(f_lbl*3)+3, yp(s.fn(f_lbl*3))-3);
+  });
+
+  // BW region shading
+  ctx.fillStyle = C.accent + '22';
+  const xfl = xp(fl), xfh = xp(fh);
+  ctx.fillRect(xfl, PAD.t, xfh - xfl, cH);
+  ctx.strokeStyle = C.accent; ctx.lineWidth = 1; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(xfl, PAD.t); ctx.lineTo(xfl, PAD.t+cH); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(xfh, PAD.t); ctx.lineTo(xfh, PAD.t+cH); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Axes
+  ctx.strokeStyle = C.border; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l,PAD.t); ctx.lineTo(PAD.l,PAD.t+cH); ctx.lineTo(PAD.l+cW,PAD.t+cH); ctx.stroke();
+  ctx.fillStyle = C.muted; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+  ['0.1Hz','1Hz','10Hz','100Hz','1kHz','10kHz','100kHz','1MHz','10MHz'].forEach((l,i) => {
+    const f = Math.pow(10, logFMin + i);
+    ctx.fillText(l, xp(f), PAD.t+cH+14);
+  });
+  ctx.textAlign = 'right';
+  [0.1, 0.3, 1, 3, 10, 30, 100].forEach(n => {
+    const nV = n * 1e-9;
+    if (nV >= nMin && nV <= nMax) {
+      ctx.fillText(n.toFixed(0)+'nV/√Hz', PAD.l-3, yp(nV)+4);
+    }
+  });
+  ctx.save(); ctx.translate(14, PAD.t+cH/2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle = C.text; ctx.font = '11px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Input-Referred Noise Density', 0, 0); ctx.restore();
+  ctx.fillStyle = C.muted; ctx.textAlign = 'center';
+  ctx.fillText('Frequency', PAD.l+cW/2, H-4);
+}
+
+window.addEventListener('resize', update);
+update();
+</script>
+</body>
+</html>

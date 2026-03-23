@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-5T-9.4.1 — 5T OTA Applications & Design Examples</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; }
+  header { background: #1a1d2e; padding: 16px 24px; border-bottom: 2px solid #3a7bd5; }
+  header h1 { font-size: 1.15rem; color: #7eb3ff; font-weight: 600; }
+  header p { font-size: 0.8rem; color: #888; margin-top: 3px; }
+  .tabs { display: flex; background: #13151f; border-bottom: 1px solid #2a2d3e; }
+  .tab { padding: 11px 22px; cursor: pointer; font-size: 0.85rem; color: #888; border-bottom: 2px solid transparent; transition: all .2s; }
+  .tab.active { color: #7eb3ff; border-bottom-color: #3a7bd5; background: #1a1d2e; }
+  .tab:hover:not(.active) { color: #ccc; background: #1a1d2e55; }
+  .panel { display: none; padding: 20px 24px; }
+  .panel.active { display: block; }
+  .row { display: flex; gap: 20px; flex-wrap: wrap; }
+  .card { background: #1a1d2e; border: 1px solid #2a2d3e; border-radius: 8px; padding: 16px; flex: 1; min-width: 280px; }
+  .card h3 { font-size: 0.85rem; color: #7eb3ff; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .slider-row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+  .slider-row label { font-size: 0.78rem; color: #aaa; width: 190px; flex-shrink: 0; }
+  .slider-row input[type=range] { flex: 1; accent-color: #3a7bd5; }
+  .slider-row span { font-size: 0.78rem; color: #7eb3ff; width: 75px; text-align: right; }
+  canvas { display: block; width: 100%; border-radius: 6px; background: #12141e; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
+  .metric { background: #12141e; border: 1px solid #2a2d3e; border-radius: 6px; padding: 8px 12px; }
+  .metric .label { font-size: 0.7rem; color: #888; }
+  .metric .value { font-size: 1.05rem; color: #4ecdc4; font-weight: 700; margin-top: 2px; }
+  .metric .value.warn { color: #f6ad55; }
+  .metric .value.bad { color: #fc8181; }
+  .metric .value.good { color: #68d391; }
+  .info-box { background: #12141e; border-left: 3px solid #3a7bd5; padding: 10px 14px; border-radius: 0 6px 6px 0; margin-top: 10px; font-size: 0.78rem; color: #bbb; line-height: 1.6; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #aaa; }
+  .legend-dot { width: 14px; height: 3px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>M4B-5T-9.4.1 — Five-Transistor OTA: Applications, Design Examples, and Variants</h1>
+  <p>SC integrator settling, CM-OTA variants, and complete design sizing wizard</p>
+</header>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">SC Integrator Settling</div>
+  <div class="tab" onclick="showTab(1)">CM-OTA vs 5T OTA</div>
+  <div class="tab" onclick="showTab(2)">Full Design Wizard</div>
+</div>
+
+<!-- TAB 0: SC Integrator Settling -->
+<div class="panel active" id="tab0">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:320px;">
+      <h3>SC Integrator Parameters</h3>
+      <div class="slider-row"><label>gm1 (mA/V)</label><input type="range" id="t0_gm1" min="0.05" max="10" step="0.05" value="1"><span id="v_t0_gm1">1.00</span></div>
+      <div class="slider-row"><label>CL (fF)</label><input type="range" id="t0_CL" min="50" max="5000" step="50" value="500"><span id="v_t0_CL">500</span></div>
+      <div class="slider-row"><label>CS/CI ratio</label><input type="range" id="t0_ratio" min="0.1" max="4" step="0.05" value="1"><span id="v_t0_ratio">1.00</span></div>
+      <div class="slider-row"><label>Av (dB)</label><input type="range" id="t0_Av" min="30" max="100" step="1" value="52"><span id="v_t0_Av">52</span></div>
+      <div class="slider-row"><label>Target settling accuracy (%)</label><input type="range" id="t0_acc" min="0.001" max="1" step="0.001" value="0.1"><span id="v_t0_acc">0.100</span></div>
+      <div class="metrics" style="grid-template-columns:1fr 1fr;">
+        <div class="metric"><div class="label">GBW</div><div class="value" id="m0_gbw">—</div></div>
+        <div class="metric"><div class="label">Time constant τ</div><div class="value" id="m0_tau">—</div></div>
+        <div class="metric"><div class="label">Settling time</div><div class="value" id="m0_tset">—</div></div>
+        <div class="metric"><div class="label">Gain error</div><div class="value warn" id="m0_gerr">—</div></div>
+        <div class="metric"><div class="label">Max ADC bits</div><div class="value good" id="m0_bits">—</div></div>
+        <div class="metric"><div class="label">Required half-period</div><div class="value" id="m0_thalf">—</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>SC Integrator Step Response (exponential settling)</h3>
+      <canvas id="c_settle" height="320"></canvas>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#4ecdc4;"></div>Step response</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f6ad55;"></div>Target ±accuracy band</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#3a7bd5;"></div>Settling time marker</div>
+      </div>
+      <div class="info-box">
+        The 5T OTA integrator settling is: Vout(t) = Vin × (1 − e^(−t/τ)) where τ = CL/gm1.
+        For a pipeline ADC stage: settling must complete to the required accuracy in T/2 (half clock period).
+        The gain error from finite OTA gain: ε = CS/(CI × Av). This sets the maximum ADC resolution.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: CM-OTA vs 5T OTA -->
+<div class="panel" id="tab1">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:320px;">
+      <h3>Comparison Parameters</h3>
+      <div class="slider-row"><label>gm1 (mA/V)</label><input type="range" id="t1_gm1" min="0.1" max="5" step="0.05" value="1"><span id="v_t1_gm1">1.00</span></div>
+      <div class="slider-row"><label>ISS (µA)</label><input type="range" id="t1_ISS" min="10" max="1000" step="10" value="200"><span id="v_t1_ISS">200</span></div>
+      <div class="slider-row"><label>CL (fF)</label><input type="range" id="t1_CL" min="100" max="5000" step="50" value="500"><span id="v_t1_CL">500</span></div>
+      <div class="slider-row"><label>Mirror ratio K</label><input type="range" id="t1_K" min="1" max="8" step="1" value="3"><span id="v_t1_K">3</span></div>
+      <div class="metrics" style="grid-template-columns:1fr 1fr;">
+        <div class="metric"><div class="label">5T GBW</div><div class="value" id="m1_gbw5t">—</div></div>
+        <div class="metric"><div class="label">CM-OTA GBW</div><div class="value good" id="m1_gbwcm">—</div></div>
+        <div class="metric"><div class="label">GBW improvement</div><div class="value good" id="m1_gbwimp">—</div></div>
+        <div class="metric"><div class="label">5T noise floor</div><div class="value" id="m1_n5t">—</div></div>
+        <div class="metric"><div class="label">CM-OTA noise floor</div><div class="value warn" id="m1_ncm">—</div></div>
+        <div class="metric"><div class="label">Noise penalty</div><div class="value warn" id="m1_nplt">—</div></div>
+        <div class="metric"><div class="label">5T FoM</div><div class="value" id="m1_fom5t">—</div></div>
+        <div class="metric"><div class="label">CM-OTA FoM</div><div class="value" id="m1_fomcm">—</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>GBW and Noise vs Mirror Ratio K</h3>
+      <canvas id="c_cmota" height="320"></canvas>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#4ecdc4;"></div>GBW (normalized)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#fc8181;"></div>Noise penalty (normalized)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#3a7bd5;"></div>Current marker (user K)</div>
+      </div>
+      <div class="info-box">
+        CM-OTA effective Gm = (K+1)/2 × gm1. GBW scales linearly with K+1.
+        Noise factor = (1 + K×gm3/gm1) — noise increases sub-linearly with K.
+        Net SNR improvement: 20·log10(GBW_cm/noise_cm) − 20·log10(GBW_5t/noise_5t).
+        Diminishing returns beyond K=3–4: noise grows faster than GBW for large K.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: Full Design Wizard -->
+<div class="panel" id="tab2">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:320px;">
+      <h3>Design Specification</h3>
+      <div class="slider-row"><label>GBW target (MHz)</label><input type="range" id="t2_GBW" min="1" max="2000" step="1" value="200"><span id="v_t2_GBW">200</span></div>
+      <div class="slider-row"><label>CL (fF)</label><input type="range" id="t2_CL" min="50" max="5000" step="50" value="500"><span id="v_t2_CL">500</span></div>
+      <div class="slider-row"><label>Vov1 (mV)</label><input type="range" id="t2_Vov1" min="50" max="300" step="5" value="120"><span id="v_t2_Vov1">120</span></div>
+      <div class="slider-row"><label>VDD (V)</label><input type="range" id="t2_VDD" min="0.8" max="3.3" step="0.1" value="1.2"><span id="v_t2_VDD">1.2</span></div>
+      <div class="slider-row"><label>µnCox (µA/V²)</label><input type="range" id="t2_unCox" min="100" max="800" step="10" value="500"><span id="v_t2_unCox">500</span></div>
+      <div class="slider-row"><label>L input pair (nm)</label><input type="range" id="t2_L" min="28" max="2000" step="10" value="100"><span id="v_t2_L">100</span></div>
+      <div class="slider-row"><label>A_Vth (mV·µm)</label><input type="range" id="t2_AVth" min="1" max="12" step="0.1" value="4"><span id="v_t2_AVth">4.0</span></div>
+      <div class="metrics" style="grid-template-columns:1fr 1fr;">
+        <div class="metric"><div class="label">gm1 required</div><div class="value" id="m2_gm1">—</div></div>
+        <div class="metric"><div class="label">ISS</div><div class="value" id="m2_ISS">—</div></div>
+        <div class="metric"><div class="label">Power</div><div class="value" id="m2_Pwr">—</div></div>
+        <div class="metric"><div class="label">FoM GBW·CL/IDD</div><div class="value good" id="m2_FoM">—</div></div>
+        <div class="metric"><div class="label">W/L M1</div><div class="value" id="m2_WoL">—</div></div>
+        <div class="metric"><div class="label">W M1 (µm)</div><div class="value" id="m2_W">—</div></div>
+        <div class="metric"><div class="label">σ(VOS) M1/M2</div><div class="value warn" id="m2_VOS">—</div></div>
+        <div class="metric"><div class="label">3σ(VOS)</div><div class="value" id="m2_VOS3">—</div></div>
+        <div class="metric"><div class="label">Thermal noise</div><div class="value" id="m2_Vn">—</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Design Summary Bar Chart</h3>
+      <canvas id="c_wizard" height="350"></canvas>
+      <div class="info-box">
+        This wizard derives all key parameters for a 5T OTA from the specification.
+        The bar chart shows normalized performance metrics: GBW (relative to target), power budget (vs 1mW reference), VOS 3σ (vs 3mV target), noise density (vs 10nV/√Hz target), and FoM (vs 200 GHz·pF/A reference).
+        Bars exceeding the normalized target (1.0) indicate the design meets or exceeds spec.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const kB=1.38e-23, T=300;
+
+// ─── TAB 0: SC Integrator Settling ────────────────────────────────────────
+function updateTab0() {
+  const gm1 = parseFloat(document.getElementById('t0_gm1').value)*1e-3;
+  const CL   = parseFloat(document.getElementById('t0_CL').value)*1e-15;
+  const ratio= parseFloat(document.getElementById('t0_ratio').value);
+  const Av_dB= parseFloat(document.getElementById('t0_Av').value);
+  const acc  = parseFloat(document.getElementById('t0_acc').value)/100;
+
+  document.getElementById('v_t0_gm1').textContent  = (gm1*1e3).toFixed(2);
+  document.getElementById('v_t0_CL').textContent   = (CL*1e15).toFixed(0);
+  document.getElementById('v_t0_ratio').textContent= ratio.toFixed(2);
+  document.getElementById('v_t0_Av').textContent   = Av_dB.toFixed(0);
+  document.getElementById('v_t0_acc').textContent  = (acc*100).toFixed(3);
+
+  const Av     = Math.pow(10, Av_dB/20);
+  const tau    = CL/gm1;
+  const GBW    = gm1/(2*Math.PI*CL);
+  const tset   = tau * Math.log(1/acc);
+  const gerr   = ratio/Av;
+  const bits   = Math.floor(Math.log2(1/gerr)) - 1;
+
+  document.getElementById('m0_gbw').textContent   = GBW>1e9?(GBW/1e9).toFixed(2)+'GHz':(GBW/1e6).toFixed(1)+'MHz';
+  document.getElementById('m0_tau').textContent   = (tau*1e9).toFixed(2)+' ns';
+  document.getElementById('m0_tset').textContent  = (tset*1e9).toFixed(2)+' ns';
+  document.getElementById('m0_gerr').textContent  = (gerr*100).toFixed(3)+'%';
+  document.getElementById('m0_bits').textContent  = Math.max(0,bits)+' bits';
+  document.getElementById('m0_thalf').textContent = (tset*1e9).toFixed(1)+' ns';
+
+  const bEl = document.getElementById('m0_bits');
+  bEl.className = 'value ' + (bits >= 10 ? 'good' : bits >= 8 ? 'warn' : 'bad');
+
+  const cv = document.getElementById('c_settle');
+  const ctx = cv.getContext('2d');
+  const W = cv.clientWidth*devicePixelRatio||600, H=320;
+  cv.width=W; cv.height=H;
+  const pad={l:55,r:20,t:20,b:35};
+  const tEnd = tset * 2.5;
+  const xMin=0, xMax=tEnd*1e9, yMin=-0.05, yMax=1.1;
+  const px = t => pad.l + (t-xMin)/(xMax-xMin)*(W-pad.l-pad.r);
+  const py = y => H - pad.b - (y-yMin)/(yMax-yMin)*(H-pad.t-pad.b);
+
+  ctx.fillStyle='#12141e'; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#1e2136'; ctx.lineWidth=1;
+  for(let y=0; y<=1.0; y+=0.2) {
+    ctx.beginPath(); ctx.moveTo(pad.l,py(y)); ctx.lineTo(W-pad.r,py(y)); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='right';
+    ctx.fillText((y*100).toFixed(0)+'%', pad.l-3, py(y)+3);
+  }
+  // Accuracy band
+  const acc_hi = 1+acc, acc_lo = 1-acc;
+  ctx.fillStyle='rgba(246,173,85,0.15)';
+  ctx.fillRect(pad.l, py(acc_hi), W-pad.r-pad.l, py(acc_lo)-py(acc_hi));
+  ctx.strokeStyle='#f6ad55'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(pad.l,py(acc_hi)); ctx.lineTo(W-pad.r,py(acc_hi)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pad.l,py(acc_lo)); ctx.lineTo(W-pad.r,py(acc_lo)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#f6ad55'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('±'+((acc*100)).toFixed(3)+'%', pad.l+4, py(acc_hi)-4);
+
+  // Step response
+  const pts=[];
+  for(let i=0;i<=400;i++) {
+    const t = i/400 * tEnd;
+    const v = 1 - Math.exp(-t/tau);
+    pts.push([px(t*1e9), py(v)]);
+  }
+  ctx.strokeStyle='#4ecdc4'; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
+  pts.forEach(p=>ctx.lineTo(p[0],p[1])); ctx.stroke();
+
+  // Settling time marker
+  ctx.strokeStyle='#3a7bd5'; ctx.lineWidth=1.2; ctx.setLineDash([5,3]);
+  ctx.beginPath(); ctx.moveTo(px(tset*1e9),pad.t); ctx.lineTo(px(tset*1e9),H-pad.b); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#3a7bd5'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('t_set='+(tset*1e9).toFixed(1)+'ns', px(tset*1e9)+3, pad.t+14);
+
+  ctx.fillStyle='#555'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('Time (ns)', (pad.l+W-pad.r)/2, H-2);
+}
+
+// ─── TAB 1: CM-OTA ─────────────────────────────────────────────────────────
+function updateTab1() {
+  const gm1 = parseFloat(document.getElementById('t1_gm1').value)*1e-3;
+  const ISS  = parseFloat(document.getElementById('t1_ISS').value)*1e-6;
+  const CL   = parseFloat(document.getElementById('t1_CL').value)*1e-15;
+  const K    = parseFloat(document.getElementById('t1_K').value);
+
+  document.getElementById('v_t1_gm1').textContent = (gm1*1e3).toFixed(2);
+  document.getElementById('v_t1_ISS').textContent = (ISS*1e6).toFixed(0);
+  document.getElementById('v_t1_CL').textContent  = (CL*1e15).toFixed(0);
+  document.getElementById('v_t1_K').textContent   = K.toFixed(0);
+
+  const GBW_5t = gm1/(2*Math.PI*CL);
+  const Gm_cm  = (K+1)/2 * gm1;
+  const GBW_cm = Gm_cm/(2*Math.PI*CL);
+  const noise_5t = Math.sqrt(16*kB*T*0.7/gm1)*1e9;
+  const noise_cm = Math.sqrt(16*kB*T*0.7*(1+K)/Gm_cm)*1e9; // simplified noise factor
+  const FoM_5t = GBW_5t * CL / ISS * 1e9; // GHz·pF/A
+  const FoM_cm = GBW_cm * CL / ISS * 1e9;
+
+  const fmtGBW = g => g>1e9?(g/1e9).toFixed(2)+'GHz':(g/1e6).toFixed(1)+'MHz';
+  document.getElementById('m1_gbw5t').textContent = fmtGBW(GBW_5t);
+  document.getElementById('m1_gbwcm').textContent = fmtGBW(GBW_cm);
+  document.getElementById('m1_gbwimp').textContent= ((GBW_cm/GBW_5t)).toFixed(2)+'×';
+  document.getElementById('m1_n5t').textContent   = noise_5t.toFixed(2)+' nV/√Hz';
+  document.getElementById('m1_ncm').textContent   = noise_cm.toFixed(2)+' nV/√Hz';
+  document.getElementById('m1_nplt').textContent  = (noise_cm/noise_5t).toFixed(2)+'×';
+  document.getElementById('m1_fom5t').textContent = FoM_5t.toFixed(0)+' G·pF/A';
+  document.getElementById('m1_fomcm').textContent = FoM_cm.toFixed(0)+' G·pF/A';
+
+  const cv = document.getElementById('c_cmota');
+  const ctx = cv.getContext('2d');
+  const W = cv.clientWidth*devicePixelRatio||600, H=320;
+  cv.width=W; cv.height=H;
+  const pad={l:55,r:20,t:20,b:35};
+  const xMin=1, xMax=8, yMin=0, yMax=5;
+  const px = x => pad.l + (x-xMin)/(xMax-xMin)*(W-pad.l-pad.r);
+  const py = y => H - pad.b - (y-yMin)/(yMax-yMin)*(H-pad.t-pad.b);
+
+  ctx.fillStyle='#12141e'; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#1e2136'; ctx.lineWidth=1;
+  for(let y=0;y<=yMax;y+=1) {
+    ctx.beginPath(); ctx.moveTo(pad.l,py(y)); ctx.lineTo(W-pad.r,py(y)); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='right';
+    ctx.fillText(y+'×', pad.l-3, py(y)+3);
+  }
+  for(let x=1;x<=8;x++) {
+    ctx.beginPath(); ctx.moveTo(px(x),pad.t); ctx.lineTo(px(x),H-pad.b); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('K='+x, px(x), H-pad.b+12);
+  }
+
+  // GBW normalized
+  const ptsGBW=[], ptsNoise=[];
+  for(let k=1;k<=8;k+=0.1) {
+    const gbw_norm = (k+1)/2;
+    const noise_norm = Math.sqrt((1+k)/((k+1)/2*gm1) * gm1); // simplified
+    // correct noise: noise_cm = sqrt(16kTγ*(1+k)/Gm_cm), Gm_cm = (k+1)/2*gm1
+    // normalized vs 5T: noise_cm/noise_5t = sqrt((1+k)/((k+1)/2)) = sqrt(2*(1+k)/(k+1)) = sqrt(2)
+    // Actually: noise_5t ∝ 1/sqrt(gm1), noise_cm ∝ sqrt((1+K)/Gm_cm)
+    // = sqrt((1+K) * 2 / ((K+1)*gm1)) = sqrt(2/gm1) = sqrt(2) × noise_5t / sqrt(gm1)...
+    // Let's just normalize cleanly:
+    const n_norm = Math.sqrt((1+k) / ((k+1)/2)); // = sqrt(2*(1+k)/(k+1))
+    ptsGBW.push([px(k), py(Math.min(gbw_norm, yMax))]);
+    ptsNoise.push([px(k), py(Math.min(n_norm, yMax))]);
+  }
+
+  ctx.strokeStyle='#4ecdc4'; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(ptsGBW[0][0],ptsGBW[0][1]);
+  ptsGBW.forEach(p=>ctx.lineTo(p[0],p[1])); ctx.stroke();
+
+  ctx.strokeStyle='#fc8181'; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(ptsNoise[0][0],ptsNoise[0][1]);
+  ptsNoise.forEach(p=>ctx.lineTo(p[0],p[1])); ctx.stroke();
+
+  // K marker
+  if(K>=1 && K<=8) {
+    ctx.strokeStyle='#3a7bd5'; ctx.lineWidth=1.5; ctx.setLineDash([5,3]);
+    ctx.beginPath(); ctx.moveTo(px(K),pad.t); ctx.lineTo(px(K),H-pad.b); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Unity reference line
+  ctx.strokeStyle='#555'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(pad.l,py(1)); ctx.lineTo(W-pad.r,py(1)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle='#555'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('Mirror Ratio K', (pad.l+W-pad.r)/2, H-2);
+}
+
+// ─── TAB 2: Full Design Wizard ─────────────────────────────────────────────
+function updateTab2() {
+  const GBW_MHz = parseFloat(document.getElementById('t2_GBW').value);
+  const CL      = parseFloat(document.getElementById('t2_CL').value)*1e-15;
+  const Vov1    = parseFloat(document.getElementById('t2_Vov1').value)*1e-3;
+  const VDD     = parseFloat(document.getElementById('t2_VDD').value);
+  const unCox   = parseFloat(document.getElementById('t2_unCox').value)*1e-6;
+  const L_nm    = parseFloat(document.getElementById('t2_L').value);
+  const AVth    = parseFloat(document.getElementById('t2_AVth').value);
+
+  document.getElementById('v_t2_GBW').textContent = GBW_MHz.toFixed(0);
+  document.getElementById('v_t2_CL').textContent  = (CL*1e15).toFixed(0);
+  document.getElementById('v_t2_Vov1').textContent= (Vov1*1e3).toFixed(0);
+  document.getElementById('v_t2_VDD').textContent = VDD.toFixed(1);
+  document.getElementById('v_t2_unCox').textContent= (unCox*1e6).toFixed(0);
+  document.getElementById('v_t2_L').textContent   = L_nm.toFixed(0);
+  document.getElementById('v_t2_AVth').textContent= AVth.toFixed(1);
+
+  const GBW  = GBW_MHz * 1e6;
+  const gm1  = 2*Math.PI*GBW*CL;
+  const ISS  = gm1 * Vov1;
+  const Pwr  = VDD * ISS;
+  const FoM  = GBW*CL/ISS * 1e9; // GHz·pF/A
+  const L    = L_nm * 1e-9;
+  const ID1  = ISS/2;
+  const WoL  = gm1*gm1 / (2*unCox*ID1);
+  const W    = WoL * L;
+  const WL_um2 = W*1e6 * L*1e6;
+  const sigma_VOS = AVth / Math.sqrt(Math.max(WL_um2,0.001));
+  const sigma_VOS3= 3 * sigma_VOS;
+  const vn_th = Math.sqrt(16*kB*T*0.7/gm1)*1e9;
+
+  const fmtgm = g => g>=1e-3?(g*1e3).toFixed(2)+' mA/V':(g*1e6).toFixed(0)+' µA/V';
+  const fmtISS= i => i>=1e-3?(i*1e3).toFixed(2)+' mA':(i*1e6).toFixed(0)+' µA';
+  const fmtPwr= p => p>=1e-3?(p*1e3).toFixed(2)+' mW':(p*1e6).toFixed(0)+' µW';
+
+  document.getElementById('m2_gm1').textContent = fmtgm(gm1);
+  document.getElementById('m2_ISS').textContent = fmtISS(ISS);
+  document.getElementById('m2_Pwr').textContent = fmtPwr(Pwr);
+  document.getElementById('m2_FoM').textContent = FoM.toFixed(0)+' G·pF/A';
+  document.getElementById('m2_WoL').textContent = WoL.toFixed(1);
+  document.getElementById('m2_W').textContent   = (W*1e6).toFixed(1)+' µm';
+  document.getElementById('m2_VOS').textContent = sigma_VOS.toFixed(2)+' mV';
+  document.getElementById('m2_VOS3').textContent= sigma_VOS3.toFixed(2)+' mV';
+  document.getElementById('m2_Vn').textContent  = vn_th.toFixed(2)+' nV/√Hz';
+
+  // Coloring
+  const vosEl = document.getElementById('m2_VOS3');
+  vosEl.className = 'value ' + (sigma_VOS3<1?'good':sigma_VOS3<3?'warn':'bad');
+
+  // Bar chart
+  const cv = document.getElementById('c_wizard');
+  const ctx = cv.getContext('2d');
+  const W_cv = cv.clientWidth*devicePixelRatio||600, H=350;
+  cv.width=W_cv; cv.height=H;
+  ctx.fillStyle='#12141e'; ctx.fillRect(0,0,W_cv,H);
+
+  const targets = [
+    { label: 'GBW / Target', value: 1.0, color: '#4ecdc4', note: 'By design' },
+    { label: 'Power (mW⁻¹)', value: Math.min(1/Math.max(Pwr*1e3,0.001)/1, 3), color: '#3a7bd5', note: (Pwr*1e3).toFixed(2)+'mW' },
+    { label: 'FoM / 200', value: FoM/200, color: '#68d391', note: FoM.toFixed(0)+' G·pF/A' },
+    { label: 'VOS OK (<3mV)', value: Math.min(3/Math.max(sigma_VOS3,0.001)/1, 3), color: '#f6ad55', note: sigma_VOS3.toFixed(1)+'mV' },
+    { label: 'Noise OK (<10nV)', value: Math.min(10/Math.max(vn_th,0.001)/1, 3), color: '#fc8181', note: vn_th.toFixed(2)+'nV/√Hz' },
+  ];
+
+  const barW = (W_cv - 80) / (targets.length + 1);
+  const pad = {l:50, r:20, t:30, b:60};
+  const totalH = H - pad.t - pad.b;
+
+  // Grid
+  ctx.strokeStyle='#1e2136'; ctx.lineWidth=1;
+  for(let v=0; v<=3; v+=0.5) {
+    const y = H - pad.b - (v/3)*totalH;
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(W_cv-pad.r,y); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='right';
+    ctx.fillText(v.toFixed(1)+'×', pad.l-3, y+3);
+  }
+
+  // 1.0 target line
+  const y1 = H - pad.b - (1/3)*totalH;
+  ctx.strokeStyle='#68d391'; ctx.lineWidth=1.5; ctx.setLineDash([5,4]);
+  ctx.beginPath(); ctx.moveTo(pad.l,y1); ctx.lineTo(W_cv-pad.r,y1); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#68d391'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('Target = 1×', pad.l+4, y1-4);
+
+  targets.forEach((t,i) => {
+    const x = pad.l + (i+0.5)*barW + barW*0.1;
+    const bw = barW*0.7;
+    const v = Math.min(t.value, 3);
+    const bh = (v/3)*totalH;
+    const y = H - pad.b - bh;
+    const alpha = t.value >= 1.0 ? 1.0 : 0.6;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = t.color;
+    ctx.fillRect(x, y, bw, bh);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = t.color; ctx.lineWidth=2;
+    ctx.strokeRect(x, y, bw, bh);
+    ctx.fillStyle='#eee'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(t.note, x+bw/2, y-5);
+    ctx.save(); ctx.translate(x+bw/2, H-pad.b+8); ctx.rotate(-Math.PI/4);
+    ctx.fillStyle='#aaa'; ctx.font='10px sans-serif'; ctx.textAlign='right';
+    ctx.fillText(t.label, 0, 0); ctx.restore();
+  });
+}
+
+function showTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
+  if(n===0) updateTab0(); else if(n===1) updateTab1(); else updateTab2();
+}
+function wire(ids,fn){ ids.forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('input',fn);}); }
+wire(['t0_gm1','t0_CL','t0_ratio','t0_Av','t0_acc'], updateTab0);
+wire(['t1_gm1','t1_ISS','t1_CL','t1_K'], updateTab1);
+wire(['t2_GBW','t2_CL','t2_Vov1','t2_VDD','t2_unCox','t2_L','t2_AVth'], updateTab2);
+window.addEventListener('load', () => updateTab0());
+window.addEventListener('resize', () => {
+  const a=document.querySelector('.panel.active');
+  if(a) showTab(['tab0','tab1','tab2'].indexOf(a.id));
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-SD-4.1.2 — Gain Margin and Nyquist Criterion</title>
+<style>
+:root {
+  --bg: #f5f5f5;
+  --panel: #ffffff;
+  --border: #d0d0d0;
+  --text: #1a1a1a;
+  --text2: #555;
+  --accent: #1a6fc4;
+  --green: #2a9d2a;
+  --orange: #e07b00;
+  --red: #c42a2a;
+  --grid: #e0e0e0;
+  --pm-color: #2a7fc4;
+  --gm-color: #c47a2a;
+  --nyq-color: #7a2ac4;
+  --critical-color: #c42a2a;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a1a;
+    --panel: #252525;
+    --border: #404040;
+    --text: #e8e8e8;
+    --text2: #aaa;
+    --accent: #4a9fe8;
+    --green: #4acd4a;
+    --orange: #f0a030;
+    --red: #e85050;
+    --grid: #333;
+    --pm-color: #4a9fe8;
+    --gm-color: #e8a04a;
+    --nyq-color: #a04ae8;
+    --critical-color: #e85050;
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; }
+h1 { font-size: 1.1rem; padding: 12px 16px; background: var(--panel); border-bottom: 1px solid var(--border); }
+h1 span { color: var(--text2); font-weight: normal; font-size: 0.85rem; }
+.layout { display: grid; grid-template-columns: 280px 1fr; gap: 0; height: calc(100vh - 44px); }
+.controls { background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; padding: 12px; }
+.plots { display: grid; grid-template-rows: 1fr 1fr; gap: 0; overflow: hidden; }
+.plot-wrap { position: relative; background: var(--bg); border-bottom: 1px solid var(--border); }
+.plot-wrap:last-child { border-bottom: none; }
+canvas { display: block; width: 100%; height: 100%; }
+
+.section { margin-bottom: 14px; }
+.section-title { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text2); margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+
+.ctrl { margin-bottom: 8px; }
+.ctrl label { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 3px; }
+.ctrl label span { color: var(--accent); font-weight: 600; font-family: monospace; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+
+.preset-row { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.preset-btn { background: var(--bg); border: 1px solid var(--border); color: var(--text); border-radius: 4px; padding: 3px 7px; font-size: 0.75rem; cursor: pointer; transition: all 0.15s; }
+.preset-btn:hover, .preset-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.verdict { border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; font-size: 0.82rem; font-weight: 600; text-align: center; }
+.verdict.stable { background: #2a9d2a22; border: 1px solid var(--green); color: var(--green); }
+.verdict.marginal { background: #e07b0022; border: 1px solid var(--orange); color: var(--orange); }
+.verdict.unstable { background: #c42a2a22; border: 1px solid var(--red); color: var(--red); }
+
+.readout-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.readout { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 5px 7px; }
+.readout .label { font-size: 0.7rem; color: var(--text2); }
+.readout .value { font-size: 0.85rem; font-weight: 700; font-family: monospace; }
+.readout .value.pm { color: var(--pm-color); }
+.readout .value.gm { color: var(--gm-color); }
+.readout .value.ok { color: var(--green); }
+.readout .value.warn { color: var(--orange); }
+.readout .value.bad { color: var(--red); }
+
+.check-row { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; margin-bottom: 4px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dot.ok { background: var(--green); }
+.dot.warn { background: var(--orange); }
+.dot.bad { background: var(--red); }
+
+.plot-label { position: absolute; top: 6px; left: 10px; font-size: 0.75rem; color: var(--text2); pointer-events: none; }
+</style>
+</head>
+<body>
+<h1>M4A-SD-4.1.2 — Gain Margin and Nyquist Criterion <span>| Bode + Nyquist Explorer</span></h1>
+<div class="layout">
+  <div class="controls">
+
+    <div class="section">
+      <div class="section-title">System Presets</div>
+      <div class="preset-row">
+        <button class="preset-btn active" data-preset="2pole">2-Pole (∞ GM)</button>
+        <button class="preset-btn" data-preset="3pole">3-Pole</button>
+        <button class="preset-btn" data-preset="marginal">Marginal</button>
+        <button class="preset-btn" data-preset="unstable">Unstable</button>
+        <button class="preset-btn" data-preset="nmp">NMP (RHP Zero)</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Loop Gain Parameters</div>
+      <div class="ctrl">
+        <label>DC Loop Gain <span id="val-dc">40 dB</span></label>
+        <input type="range" id="sl-dc" min="20" max="80" step="1" value="40">
+      </div>
+      <div class="ctrl">
+        <label>Dominant Pole fp1 <span id="val-fp1">1 kHz</span></label>
+        <input type="range" id="sl-fp1" min="1" max="50" step="1" value="10">
+      </div>
+      <div class="ctrl">
+        <label>2nd Pole fp2 <span id="val-fp2">100 kHz</span></label>
+        <input type="range" id="sl-fp2" min="10" max="1000" step="10" value="100">
+      </div>
+      <div class="ctrl">
+        <label>3rd Pole fp3 <span id="val-fp3">OFF</span></label>
+        <input type="range" id="sl-fp3" min="0" max="500" step="10" value="0">
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Non-Minimum Phase (RHP Zero)</div>
+      <div class="ctrl">
+        <label>RHP Zero fz <span id="val-fz">OFF</span></label>
+        <input type="range" id="sl-fz" min="0" max="300" step="10" value="0">
+      </div>
+    </div>
+
+    <div id="verdict-box" class="verdict stable">STABLE</div>
+
+    <div class="section">
+      <div class="section-title">Stability Margins</div>
+      <div class="readout-grid">
+        <div class="readout">
+          <div class="label">Phase Margin</div>
+          <div class="value pm" id="ro-pm">—</div>
+        </div>
+        <div class="readout">
+          <div class="label">Gain Margin</div>
+          <div class="value gm" id="ro-gm">—</div>
+        </div>
+        <div class="readout">
+          <div class="label">Gain Crossover fc</div>
+          <div class="value" id="ro-fc">—</div>
+        </div>
+        <div class="readout">
+          <div class="label">Phase Crossover f180</div>
+          <div class="value" id="ro-f180">—</div>
+        </div>
+        <div class="readout">
+          <div class="label">Nyquist Dist to -1</div>
+          <div class="value" id="ro-dist">—</div>
+        </div>
+        <div class="readout">
+          <div class="label">Modulus Margin</div>
+          <div class="value" id="ro-mod">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Margin Health</div>
+      <div class="check-row"><div class="dot" id="dot-pm"></div><span id="txt-pm">Phase margin ≥ 45°</span></div>
+      <div class="check-row"><div class="dot" id="dot-gm"></div><span id="txt-gm">Gain margin ≥ 10 dB</span></div>
+      <div class="check-row"><div class="dot" id="dot-mm"></div><span id="txt-mm">Modulus margin ≥ 0.5</span></div>
+      <div class="check-row"><div class="dot" id="dot-nyq"></div><span id="txt-nyq">No -1 encirclement</span></div>
+    </div>
+
+  </div>
+
+  <div class="plots">
+    <div class="plot-wrap">
+      <div class="plot-label">Bode Plot — Magnitude &amp; Phase</div>
+      <canvas id="bode-canvas"></canvas>
+    </div>
+    <div class="plot-wrap">
+      <div class="plot-label">Nyquist Plot — T(jω) in complex plane</div>
+      <canvas id="nyq-canvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- Transfer function ----
+// T(s) = K / [(1+s/w1)(1+s/w2)(1+s/w3)] × [(1-s/wz)/(1+s/wz)] for NMP zero (Padé approx)
+function getParams() {
+  const dcDb = +document.getElementById('sl-dc').value;
+  const fp1  = +document.getElementById('sl-fp1').value * 1e3;  // slider in kHz×0.1 -> Hz
+  const fp2  = +document.getElementById('sl-fp2').value * 1e3;
+  const fp3v = +document.getElementById('sl-fp3').value;
+  const fzv  = +document.getElementById('sl-fz').value;
+  const fp3  = fp3v > 0 ? fp3v * 1e3 : null;
+  const fz   = fzv  > 0 ? fzv  * 1e3 : null;
+  const K    = Math.pow(10, dcDb/20);
+  return { K, fp1, fp2, fp3, fz };
+}
+
+function evalT(f, p) {
+  const w = 2*Math.PI*f;
+  const w1 = 2*Math.PI*p.fp1;
+  const w2 = 2*Math.PI*p.fp2;
+  // magnitude and phase
+  let mag = p.K;
+  let phase = 0;
+
+  // pole 1 (always)
+  mag /= Math.sqrt(1 + (w/w1)**2);
+  phase -= Math.atan2(w, w1);
+
+  // pole 2 (always)
+  const w2p = 2*Math.PI*p.fp2;
+  mag /= Math.sqrt(1 + (w/w2p)**2);
+  phase -= Math.atan2(w, w2p);
+
+  // pole 3 (optional)
+  if (p.fp3) {
+    const w3 = 2*Math.PI*p.fp3;
+    mag /= Math.sqrt(1 + (w/w3)**2);
+    phase -= Math.atan2(w, w3);
+  }
+
+  // RHP zero (NMP): adds phase lag (not lead)
+  if (p.fz) {
+    const wz = 2*Math.PI*p.fz;
+    mag *= Math.sqrt(1 + (w/wz)**2); // same magnitude as LHP zero
+    phase -= Math.atan2(w, wz);      // but subtracts phase (NMP)
+  }
+
+  return { mag, phase };
+}
+
+// Convert phase to degrees
+function radToDeg(r) { return r * 180 / Math.PI; }
+
+// Find gain crossover (|T|=1) by bisection
+function findGainCrossover(p) {
+  let lo = 1, hi = 1e8;
+  for (let i = 0; i < 60; i++) {
+    const mid = Math.sqrt(lo*hi);
+    if (evalT(mid, p).mag > 1) lo = mid; else hi = mid;
+  }
+  const fc = Math.sqrt(lo*hi);
+  const ph = evalT(fc, p).phase;
+  return { fc, pm: 180 + radToDeg(ph) };
+}
+
+// Find phase crossover (phase=-180°) by scanning
+function findPhaseCrossover(p) {
+  const freqs = [];
+  for (let i = 0; i <= 2000; i++) freqs.push(Math.pow(10, i/250 - 1));
+  let crossings = [];
+  for (let i = 1; i < freqs.length; i++) {
+    const ph0 = radToDeg(evalT(freqs[i-1], p).phase);
+    const ph1 = radToDeg(evalT(freqs[i],   p).phase);
+    if (ph0 > -180 && ph1 <= -180) {
+      // bisect
+      let lo = freqs[i-1], hi = freqs[i];
+      for (let j = 0; j < 50; j++) {
+        const mid = (lo+hi)/2;
+        if (radToDeg(evalT(mid, p).phase) > -180) lo = mid; else hi = mid;
+      }
+      const f180 = (lo+hi)/2;
+      const magAt = evalT(f180, p).mag;
+      const gm = -20*Math.log10(magAt);
+      crossings.push({ f180, magAt, gm });
+    }
+  }
+  return crossings;
+}
+
+// Find minimum Nyquist distance from -1+j0
+function findNyquistMinDist(p) {
+  let minDist = Infinity;
+  let minF = null;
+  const pts = 3000;
+  for (let i = 0; i < pts; i++) {
+    const f = Math.pow(10, i/(pts/5) - 1);
+    const {mag, phase} = evalT(f, p);
+    const re = mag * Math.cos(phase);
+    const im = mag * Math.sin(phase);
+    const d = Math.sqrt((re+1)**2 + im**2);
+    if (d < minDist) { minDist = d; minF = f; }
+  }
+  return { minDist, minF };
+}
+
+// ---- Drawing ----
+function getColors() {
+  const s = getComputedStyle(document.documentElement);
+  return {
+    text:     s.getPropertyValue('--text').trim(),
+    text2:    s.getPropertyValue('--text2').trim(),
+    grid:     s.getPropertyValue('--grid').trim(),
+    accent:   s.getPropertyValue('--accent').trim(),
+    pm:       s.getPropertyValue('--pm-color').trim(),
+    gm:       s.getPropertyValue('--gm-color').trim(),
+    nyq:      s.getPropertyValue('--nyq-color').trim(),
+    critical: s.getPropertyValue('--critical-color').trim(),
+    green:    s.getPropertyValue('--green').trim(),
+    orange:   s.getPropertyValue('--orange').trim(),
+    red:      s.getPropertyValue('--red').trim(),
+    bg:       s.getPropertyValue('--bg').trim(),
+    panel:    s.getPropertyValue('--panel').trim(),
+  };
+}
+
+function drawBode(canvas) {
+  const W = canvas.offsetWidth * devicePixelRatio;
+  const H = canvas.offsetHeight * devicePixelRatio;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const C = getColors();
+  const p = getParams();
+
+  const PAD = { l: 55*devicePixelRatio, r: 20*devicePixelRatio, t: 15*devicePixelRatio, b: 15*devicePixelRatio };
+  const midY = H/2;
+  const magH = midY - PAD.t;
+  const phaH = H - midY - PAD.b;
+  const pW = W - PAD.l - PAD.r;
+
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // divider
+  ctx.strokeStyle = C.grid;
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, midY); ctx.lineTo(W-PAD.r, midY); ctx.stroke();
+
+  // ---- Magnitude plot ----
+  const magMax = 80, magMin = -80;
+  function magY(db) { return PAD.t + magH * (1 - (db - magMin)/(magMax - magMin)); }
+  function freqX(f) { return PAD.l + pW * (Math.log10(f) - (-1)) / (9); }
+  const fLo = 0.1, fHi = 1e8;
+
+  // grid lines magnitude
+  ctx.strokeStyle = C.grid; ctx.lineWidth = 0.5;
+  [-80,-60,-40,-20,0,20,40,60,80].forEach(db => {
+    const y = magY(db);
+    if (y >= PAD.t && y <= midY) {
+      ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(W-PAD.r, y); ctx.stroke();
+      ctx.fillStyle = C.text2; ctx.font = `${9*devicePixelRatio}px monospace`;
+      ctx.textAlign = 'right';
+      ctx.fillText(db+'dB', PAD.l-4, y+3);
+    }
+  });
+
+  // freq grid lines
+  for (let d = -1; d <= 8; d++) {
+    const x = freqX(Math.pow(10, d));
+    ctx.strokeStyle = C.grid; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, H-PAD.b); ctx.stroke();
+    const label = d < 0 ? '0.1Hz' : d===0 ? '1Hz' : d===3 ? '1kHz' : d===6 ? '1MHz' : `1e${d}`;
+    ctx.fillStyle = C.text2; ctx.font = `${8*devicePixelRatio}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(label, x, H-PAD.b+10*devicePixelRatio);
+  }
+
+  // 0dB line
+  ctx.strokeStyle = C.text2; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(PAD.l, magY(0)); ctx.lineTo(W-PAD.r, magY(0)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Draw magnitude curve
+  ctx.strokeStyle = C.accent; ctx.lineWidth = 2*devicePixelRatio;
+  ctx.beginPath();
+  let first = true;
+  const N = 800;
+  for (let i = 0; i <= N; i++) {
+    const f = Math.pow(10, -1 + 9*i/N);
+    const {mag} = evalT(f, p);
+    const db = 20*Math.log10(Math.max(mag, 1e-10));
+    const x = freqX(f), y = magY(db);
+    if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // ---- Phase plot ----
+  const phMax = 20, phMin = -360;
+  function phaseY(deg) { return midY + phaH * (1 - (deg - phMin)/(phMax - phMin)); }
+
+  // phase grid
+  [-360,-315,-270,-225,-180,-135,-90,-45,0].forEach(deg => {
+    const y = phaseY(deg);
+    if (y >= midY && y <= H-PAD.b) {
+      ctx.strokeStyle = C.grid; ctx.lineWidth = 0.5;
+      ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(W-PAD.r, y); ctx.stroke();
+      ctx.fillStyle = C.text2; ctx.font = `${9*devicePixelRatio}px monospace`;
+      ctx.textAlign = 'right';
+      ctx.fillText(deg+'°', PAD.l-4, y+3);
+    }
+  });
+
+  // -180° line
+  const y180 = phaseY(-180);
+  ctx.strokeStyle = C.critical; ctx.lineWidth = 1.5*devicePixelRatio; ctx.setLineDash([6,3]);
+  ctx.beginPath(); ctx.moveTo(PAD.l, y180); ctx.lineTo(W-PAD.r, y180); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = C.critical; ctx.font = `${8*devicePixelRatio}px sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.fillText('-180°', W-PAD.r-35*devicePixelRatio, y180-3);
+
+  // Draw phase curve
+  ctx.strokeStyle = C.nyq; ctx.lineWidth = 2*devicePixelRatio;
+  ctx.beginPath();
+  first = true;
+  let prevPh = null;
+  for (let i = 0; i <= N; i++) {
+    const f = Math.pow(10, -1 + 9*i/N);
+    const {phase} = evalT(f, p);
+    const deg = radToDeg(phase);
+    const x = freqX(f), y = phaseY(deg);
+    if (y >= midY-2 && y <= H-PAD.b+2) {
+      if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+    } else {
+      first = true;
+    }
+  }
+  ctx.stroke();
+
+  // Annotate gain crossover + PM
+  const { fc, pm } = findGainCrossover(p);
+  if (fc >= fLo && fc <= fHi) {
+    const xc = freqX(fc);
+    const phAtFc = radToDeg(evalT(fc, p).phase);
+
+    // vertical line at fc
+    ctx.strokeStyle = C.pm; ctx.lineWidth = 1.5*devicePixelRatio; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(xc, PAD.t); ctx.lineTo(xc, H-PAD.b); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // PM arrow in phase plot
+    const yPhAtFc = phaseY(phAtFc);
+    const yMinus180 = phaseY(-180);
+    if (yPhAtFc > midY && yMinus180 > midY) {
+      ctx.strokeStyle = C.pm; ctx.lineWidth = 2*devicePixelRatio;
+      ctx.beginPath(); ctx.moveTo(xc, Math.min(yPhAtFc, yMinus180)); ctx.lineTo(xc, Math.max(yPhAtFc, yMinus180)); ctx.stroke();
+      const pmMid = (yPhAtFc + yMinus180)/2;
+      ctx.fillStyle = C.pm; ctx.font = `bold ${9*devicePixelRatio}px sans-serif`;
+      ctx.textAlign = 'left';
+      ctx.fillText(`PM=${pm.toFixed(1)}°`, xc+4*devicePixelRatio, pmMid);
+    }
+
+    // dot at 0dB
+    ctx.fillStyle = C.pm;
+    ctx.beginPath(); ctx.arc(xc, magY(0), 4*devicePixelRatio, 0, 2*Math.PI); ctx.fill();
+    ctx.fillStyle = C.pm; ctx.font = `${8*devicePixelRatio}px sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.fillText('fc', xc+3*devicePixelRatio, magY(0)-5*devicePixelRatio);
+  }
+
+  // Annotate phase crossover + GM
+  const crossings = findPhaseCrossover(p);
+  crossings.forEach(({f180, magAt, gm}) => {
+    if (f180 >= fLo && f180 <= fHi) {
+      const x180 = freqX(f180);
+      const magDb = 20*Math.log10(Math.max(magAt, 1e-10));
+
+      ctx.strokeStyle = C.gm; ctx.lineWidth = 1.5*devicePixelRatio; ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(x180, PAD.t); ctx.lineTo(x180, H-PAD.b); ctx.stroke();
+      ctx.setLineDash([]);
+
+      // GM arrow in magnitude plot
+      const yMagAt = magY(magDb);
+      const y0dB = magY(0);
+      if (yMagAt >= PAD.t && y0dB >= PAD.t) {
+        ctx.strokeStyle = C.gm; ctx.lineWidth = 2*devicePixelRatio;
+        ctx.beginPath(); ctx.moveTo(x180, Math.min(yMagAt, y0dB)); ctx.lineTo(x180, Math.max(yMagAt, y0dB)); ctx.stroke();
+        ctx.fillStyle = C.gm; ctx.font = `bold ${9*devicePixelRatio}px sans-serif`;
+        ctx.textAlign = 'left';
+        ctx.fillText(`GM=${gm.toFixed(1)}dB`, x180+4*devicePixelRatio, (yMagAt+y0dB)/2);
+      }
+
+      // dot at -180°
+      ctx.fillStyle = C.gm;
+      ctx.beginPath(); ctx.arc(x180, y180, 4*devicePixelRatio, 0, 2*Math.PI); ctx.fill();
+      ctx.fillStyle = C.gm; ctx.font = `${8*devicePixelRatio}px sans-serif`;
+      ctx.textAlign = 'left';
+      ctx.fillText('f₁₈₀', x180+3*devicePixelRatio, y180-5*devicePixelRatio);
+    }
+  });
+
+  // Title labels
+  ctx.fillStyle = C.text; ctx.font = `bold ${9*devicePixelRatio}px sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.fillText('Magnitude (dB)', PAD.l+2, PAD.t+10*devicePixelRatio);
+  ctx.fillText('Phase (deg)', PAD.l+2, midY+12*devicePixelRatio);
+}
+
+function drawNyquist(canvas) {
+  const W = canvas.offsetWidth * devicePixelRatio;
+  const H = canvas.offsetHeight * devicePixelRatio;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  const C = getColors();
+  const p = getParams();
+
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const PAD = 40*devicePixelRatio;
+  const cxN = W/2, cyN = H/2;
+  // Determine scale by finding max excursion
+  let maxR = 0;
+  const NQ = 1500;
+  const nyqPts = [];
+  for (let i = 0; i <= NQ; i++) {
+    const f = Math.pow(10, -1 + 9*i/NQ);
+    const {mag, phase} = evalT(f, p);
+    const re = mag * Math.cos(phase);
+    const im = mag * Math.sin(phase);
+    nyqPts.push({re, im, f, mag});
+    maxR = Math.max(maxR, Math.abs(re)+0.5, Math.abs(im)+0.5);
+  }
+  maxR = Math.max(maxR, 2);
+  const scale = (Math.min(W, H)/2 - PAD) / maxR;
+
+  function nx(re) { return cxN + re*scale; }
+  function ny(im) { return cyN - im*scale; }
+
+  // Grid circles
+  [0.5, 1, 1.5, 2].forEach(r => {
+    ctx.strokeStyle = C.grid; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.arc(cxN, cyN, r*scale, 0, 2*Math.PI); ctx.stroke();
+    ctx.fillStyle = C.text2; ctx.font = `${8*devicePixelRatio}px monospace`;
+    ctx.textAlign = 'left';
+    ctx.fillText(r, cxN + r*scale + 2, cyN);
+  });
+
+  // Axes
+  ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD, cyN); ctx.lineTo(W-PAD, cyN); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cxN, PAD); ctx.lineTo(cxN, H-PAD); ctx.stroke();
+  ctx.fillStyle = C.text2; ctx.font = `${9*devicePixelRatio}px monospace`;
+  ctx.textAlign = 'center'; ctx.fillText('Re', W-PAD+8, cyN+3);
+  ctx.textAlign = 'left';   ctx.fillText('Im', cxN+4, PAD-4);
+
+  // Critical point -1+j0
+  const critX = nx(-1), critY = ny(0);
+  ctx.fillStyle = C.critical;
+  ctx.beginPath(); ctx.arc(critX, critY, 6*devicePixelRatio, 0, 2*Math.PI); ctx.fill();
+  ctx.strokeStyle = C.critical; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(critX-10*devicePixelRatio, critY-10*devicePixelRatio);
+  ctx.lineTo(critX+10*devicePixelRatio, critY+10*devicePixelRatio); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(critX+10*devicePixelRatio, critY-10*devicePixelRatio);
+  ctx.lineTo(critX-10*devicePixelRatio, critY+10*devicePixelRatio); ctx.stroke();
+  ctx.fillStyle = C.critical; ctx.font = `bold ${9*devicePixelRatio}px sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.fillText('-1+j0', critX+8*devicePixelRatio, critY-6*devicePixelRatio);
+
+  // Draw Nyquist curve (positive frequencies)
+  const grad = ctx.createLinearGradient(0, 0, W, 0);
+  grad.addColorStop(0, C.nyq);
+  grad.addColorStop(1, C.accent);
+  ctx.strokeStyle = grad; ctx.lineWidth = 2*devicePixelRatio;
+  ctx.beginPath();
+  let first = true;
+  nyqPts.forEach(({re, im}) => {
+    const x = nx(re), y = ny(im);
+    if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Mirror (negative frequencies, dashed)
+  ctx.strokeStyle = C.nyq + '66'; ctx.lineWidth = 1.5*devicePixelRatio; ctx.setLineDash([4,4]);
+  ctx.beginPath();
+  first = true;
+  nyqPts.forEach(({re, im}) => {
+    const x = nx(re), y = ny(-im);
+    if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Arrow showing direction of increasing frequency
+  const arrowIdx = Math.floor(NQ * 0.35);
+  if (arrowIdx < nyqPts.length-1) {
+    const p0 = nyqPts[arrowIdx], p1 = nyqPts[arrowIdx+5];
+    const dx = nx(p1.re)-nx(p0.re), dy = ny(p1.im)-ny(p0.im);
+    const len = Math.sqrt(dx*dx+dy*dy);
+    if (len > 0.1) {
+      const ux = dx/len, uy = dy/len;
+      const ax = nx(p0.re), ay = ny(p0.im);
+      ctx.fillStyle = C.nyq;
+      ctx.beginPath();
+      ctx.moveTo(ax + ux*10*devicePixelRatio, ay + uy*10*devicePixelRatio);
+      ctx.lineTo(ax + (-uy*5-ux*10)*devicePixelRatio, ay + (ux*5-uy*10)*devicePixelRatio);
+      ctx.lineTo(ax + (uy*5-ux*10)*devicePixelRatio,  ay + (-ux*5-uy*10)*devicePixelRatio);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+
+  // DC point label
+  const dc = nyqPts[0];
+  ctx.fillStyle = C.accent;
+  ctx.beginPath(); ctx.arc(nx(dc.re), ny(dc.im), 4*devicePixelRatio, 0, 2*Math.PI); ctx.fill();
+  ctx.fillStyle = C.text2; ctx.font = `${8*devicePixelRatio}px sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.fillText('ω→0', nx(dc.re)+5, ny(dc.im)-4);
+
+  // Minimum distance line
+  const { minDist, minF } = findNyquistMinDist(p);
+  const {mag: minMag, phase: minPhase} = evalT(minF, p);
+  const minRe = minMag*Math.cos(minPhase), minIm = minMag*Math.sin(minPhase);
+  ctx.strokeStyle = C.orange; ctx.lineWidth = 1.5*devicePixelRatio; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(nx(minRe), ny(minIm)); ctx.lineTo(critX, critY); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // modulus margin label
+  ctx.fillStyle = C.orange; ctx.font = `${8*devicePixelRatio}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText(`Δ=${minDist.toFixed(2)}`, (nx(minRe)+critX)/2, (ny(minIm)+critY)/2 - 5*devicePixelRatio);
+
+  // Labels
+  ctx.fillStyle = C.text; ctx.font = `bold ${9*devicePixelRatio}px sans-serif`;
+  ctx.textAlign = 'left';
+  ctx.fillText('Nyquist Plot — solid: +freq, dashed: −freq', PAD, PAD-8*devicePixelRatio);
+}
+
+function updateReadouts() {
+  const p = getParams();
+  const C = getColors();
+
+  const { fc, pm } = findGainCrossover(p);
+  const crossings = findPhaseCrossover(p);
+  const { minDist } = findNyquistMinDist(p);
+  const modMargin = minDist;
+
+  const gmVal = crossings.length > 0 ? crossings[0].gm : Infinity;
+  const f180 = crossings.length > 0 ? crossings[0].f180 : null;
+
+  // Format frequencies
+  function fmtF(f) {
+    if (!f || !isFinite(f)) return '∞';
+    if (f >= 1e6) return (f/1e6).toFixed(2)+'MHz';
+    if (f >= 1e3) return (f/1e3).toFixed(2)+'kHz';
+    return f.toFixed(1)+'Hz';
+  }
+
+  document.getElementById('ro-pm').textContent = isFinite(pm) ? pm.toFixed(1)+'°' : '—';
+  document.getElementById('ro-gm').textContent = isFinite(gmVal) ? gmVal.toFixed(1)+'dB' : '∞ dB';
+  document.getElementById('ro-fc').textContent = fmtF(fc);
+  document.getElementById('ro-f180').textContent = f180 ? fmtF(f180) : '∞ (none)';
+  document.getElementById('ro-dist').textContent = minDist.toFixed(3);
+  document.getElementById('ro-mod').textContent = (20*Math.log10(1/minDist)).toFixed(1)+'dB';
+
+  // Color readouts
+  function classify(val, good, warn) {
+    if (val >= good) return 'ok';
+    if (val >= warn) return 'warn';
+    return 'bad';
+  }
+
+  const pmClass = classify(pm, 45, 30);
+  const gmClass = gmVal === Infinity ? 'ok' : classify(gmVal, 10, 5);
+  const mmClass = classify(modMargin, 0.5, 0.3);
+
+  document.getElementById('ro-pm').className = 'value pm';
+  document.getElementById('ro-gm').className = 'value gm';
+
+  // Verdict
+  const verdictBox = document.getElementById('verdict-box');
+  const isUnstable = pm < 0 || gmVal < 0;
+  const isMarginal = !isUnstable && (pm < 30 || (isFinite(gmVal) && gmVal < 5));
+  if (isUnstable) {
+    verdictBox.className = 'verdict unstable';
+    verdictBox.textContent = 'UNSTABLE — Loop oscillates';
+  } else if (isMarginal) {
+    verdictBox.className = 'verdict marginal';
+    verdictBox.textContent = 'MARGINAL — Improve margins';
+  } else {
+    verdictBox.className = 'verdict stable';
+    verdictBox.textContent = 'STABLE';
+  }
+
+  // Health dots
+  function setDot(id, txtId, cls, msg) {
+    document.getElementById(id).className = 'dot ' + cls;
+    document.getElementById(txtId).textContent = msg;
+  }
+  setDot('dot-pm', 'txt-pm', pmClass, `Phase margin = ${isFinite(pm)?pm.toFixed(1)+'°':'—'} (target ≥45°)`);
+  setDot('dot-gm', 'txt-gm', gmClass, `Gain margin = ${gmVal===Infinity?'∞':(isFinite(gmVal)?gmVal.toFixed(1)+'dB':'—')} (target ≥10dB)`);
+  setDot('dot-mm', 'txt-mm', mmClass, `Modulus margin = ${minDist.toFixed(3)} (target ≥0.5)`);
+  const nyqOk = !isUnstable;
+  setDot('dot-nyq', 'txt-nyq', nyqOk?'ok':'bad', nyqOk?'No encirclement of -1':'Encircles -1 — UNSTABLE');
+}
+
+function updateLabels() {
+  const fp1 = +document.getElementById('sl-fp1').value;
+  const fp2 = +document.getElementById('sl-fp2').value;
+  const fp3 = +document.getElementById('sl-fp3').value;
+  const fz  = +document.getElementById('sl-fz').value;
+  const dc  = +document.getElementById('sl-dc').value;
+
+  document.getElementById('val-dc').textContent = dc + ' dB';
+  document.getElementById('val-fp1').textContent = fp1 < 1 ? (fp1*1000).toFixed(0)+'Hz' : fp1+'kHz';
+  document.getElementById('val-fp2').textContent = fp2+'kHz';
+  document.getElementById('val-fp3').textContent = fp3 > 0 ? fp3+'kHz' : 'OFF';
+  document.getElementById('val-fz').textContent  = fz  > 0 ? fz+'kHz'  : 'OFF';
+}
+
+function redraw() {
+  updateLabels();
+  updateReadouts();
+  drawBode(document.getElementById('bode-canvas'));
+  drawNyquist(document.getElementById('nyq-canvas'));
+}
+
+// Presets
+const PRESETS = {
+  '2pole': { dc:40, fp1:10, fp2:100, fp3:0, fz:0 },
+  '3pole': { dc:40, fp1:10, fp2:100, fp3:150, fz:0 },
+  'marginal': { dc:60, fp1:5, fp2:80, fp3:100, fz:0 },
+  'unstable': { dc:60, fp1:5, fp2:50, fp3:80, fz:0 },
+  'nmp': { dc:40, fp1:10, fp2:100, fp3:0, fz:80 },
+};
+
+document.querySelectorAll('.preset-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const pr = PRESETS[btn.dataset.preset];
+    document.getElementById('sl-dc').value  = pr.dc;
+    document.getElementById('sl-fp1').value = pr.fp1;
+    document.getElementById('sl-fp2').value = pr.fp2;
+    document.getElementById('sl-fp3').value = pr.fp3;
+    document.getElementById('sl-fz').value  = pr.fz;
+    redraw();
+  });
+});
+
+['sl-dc','sl-fp1','sl-fp2','sl-fp3','sl-fz'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    redraw();
+  });
+});
+
+const ro = new ResizeObserver(redraw);
+ro.observe(document.getElementById('bode-canvas').parentElement);
+ro.observe(document.getElementById('nyq-canvas').parentElement);
+
+redraw();
+</script>
+</body>
+</html>

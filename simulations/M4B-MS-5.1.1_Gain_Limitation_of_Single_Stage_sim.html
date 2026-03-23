@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-MS-5.1.1 — Gain Limitation of Single Stage</title>
+<style>
+  :root {
+    --bg: #ffffff; --bg2: #f5f5f5; --text: #1a1a1a; --text2: #555;
+    --border: #ddd; --accent: #0066cc; --green: #00994d; --canvas-bg: #fafafa;
+    --warn: #cc4400;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a; --bg2: #242424; --text: #e8e8e8; --text2: #aaa;
+      --border: #444; --canvas-bg: #1f1f1f;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         background: var(--bg); color: var(--text); font-size: 14px; }
+  header { background: var(--bg2); border-bottom: 2px solid var(--accent); padding: 12px 20px; }
+  header .id { font-family: monospace; font-size: 12px; color: var(--accent); font-weight: 700; }
+  header h1 { font-size: 16px; margin-top: 2px; }
+  .container { display: flex; gap: 16px; padding: 16px; flex-wrap: wrap; }
+  .panel { background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 14px; }
+  .sim-panel { flex: 1; min-width: 360px; }
+  .ctrl-panel { width: 260px; min-width: 240px; }
+  canvas { background: var(--canvas-bg); border: 1px solid var(--border); border-radius: 4px; display: block; width: 100%; }
+  .readouts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .readout { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 8px 10px; }
+  .readout label { font-size: 11px; color: var(--text2); display: block; }
+  .readout .val { font-family: monospace; font-size: 16px; font-weight: 700; color: var(--accent); }
+  .readout .val.warn { color: var(--warn); }
+  .ctrl { margin-bottom: 14px; }
+  .ctrl label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+  .ctrl label span { font-family: monospace; color: var(--accent); font-weight: 700; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .section-title { font-size: 12px; font-weight: 700; text-transform: uppercase;
+                   letter-spacing: 0.5px; color: var(--text2); margin-bottom: 10px; }
+  .formula-box { background: var(--bg); border-left: 3px solid var(--accent);
+                 padding: 8px 12px; margin: 10px 0; font-family: monospace;
+                 font-size: 12px; border-radius: 0 4px 4px 0; line-height: 1.7; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+  .tab { padding: 5px 12px; border: 1px solid var(--border); border-radius: 4px;
+         font-size: 12px; cursor: pointer; background: var(--bg); color: var(--text); }
+  .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .insight { background: var(--bg); border: 1px solid var(--green); border-radius: 4px;
+             padding: 8px 12px; margin-top: 10px; font-size: 12px; color: var(--text2); line-height: 1.5; }
+  .insight strong { color: var(--green); }
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4B-MS-5.1.1</div>
+  <h1>Multi-Stage — Gain Limitation of Single Stage</h1>
+</header>
+<div class="container">
+  <div class="panel sim-panel">
+    <div class="tabs">
+      <button class="tab active" onclick="setTab('intrinsic')">Intrinsic Gain vs V_ov</button>
+      <button class="tab" onclick="setTab('lambda')">Lambda Impact</button>
+    </div>
+    <canvas id="cv" height="300"></canvas>
+    <div class="readouts">
+      <div class="readout"><label>gm (mA/V)</label><span class="val" id="r-gm">—</span></div>
+      <div class="readout"><label>ro (kΩ)</label><span class="val" id="r-ro">—</span></div>
+      <div class="readout"><label>gm × ro (V/V)</label><span class="val" id="r-av">—</span></div>
+      <div class="readout"><label>Intrinsic Gain (dB)</label><span class="val" id="r-db">—</span></div>
+    </div>
+    <div class="insight">
+      <strong>Physical Insight:</strong> <span id="insight-text">Adjust controls to explore single-stage gain limits.</span>
+    </div>
+  </div>
+  <div class="panel ctrl-panel">
+    <div class="section-title">Transistor Parameters</div>
+    <div class="ctrl">
+      <label>Overdrive V_ov (mV) <span id="lbl-vov">150</span></label>
+      <input type="range" id="sl-vov" min="50" max="500" value="150" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>Bias Current I_D (µA) <span id="lbl-id">100</span></label>
+      <input type="range" id="sl-id" min="10" max="500" value="100" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>Lambda λ (V⁻¹ × 100) <span id="lbl-lam">10</span></label>
+      <input type="range" id="sl-lam" min="2" max="50" value="10" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>Process Node <span id="lbl-node">180nm</span></label>
+      <input type="range" id="sl-node" min="0" max="3" value="0" step="1" oninput="setNode(this.value)">
+    </div>
+    <div class="formula-box">
+      gm = 2·I_D / V_ov<br>
+      ro = 1 / (λ·I_D)<br>
+      A_int = gm·ro = 2/(λ·V_ov)
+    </div>
+    <div class="section-title" style="margin-top:10px">Target Gain</div>
+    <div class="ctrl">
+      <label>Required A_OL (dB) <span id="lbl-req">80</span></label>
+      <input type="range" id="sl-req" min="40" max="120" value="80" oninput="update()">
+    </div>
+    <div class="readout" style="margin-top:8px">
+      <label>Stages Needed</label>
+      <span class="val" id="r-stages">—</span>
+    </div>
+  </div>
+</div>
+<script>
+const nodes = [
+  { name:'180nm', lambda:0.10, desc:'TSMC 180nm: λ=0.10 V⁻¹, good intrinsic gain' },
+  { name:'65nm',  lambda:0.22, desc:'TSMC 65nm: λ=0.22 V⁻¹, moderate gain' },
+  { name:'28nm',  lambda:0.40, desc:'TSMC 28nm: λ=0.40 V⁻¹, gain-challenged' },
+  { name:'5nm',   lambda:0.60, desc:'TSMC 5nm FinFET: λ=0.60 V⁻¹, needs cascoding' }
+];
+let tab = 'intrinsic';
+let nodeIdx = 0;
+
+function setNode(v) {
+  nodeIdx = parseInt(v);
+  document.getElementById('lbl-node').textContent = nodes[nodeIdx].name;
+  document.getElementById('sl-lam').value = Math.round(nodes[nodeIdx].lambda * 100);
+  document.getElementById('lbl-lam').textContent = Math.round(nodes[nodeIdx].lambda * 100);
+  update();
+}
+
+function setTab(t) {
+  tab = t;
+  document.querySelectorAll('.tab').forEach((el,i) => {
+    el.classList.toggle('active', (i===0 && t==='intrinsic') || (i===1 && t==='lambda'));
+  });
+  update();
+}
+
+function update() {
+  const vov = parseFloat(document.getElementById('sl-vov').value) / 1000;
+  const id  = parseFloat(document.getElementById('sl-id').value)  / 1e6;
+  const lam = parseFloat(document.getElementById('sl-lam').value) / 100;
+  const req = parseFloat(document.getElementById('sl-req').value);
+
+  document.getElementById('lbl-vov').textContent = Math.round(vov*1000);
+  document.getElementById('lbl-id').textContent  = Math.round(id*1e6);
+  document.getElementById('lbl-lam').textContent = Math.round(lam*100);
+  document.getElementById('lbl-req').textContent = req;
+
+  const gm = 2 * id / vov;
+  const ro = 1 / (lam * id);
+  const av = gm * ro;
+  const db = 20 * Math.log10(av);
+
+  document.getElementById('r-gm').textContent    = (gm*1000).toFixed(2);
+  document.getElementById('r-ro').textContent    = (ro/1000).toFixed(1);
+  document.getElementById('r-av').textContent    = av.toFixed(1);
+  document.getElementById('r-db').textContent    = db.toFixed(1) + ' dB';
+
+  const stagesNeeded = Math.ceil(req / db);
+  const stagesEl = document.getElementById('r-stages');
+  stagesEl.textContent = stagesNeeded;
+  stagesEl.className = 'val' + (stagesNeeded > 3 ? ' warn' : '');
+
+  // insight
+  let ins = '';
+  if (stagesNeeded === 1) ins = 'Single stage sufficient — unusual for precision work.';
+  else if (stagesNeeded === 2) ins = 'Two-stage architecture required. Needs Miller compensation.';
+  else if (stagesNeeded === 3) ins = 'Three stages needed — requires Nested Miller Compensation (NMC).';
+  else ins = 'More than 3 stages — consider cascoding or longer L to boost ro.';
+  if (vov > 0.3) ins += ' Warning: high V_ov degrades gm×ro significantly.';
+  document.getElementById('insight-text').textContent = ins;
+
+  drawChart(vov, id, lam, av, db, req);
+}
+
+function drawChart(vov_cur, id_cur, lam_cur, av_cur, db_cur, req_db) {
+  const canvas = document.getElementById('cv');
+  const W = canvas.offsetWidth || 500;
+  canvas.width = W; canvas.height = 300;
+  const ctx = canvas.getContext('2d');
+  const style = getComputedStyle(document.documentElement);
+  const clrAccent = '#0066cc', clrGreen = '#00994d', clrWarn = '#cc4400';
+  const clrText = style.getPropertyValue('--text').trim() || '#1a1a1a';
+  const clrBg   = style.getPropertyValue('--canvas-bg').trim() || '#fafafa';
+  const clrBorder = style.getPropertyValue('--border').trim() || '#ddd';
+  ctx.fillStyle = clrBg; ctx.fillRect(0,0,W,300);
+
+  const pad = {l:52, r:20, t:20, b:40};
+  const pw = W - pad.l - pad.r, ph = 300 - pad.t - pad.b;
+
+  if (tab === 'intrinsic') {
+    // Plot gm*ro vs V_ov for fixed lambda and ID
+    const vovArr = [], avArr = [];
+    for (let vov = 0.05; vov <= 0.5; vov += 0.005) {
+      vovArr.push(vov);
+      const gm = 2 * id_cur / vov;
+      const ro = 1 / (lam_cur * id_cur);
+      avArr.push(20 * Math.log10(gm * ro));
+    }
+    const yMin = 0, yMax = 80;
+
+    // Axes
+    ctx.strokeStyle = clrBorder; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t+ph);
+    ctx.lineTo(pad.l+pw, pad.t+ph); ctx.stroke();
+
+    // Grid + y labels
+    ctx.fillStyle = clrText; ctx.font = '11px monospace'; ctx.textAlign = 'right';
+    for (let y = 0; y <= 80; y += 20) {
+      const yp = pad.t + ph - (y / 80) * ph;
+      ctx.fillStyle = clrBorder; ctx.beginPath(); ctx.moveTo(pad.l, yp); ctx.lineTo(pad.l+pw, yp); ctx.stroke();
+      ctx.fillStyle = clrText; ctx.fillText(y + 'dB', pad.l - 4, yp + 4);
+    }
+    // x labels
+    ctx.textAlign = 'center';
+    for (let v = 100; v <= 500; v += 100) {
+      const xp = pad.l + ((v-50)/(500-50)) * pw;
+      ctx.fillStyle = clrText; ctx.fillText(v + 'mV', xp, pad.t+ph+16);
+    }
+
+    // Curve
+    ctx.strokeStyle = clrAccent; ctx.lineWidth = 2.5; ctx.beginPath();
+    vovArr.forEach((v,i) => {
+      const xp = pad.l + ((v - 0.05) / (0.5 - 0.05)) * pw;
+      const yp = pad.t + ph - ((avArr[i] - yMin) / (yMax - yMin)) * ph;
+      i === 0 ? ctx.moveTo(xp, yp) : ctx.lineTo(xp, yp);
+    });
+    ctx.stroke();
+
+    // Current operating point
+    const xCur = pad.l + ((vov_cur - 0.05) / (0.5 - 0.05)) * pw;
+    const yCur = pad.t + ph - ((db_cur - yMin) / (yMax - yMin)) * ph;
+    ctx.fillStyle = clrAccent; ctx.beginPath(); ctx.arc(xCur, yCur, 6, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = clrText; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'left';
+    ctx.fillText(db_cur.toFixed(1)+'dB', xCur+9, yCur+4);
+
+    // Requirement line
+    const yReq = pad.t + ph - ((req_db - yMin) / (yMax - yMin)) * ph;
+    ctx.strokeStyle = clrWarn; ctx.lineWidth = 1.5; ctx.setLineDash([6,4]);
+    ctx.beginPath(); ctx.moveTo(pad.l, yReq); ctx.lineTo(pad.l+pw, yReq); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = clrWarn; ctx.font = '11px monospace'; ctx.textAlign = 'right';
+    ctx.fillText('Req: '+req_db+'dB', pad.l+pw-2, yReq-4);
+
+    // Labels
+    ctx.fillStyle = clrText; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('gm×ro vs Overdrive Voltage V_ov', pad.l+pw/2, pad.t+ph+34);
+    ctx.save(); ctx.translate(14, pad.t+ph/2); ctx.rotate(-Math.PI/2);
+    ctx.fillText('Intrinsic Gain (dB)', 0, 0); ctx.restore();
+
+  } else {
+    // Lambda comparison: bars for 4 process nodes
+    const labels = ['180nm','65nm','28nm','5nm'];
+    const lambdas = [0.10, 0.22, 0.40, 0.60];
+    const barW = pw / 5;
+    const yMax = 60;
+
+    ctx.strokeStyle = clrBorder; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t+ph);
+    ctx.lineTo(pad.l+pw, pad.t+ph); ctx.stroke();
+
+    ctx.fillStyle = clrText; ctx.font = '11px monospace'; ctx.textAlign = 'right';
+    for (let y = 0; y <= 60; y += 20) {
+      const yp = pad.t + ph - (y/60)*ph;
+      ctx.fillStyle = clrBorder; ctx.beginPath(); ctx.moveTo(pad.l,yp); ctx.lineTo(pad.l+pw,yp); ctx.stroke();
+      ctx.fillStyle = clrText; ctx.fillText(y+'dB', pad.l-4, yp+4);
+    }
+
+    lambdas.forEach((lam,i) => {
+      const gm = 2 * id_cur / vov_cur;
+      const ro = 1 / (lam * id_cur);
+      const db_val = 20 * Math.log10(gm * ro);
+      const bx = pad.l + (i+0.5)*barW + barW*0.1;
+      const bw = barW * 0.7;
+      const bh = (db_val / yMax) * ph;
+      const by = pad.t + ph - bh;
+
+      const isActive = (i === nodeIdx);
+      ctx.fillStyle = isActive ? clrAccent : clrBorder;
+      ctx.fillRect(bx, by, bw, bh);
+
+      ctx.fillStyle = clrText; ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(db_val.toFixed(0)+'dB', bx+bw/2, by-5);
+      ctx.fillText(labels[i], bx+bw/2, pad.t+ph+16);
+    });
+
+    // Requirement line
+    const yReq = pad.t + ph - ((req_db/yMax)*ph);
+    ctx.strokeStyle = clrWarn; ctx.lineWidth = 1.5; ctx.setLineDash([6,4]);
+    ctx.beginPath(); ctx.moveTo(pad.l, yReq); ctx.lineTo(pad.l+pw, yReq); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = clrWarn; ctx.font = '11px monospace'; ctx.textAlign = 'right';
+    ctx.fillText('Req: '+req_db+'dB', pad.l+pw-2, yReq-4);
+
+    ctx.fillStyle = clrText; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Intrinsic Gain by Process Node (V_ov='+Math.round(vov_cur*1000)+'mV, I_D='+Math.round(id_cur*1e6)+'µA)', pad.l+pw/2, pad.t+ph+34);
+    ctx.save(); ctx.translate(14, pad.t+ph/2); ctx.rotate(-Math.PI/2);
+    ctx.fillText('gm×ro (dB)', 0, 0); ctx.restore();
+  }
+}
+
+update();
+</script>
+</body>
+</html>

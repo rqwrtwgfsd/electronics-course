@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-DBG-6.4.2 — PCB Layout and Parasitics</title>
+<style>
+:root {
+  --bg:#f5f5f5;--surface:#fff;--border:#d0d0d0;--text:#1a1a1a;--text2:#555;
+  --accent:#1a6bbf;--pass:#2a7a2a;--warn:#b87000;--fail:#b82020;
+  --pass-bg:#e8f5e8;--warn-bg:#fff8e0;--fail-bg:#fde8e8;--plot-bg:#fdfdfd;
+}
+@media(prefers-color-scheme:dark){
+  :root{--bg:#1a1a1a;--surface:#252525;--border:#404040;--text:#e8e8e8;--text2:#aaa;
+  --accent:#4a9eff;--pass:#4aaa4a;--warn:#ddaa30;--fail:#ff5555;
+  --pass-bg:#1a2e1a;--warn-bg:#2e2200;--fail-bg:#2e1010;--plot-bg:#1e1e1e;}
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--bg);color:var(--text);font-size:14px;}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 20px;}
+header h1{font-size:17px;font-weight:700;color:var(--accent);}
+header p{font-size:12px;color:var(--text2);margin-top:2px;}
+.tab-bar{display:flex;background:var(--surface);border-bottom:1px solid var(--border);padding:0 16px;}
+.tab{padding:10px 18px;cursor:pointer;border-bottom:3px solid transparent;color:var(--text2);font-size:13px;font-weight:600;transition:color .2s,border-color .2s;}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tab:hover:not(.active){color:var(--text);}
+.panel{display:none;padding:16px;}
+.panel.active{display:block;}
+.layout{display:flex;gap:14px;flex-wrap:wrap;}
+.sidebar{flex:0 0 220px;display:flex;flex-direction:column;gap:10px;}
+.main-area{flex:1 1 400px;display:flex;flex-direction:column;gap:10px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;}
+.card h3{font-size:12px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;}
+label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--text2);}
+label span{display:flex;justify-content:space-between;}
+input[type=range]{width:100%;accent-color:var(--accent);}
+canvas{width:100%;display:block;border:1px solid var(--border);border-radius:4px;background:var(--plot-bg);}
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.metric{background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:8px 10px;}
+.metric .val{font-size:18px;font-weight:700;color:var(--accent);}
+.metric .lbl{font-size:11px;color:var(--text2);}
+.badge{display:inline-block;padding:2px 7px;border-radius:3px;font-size:11px;font-weight:700;}
+.badge.pass{background:var(--pass-bg);color:var(--pass);}
+.badge.warn{background:var(--warn-bg);color:var(--warn);}
+.badge.fail{background:var(--fail-bg);color:var(--fail);}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+th{background:var(--bg);color:var(--text2);padding:5px 8px;text-align:left;border:1px solid var(--border);font-weight:600;font-size:11px;}
+td{padding:5px 8px;border:1px solid var(--border);}
+</style>
+</head>
+<body>
+<header>
+  <h1>M4A-DBG-6.4.2 — PCB Layout and Parasitics</h1>
+  <p>Trace parasitics, stray capacitance, crosstalk, and guard ring effects on circuit bandwidth</p>
+</header>
+
+<div class="tab-bar">
+  <div class="tab active" onclick="showTab(0)">Trace Parasitics</div>
+  <div class="tab" onclick="showTab(1)">Stray Cap Effect</div>
+  <div class="tab" onclick="showTab(2)">Crosstalk</div>
+  <div class="tab" onclick="showTab(3)">Guard Ring</div>
+</div>
+
+<!-- TAB 0: Trace Parasitics -->
+<div class="panel active" id="tab0">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="card">
+        <h3>Trace Geometry</h3>
+        <label><span>Trace length (mm) <b id="v_tl">30</b></span>
+          <input type="range" id="sl_tl" min="1" max="100" value="30" oninput="upd0()"></label>
+        <label><span>Trace width (mm) <b id="v_tw">0.2</b></span>
+          <input type="range" id="sl_tw" min="0.05" max="2" step="0.05" value="0.2" oninput="upd0()"></label>
+        <label><span>Dielectric thickness (mm) <b id="v_dt">0.2</b></span>
+          <input type="range" id="sl_dt" min="0.05" max="1" step="0.05" value="0.2" oninput="upd0()"></label>
+      </div>
+      <div class="card">
+        <h3>Signal Context</h3>
+        <label><span>Source impedance (Ω) <b id="v_rs">50</b></span>
+          <input type="range" id="sl_rs" min="1" max="10000" step="1" value="50" oninput="upd0()"></label>
+        <label><span>Load impedance (Ω) <b id="v_rl">50</b></span>
+          <input type="range" id="sl_rl" min="1" max="10000" step="1" value="50" oninput="upd0()"></label>
+        <label><span>Current load (mA) <b id="v_il">100</b></span>
+          <input type="range" id="sl_il" min="1" max="500" step="1" value="100" oninput="upd0()"></label>
+      </div>
+      <div class="card metrics">
+        <div class="metric"><div class="val" id="m_L">--</div><div class="lbl">Trace L (nH)</div></div>
+        <div class="metric"><div class="val" id="m_C">--</div><div class="lbl">Trace C (pF)</div></div>
+        <div class="metric"><div class="val" id="m_R">--</div><div class="lbl">Trace R (mΩ)</div></div>
+        <div class="metric"><div class="val" id="m_Vd">--</div><div class="lbl">V drop (mV)</div></div>
+        <div class="metric"><div class="val" id="m_Z0">--</div><div class="lbl">Char Z (Ω)</div></div>
+        <div class="metric"><div class="val" id="m_fpole">--</div><div class="lbl">Stray pole (MHz)</div></div>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="card">
+        <h3>Trace Impedance vs Frequency</h3>
+        <canvas id="c0" height="340"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: Stray Cap Effect on Op-Amp -->
+<div class="panel" id="tab1">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="card">
+        <h3>Circuit Parameters</h3>
+        <label><span>GBW (MHz) <b id="v_gbw1">100</b></span>
+          <input type="range" id="sl_gbw1" min="1" max="1000" step="1" value="100" oninput="upd1()"></label>
+        <label><span>Closed-loop gain <b id="v_g1">10</b></span>
+          <input type="range" id="sl_g1" min="1" max="100" step="1" value="10" oninput="upd1()"></label>
+        <label><span>R1 (kΩ) <b id="v_r11">1</b></span>
+          <input type="range" id="sl_r11" min="0.1" max="100" step="0.1" value="1" oninput="upd1()"></label>
+      </div>
+      <div class="card">
+        <h3>PCB Parasitics</h3>
+        <label><span>Stray Cs at summing node (pF) <b id="v_cs1">0</b></span>
+          <input type="range" id="sl_cs1" min="0" max="20" step="0.5" value="0" oninput="upd1()"></label>
+        <label><span>Cf compensation (pF) <b id="v_cf1">0</b></span>
+          <input type="range" id="sl_cf1" min="0" max="20" step="0.5" value="0" oninput="upd1()"></label>
+      </div>
+      <div class="card metrics">
+        <div class="metric"><div class="val" id="m_bw1n">--</div><div class="lbl">Nominal BW (MHz)</div></div>
+        <div class="metric"><div class="val" id="m_bw1s">--</div><div class="lbl">With stray BW</div></div>
+        <div class="metric"><div class="val" id="m_pm1">--</div><div class="lbl">Phase margin</div></div>
+        <div class="metric"><div class="val" id="m_peaking">--</div><div class="lbl">Gain peaking</div></div>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="card">
+        <h3>Closed-Loop Gain vs Frequency (stray capacitance effect)</h3>
+        <canvas id="c1" height="360"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: Crosstalk -->
+<div class="panel" id="tab2">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="card">
+        <h3>Trace Geometry</h3>
+        <label><span>Trace separation (mm) <b id="v_sep">1</b></span>
+          <input type="range" id="sl_sep" min="0.1" max="10" step="0.1" value="1" oninput="upd2()"></label>
+        <label><span>Parallel length (mm) <b id="v_plen">20</b></span>
+          <input type="range" id="sl_plen" min="1" max="100" step="1" value="20" oninput="upd2()"></label>
+        <label><span>Trace impedance (Ω) <b id="v_zo">50</b></span>
+          <input type="range" id="sl_zo" min="25" max="100" step="5" value="50" oninput="upd2()"></label>
+      </div>
+      <div class="card">
+        <h3>Signal</h3>
+        <label><span>Aggressor level (dBm) <b id="v_agg">0</b></span>
+          <input type="range" id="sl_agg" min="-30" max="20" step="1" value="0" oninput="upd2()"></label>
+        <label><span>Victim sensitivity (dBm) <b id="v_sen">-40</b></span>
+          <input type="range" id="sl_sen" min="-80" max="0" step="5" value="-40" oninput="upd2()"></label>
+      </div>
+      <div class="card">
+        <h3>Results at 100 MHz</h3>
+        <table>
+          <tr><th>Parameter</th><th>Value</th></tr>
+          <tr><td>Coupling cap Cm</td><td id="t_cm">--</td></tr>
+          <tr><td>NEXT (dB)</td><td id="t_next">--</td></tr>
+          <tr><td>Victim signal</td><td id="t_vs">--</td></tr>
+          <tr><td>SNR margin</td><td id="t_snrm">--</td></tr>
+          <tr><td>Status</td><td id="t_stat">--</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="card">
+        <h3>Near-End Crosstalk vs Frequency</h3>
+        <canvas id="c2" height="340"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 3: Guard Ring -->
+<div class="panel" id="tab3">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="card">
+        <h3>TIA Parameters</h3>
+        <label><span>Rf (MΩ) <b id="v_rf3">10</b></span>
+          <input type="range" id="sl_rf3" min="0.1" max="100" step="0.1" value="10" oninput="upd3()"></label>
+        <label><span>GBW (MHz) <b id="v_gbw3">10</b></span>
+          <input type="range" id="sl_gbw3" min="1" max="100" step="1" value="10" oninput="upd3()"></label>
+        <label><span>Stray Cs without guard (pF) <b id="v_csg">2</b></span>
+          <input type="range" id="sl_csg" min="0.1" max="10" step="0.1" value="2" oninput="upd3()"></label>
+        <label><span>Guard ring effectiveness (%) <b id="v_gre">90</b></span>
+          <input type="range" id="sl_gre" min="50" max="99" step="1" value="90" oninput="upd3()"></label>
+      </div>
+      <div class="card">
+        <h3>Cf Compensation</h3>
+        <label><span>Cf without guard (pF) <b id="v_cfw">0</b></span>
+          <input type="range" id="sl_cfw" min="0" max="5" step="0.05" value="0" oninput="upd3()"></label>
+        <label><span>Cf with guard (pF) <b id="v_cfg">0</b></span>
+          <input type="range" id="sl_cfg" min="0" max="1" step="0.01" value="0" oninput="upd3()"></label>
+      </div>
+      <div class="card">
+        <h3>Bandwidth Comparison</h3>
+        <table>
+          <tr><th>Condition</th><th>BW</th></tr>
+          <tr><td>No stray Cs</td><td id="b_ideal">--</td></tr>
+          <tr><td>With stray, no guard</td><td id="b_stray">--</td></tr>
+          <tr><td>With guard ring</td><td id="b_guard">--</td></tr>
+          <tr><td>BW improvement</td><td id="b_impr">--</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="card">
+        <h3>TIA Frequency Response — Guard Ring Comparison</h3>
+        <canvas id="c3" height="360"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const sl=id=>parseFloat($(id).value);
+function dpr(c){const r=window.devicePixelRatio||1;const rect=c.getBoundingClientRect();c.width=rect.width*r;c.height=rect.height*r;const ctx=c.getContext('2d');ctx.scale(r,r);return{ctx,w:rect.width,h:rect.height};}
+function tc(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+function showTab(n){document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));[upd0,upd1,upd2,upd3][n]();}
+
+/* ── Common Bode draw helper ── */
+function makeBodeAxes(ctx,w,h,padL,padR,padT,padB,logMin,logMax,yMin,yMax,yLabel,yStep){
+  const pw=w-padL-padR,ph=h-padT-padB;
+  const text2=tc('--text2'),border=tc('--border');
+  ctx.strokeStyle=border;ctx.lineWidth=.5;
+  for(let y=yMin;y<=yMax;y+=yStep){const py=padT+(1-(y-yMin)/(yMax-yMin))*ph;ctx.beginPath();ctx.moveTo(padL,py);ctx.lineTo(padL+pw,py);ctx.stroke();
+    ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(y+'',padL-4,py+4);}
+  for(let e=Math.floor(logMin);e<=Math.ceil(logMax);e++){
+    for(let m=1;m<10;m++){const f=m*Math.pow(10,e);if(f<Math.pow(10,logMin)||f>Math.pow(10,logMax))continue;
+      const x=padL+(Math.log10(f)-logMin)/(logMax-logMin)*pw;ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();
+      if(m===1){ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';
+        const lbl=f>=1e9?(f/1e9).toFixed(0)+'G':f>=1e6?(f/1e6).toFixed(0)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f+'';
+        ctx.fillText(lbl,x,padT+ph+14);}
+    }
+  }
+  ctx.strokeStyle=border;ctx.lineWidth=1;ctx.strokeRect(padL,padT,pw,ph);
+  return {pw,ph};
+}
+
+/* ── TAB 0: Trace Parasitics ── */
+function upd0(){
+  const Lmm=sl('sl_tl'),Wmm=sl('sl_tw'),hmm=sl('sl_dt');
+  const Rs=sl('sl_rs'),Rl=sl('sl_rl'),Il=sl('sl_il');
+  $('v_tl').textContent=Lmm;$('v_tw').textContent=Wmm.toFixed(2);$('v_dt').textContent=hmm.toFixed(2);
+  $('v_rs').textContent=Rs;$('v_rl').textContent=Rl;$('v_il').textContent=Il;
+
+  const L_m=Lmm*1e-3,W_m=Wmm*1e-3,h_m=hmm*1e-3;
+  const mu0=4*Math.PI*1e-7,eps0=8.85e-12,epsR=4.2;
+  const L_nH=(mu0/(2*Math.PI)*L_m*Math.log(2*h_m/W_m))*1e9*10; // rough: ~1nH/mm rule
+  const L_H=Lmm*1e-9;
+  const C_pF=epsR*eps0*W_m*L_m/h_m*1e12;
+  const Z0=Math.sqrt(L_H*1e9/(C_pF*1e-12)/1e9);
+  const rho=1.7e-8,T=35e-6;
+  const R_mOhm=rho*L_m/(W_m*T)*1000;
+  const Vdrop=R_mOhm/1000*Il/1000*1000;
+  const fpole=C_pF>0?1/(2*Math.PI*Rs*(C_pF*1e-12))/1e6:999;
+
+  $('m_L').textContent=(Lmm).toFixed(0)+' nH';
+  $('m_C').textContent=C_pF.toFixed(1)+' pF';
+  $('m_R').textContent=R_mOhm.toFixed(1)+' mΩ';
+  $('m_Vd').textContent=Vdrop.toFixed(1)+' mV';
+  $('m_Z0').textContent=Z0.toFixed(0)+' Ω';
+  $('m_fpole').textContent=fpole>=100?fpole.toFixed(0):fpole.toFixed(1);
+
+  drawTraceZ(Lmm,C_pF,R_mOhm,Rs,Rl,fpole);
+}
+
+function drawTraceZ(L_nH,C_pF,R_mOhm,Rs,Rl,fpole){
+  const c=$('c0');const{ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=55,padR=20,padT=20,padB=50;
+  const text=tc('--text'),accent=tc('--accent');
+  const logMin=5,logMax=11;
+  const yMin=-50,yMax=50,yStep=10;
+  const {pw,ph}=makeBodeAxes(ctx,w,h,padL,padR,padT,padB,logMin,logMax,yMin,yMax,'Gain (dB)',yStep);
+  ctx.fillStyle=text;ctx.font='bold 11px sans-serif';ctx.textAlign='left';ctx.fillText('Voltage transfer through trace (dB)',padL+4,padT+14);
+
+  const L=L_nH*1e-9,C=C_pF*1e-12,R=R_mOhm*1e-3;
+  const N=300;
+  ctx.beginPath();ctx.strokeStyle=accent;ctx.lineWidth=2;
+  for(let i=0;i<=N;i++){
+    const f=Math.pow(10,logMin+i*(logMax-logMin)/N);
+    const w2=2*Math.PI*f;
+    // Series impedance Z_trace = R + jωL; shunt capacitor C to ground
+    // Voltage divider: Rs drives Z_trace in series with (C shunt || Rl)
+    const jXL=w2*L, jXC=1/(w2*C);
+    const ZcRl=Rl*jXC/Math.sqrt(Rl*Rl+jXC*jXC); // rough magnitude
+    const Ztrace=Math.sqrt(R*R+jXL*jXL);
+    const Vout_Vin=ZcRl/Math.sqrt((Rs+Ztrace)*(Rs+Ztrace)+0);
+    const dB=20*Math.log10(Math.max(1e-6,Vout_Vin));
+    const x=padL+(Math.log10(f)-logMin)/(logMax-logMin)*pw;
+    const y=padT+(1-(Math.max(yMin,Math.min(yMax,dB))-yMin)/(yMax-yMin))*ph;
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Pole marker
+  if(fpole>0&&fpole<1e6){
+    const x=padL+(Math.log10(fpole*1e6)-logMin)/(logMax-logMin)*pw;
+    ctx.setLineDash([4,3]);ctx.strokeStyle='#e74c3c';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#e74c3c';ctx.font='10px sans-serif';ctx.textAlign='left';
+    ctx.fillText('Stray pole '+fpole.toFixed(1)+'MHz',x+3,padT+24);}
+
+  ctx.fillStyle=tc('--text2');ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('Frequency (Hz)',padL+pw/2,padT+ph+38);
+}
+
+/* ── TAB 1: Stray Cap Effect ── */
+function upd1(){
+  const gbw=sl('sl_gbw1'),G=sl('sl_g1'),R1=sl('sl_r11')*1e3;
+  const Cs=sl('sl_cs1')*1e-12,Cf=sl('sl_cf1')*1e-12;
+  $('v_gbw1').textContent=gbw;$('v_g1').textContent=G;$('v_r11').textContent=sl('sl_r11');
+  $('v_cs1').textContent=sl('sl_cs1');$('v_cf1').textContent=sl('sl_cf1');
+
+  const Rf=R1*(G-1);
+  const BW_nom=gbw/G;
+  // With stray Cs: pole in noise gain shifts crossover
+  const f_cs=Cs>0?1/(2*Math.PI*(Rf||R1)*Cs)/1e6:Infinity;
+  const BW_stray=Cs>0?Math.min(BW_nom,f_cs):BW_nom;
+  const pm_approx=Cs>0?Math.max(5,65-20*Math.log10(gbw/f_cs)):65;
+  const peaking=pm_approx<45?2*(45-pm_approx)/10:0;
+
+  $('m_bw1n').textContent=BW_nom.toFixed(2)+' MHz';
+  $('m_bw1s').textContent=BW_stray.toFixed(2)+' MHz';
+  $('m_pm1').textContent=pm_approx.toFixed(0)+'°';
+  $('m_peaking').textContent=peaking>0?'+'+peaking.toFixed(1)+' dB':'0 dB';
+  $('m_pm1').style.color=pm_approx>=45?'var(--pass)':pm_approx>=25?'var(--warn)':'var(--fail)';
+
+  drawStrayEffect(gbw,G,R1,Rf,Cs,Cf,BW_nom);
+}
+
+function loopGainPh(f,gbw,G,Cs,Rp,Cf,Rf){
+  const fHz=f*1e6;
+  const AolDC=1e5,f1=gbw*1e6/AolDC;
+  const Aol=AolDC/Math.sqrt(1+(fHz/f1)**2);
+  const Aol_ph=-Math.atan2(fHz,f1)*180/Math.PI;
+  let b=1/G,b_ph=0;
+  if(Cs>0){b/=Math.sqrt(1+(fHz/(1/(2*Math.PI*Rp*Cs)))**2);b_ph-=Math.atan2(fHz,1/(2*Math.PI*Rp*Cs))*180/Math.PI;}
+  if(Cf>0){const fz=1/(2*Math.PI*Rf*Cf);b*=Math.sqrt(1+(fHz/fz)**2);b_ph+=Math.atan2(fHz,fz)*180/Math.PI;}
+  return{T:Aol*b,ph:Aol_ph+b_ph};
+}
+
+function drawStrayEffect(gbw,G,R1,Rf,Cs,Cf,BW_nom){
+  const c=$('c1');const{ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=55,padR=20,padT=20,padB=50;
+  const text=tc('--text'),accent=tc('--accent'),text2=tc('--text2');
+  const logMin=Math.log10(gbw/G/10),logMax=Math.log10(gbw*5);
+  const yMin=-30,yMax=20+20*Math.log10(G),yStep=10;
+  const{pw,ph}=makeBodeAxes(ctx,w,h,padL,padR,padT,padB,logMin,logMax,yMin,yMax,'Gain (dB)',yStep);
+  ctx.fillStyle=text;ctx.font='bold 11px sans-serif';ctx.textAlign='left';ctx.fillText('Closed-Loop Gain (dB)',padL+4,padT+14);
+
+  const Rpar=R1*Rf/(R1+Rf);
+  const N=300;
+  function fx(fMHz){return padL+(Math.log10(fMHz)-logMin)/(logMax-logMin)*pw;}
+  function fy(dB){return padT+(1-(dB-yMin)/(yMax-yMin))*ph;}
+
+  // Nominal (no stray)
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#888';ctx.lineWidth=1.5;
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){
+    const f=Math.pow(10,logMin+i*(logMax-logMin)/N);
+    const{T}=loopGainPh(f,gbw,G,0,Rpar,0,Rf);
+    const cl=20*Math.log10(T*G/(1+T));
+    const x=fx(f),y=fy(Math.max(yMin,Math.min(yMax,cl)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();ctx.setLineDash([]);
+
+  // With stray Cs
+  ctx.strokeStyle='#e74c3c';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){
+    const f=Math.pow(10,logMin+i*(logMax-logMin)/N);
+    const{T}=loopGainPh(f,gbw,G,Cs,Rpar,0,Rf);
+    const cl=20*Math.log10(Math.max(1e-6,T*G/(1+T)));
+    const x=fx(f),y=fy(Math.max(yMin,Math.min(yMax,cl)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+
+  // With stray + Cf compensation
+  if(Cf>0){
+    ctx.strokeStyle=accent;ctx.lineWidth=2;
+    ctx.beginPath();
+    for(let i=0;i<=N;i++){
+      const f=Math.pow(10,logMin+i*(logMax-logMin)/N);
+      const{T}=loopGainPh(f,gbw,G,Cs,Rpar,Cf,Rf);
+      const cl=20*Math.log10(Math.max(1e-6,T*G/(1+T)));
+      const x=fx(f),y=fy(Math.max(yMin,Math.min(yMax,cl)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+    ctx.stroke();
+  }
+
+  // Ideal BW marker
+  const bw_x=fx(BW_nom);
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#2ecc71';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(bw_x,padT);ctx.lineTo(bw_x,padT+ph);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#2ecc71';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('BW_nom',bw_x,padT+10);
+
+  const lx=padL,ly=h-padB+18;
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#888';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(lx,ly+1);ctx.lineTo(lx+16,ly+1);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=tc('--text');ctx.font='11px sans-serif';ctx.textAlign='left';ctx.fillText('Nominal (no stray)',lx+20,ly+4);
+  ctx.strokeStyle='#e74c3c';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(lx+160,ly+1);ctx.lineTo(lx+176,ly+1);ctx.stroke();
+  ctx.fillStyle=tc('--text');ctx.fillText('With stray Cs',lx+180,ly+4);
+  if(Cf>0){ctx.strokeStyle=accent;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(lx+280,ly+1);ctx.lineTo(lx+296,ly+1);ctx.stroke();ctx.fillStyle=tc('--text');ctx.fillText('Stray+Cf comp',lx+300,ly+4);}
+  ctx.fillStyle=tc('--text2');ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('Frequency (MHz)',padL+pw/2,padT+ph+38);
+}
+
+/* ── TAB 2: Crosstalk ── */
+function upd2(){
+  const sep=sl('sl_sep'),plen=sl('sl_plen'),Zo=sl('sl_zo');
+  const agg=sl('sl_agg'),sen=sl('sl_sen');
+  $('v_sep').textContent=sep.toFixed(1);$('v_plen').textContent=plen;$('v_zo').textContent=Zo;
+  $('v_agg').textContent=agg;$('v_sen').textContent=sen;
+
+  // Coupling cap estimate: Cm ≈ eps0*epsR*W*L / (sep*d) rough, but use empirical ~0.5pF/cm at 1mm sep
+  const Cm_pF=0.5*plen/10/(sep/1); // rough: 0.5pF/cm at 1mm, inversely with sep
+  const f100=100e6;
+  const Xc=1/(2*Math.PI*f100*(Cm_pF*1e-12));
+  const NEXT_dB=20*Math.log10(Zo/(Zo+Xc));
+  const agg_V=Math.sqrt(2)*Math.pow(10,(agg-10*Math.log10(Zo))/20); // V from dBm into Zo
+  const victim_mV=agg_V*Math.pow(10,NEXT_dB/20)*1000;
+  const sen_mV=Math.sqrt(Zo/1000)*Math.pow(10,sen/20)*1000;
+  const margin_dB=20*Math.log10(Math.max(1e-9,sen_mV/victim_mV));
+  const stat=margin_dB>10?'PASS':margin_dB>0?'WARN':'FAIL';
+
+  $('t_cm').textContent=Cm_pF.toFixed(2)+' pF';
+  $('t_next').textContent=NEXT_dB.toFixed(1)+' dB';
+  $('t_vs').textContent=victim_mV.toFixed(2)+' mV';
+  $('t_snrm').textContent=margin_dB.toFixed(1)+' dB';
+  $('t_stat').innerHTML=`<span class="badge ${stat.toLowerCase()}">${stat}</span>`;
+
+  drawCrosstalk(sep,plen,Zo,Cm_pF);
+}
+
+function drawCrosstalk(sep,plen,Zo,Cm0){
+  const c=$('c2');const{ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=55,padR=20,padT=20,padB=50;
+  const logMin=6,logMax=10;
+  const yMin=-80,yMax=0,yStep=10;
+  const{pw,ph}=makeBodeAxes(ctx,w,h,padL,padR,padT,padB,logMin,logMax,yMin,yMax,'NEXT (dB)',yStep);
+  const text=tc('--text'),accent=tc('--accent'),text2=tc('--text2');
+  ctx.fillStyle=text;ctx.font='bold 11px sans-serif';ctx.textAlign='left';ctx.fillText('Near-End Crosstalk vs Frequency',padL+4,padT+14);
+
+  const N=300;
+  function fx(f){return padL+(Math.log10(f)-logMin)/(logMax-logMin)*pw;}
+  function fy(dB){return padT+(1-(dB-yMin)/(yMax-yMin))*ph;}
+
+  // Draw for several separation values
+  const seps=[0.2,0.5,sep,2,5].sort((a,b)=>a-b);
+  const cols=['#e74c3c','#e67e22',accent,'#2ecc71','#3498db'];
+  seps.forEach((s,idx)=>{
+    const Cm_base=0.5*plen/10/s;
+    const isSelected=Math.abs(s-sep)<0.05;
+    ctx.strokeStyle=cols[idx];ctx.lineWidth=isSelected?2.5:1;
+    ctx.beginPath();
+    for(let i=0;i<=N;i++){
+      const f=Math.pow(10,logMin+i*(logMax-logMin)/N);
+      const Cm=Cm_base*1e-12;
+      const Xc=1/(2*Math.PI*f*Cm);
+      const NEXT=20*Math.log10(Zo/(Zo+Xc));
+      const x=fx(f),y=fy(Math.max(yMin,Math.min(yMax,NEXT)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+    ctx.stroke();
+    ctx.fillStyle=cols[idx];ctx.font='10px sans-serif';ctx.textAlign='left';
+    const f_mid=Math.pow(10,(logMin+logMax)/2);
+    const Cm_m=Cm_base*1e-12;const Xc_m=1/(2*Math.PI*f_mid*Cm_m);
+    const NEXT_m=20*Math.log10(Zo/(Zo+Xc_m));
+    ctx.fillText(s.toFixed(1)+'mm',fx(f_mid),fy(NEXT_m)-4);
+  });
+  ctx.fillStyle=tc('--text2');ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('Frequency (Hz)',padL+pw/2,padT+ph+38);
+}
+
+/* ── TAB 3: Guard Ring ── */
+function upd3(){
+  const Rf=sl('sl_rf3')*1e6,gbw=sl('sl_gbw3')*1e6;
+  const Cs_total=sl('sl_csg')*1e-12,gre=sl('sl_gre')/100;
+  const Cfw=sl('sl_cfw')*1e-12,Cfg=sl('sl_cfg')*1e-12;
+  $('v_rf3').textContent=sl('sl_rf3');$('v_gbw3').textContent=sl('sl_gbw3');
+  $('v_csg').textContent=sl('sl_csg');$('v_gre').textContent=sl('sl_gre');
+  $('v_cfw').textContent=sl('sl_cfw');$('v_cfg').textContent=sl('sl_cfg');
+
+  const Cs_guard=Cs_total*(1-gre);
+
+  // TIA BW with Cf: f_-3dB = 1/(2π*Rf*Cf) when Cf dominates
+  function tiaBW(Cs,Cf){
+    if(Cf>0) return 1/(2*Math.PI*Rf*Cf)/1e3; // kHz
+    // Without Cf: limited by stray Cs pole + GBW
+    const f_cs=Cs>0?1/(2*Math.PI*Rf*Cs):gbw;
+    return Math.sqrt(gbw*f_cs)/(2*Math.PI*Rf*Cs>0?1:1)/1e3;
+  }
+
+  const bw_ideal=gbw/1e3; // kHz — limited purely by GBW
+  const bw_stray=Cfw>0?1/(2*Math.PI*Rf*Cfw)/1e3:Math.sqrt(gbw/(2*Math.PI*Rf*Cs_total))/1e3;
+  const bw_guard=Cfg>0?1/(2*Math.PI*Rf*Cfg)/1e3:Math.sqrt(gbw/(2*Math.PI*Rf*Cs_guard))/1e3;
+  const fmt=v=>v>=1000?(v/1000).toFixed(1)+' MHz':v.toFixed(0)+' kHz';
+  $('b_ideal').textContent=fmt(bw_ideal);
+  $('b_stray').textContent=fmt(bw_stray);
+  $('b_guard').textContent=fmt(bw_guard);
+  $('b_impr').textContent=(bw_guard/bw_stray).toFixed(1)+'×';
+
+  drawGuard(Rf,gbw,Cs_total,Cs_guard,Cfw,Cfg,bw_stray,bw_guard);
+}
+
+function drawGuard(Rf,gbw,Cs,Cs_g,Cfw,Cfg,bw_s,bw_g){
+  const c=$('c3');const{ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=55,padR=20,padT=20,padB=50;
+  const text=tc('--text'),accent=tc('--accent'),text2=tc('--text2');
+
+  const logMin=Math.log10(Math.min(bw_s,bw_g)/100*1e3)-1;
+  const logMax=Math.log10(gbw*2);
+  const yMin=-30,yMax=10,yStep=10;
+  const{pw,ph}=makeBodeAxes(ctx,w,h,padL,padR,padT,padB,logMin,logMax,yMin,yMax,'Gain (dB)',yStep);
+  ctx.fillStyle=text;ctx.font='bold 11px sans-serif';ctx.textAlign='left';ctx.fillText('TIA Closed-Loop Gain (dB)',padL+4,padT+14);
+
+  function fx(fHz){return padL+(Math.log10(fHz)-logMin)/(logMax-logMin)*pw;}
+  function fy(dB){return padT+(1-(dB-yMin)/(yMax-yMin))*ph;}
+  const N=300;
+
+  function tiaGain(f,Cs_eff,Cf_eff){
+    // TIA CL gain = Rf / sqrt(1+(f/fc)^2) where fc depends on Cs+Cf
+    const fc=Cf_eff>0?1/(2*Math.PI*Rf*Cf_eff):gbw/(1+Rf*2*Math.PI*(Cs_eff||1e-20)*gbw);
+    return 20*Math.log10(Rf)-20*Math.log10(Math.sqrt(1+(f/fc)**2));
+  }
+
+  // Without guard
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#e74c3c';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){const f=Math.pow(10,logMin+i*(logMax-logMin)/N);
+    const dB=tiaGain(f,Cs,Cfw);const x=fx(f),y=fy(Math.max(yMin,Math.min(yMax,dB)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();ctx.setLineDash([]);
+
+  // With guard ring
+  ctx.strokeStyle=accent;ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){const f=Math.pow(10,logMin+i*(logMax-logMin)/N);
+    const dB=tiaGain(f,Cs_g,Cfg);const x=fx(f),y=fy(Math.max(yMin,Math.min(yMax,dB)));i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+
+  // BW markers
+  [bw_s*1e3,'#e74c3c','No guard BW'],[bw_g*1e3,accent,'Guard ring BW']].forEach(([f,col,lbl])=>{
+    const x=fx(f);ctx.setLineDash([3,3]);ctx.strokeStyle=col;ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=col;ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText(lbl,x,padT+10);
+  });
+
+  const lx=padL,ly=h-padB+18;
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#e74c3c';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(lx,ly+1);ctx.lineTo(lx+16,ly+1);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=tc('--text');ctx.font='11px sans-serif';ctx.textAlign='left';ctx.fillText('Without guard ring',lx+20,ly+4);
+  ctx.strokeStyle=accent;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(lx+180,ly+1);ctx.lineTo(lx+196,ly+1);ctx.stroke();
+  ctx.fillStyle=tc('--text');ctx.fillText('With guard ring',lx+200,ly+4);
+  ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText('Frequency (Hz)',padL+pw/2,padT+ph+38);
+}
+
+window.addEventListener('load',()=>{upd0();upd1();upd2();upd3();});
+window.addEventListener('resize',()=>{upd0();upd1();upd2();upd3();});
+</script>
+</body>
+</html>

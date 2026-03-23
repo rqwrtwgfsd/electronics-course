@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-PM-11.9.1 — FoM and Topology Comparison Simulator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; font-size: 14px; }
+  h1 { text-align: center; padding: 18px; font-size: 18px; color: #58a6ff; border-bottom: 1px solid #21262d; }
+  .tabs { display: flex; background: #161b22; border-bottom: 1px solid #21262d; flex-wrap:wrap; }
+  .tab { padding: 10px 18px; cursor: pointer; color: #8b949e; border-bottom: 2px solid transparent; font-size: 13px; }
+  .tab.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+  .panel { display: none; padding: 18px; }
+  .panel.active { display: block; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; }
+  .card { background: #161b22; border: 1px solid #21262d; border-radius: 8px; padding: 14px; flex: 1; min-width: 260px; }
+  .card h3 { font-size: 13px; color: #58a6ff; margin-bottom: 10px; }
+  label { display: block; font-size: 12px; color: #8b949e; margin: 6px 0 2px; }
+  input[type=range] { width: 100%; accent-color: #58a6ff; }
+  .val { display: inline-block; min-width: 54px; color: #f0883e; font-weight: bold; font-size: 12px; }
+  canvas { display: block; width: 100%; border-radius: 6px; background: #0d1117; }
+  .info-box { background: #1c2128; border: 1px solid #30363d; border-radius: 6px; padding: 10px 14px; margin-top: 10px; font-size: 12px; line-height: 1.8; }
+  .info-box span.g { color: #3fb950; font-weight: bold; }
+  .info-box span.r { color: #f85149; font-weight: bold; }
+  .info-box span.y { color: #d29922; font-weight: bold; }
+  .info-box span.b { color: #58a6ff; font-weight: bold; }
+  .legend-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 6px; font-size: 11px; }
+  .ld { display: flex; align-items: center; gap: 5px; }
+  .lbox { width: 14px; height: 4px; border-radius: 2px; }
+  select { background: #1c2128; color: #e6edf3; border: 1px solid #30363d; border-radius: 4px; padding: 4px 8px; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>M4B-PM-11.9.1 — FoM System and Topology Comparison Simulator</h1>
+<div class="tabs">
+  <div class="tab active" onclick="switchTab(0)">Composite FoM Radar</div>
+  <div class="tab" onclick="switchTab(1)">Topology Benchmark</div>
+  <div class="tab" onclick="switchTab(2)">Spec → Topology Selector</div>
+</div>
+
+<!-- TAB 0: Composite FoM Radar -->
+<div class="panel active" id="p0">
+  <div class="row">
+    <div class="card" style="max-width:330px;">
+      <h3>Design A Parameters</h3>
+      <label>GBW_A (MHz): <span class="val" id="t0_gbwA_v">500</span></label>
+      <input type="range" id="t0_gbwA" min="1" max="2000" step="5" value="500" oninput="updateT0()">
+      <label>CL_A (pF): <span class="val" id="t0_clA_v">2</span></label>
+      <input type="range" id="t0_clA" min="0.1" max="20" step="0.1" value="2" oninput="updateT0()">
+      <label>Iq_A (mA): <span class="val" id="t0_iqA_v">1.0</span></label>
+      <input type="range" id="t0_iqA" min="0.01" max="10" step="0.01" value="1.0" oninput="updateT0()">
+      <label>Svn_A (nV/√Hz): <span class="val" id="t0_svnA_v">5</span></label>
+      <input type="range" id="t0_svnA" min="1" max="50" step="0.5" value="5" oninput="updateT0()">
+      <label>THD_A (dBc at max freq): <span class="val" id="t0_thdA_v">-88</span></label>
+      <input type="range" id="t0_thdA" min="-130" max="-40" step="1" value="-88" oninput="updateT0()">
+      <label>VOS_3σ_A (mV): <span class="val" id="t0_vosA_v">2</span></label>
+      <input type="range" id="t0_vosA" min="0.01" max="20" step="0.1" value="2" oninput="updateT0()">
+      <h3 style="margin-top:10px;">Design B Parameters</h3>
+      <label>GBW_B (MHz): <span class="val" id="t0_gbwB_v">300</span></label>
+      <input type="range" id="t0_gbwB" min="1" max="2000" step="5" value="300" oninput="updateT0()">
+      <label>CL_B (pF): <span class="val" id="t0_clB_v">2</span></label>
+      <input type="range" id="t0_clB" min="0.1" max="20" step="0.1" value="2" oninput="updateT0()">
+      <label>Iq_B (mA): <span class="val" id="t0_iqB_v">0.6</span></label>
+      <input type="range" id="t0_iqB" min="0.01" max="10" step="0.01" value="0.6" oninput="updateT0()">
+      <label>Svn_B (nV/√Hz): <span class="val" id="t0_svnB_v">4</span></label>
+      <input type="range" id="t0_svnB" min="1" max="50" step="0.5" value="4" oninput="updateT0()">
+      <label>THD_B (dBc): <span class="val" id="t0_thdB_v">-90</span></label>
+      <input type="range" id="t0_thdB" min="-130" max="-40" step="1" value="-90" oninput="updateT0()">
+      <label>VOS_3σ_B (mV): <span class="val" id="t0_vosB_v">1</span></label>
+      <input type="range" id="t0_vosB" min="0.01" max="20" step="0.1" value="1" oninput="updateT0()">
+      <div class="info-box" id="t0_info"></div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>FoM Radar Chart — Design A vs B</h3>
+      <canvas id="c0" height="400"></canvas>
+      <div class="legend-row">
+        <div class="ld"><div class="lbox" style="background:#58a6ff"></div>Design A</div>
+        <div class="ld"><div class="lbox" style="background:#f0883e"></div>Design B</div>
+        <div class="ld"><div class="lbox" style="background:#3fb950;opacity:0.5"></div>Spec target (unit circle)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: Topology Benchmark -->
+<div class="panel" id="p1">
+  <div class="row">
+    <div class="card" style="max-width:280px;">
+      <h3>Benchmark Controls</h3>
+      <label>Load CL (pF): <span class="val" id="t1_cl_v">2</span></label>
+      <input type="range" id="t1_cl" min="0.1" max="20" step="0.1" value="2" oninput="updateT1()">
+      <label>Target GBW (MHz): <span class="val" id="t1_tgbw_v">200</span></label>
+      <input type="range" id="t1_tgbw" min="1" max="1000" step="5" value="200" oninput="updateT1()">
+      <label>Iq budget (mA): <span class="val" id="t1_iq_v">1.0</span></label>
+      <input type="range" id="t1_iq" min="0.1" max="10" step="0.1" value="1.0" oninput="updateT1()">
+      <div class="info-box" id="t1_info"></div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>FoM_s Benchmark — 8 Reference Topologies</h3>
+      <canvas id="c1" height="380"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: Spec → Topology Selector -->
+<div class="panel" id="p2">
+  <div class="row">
+    <div class="card" style="max-width:330px;">
+      <h3>Application Spec</h3>
+      <label>GBW required (MHz): <span class="val" id="t2_gbw_v">500</span></label>
+      <input type="range" id="t2_gbw" min="0.001" max="2000" step="5" value="500" oninput="updateT2()">
+      <label>Load CL (pF): <span class="val" id="t2_cl_v">2</span></label>
+      <input type="range" id="t2_cl" min="0.1" max="50" step="0.1" value="2" oninput="updateT2()">
+      <label>Supply VDD (V): <span class="val" id="t2_vdd_v">1.2</span></label>
+      <input type="range" id="t2_vdd" min="0.8" max="5.0" step="0.1" value="1.2" oninput="updateT2()">
+      <label>Noise Svn (nV/√Hz): <span class="val" id="t2_svn_v">5</span></label>
+      <input type="range" id="t2_svn" min="1" max="100" step="1" value="5" oninput="updateT2()">
+      <label>VOS required (mV): <span class="val" id="t2_vos_v">2</span></label>
+      <input type="range" id="t2_vos" min="0.01" max="50" step="0.1" value="2" oninput="updateT2()">
+      <label>THD required (dBc): <span class="val" id="t2_thd_v">-85</span></label>
+      <input type="range" id="t2_thd" min="-130" max="-40" step="1" value="-85" oninput="updateT2()">
+      <label>Iq budget (mA): <span class="val" id="t2_iq_v">2</span></label>
+      <input type="range" id="t2_iq" min="0.01" max="20" step="0.1" value="2" oninput="updateT2()">
+      <div class="info-box" id="t2_info"></div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Topology Score — Match to Specification</h3>
+      <canvas id="c2" height="380"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+const DPR = window.devicePixelRatio || 1;
+function setupCanvas(id) {
+  const c = document.getElementById(id);
+  const w = c.parentElement.clientWidth - 28;
+  const h = parseInt(c.getAttribute('height'));
+  c.width = w * DPR; c.height = h * DPR;
+  c.style.width = w + 'px'; c.style.height = h + 'px';
+  const ctx = c.getContext('2d'); ctx.scale(DPR, DPR);
+  return { ctx, W: w, H: h };
+}
+function switchTab(i) {
+  document.querySelectorAll('.tab').forEach((t,j) => t.classList.toggle('active', i===j));
+  document.querySelectorAll('.panel').forEach((p,j) => p.classList.toggle('active', i===j));
+  if(i===0) updateT0();
+  if(i===1) updateT1();
+  if(i===2) updateT2();
+}
+
+// ── TAB 0: Radar chart ────────────────────────────────────────────────────
+function updateT0() {
+  const pA = {
+    gbw: +document.getElementById('t0_gbwA').value,
+    cl: +document.getElementById('t0_clA').value,
+    iq: +document.getElementById('t0_iqA').value,
+    svn: +document.getElementById('t0_svnA').value,
+    thd: +document.getElementById('t0_thdA').value,
+    vos: +document.getElementById('t0_vosA').value,
+  };
+  const pB = {
+    gbw: +document.getElementById('t0_gbwB').value,
+    cl: +document.getElementById('t0_clB').value,
+    iq: +document.getElementById('t0_iqB').value,
+    svn: +document.getElementById('t0_svnB').value,
+    thd: +document.getElementById('t0_thdB').value,
+    vos: +document.getElementById('t0_vosB').value,
+  };
+  // Update display
+  ['A','B'].forEach(d => {
+    const p = d==='A' ? pA : pB;
+    document.getElementById(`t0_gbw${d}_v`).textContent = p.gbw;
+    document.getElementById(`t0_cl${d}_v`).textContent = p.cl.toFixed(1);
+    document.getElementById(`t0_iq${d}_v`).textContent = p.iq.toFixed(2);
+    document.getElementById(`t0_svn${d}_v`).textContent = p.svn.toFixed(1);
+    document.getElementById(`t0_thd${d}_v`).textContent = p.thd;
+    document.getElementById(`t0_vos${d}_v`).textContent = p.vos.toFixed(1);
+  });
+
+  // Targets
+  const T = { foms: 300, svn: 5, thd: -86, vos: 2, sr: 400 };
+  // Compute normalized metrics (vs target = 1.0)
+  function foms(p) { return p.gbw * p.cl / p.iq; }
+  function fomsN(p) { return foms(p) / T.foms; }
+  function svnN(p) { return T.svn / p.svn; } // lower svn is better
+  function thdN(p) { return Math.abs(p.thd) / Math.abs(T.thd); } // more negative = better
+  function vosN(p) { return T.vos / p.vos; } // lower VOS is better
+  // Power efficiency: 1/iq (normalized)
+  function pwrN(p) { return 1 / p.iq / (1 / 1.0); } // target iq = 1 mA
+
+  const axes = ['Speed\n(FoM_s)', 'Noise\n(1/Svn)', 'Linearity\n(|THD|)', 'Offset\n(1/VOS)', 'Power\n(1/Iq)'];
+  const valsA = [fomsN(pA), svnN(pA), thdN(pA), vosN(pA), pwrN(pA)];
+  const valsB = [fomsN(pB), svnN(pB), thdN(pB), vosN(pB), pwrN(pB)];
+  const N = axes.length;
+
+  const { ctx, W, H } = setupCanvas('c0');
+  const cx = W/2, cy = H/2 + 10;
+  const R = Math.min(W, H) * 0.35;
+
+  ctx.fillStyle = '#0d1117'; ctx.fillRect(0,0,W,H);
+
+  function radarPt(i, val, r) {
+    const angle = (2*Math.PI*i/N) - Math.PI/2;
+    return { x: cx + r * val * Math.cos(angle), y: cy + r * val * Math.sin(angle) };
+  }
+
+  // Grid circles
+  [0.25,0.5,0.75,1.0,1.5].forEach(r => {
+    ctx.strokeStyle = r===1.0?'#3fb950':'#21262d';
+    ctx.lineWidth = r===1.0 ? 1.5 : 0.5;
+    ctx.beginPath();
+    for(let i=0;i<N;i++) {
+      const p = radarPt(i,r,R);
+      if(i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y);
+    }
+    ctx.closePath(); ctx.stroke();
+    if(r===1.0) {
+      ctx.fillStyle='#3fb950'; ctx.font='9px sans-serif';
+      ctx.fillText('Target', cx+R*1.02, cy-4);
+    }
+  });
+
+  // Spokes and labels
+  axes.forEach((lbl, i) => {
+    const p = radarPt(i, 1.6, R);
+    const p0 = radarPt(i, 0, R);
+    ctx.strokeStyle='#21262d'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(p0.x,p0.y); ctx.lineTo(p.x,p.y); ctx.stroke();
+    ctx.fillStyle='#8b949e'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+    const lblPt = radarPt(i, 1.75, R);
+    const parts = lbl.split('\n');
+    ctx.fillText(parts[0], lblPt.x, lblPt.y - (parts.length>1?6:0));
+    if(parts[1]) ctx.fillText(parts[1], lblPt.x, lblPt.y+8);
+  });
+  ctx.textAlign='left';
+
+  function drawPolygon(vals, color, alpha) {
+    ctx.beginPath();
+    for(let i=0;i<N;i++) {
+      const p = radarPt(i, Math.min(vals[i],2.0), R);
+      if(i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = color.replace('rgb','rgba').replace(')',`,${alpha})`);
+    ctx.fill();
+    ctx.strokeStyle=color; ctx.lineWidth=2; ctx.stroke();
+    // dots
+    for(let i=0;i<N;i++) {
+      const p = radarPt(i, Math.min(vals[i],2.0), R);
+      ctx.fillStyle=color;
+      ctx.beginPath(); ctx.arc(p.x,p.y,4,0,2*Math.PI); ctx.fill();
+    }
+  }
+
+  drawPolygon(valsB, 'rgb(240,136,62)', 0.15);
+  drawPolygon(valsA, 'rgb(88,166,255)', 0.15);
+
+  // Numeric labels
+  axes.forEach((lbl,i) => {
+    const p = radarPt(i, Math.min(valsA[i],2.0)+0.1, R);
+    ctx.fillStyle='#58a6ff'; ctx.font='9px monospace';
+    ctx.fillText(valsA[i].toFixed(2), p.x, p.y);
+    const pB2 = radarPt(i, Math.min(valsB[i],2.0)-0.2, R);
+    ctx.fillStyle='#f0883e';
+    ctx.fillText(valsB[i].toFixed(2), pB2.x, pB2.y);
+  });
+
+  const compA = valsA.reduce((a,b)=>a*b,1);
+  const compB = valsB.reduce((a,b)=>a*b,1);
+  const winner = compA >= compB ? 'A' : 'B';
+  document.getElementById('t0_info').innerHTML =
+    `<span class="b">Composite FoM (product of 5 normalized axes):</span><br>` +
+    `Design A: <span class="${compA>1?'g':'r'}">${compA.toFixed(3)}</span>  FoM_s=${foms(pA).toFixed(0)}<br>` +
+    `Design B: <span class="${compB>1?'g':'r'}">${compB.toFixed(3)}</span>  FoM_s=${foms(pB).toFixed(0)}<br>` +
+    `Winner: <span class="g">Design ${winner}</span>`;
+}
+
+// ── TAB 1: Topology Benchmark ─────────────────────────────────────────────
+function updateT1() {
+  const CL = +document.getElementById('t1_cl').value;
+  const tGBW = +document.getElementById('t1_tgbw').value;
+  const Iq_budget = +document.getElementById('t1_iq').value;
+
+  document.getElementById('t1_cl_v').textContent = CL.toFixed(1);
+  document.getElementById('t1_tgbw_v').textContent = tGBW;
+  document.getElementById('t1_iq_v').textContent = Iq_budget.toFixed(1);
+
+  // Reference FoM_s values (mid-range of published data)
+  // FoM_s = GBW × CL / Iq
+  // We display GBW_achievable = FoM_s_ref × Iq_budget / CL
+  const topos = [
+    { name: '5T OTA',           foms: 75,   color: '#58a6ff' },
+    { name: 'Folded cascode',   foms: 115,  color: '#79c0ff' },
+    { name: 'RFC OTA',          foms: 185,  color: '#39d353' },
+    { name: 'Two-stage Miller', foms: 275,  color: '#3fb950' },
+    { name: 'Class AB',         foms: 500,  color: '#f0883e' },
+    { name: 'CFOA',             foms: 3500, color: '#f85149' },
+    { name: 'ULP weak-inv OTA', foms: 350,  color: '#d29922' },
+    { name: 'Your Design',      foms: tGBW * CL / Iq_budget, color: '#a371f7' },
+  ];
+
+  const { ctx, W, H } = setupCanvas('c1');
+  const PAD = { l: 150, r: 60, t: 20, b: 40 };
+  const PW = W - PAD.l - PAD.r;
+  const PH = H - PAD.t - PAD.b;
+  const barH = Math.floor(PH / topos.length) - 4;
+  const gap = 4;
+
+  ctx.fillStyle = '#0d1117'; ctx.fillRect(0,0,W,H);
+
+  const maxFoMs = Math.max(...topos.map(t=>t.foms)) * 1.15;
+
+  // Grid
+  const step = maxFoMs > 2000 ? 500 : maxFoMs > 500 ? 200 : 100;
+  ctx.strokeStyle='#21262d'; ctx.lineWidth=0.5;
+  for(let v=0; v<=maxFoMs; v+=step) {
+    const x = PAD.l + (v/maxFoMs)*PW;
+    ctx.beginPath(); ctx.moveTo(x,PAD.t); ctx.lineTo(x,PAD.t+PH); ctx.stroke();
+    ctx.fillStyle='#8b949e'; ctx.font='10px monospace';
+    ctx.fillText(v>=1000?(v/1000).toFixed(1)+'k':v.toFixed(0), x-8, PAD.t+PH+14);
+  }
+
+  topos.forEach((t, i) => {
+    const y = PAD.t + i*(barH+gap);
+    const xEnd = PAD.l + (t.foms/maxFoMs)*PW;
+    const isUser = t.name === 'Your Design';
+
+    ctx.fillStyle = t.color;
+    ctx.globalAlpha = isUser ? 1.0 : 0.2;
+    ctx.fillRect(PAD.l, y, xEnd-PAD.l, barH);
+    ctx.globalAlpha = 1.0;
+    ctx.strokeStyle = t.color; ctx.lineWidth = isUser ? 2.5 : 1.5;
+    ctx.strokeRect(PAD.l, y, xEnd-PAD.l, barH);
+
+    ctx.fillStyle = t.color; ctx.font = (isUser?'bold ':'')+'11px sans-serif';
+    ctx.textAlign='right';
+    ctx.fillText(t.name, PAD.l-4, y+barH/2+4);
+    ctx.textAlign='left';
+    const vStr = t.foms>=1000?(t.foms/1000).toFixed(1)+'k':t.foms.toFixed(0);
+    ctx.fillStyle='#e6edf3'; ctx.font='10px monospace';
+    ctx.fillText(vStr, xEnd+4, y+barH/2+4);
+
+    // GBW achievable
+    const gbw_ach = t.foms * Iq_budget / CL;
+    ctx.fillStyle='#8b949e'; ctx.font='9px sans-serif';
+    const gbw_str = gbw_ach>=1000?(gbw_ach/1000).toFixed(1)+'GHz':gbw_ach.toFixed(0)+'MHz';
+    ctx.fillText(`GBW@${Iq_budget}mA,${CL}pF: ${gbw_str}`, xEnd+50, y+barH/2+4);
+  });
+  ctx.textAlign='left';
+
+  ctx.fillStyle='#8b949e'; ctx.font='11px sans-serif';
+  ctx.fillText('FoM_s = GBW × CL / Iq (MHz·pF/mA)', PAD.l+PW/2-100, H-4);
+
+  // Target marker
+  const tGBW_foms = tGBW * CL / Iq_budget;
+  const x_tgt = PAD.l + (tGBW_foms/maxFoMs)*PW;
+  ctx.strokeStyle='#f85149'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(x_tgt,PAD.t); ctx.lineTo(x_tgt,PAD.t+PH); ctx.stroke();
+  ctx.fillStyle='#f85149'; ctx.font='10px sans-serif'; ctx.setLineDash([]);
+  ctx.fillText('Required', x_tgt+2, PAD.t+10);
+
+  const passingTopos = topos.filter(t=>t.foms >= tGBW_foms && t.name!=='Your Design');
+  document.getElementById('t1_info').innerHTML =
+    `<span class="b">At CL=${CL}pF, Iq=${Iq_budget}mA:</span><br>` +
+    `Required FoM_s = <span class="y">${tGBW_foms.toFixed(0)} MHz·pF/mA</span><br>` +
+    `(for GBW = ${tGBW} MHz)<br>` +
+    `Passing topologies:<br>` +
+    passingTopos.map(t=>`<span class="g"> ${t.name} (${t.foms})</span>`).join('<br>');
+}
+
+// ── TAB 2: Topology Selector ───────────────────────────────────────────────
+function updateT2() {
+  const gbw_req = +document.getElementById('t2_gbw').value;
+  const CL = +document.getElementById('t2_cl').value;
+  const VDD = +document.getElementById('t2_vdd').value;
+  const svn_req = +document.getElementById('t2_svn').value;
+  const vos_req = +document.getElementById('t2_vos').value;
+  const thd_req = +document.getElementById('t2_thd').value;
+  const iq_budget = +document.getElementById('t2_iq').value;
+
+  document.getElementById('t2_gbw_v').textContent = gbw_req.toFixed(0);
+  document.getElementById('t2_cl_v').textContent = CL.toFixed(1);
+  document.getElementById('t2_vdd_v').textContent = VDD.toFixed(1);
+  document.getElementById('t2_svn_v').textContent = svn_req.toFixed(0);
+  document.getElementById('t2_vos_v').textContent = vos_req.toFixed(1);
+  document.getElementById('t2_thd_v').textContent = thd_req;
+  document.getElementById('t2_iq_v').textContent = iq_budget.toFixed(1);
+
+  // Topology database: [name, foms, svn_typ, thd_typ, vos_typ, vdd_min, cl_ideal_max, swing_pct]
+  const topos = [
+    { name: '5T OTA',              foms:75,    svn:7,   thd:-70, vos:3,   vdd_min:0.8, cl_max:2,   swing:0.5 },
+    { name: 'Folded cascode',      foms:115,   svn:4,   thd:-75, vos:2,   vdd_min:1.0, cl_max:5,   swing:0.4 },
+    { name: 'Gain-boosted casc.',  foms:100,   svn:3,   thd:-80, vos:1.5, vdd_min:1.4, cl_max:3,   swing:0.3 },
+    { name: 'RFC OTA',             foms:185,   svn:5,   thd:-72, vos:2.5, vdd_min:1.0, cl_max:5,   swing:0.5 },
+    { name: 'Two-stage Miller',    foms:275,   svn:6,   thd:-85, vos:2,   vdd_min:1.0, cl_max:20,  swing:0.85 },
+    { name: 'Class AB 2-stage',    foms:500,   svn:6,   thd:-88, vos:2,   vdd_min:1.0, cl_max:50,  swing:0.9 },
+    { name: 'CFOA',                foms:3500,  svn:15,  thd:-65, vos:5,   vdd_min:1.5, cl_max:100, swing:0.8 },
+    { name: 'Fully differential',  foms:400,   svn:5,   thd:-92, vos:1,   vdd_min:1.2, cl_max:20,  swing:0.85 },
+    { name: 'Chopper-stabilized',  foms:80,    svn:2,   thd:-75, vos:0.01,vdd_min:1.2, cl_max:5,   swing:0.8 },
+    { name: 'ULP weak-inv OTA',    foms:350,   svn:8,   thd:-68, vos:3,   vdd_min:0.8, cl_max:5,   swing:0.7 },
+  ];
+
+  // Score each topology on each dimension
+  // Score = 1 if passes, partial credit for how much margin it has
+  function score(topo) {
+    const foms_actual = topo.foms * iq_budget / CL;
+    const gbw_score = Math.min(2, foms_actual / gbw_req);
+    const svn_score = Math.min(2, svn_req / topo.svn);
+    const thd_score = Math.min(2, Math.abs(topo.thd) / Math.abs(thd_req));
+    const vos_score = Math.min(2, vos_req / topo.vos);
+    const vdd_score = VDD >= topo.vdd_min ? 1 : 0;
+    const cl_score = CL <= topo.cl_max ? 1 : topo.cl_max / CL;
+    const total = (gbw_score + svn_score + thd_score + vos_score) / 4 * vdd_score * cl_score;
+    return { total, gbw: gbw_score, svn: svn_score, thd: thd_score, vos: vos_score };
+  }
+
+  const scored = topos.map(t => ({ ...t, sc: score(t) }));
+  scored.sort((a,b) => b.sc.total - a.sc.total);
+
+  const { ctx, W, H } = setupCanvas('c2');
+  const PAD = { l: 160, r: 80, t: 20, b: 44 };
+  const PW = W - PAD.l - PAD.r;
+  const PH = H - PAD.t - PAD.b;
+  const nT = scored.length;
+  const barH = Math.floor(PH/nT) - 4;
+
+  ctx.fillStyle = '#0d1117'; ctx.fillRect(0,0,W,H);
+
+  // x-axis: score 0 to 2
+  const xMax = 1.5;
+  function xP(s) { return PAD.l + (s/xMax)*PW; }
+
+  // Grid
+  ctx.strokeStyle='#21262d'; ctx.lineWidth=0.5;
+  [0,0.25,0.5,0.75,1.0,1.25,1.5].forEach(v => {
+    const x = xP(v);
+    ctx.beginPath(); ctx.moveTo(x,PAD.t); ctx.lineTo(x,PAD.t+PH); ctx.stroke();
+    ctx.fillStyle='#8b949e'; ctx.font='10px monospace';
+    ctx.fillText(v.toFixed(2), x-10, PAD.t+PH+14);
+  });
+
+  // Score = 1 marker
+  ctx.strokeStyle='#3fb950'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(xP(1),PAD.t); ctx.lineTo(xP(1),PAD.t+PH); ctx.stroke();
+  ctx.fillStyle='#3fb950'; ctx.font='10px sans-serif'; ctx.setLineDash([]);
+  ctx.fillText('All specs met', xP(1)+2, PAD.t+10);
+
+  const colors = ['#3fb950','#58a6ff','#f0883e','#d29922','#a371f7','#79c0ff','#f85149','#56d364','#ffa657','#cae8ff'];
+
+  scored.forEach((t, i) => {
+    const y = PAD.t + i*(barH+4);
+    const s = Math.min(t.sc.total, xMax);
+    const color = colors[i % colors.length];
+    const passes = t.sc.total >= 1.0;
+
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.2;
+    ctx.fillRect(PAD.l, y, xP(s)-PAD.l, barH);
+    ctx.globalAlpha = 1.0;
+    ctx.strokeStyle = passes ? color : '#666'; ctx.lineWidth = passes ? 2 : 1;
+    ctx.strokeRect(PAD.l, y, xP(s)-PAD.l, barH);
+
+    ctx.fillStyle = passes ? color : '#8b949e';
+    ctx.font = passes ? 'bold 11px sans-serif' : '10px sans-serif';
+    ctx.textAlign='right';
+    ctx.fillText(t.name, PAD.l-4, y+barH/2+4);
+    ctx.textAlign='left';
+    ctx.fillStyle='#e6edf3'; ctx.font='10px monospace';
+    ctx.fillText(t.sc.total.toFixed(2), xP(s)+4, y+barH/2+4);
+    // sub-scores
+    ctx.fillStyle='#8b949e'; ctx.font='8px monospace';
+    ctx.fillText(`Spd:${t.sc.gbw.toFixed(1)} Nz:${t.sc.svn.toFixed(1)} THD:${t.sc.thd.toFixed(1)} VOS:${t.sc.vos.toFixed(1)}`,
+      PAD.l+PW+4, y+barH/2+4);
+  });
+  ctx.textAlign='left';
+  ctx.fillStyle='#8b949e'; ctx.font='11px sans-serif';
+  ctx.fillText('Composite Score (1.0 = all specs met)', PAD.l+PW/2-90, H-6);
+
+  const best = scored[0];
+  document.getElementById('t2_info').innerHTML =
+    `<span class="b">Best match: ${best.name}</span><br>` +
+    `Score = <span class="${best.sc.total>=1?'g':'y'}">${best.sc.total.toFixed(2)}</span><br>` +
+    `Speed: ${best.sc.gbw.toFixed(2)}  Noise: ${best.sc.svn.toFixed(2)}<br>` +
+    `THD: ${best.sc.thd.toFixed(2)}  VOS: ${best.sc.vos.toFixed(2)}<br>` +
+    `Passing topologies: <span class="g">${scored.filter(t=>t.sc.total>=1).length}</span>/${topos.length}`;
+}
+
+updateT0();
+window.addEventListener('resize', () => { updateT0(); updateT1(); updateT2(); });
+</script>
+</body>
+</html>

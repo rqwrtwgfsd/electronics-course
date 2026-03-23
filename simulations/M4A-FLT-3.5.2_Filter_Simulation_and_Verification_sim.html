@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-FLT-3.5.2 Filter Simulation and Verification</title>
+<style>
+  :root{--bg:#f5f5f5;--panel:#fff;--text:#1a1a1a;--muted:#666;--border:#ddd;
+    --a:#2563eb;--a2:#16a34a;--a3:#dc2626;--a4:#9333ea;--a5:#ea580c;
+    --cb:#fafafa;--gr:#e5e7eb;--hi:#fef9c3;--tb:#bfdbfe;}
+  @media(prefers-color-scheme:dark){:root{
+    --bg:#0f1117;--panel:#1e2130;--text:#e8eaf0;--muted:#8892a4;--border:#2d3348;
+    --a:#60a5fa;--a2:#4ade80;--a3:#f87171;--a4:#c084fc;--a5:#fb923c;
+    --cb:#161926;--gr:#2d3348;--hi:#2d2a0f;--tb:#3b82f6;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px;}
+  h1{font-size:16px;font-weight:700;padding:12px 18px;border-bottom:1px solid var(--border);background:var(--panel);}
+  h1 span{color:var(--muted);font-size:13px;font-weight:400;margin-left:8px;}
+  .layout{display:flex;height:calc(100vh - 47px);}
+  .left{width:290px;background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
+  .right{flex:1;display:flex;flex-direction:column;padding:10px;gap:8px;overflow:hidden;}
+  .sec{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:10px;}
+  .sec h3{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;}
+  label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:3px;}
+  label span{font-weight:600;color:var(--a);}
+  input[type=range]{width:100%;accent-color:var(--a);cursor:pointer;margin-bottom:5px;}
+  select{width:100%;padding:5px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);font-size:12px;margin-bottom:5px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+  .card{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;}
+  .card .lb{font-size:10px;color:var(--muted);text-transform:uppercase;}
+  .card .vl{font-size:12px;font-weight:700;font-family:monospace;color:var(--a);margin-top:2px;}
+  .card.g .vl{color:var(--a2);}
+  .card.r .vl{color:var(--a3);}
+  canvas{display:block;border-radius:6px;background:var(--cb);border:1px solid var(--border);width:100%;}
+  .tip{background:var(--hi);border:1px solid var(--tb);border-radius:6px;padding:8px;font-size:11px;line-height:1.5;}
+  .pass{color:var(--a2);font-weight:700;}
+  .fail{color:var(--a3);font-weight:700;}
+  .chk-row{display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px solid var(--border);}
+  .chk-row:last-child{border:none;}
+</style>
+</head>
+<body>
+<h1>M4A-FLT-3.5.2 — Filter Simulation and Verification <span>Ideal vs real op-amp, Monte Carlo tolerance, verification checklist</span></h1>
+<div class="layout">
+<div class="left">
+
+  <div class="sec">
+    <h3>Filter Design</h3>
+    <label>Target fp (kHz) <span id="lbl_fp">1</span></label>
+    <input type="range" id="fp_t" min="0.1" max="100" value="1" step="0.1" oninput="update()">
+    <label>Filter Order <span id="lbl_ord">2</span></label>
+    <input type="range" id="order" min="1" max="6" value="2" step="1" oninput="update()">
+    <label>Op-Amp GBW (MHz) <span id="lbl_gbw">10</span></label>
+    <input type="range" id="gbw" min="0.1" max="100" value="10" step="0.1" oninput="update()">
+    <label>Source Resistance (Ω) <span id="lbl_rs">0</span></label>
+    <input type="range" id="rs" min="0" max="10000" value="0" step="100" oninput="update()">
+  </div>
+
+  <div class="sec">
+    <h3>Monte Carlo</h3>
+    <label>Component Tolerance (%) <span id="lbl_tol">1</span></label>
+    <input type="range" id="tol" min="0.1" max="10" value="1" step="0.1" oninput="update()">
+    <label>Runs <span id="lbl_runs">50</span></label>
+    <input type="range" id="runs" min="10" max="200" value="50" step="10" oninput="update()">
+    <button onclick="runMC()" style="width:100%;padding:6px;background:var(--a);color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:12px;font-weight:600;">Run Monte Carlo</button>
+  </div>
+
+  <div class="sec">
+    <h3>Verification Checklist</h3>
+    <div class="chk-row"><span>DC op. point OK</span><span id="chk_dc" class="pass">PASS</span></div>
+    <div class="chk-row"><span>fp within ±5%</span><span id="chk_fp">—</span></div>
+    <div class="chk-row"><span>Stopband attenuation</span><span id="chk_stop">—</span></div>
+    <div class="chk-row"><span>GBW/fp ratio ≥ 50</span><span id="chk_gbw">—</span></div>
+    <div class="chk-row"><span>Phase margin ≥ 45°</span><span id="chk_ph">—</span></div>
+    <div class="chk-row"><span>MC yield ≥ 95%</span><span id="chk_mc">—</span></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card"><div class="lb">Designed fp</div><div class="vl" id="r_fp_d">—</div></div>
+    <div class="card g"><div class="lb">Simulated fp</div><div class="vl" id="r_fp_s">—</div></div>
+    <div class="card"><div class="lb">MC mean fp</div><div class="vl" id="r_mc_mean">—</div></div>
+    <div class="card r"><div class="lb">MC σ(fp)</div><div class="vl" id="r_mc_std">—</div></div>
+  </div>
+
+  <div class="tip" id="tip">Verify all checklist items pass before signing off on the filter design.</div>
+
+</div>
+<div class="right">
+  <canvas id="c_bode" style="flex:3;"></canvas>
+  <canvas id="c_mc" style="flex:2;"></canvas>
+</div>
+</div>
+<script>
+let mc_fps=[];
+
+function cv(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function getCtx(id){
+  const c=document.getElementById(id);
+  c.width=c.offsetWidth*devicePixelRatio;
+  c.height=c.offsetHeight*devicePixelRatio;
+  const ctx=c.getContext('2d');
+  ctx.scale(devicePixelRatio,devicePixelRatio);
+  ctx.W=c.offsetWidth;ctx.H=c.offsetHeight;
+  return ctx;
+}
+function fmtHz(f){
+  if(f>=1e6) return (f/1e6).toFixed(2)+' MHz';
+  if(f>=1e3) return (f/1e3).toFixed(1)+' kHz';
+  return f.toFixed(f>100?0:2)+' Hz';
+}
+
+function idealGain(f, fp, n){
+  return -10*Math.log10(1+Math.pow(f/fp,2*n));
+}
+
+function realGain(f, fp, n, gbw_hz, rs_ohm, Z0){
+  // Account for source resistance: R_eff = R + Rs
+  const fp_rs=fp/(1+rs_ohm/Z0);
+  // Account for GBW: op-amp gain rolloff shifts effective pole
+  const ratio=gbw_hz/fp_rs;
+  const fp_eff=fp_rs*Math.sqrt(1+ratio/50); // approximate correction
+  const fp_adj=fp_rs*(ratio<50?1+0.5*(50-ratio)/50:1);
+  return idealGain(f, fp_adj, n);
+}
+
+function findFp(gainFn, fp_nominal){
+  let lo=fp_nominal*0.01, hi=fp_nominal*100;
+  for(let i=0;i<60;i++){
+    const m=Math.sqrt(lo*hi);
+    if(gainFn(m)>-3) lo=m; else hi=m;
+  }
+  return Math.sqrt(lo*hi);
+}
+
+function randn(){
+  let u=0,v=0;
+  while(!u)u=Math.random();
+  while(!v)v=Math.random();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+}
+
+function runMC(){
+  const fp_t=parseFloat(document.getElementById('fp_t').value)*1e3;
+  const n=parseInt(document.getElementById('order').value);
+  const tol=parseFloat(document.getElementById('tol').value)/100;
+  const nRuns=parseInt(document.getElementById('runs').value);
+
+  mc_fps=[];
+  for(let i=0;i<nRuns;i++){
+    // Perturb R and C values by tolerance
+    const R_err=1+randn()*tol;
+    const C_err=1+randn()*tol;
+    const fp_mc=fp_t/(R_err*C_err); // simplified: fp ~ 1/RC
+    mc_fps.push(fp_mc);
+  }
+  update();
+}
+
+function update(){
+  const fp_t_khz=parseFloat(document.getElementById('fp_t').value);
+  const n=parseInt(document.getElementById('order').value);
+  const gbw_mhz=parseFloat(document.getElementById('gbw').value);
+  const rs=parseFloat(document.getElementById('rs').value);
+  const tol=parseFloat(document.getElementById('tol').value);
+  const fp_t=fp_t_khz*1e3;
+  const gbw_hz=gbw_mhz*1e6;
+  const Z0=10000; // 10 kΩ default
+
+  document.getElementById('lbl_fp').textContent=fp_t_khz.toFixed(1);
+  document.getElementById('lbl_ord').textContent=n;
+  document.getElementById('lbl_gbw').textContent=gbw_mhz.toFixed(1);
+  document.getElementById('lbl_rs').textContent=rs;
+  document.getElementById('lbl_tol').textContent=tol.toFixed(1);
+  document.getElementById('lbl_runs').textContent=document.getElementById('runs').value;
+
+  const fp_real=findFp(f=>realGain(f,fp_t,n,gbw_hz,rs,Z0), fp_t);
+  const fp_err=(fp_real-fp_t)/fp_t*100;
+  const stop_att=realGain(fp_t*10, fp_t, n, gbw_hz, rs, Z0);
+  const phase_at_fc=-n*45;
+  const gbw_ratio=gbw_hz/fp_t;
+
+  document.getElementById('r_fp_d').textContent=fmtHz(fp_t);
+  document.getElementById('r_fp_s').textContent=fmtHz(fp_real)+' ('+(fp_err>0?'+':'')+fp_err.toFixed(1)+'%)';
+
+  // Checklist
+  function setCheck(id, pass, text){
+    const el=document.getElementById(id);
+    el.textContent=text;
+    el.className=pass?'pass':'fail';
+  }
+  setCheck('chk_dc', true, 'PASS');
+  setCheck('chk_fp', Math.abs(fp_err)<5, Math.abs(fp_err)<5?'PASS ('+fp_err.toFixed(1)+'%)':'FAIL ('+fp_err.toFixed(1)+'%)');
+  setCheck('chk_stop', stop_att<-n*10, stop_att<-n*10?'PASS ('+stop_att.toFixed(0)+' dB)':'FAIL ('+stop_att.toFixed(0)+' dB)');
+  setCheck('chk_gbw', gbw_ratio>=50, gbw_ratio>=50?'PASS ('+gbw_ratio.toFixed(0)+'×)':'FAIL ('+gbw_ratio.toFixed(0)+'×)');
+  setCheck('chk_ph', Math.abs(phase_at_fc)<135, Math.abs(phase_at_fc)<135?'PASS ('+phase_at_fc+'°)':'WARN ('+phase_at_fc+'°)');
+
+  // MC results
+  if(mc_fps.length>0){
+    const mean=mc_fps.reduce((s,v)=>s+v,0)/mc_fps.length;
+    const std=Math.sqrt(mc_fps.reduce((s,v)=>s+(v-fp_t)*(v-fp_t),0)/mc_fps.length);
+    const yield_pct=mc_fps.filter(f=>Math.abs(f-fp_t)/fp_t<0.05).length/mc_fps.length*100;
+    document.getElementById('r_mc_mean').textContent=fmtHz(mean);
+    document.getElementById('r_mc_std').textContent=(std/fp_t*100).toFixed(1)+'%';
+    setCheck('chk_mc', yield_pct>=95, yield_pct>=95?'PASS ('+yield_pct.toFixed(0)+'%)':'FAIL ('+yield_pct.toFixed(0)+'%)');
+  } else {
+    document.getElementById('r_mc_mean').textContent='—';
+    document.getElementById('r_mc_std').textContent='—';
+    document.getElementById('chk_mc').textContent='—';
+    document.getElementById('chk_mc').className='';
+  }
+
+  document.getElementById('tip').textContent=
+    `GBW/fp = ${gbw_ratio.toFixed(0)}×. ${gbw_ratio<50?'Too low: op-amp GBW shifts poles. Increase GBW or decrease fp.':'Adequate. Source R'+rs+'Ω shifts fp by '+(fp_err).toFixed(1)+'%.'}`;
+
+  drawBode(fp_t, n, gbw_hz, rs, Z0);
+  drawMCHist(fp_t);
+}
+
+function drawBode(fp_t, n, gbw_hz, rs, Z0){
+  const ctx=getCtx('c_bode');
+  const W=ctx.W,H=ctx.H,pl=55,pr=18,pt=28,pb=34;
+  const pw=W-pl-pr,ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  const fMin=fp_t*0.05,fMax=fp_t*100;
+  const lMin=Math.log10(fMin),lMax=Math.log10(fMax);
+  const dbMin=-80,dbMax=8;
+  const fx=f=>pl+(Math.log10(f)-lMin)/(lMax-lMin)*pw;
+  const fy=db=>pt+(1-(db-dbMin)/(dbMax-dbMin))*ph;
+
+  ctx.strokeStyle=cv('--gr');ctx.lineWidth=0.7;
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    if(x>=pl&&x<=pl+pw){ctx.beginPath();ctx.moveTo(x,pt);ctx.lineTo(x,pt+ph);ctx.stroke();}
+  }
+  [-80,-60,-40,-20,0].forEach(db=>{
+    const y=fy(db);
+    if(y>=pt&&y<=pt+ph){
+      ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+pw,y);ctx.stroke();
+      ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';ctx.fillText(db,2,y+4);
+    }
+  });
+
+  // MC envelope (light)
+  if(mc_fps.length>0){
+    const mcSorted=mc_fps.slice().sort((a,b)=>a-b);
+    const fp_lo=mcSorted[Math.floor(mcSorted.length*0.05)];
+    const fp_hi=mcSorted[Math.floor(mcSorted.length*0.95)];
+    ctx.fillStyle=cv('--a')+'22';
+    ctx.beginPath();
+    for(let i=0;i<=300;i++){
+      const lf=lMin+i/300*(lMax-lMin);
+      const f=Math.pow(10,lf);
+      const db=idealGain(f,fp_lo,n);
+      const x=pl+i/300*pw,y=fy(Math.max(dbMin,Math.min(dbMax,db)));
+      if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+    }
+    for(let i=300;i>=0;i--){
+      const lf=lMin+i/300*(lMax-lMin);
+      const f=Math.pow(10,lf);
+      const db=idealGain(f,fp_hi,n);
+      const x=pl+i/300*pw,y=fy(Math.max(dbMin,Math.min(dbMax,db)));
+      ctx.lineTo(x,y);
+    }
+    ctx.fill();
+    ctx.strokeStyle=cv('--a')+'44';ctx.lineWidth=1;ctx.setLineDash([2,2]);
+    for(let fp_mc of [fp_lo,fp_hi]){
+      ctx.beginPath();let first=true;
+      for(let i=0;i<=300;i++){
+        const lf=lMin+i/300*(lMax-lMin);
+        const f=Math.pow(10,lf);
+        const db=idealGain(f,fp_mc,n);
+        const x=pl+i/300*pw,y=fy(Math.max(dbMin,Math.min(dbMax,db)));
+        if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+
+  // Ideal
+  ctx.strokeStyle=cv('--a5');ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();let first=true;
+  for(let i=0;i<=600;i++){
+    const lf=lMin+i/600*(lMax-lMin);
+    const f=Math.pow(10,lf);
+    const db=idealGain(f,fp_t,n);
+    const x=pl+i/600*pw,y=fy(Math.max(dbMin,Math.min(dbMax,db)));
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();ctx.setLineDash([]);
+
+  // Real
+  ctx.strokeStyle=cv('--a');ctx.lineWidth=2.5;
+  ctx.beginPath();first=true;
+  for(let i=0;i<=600;i++){
+    const lf=lMin+i/600*(lMax-lMin);
+    const f=Math.pow(10,lf);
+    const db=realGain(f,fp_t,n,gbw_hz,rs,Z0);
+    const x=pl+i/600*pw,y=fy(Math.max(dbMin,Math.min(dbMax,db)));
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // -3 dB
+  ctx.strokeStyle=cv('--a3');ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pl,fy(-3));ctx.lineTo(pl+pw,fy(-3));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=cv('--a3');ctx.font='9px system-ui';ctx.fillText('-3 dB',pl+2,fy(-3)-2);
+
+  ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    const f=Math.pow(10,d);
+    const l=f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f;
+    if(x>=pl&&x<=pl+pw)ctx.fillText(l,x-6,pt+ph+14);
+  }
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Gain (dB)',4,pt-8);
+  ctx.fillText('Frequency',pl+pw/2-30,H-2);
+  ctx.fillText('Ideal (dashed) vs Real Op-Amp (solid) + MC Envelope',pl+4,pt-10);
+}
+
+function drawMCHist(fp_t){
+  const ctx=getCtx('c_mc');
+  const W=ctx.W,H=ctx.H,pl=55,pr=18,pt=24,pb=28;
+  const pw=W-pl-pr,ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Monte Carlo: fp Distribution',pl+4,pt-8);
+
+  if(mc_fps.length===0){
+    ctx.fillStyle=cv('--muted');ctx.font='12px system-ui';
+    ctx.fillText('Click "Run Monte Carlo" to generate data',pl+20,pt+ph/2);
+    return;
+  }
+
+  const sorted=mc_fps.slice().sort((a,b)=>a-b);
+  const span=(sorted[sorted.length-1]-sorted[0]);
+  const nBins=20;
+  const binW_val=span/nBins;
+  const counts=new Array(nBins).fill(0);
+  mc_fps.forEach(f=>{
+    const idx=Math.min(Math.floor((f-sorted[0])/binW_val),nBins-1);
+    counts[idx]++;
+  });
+  const maxCount=Math.max(...counts);
+  const barW=pw/nBins;
+
+  counts.forEach((count,i)=>{
+    const x=pl+i*barW;
+    const fp_bin=sorted[0]+i*binW_val;
+    const barH=count/maxCount*ph*0.8;
+    const within=(Math.abs(fp_bin+binW_val/2-fp_t)/fp_t)<0.05;
+    ctx.fillStyle=within?cv('--a2')+'cc':cv('--a3')+'cc';
+    ctx.fillRect(x,pt+ph*0.1+ph*0.8-barH,barW*0.9,barH);
+  });
+
+  // fp_t marker
+  const xfp=pl+(fp_t-sorted[0])/span*pw;
+  if(xfp>=pl&&xfp<=pl+pw){
+    ctx.strokeStyle=cv('--a');ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(xfp,pt);ctx.lineTo(xfp,pt+ph);ctx.stroke();
+    ctx.fillStyle=cv('--a');ctx.font='10px system-ui';ctx.fillText('Target',xfp+3,pt+12);
+  }
+
+  // ±5% lines
+  const x_lo=pl+(fp_t*0.95-sorted[0])/span*pw;
+  const x_hi=pl+(fp_t*1.05-sorted[0])/span*pw;
+  ctx.strokeStyle=cv('--a3');ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  if(x_lo>=pl){ctx.beginPath();ctx.moveTo(x_lo,pt);ctx.lineTo(x_lo,pt+ph);ctx.stroke();}
+  if(x_hi<=pl+pw){ctx.beginPath();ctx.moveTo(x_hi,pt);ctx.lineTo(x_hi,pt+ph);ctx.stroke();}
+  ctx.setLineDash([]);
+
+  ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';
+  [0,0.25,0.5,0.75,1].forEach(v=>{
+    const f=sorted[0]+v*span;
+    const x=pl+v*pw;
+    ctx.fillText(fmtHz(f),x-15,pt+ph+14);
+  });
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Count',4,pt-4);
+}
+
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

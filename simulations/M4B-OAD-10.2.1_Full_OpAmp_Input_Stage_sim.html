@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-OAD-10.2.1 — Op-Amp Input Stage Simulator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; }
+  header { background: #1a1d2e; padding: 16px 24px; border-bottom: 2px solid #3a7bd5; }
+  header h1 { font-size: 1.15rem; color: #7eb3ff; font-weight: 600; }
+  header p { font-size: 0.8rem; color: #888; margin-top: 3px; }
+  .tabs { display: flex; background: #13151f; border-bottom: 1px solid #2a2d3e; }
+  .tab { padding: 11px 22px; cursor: pointer; font-size: 0.85rem; color: #888; border-bottom: 2px solid transparent; transition: all .2s; }
+  .tab.active { color: #7eb3ff; border-bottom-color: #3a7bd5; background: #1a1d2e; }
+  .tab:hover:not(.active) { color: #ccc; background: #1a1d2e55; }
+  .panel { display: none; padding: 20px 24px; }
+  .panel.active { display: block; }
+  .row { display: flex; gap: 20px; flex-wrap: wrap; }
+  .card { background: #1a1d2e; border: 1px solid #2a2d3e; border-radius: 8px; padding: 16px; flex: 1; min-width: 280px; }
+  .card h3 { font-size: 0.85rem; color: #7eb3ff; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .slider-row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+  .slider-row label { font-size: 0.78rem; color: #aaa; width: 195px; flex-shrink: 0; }
+  .slider-row input[type=range] { flex: 1; accent-color: #3a7bd5; }
+  .slider-row span { font-size: 0.78rem; color: #7eb3ff; width: 75px; text-align: right; }
+  canvas { display: block; width: 100%; border-radius: 6px; background: #12141e; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
+  .metric { background: #12141e; border: 1px solid #2a2d3e; border-radius: 6px; padding: 8px 12px; }
+  .metric .label { font-size: 0.7rem; color: #888; }
+  .metric .value { font-size: 1.05rem; color: #4ecdc4; font-weight: 700; margin-top: 2px; }
+  .metric .value.warn { color: #f6ad55; }
+  .metric .value.bad  { color: #fc8181; }
+  .metric .value.good { color: #68d391; }
+  .info-box { background: #12141e; border-left: 3px solid #3a7bd5; padding: 10px 14px; border-radius: 0 6px 6px 0; margin-top: 10px; font-size: 0.78rem; color: #bbb; line-height: 1.6; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #aaa; }
+  .legend-dot { width: 14px; height: 3px; border-radius: 2px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>M4B-OAD-10.2.1 — Op-Amp Input Stage: NMOS vs PMOS, Noise, Offset, ICMR</h1>
+  <p>Input stage sizing wizard, noise vs current, and rail-to-rail Gm variation</p>
+</header>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">Input Stage Sizing</div>
+  <div class="tab" onclick="showTab(1)">NMOS vs PMOS</div>
+  <div class="tab" onclick="showTab(2)">Rail-to-Rail Gm</div>
+</div>
+
+<!-- TAB 0: Input Stage Sizing -->
+<div class="panel active" id="tab0">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:310px;">
+      <h3>Specifications</h3>
+      <div class="slider-row"><label>Noise target Vn (nV/√Hz)</label><input type="range" id="t0_Vn" min="1" max="50" step="0.5" value="10"><span id="v_t0_Vn">10.0</span></div>
+      <div class="slider-row"><label>VOS 3σ target (mV)</label><input type="range" id="t0_VOS" min="0.2" max="10" step="0.1" value="2"><span id="v_t0_VOS">2.0</span></div>
+      <div class="slider-row"><label>Av1 target (dB)</label><input type="range" id="t0_Av1" min="20" max="60" step="1" value="35"><span id="v_t0_Av1">35</span></div>
+      <div class="slider-row"><label>Vov1 (mV)</label><input type="range" id="t0_Vov1" min="50" max="300" step="5" value="150"><span id="v_t0_Vov1">150</span></div>
+      <div class="slider-row"><label>gm3/gm1 load ratio</label><input type="range" id="t0_gmr" min="0.2" max="2" step="0.05" value="1"><span id="v_t0_gmr">1.00</span></div>
+      <div class="slider-row"><label>λ_n (V⁻¹)</label><input type="range" id="t0_labn" min="0.01" max="0.5" step="0.01" value="0.1"><span id="v_t0_labn">0.10</span></div>
+      <div class="slider-row"><label>λ_p (V⁻¹)</label><input type="range" id="t0_labp" min="0.01" max="0.5" step="0.01" value="0.08"><span id="v_t0_labp">0.08</span></div>
+      <div class="slider-row"><label>A_Vth (mV·µm)</label><input type="range" id="t0_AVth" min="1" max="12" step="0.1" value="5"><span id="v_t0_AVth">5.0</span></div>
+      <div class="metrics" style="grid-template-columns:1fr 1fr;">
+        <div class="metric"><div class="label">Required gm1</div><div class="value" id="m0_gm1">—</div></div>
+        <div class="metric"><div class="label">ISS required</div><div class="value" id="m0_ISS">—</div></div>
+        <div class="metric"><div class="label">W×L for VOS</div><div class="value" id="m0_WL">—</div></div>
+        <div class="metric"><div class="label">Stage 1 Av</div><div class="value" id="m0_Av">—</div></div>
+        <div class="metric"><div class="label">σ(VOS)</div><div class="value warn" id="m0_vos">—</div></div>
+        <div class="metric"><div class="label">Actual Vn</div><div class="value" id="m0_vn">—</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Input Stage Design Radar</h3>
+      <canvas id="c_radar" height="350"></canvas>
+      <div class="info-box">
+        The radar chart shows how well the designed stage meets each specification (normalized to target = 1.0).
+        Values exceeding 1.0 (green) indicate the spec is met; values below (red) indicate failure.
+        All five parameters are interdependent: improving noise requires more current, which reduces offset (via larger WL at fixed gm).
+        The iterative sizing flow: noise → gm1 → ISS → WL → verify Av, VOS, then adjust.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: NMOS vs PMOS -->
+<div class="panel" id="tab1">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:310px;">
+      <h3>Process Parameters</h3>
+      <div class="slider-row"><label>ISS (µA)</label><input type="range" id="t1_ISS" min="10" max="500" step="5" value="100"><span id="v_t1_ISS">100</span></div>
+      <div class="slider-row"><label>Vov NMOS (mV)</label><input type="range" id="t1_Vovn" min="50" max="300" step="5" value="150"><span id="v_t1_Vovn">150</span></div>
+      <div class="slider-row"><label>µn/µp ratio</label><input type="range" id="t1_ratio" min="1.5" max="4" step="0.1" value="2.5"><span id="v_t1_ratio">2.5</span></div>
+      <div class="slider-row"><label>KF_NMOS (×10⁻²⁶ V²F)</label><input type="range" id="t1_KFn" min="1" max="300" step="1" value="100"><span id="v_t1_KFn">100</span></div>
+      <div class="slider-row"><label>KF_PMOS (×10⁻²⁶ V²F)</label><input type="range" id="t1_KFp" min="1" max="100" step="1" value="10"><span id="v_t1_KFp">10</span></div>
+      <div class="slider-row"><label>W×L (µm²)</label><input type="range" id="t1_WL" min="5" max="500" step="5" value="50"><span id="v_t1_WL">50</span></div>
+      <div class="metrics" style="grid-template-columns:1fr 1fr;">
+        <div class="metric"><div class="label">gm1_NMOS</div><div class="value" id="m1_gmn">—</div></div>
+        <div class="metric"><div class="label">gm1_PMOS (same ISS)</div><div class="value warn" id="m1_gmp">—</div></div>
+        <div class="metric"><div class="label">fc NMOS</div><div class="value bad" id="m1_fcn">—</div></div>
+        <div class="metric"><div class="label">fc PMOS</div><div class="value good" id="m1_fcp">—</div></div>
+        <div class="metric"><div class="label">Vn NMOS (thermal)</div><div class="value" id="m1_vnn">—</div></div>
+        <div class="metric"><div class="label">Vn PMOS (thermal)</div><div class="value warn" id="m1_vnp">—</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>NMOS vs PMOS: Noise Spectrum Comparison</h3>
+      <canvas id="c_compare" height="350"></canvas>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#4ecdc4;"></div>NMOS input pair</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f6ad55;"></div>PMOS input pair (same ISS)</div>
+      </div>
+      <div class="info-box">
+        NMOS has higher gm (by µn/µp ratio) → lower thermal noise. But NMOS has much higher KF → higher 1/f corner frequency.
+        PMOS has lower gm but far lower KF → lower 1/f noise floor, much lower fc.
+        For audio and DC precision: PMOS wins below ~10kHz. For RF and wideband: NMOS wins at high frequencies.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: Rail-to-Rail Gm -->
+<div class="panel" id="tab2">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:310px;">
+      <h3>Complementary Input Stage</h3>
+      <div class="slider-row"><label>VDD (V)</label><input type="range" id="t2_VDD" min="0.8" max="3.3" step="0.1" value="1.8"><span id="v_t2_VDD">1.8</span></div>
+      <div class="slider-row"><label>Vth_n (V)</label><input type="range" id="t2_Vthn" min="0.25" max="0.7" step="0.01" value="0.5"><span id="v_t2_Vthn">0.5</span></div>
+      <div class="slider-row"><label>|Vth_p| (V)</label><input type="range" id="t2_Vthp" min="0.25" max="0.7" step="0.01" value="0.45"><span id="v_t2_Vthp">0.45</span></div>
+      <div class="slider-row"><label>Vov_n (mV)</label><input type="range" id="t2_Vovn" min="50" max="300" step="5" value="150"><span id="v_t2_Vovn">150</span></div>
+      <div class="slider-row"><label>gm1N (mA/V)</label><input type="range" id="t2_gm1n" min="0.1" max="5" step="0.05" value="1"><span id="v_t2_gm1n">1.00</span></div>
+      <div class="slider-row"><label>gm1P (mA/V)</label><input type="range" id="t2_gm1p" min="0.1" max="5" step="0.05" value="0.4"><span id="v_t2_gm1p">0.40</span></div>
+      <div class="metrics" style="grid-template-columns:1fr;">
+        <div class="metric"><div class="label">Vicm_min (N pair)</div><div class="value" id="m2_cmn">—</div></div>
+        <div class="metric"><div class="label">Vicm_max (P pair)</div><div class="value" id="m2_cmp">—</div></div>
+        <div class="metric"><div class="label">Overlap width</div><div class="value warn" id="m2_olap">—</div></div>
+        <div class="metric"><div class="label">Gm range (min/max)</div><div class="value bad" id="m2_gmr">—</div></div>
+        <div class="metric"><div class="label">GBW variation (Cc=1pF)</div><div class="value bad" id="m2_gbwv">—</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>Total Gm vs Common-Mode Input Voltage</h3>
+      <canvas id="c_gm" height="350"></canvas>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#4ecdc4;"></div>gm1N contribution</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f6ad55;"></div>gm1P contribution</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#fc8181;"></div>Total Gm</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#68d391; opacity:0.5;"></div>Equal Gm target</div>
+      </div>
+      <div class="info-box">
+        The N-pair is active when Vicm ≥ Vicm_min = Vth_n + 2·Vov.
+        The P-pair is active when Vicm ≤ Vicm_max = VDD − |Vth_p| − 2·Vov.
+        In the overlap region both pairs contribute, making total Gm larger.
+        The dashed green line shows the target constant Gm (e.g., gm1N for single-pair operation).
+        The tail-tripling technique reduces current in each pair during overlap to maintain constant Gm.
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const kB=1.38e-23, T=300, Cox=8e-3;
+
+function fmtHz(f) {
+  if(f>=1e9) return (f/1e9).toFixed(2)+'GHz';
+  if(f>=1e6) return (f/1e6).toFixed(1)+'MHz';
+  if(f>=1e3) return (f/1e3).toFixed(1)+'kHz';
+  return f.toFixed(0)+'Hz';
+}
+
+// ─── TAB 0: Sizing ────────────────────────────────────────────────────────
+function updateTab0() {
+  const Vn   = parseFloat(document.getElementById('t0_Vn').value)*1e-9;
+  const VOS3 = parseFloat(document.getElementById('t0_VOS').value)*1e-3;
+  const Av1t = parseFloat(document.getElementById('t0_Av1').value);
+  const Vov1 = parseFloat(document.getElementById('t0_Vov1').value)*1e-3;
+  const gmr  = parseFloat(document.getElementById('t0_gmr').value);
+  const labn = parseFloat(document.getElementById('t0_labn').value);
+  const labp = parseFloat(document.getElementById('t0_labp').value);
+  const AVth = parseFloat(document.getElementById('t0_AVth').value);
+
+  document.getElementById('v_t0_Vn').textContent   = (Vn*1e9).toFixed(1);
+  document.getElementById('v_t0_VOS').textContent  = (VOS3*1e3).toFixed(1);
+  document.getElementById('v_t0_Av1').textContent  = Av1t.toFixed(0);
+  document.getElementById('v_t0_Vov1').textContent = (Vov1*1e3).toFixed(0);
+  document.getElementById('v_t0_gmr').textContent  = gmr.toFixed(2);
+  document.getElementById('v_t0_labn').textContent = labn.toFixed(2);
+  document.getElementById('v_t0_labp').textContent = labp.toFixed(2);
+  document.getElementById('v_t0_AVth').textContent = AVth.toFixed(1);
+
+  const gamma = 0.7;
+  const factor = 1 + gmr;
+  const Svn_tgt = Vn*Vn;
+  const gm1 = 8*kB*T*gamma*factor / Svn_tgt;
+  const ISS = gm1 * Vov1;
+  const ID1 = ISS/2;
+
+  const sigma_VOS_tgt = VOS3/3;
+  const WL_req = Math.pow(AVth / sigma_VOS_tgt, 2); // mV·µm / mV → µm²
+
+  const ro2 = 1/(labn*ID1);
+  const ro4 = 1/(labp*ID1);
+  const Rout1 = ro2*ro4/(ro2+ro4);
+  const Av1_dB = 20*Math.log10(gm1*Rout1);
+  const sigma_VOS = AVth / Math.sqrt(WL_req);
+  const Vn_act = Math.sqrt(8*kB*T*gamma*factor/gm1)*1e9;
+
+  const fmt = g => g>=1e-3?(g*1e3).toFixed(2)+' mA/V':(g*1e6).toFixed(0)+' µA/V';
+  document.getElementById('m0_gm1').textContent = fmt(gm1);
+  document.getElementById('m0_ISS').textContent = (ISS*1e6).toFixed(0)+' µA';
+  document.getElementById('m0_WL').textContent  = WL_req.toFixed(0)+' µm²';
+  document.getElementById('m0_Av').textContent  = Av1_dB.toFixed(1)+' dB';
+  document.getElementById('m0_vos').textContent = (sigma_VOS*1e3).toFixed(3)+' mV';
+  document.getElementById('m0_vn').textContent  = Vn_act.toFixed(2)+' nV/√Hz';
+
+  const avEl = document.getElementById('m0_Av');
+  avEl.className = 'value ' + (Av1_dB >= Av1t ? 'good' : Av1_dB >= Av1t-5 ? 'warn' : 'bad');
+
+  // Radar chart
+  const cv = document.getElementById('c_radar');
+  const ctx = cv.getContext('2d');
+  const W=cv.clientWidth*devicePixelRatio||500, H=350;
+  cv.width=W; cv.height=H;
+  ctx.fillStyle='#12141e'; ctx.fillRect(0,0,W,H);
+
+  const cx=W/2, cy=H/2, R=Math.min(W,H)*0.35;
+  const axes = ['Noise\n(Vn)', 'Offset\n(VOS)', 'Gain\n(Av1)', 'ISS\nEfficiency', 'Flicker\n(fc low)'];
+  const scores = [
+    Vn_act<=Vn*1e9 ? 1 + (Vn*1e9 - Vn_act)/Vn*1e9 : Vn_act > 0 ? Vn*1e9/Vn_act : 0,
+    sigma_VOS*3e3 <= VOS3*1e3 ? 1.5 : (VOS3*1e3)/(sigma_VOS*3e3),
+    Av1_dB >= Av1t ? 1.5 : Av1_dB / Av1t,
+    ISS < 500e-6 ? 1.5 : 500e-6/ISS,
+    0.8, // placeholder for fc
+  ].map(s => Math.min(s, 2));
+
+  const N = axes.length;
+  // Draw radar background
+  for(let ring=0.5; ring<=2; ring+=0.5) {
+    ctx.strokeStyle = ring===1.0 ? '#3a7bd5' : '#1e2136';
+    ctx.lineWidth = ring===1.0 ? 1.5 : 0.8;
+    ctx.beginPath();
+    for(let i=0;i<N;i++) {
+      const angle = (2*Math.PI*i/N) - Math.PI/2;
+      const x = cx + ring/2*R*Math.cos(angle);
+      const y = cy + ring/2*R*Math.sin(angle);
+      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    }
+    ctx.closePath(); ctx.stroke();
+  }
+  // Axis lines
+  for(let i=0;i<N;i++) {
+    const angle = (2*Math.PI*i/N) - Math.PI/2;
+    ctx.strokeStyle='#2a2d3e'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(cx,cy);
+    ctx.lineTo(cx+R*Math.cos(angle), cy+R*Math.sin(angle)); ctx.stroke();
+    const lx = cx+(R+18)*Math.cos(angle), ly = cy+(R+18)*Math.sin(angle);
+    ctx.fillStyle='#aaa'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+    axes[i].split('\n').forEach((l,li) => ctx.fillText(l, lx, ly+li*12));
+  }
+  // Data polygon
+  ctx.fillStyle='rgba(78,205,196,0.2)'; ctx.strokeStyle='#4ecdc4'; ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<N;i++) {
+    const angle = (2*Math.PI*i/N) - Math.PI/2;
+    const r = scores[i]/2*R;
+    const x = cx+r*Math.cos(angle), y = cy+r*Math.sin(angle);
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  }
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+}
+
+// ─── TAB 1: NMOS vs PMOS ──────────────────────────────────────────────────
+function updateTab1() {
+  const ISS   = parseFloat(document.getElementById('t1_ISS').value)*1e-6;
+  const Vovn  = parseFloat(document.getElementById('t1_Vovn').value)*1e-3;
+  const ratio = parseFloat(document.getElementById('t1_ratio').value);
+  const KFn   = parseFloat(document.getElementById('t1_KFn').value)*1e-26;
+  const KFp   = parseFloat(document.getElementById('t1_KFp').value)*1e-26;
+  const WL    = parseFloat(document.getElementById('t1_WL').value)*1e-12;
+
+  document.getElementById('v_t1_ISS').textContent  = (ISS*1e6).toFixed(0);
+  document.getElementById('v_t1_Vovn').textContent = (Vovn*1e3).toFixed(0);
+  document.getElementById('v_t1_ratio').textContent= ratio.toFixed(1);
+  document.getElementById('v_t1_KFn').textContent  = (KFn*1e26).toFixed(0);
+  document.getElementById('v_t1_KFp').textContent  = (KFp*1e26).toFixed(0);
+  document.getElementById('v_t1_WL').textContent   = (WL*1e12).toFixed(0);
+
+  const gm1n = ISS/Vovn;
+  const Vovp = Vovn * ratio; // same ISS, so W/L × µ × Vov² = same → µn×Vovn² = µp×Vovp² not exactly but approx
+  const gm1p = ISS/(Vovn*ratio); // gm = 2ID/Vov, Vov_p = Vov_n × ratio for same W/L
+  const Svn_th_n = 16*kB*T*0.7/gm1n;
+  const Svn_th_p = 16*kB*T*0.8/gm1p;
+  const fc_n = KFn*gm1n/(Cox*WL*4*kB*T*0.7);
+  const fc_p = KFp*gm1p/(Cox*WL*4*kB*T*0.8);
+
+  document.getElementById('m1_gmn').textContent = (gm1n*1e3).toFixed(2)+' mA/V';
+  document.getElementById('m1_gmp').textContent = (gm1p*1e3).toFixed(2)+' mA/V';
+  document.getElementById('m1_fcn').textContent = fmtHz(fc_n);
+  document.getElementById('m1_fcp').textContent = fmtHz(fc_p);
+  document.getElementById('m1_vnn').textContent = (Math.sqrt(Svn_th_n)*1e9).toFixed(2)+' nV/√Hz';
+  document.getElementById('m1_vnp').textContent = (Math.sqrt(Svn_th_p)*1e9).toFixed(2)+' nV/√Hz';
+
+  const cv = document.getElementById('c_compare');
+  const ctx = cv.getContext('2d');
+  const W=cv.clientWidth*devicePixelRatio||600, H=350;
+  cv.width=W; cv.height=H;
+  const pad={l:60,r:20,t:20,b:30};
+  const fMin=0.1, fMax=1e8;
+  const vnMax = Math.max(Math.sqrt(Svn_th_n*(1+fc_n/fMin)), Math.sqrt(Svn_th_p*(1+fc_p/fMin)))*1e9;
+  const yMax = Math.min(Math.ceil(vnMax/5)*5, 200), yMin=0;
+  const px = f => pad.l + (Math.log10(f)-Math.log10(fMin))/(Math.log10(fMax)-Math.log10(fMin))*(W-pad.l-pad.r);
+  const py = y => H - pad.b - (y-yMin)/(yMax-yMin)*(H-pad.t-pad.b);
+
+  ctx.fillStyle='#12141e'; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#1e2136'; ctx.lineWidth=1;
+  for(let y=0;y<=yMax;y+=Math.ceil(yMax/6)) {
+    ctx.beginPath(); ctx.moveTo(pad.l,py(y)); ctx.lineTo(W-pad.r,py(y)); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='right';
+    ctx.fillText(y+'nV', pad.l-3, py(y)+3);
+  }
+  const flabels={0.1:'100mHz',1:'1Hz',10:'10Hz',100:'100Hz',1e3:'1kHz',1e4:'10kHz',1e5:'100kHz',1e6:'1MHz',1e7:'10MHz',1e8:'100MHz'};
+  for(let e=-1;e<=8;e++) {
+    const f=Math.pow(10,e);
+    ctx.beginPath(); ctx.moveTo(px(f),pad.t); ctx.lineTo(px(f),H-pad.b); ctx.stroke();
+    if(e>=-1) { ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='center'; ctx.fillText(flabels[f]||'', px(f), H-pad.b+12); }
+  }
+
+  const drawCurve = (Svn_th, fc, color) => {
+    const pts=[];
+    for(let i=0;i<=400;i++) {
+      const f=Math.pow(10, Math.log10(fMin)+i/400*(Math.log10(fMax)-Math.log10(fMin)));
+      const vn = Math.sqrt(Svn_th*(1+fc/f))*1e9;
+      pts.push([px(f), py(Math.min(Math.max(vn,yMin),yMax))]);
+    }
+    ctx.strokeStyle=color; ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
+    pts.forEach(p=>ctx.lineTo(p[0],p[1])); ctx.stroke();
+  };
+
+  drawCurve(Svn_th_n, fc_n, '#4ecdc4');
+  drawCurve(Svn_th_p, fc_p, '#f6ad55');
+
+  ctx.fillStyle='#555'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('Frequency', (pad.l+W-pad.r)/2, H-2);
+}
+
+// ─── TAB 2: Rail-to-Rail Gm ───────────────────────────────────────────────
+function updateTab2() {
+  const VDD  = parseFloat(document.getElementById('t2_VDD').value);
+  const Vthn = parseFloat(document.getElementById('t2_Vthn').value);
+  const Vthp = parseFloat(document.getElementById('t2_Vthp').value);
+  const Vovn = parseFloat(document.getElementById('t2_Vovn').value)*1e-3;
+  const gm1n = parseFloat(document.getElementById('t2_gm1n').value)*1e-3;
+  const gm1p = parseFloat(document.getElementById('t2_gm1p').value)*1e-3;
+
+  document.getElementById('v_t2_VDD').textContent  = VDD.toFixed(1);
+  document.getElementById('v_t2_Vthn').textContent = Vthn.toFixed(2);
+  document.getElementById('v_t2_Vthp').textContent = Vthp.toFixed(2);
+  document.getElementById('v_t2_Vovn').textContent = (Vovn*1e3).toFixed(0);
+  document.getElementById('v_t2_gm1n').textContent = (gm1n*1e3).toFixed(2);
+  document.getElementById('v_t2_gm1p').textContent = (gm1p*1e3).toFixed(2);
+
+  const Vov = Vovn;
+  const Vicm_min_n = Vthn + 2*Vov;
+  const Vicm_max_p = VDD - Vthp - 2*Vov;
+  const overlap = Math.max(0, Vicm_max_p - Vicm_min_n);
+  const Gm_min = Math.min(gm1n, gm1p);
+  const Gm_max = gm1n + gm1p;
+
+  document.getElementById('m2_cmn').textContent = Vicm_min_n.toFixed(3)+' V';
+  document.getElementById('m2_cmp').textContent = Vicm_max_p.toFixed(3)+' V';
+  document.getElementById('m2_olap').textContent= (overlap*1e3).toFixed(0)+' mV';
+  document.getElementById('m2_gmr').textContent = (Gm_min*1e3).toFixed(2)+'/'+(Gm_max*1e3).toFixed(2)+' mA/V';
+  document.getElementById('m2_gbwv').textContent= (Gm_max/Gm_min).toFixed(2)+'×';
+
+  const cv = document.getElementById('c_gm');
+  const ctx = cv.getContext('2d');
+  const W=cv.clientWidth*devicePixelRatio||600, H=350;
+  cv.width=W; cv.height=H;
+  const pad={l:55,r:20,t:20,b:35};
+  const xMin=0, xMax=VDD, yMin=0, yMax=Gm_max*1.3*1e3;
+  const px = v => pad.l + (v-xMin)/(xMax-xMin)*(W-pad.l-pad.r);
+  const py = g => H - pad.b - (g-yMin)/(yMax-yMin)*(H-pad.t-pad.b);
+
+  ctx.fillStyle='#12141e'; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#1e2136'; ctx.lineWidth=1;
+  for(let g=0;g<=yMax;g+=yMax/5) {
+    ctx.beginPath(); ctx.moveTo(pad.l,py(g)); ctx.lineTo(W-pad.r,py(g)); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='right';
+    ctx.fillText(g.toFixed(1)+'mA/V', pad.l-3, py(g)+3);
+  }
+  for(let v=0;v<=VDD;v+=VDD/4) {
+    ctx.beginPath(); ctx.moveTo(px(v),pad.t); ctx.lineTo(px(v),H-pad.b); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(v.toFixed(2)+'V', px(v), H-pad.b+12);
+  }
+
+  const Npts=300;
+  const ptsN=[], ptsP=[], ptsTot=[];
+  for(let i=0;i<=Npts;i++) {
+    const v = i/Npts*VDD;
+    const gmN_contrib = v >= Vicm_min_n ? gm1n*1e3 : 0;
+    const gmP_contrib = v <= Vicm_max_p ? gm1p*1e3 : 0;
+    const gmTot = gmN_contrib + gmP_contrib;
+    ptsN.push([px(v), py(gmN_contrib)]);
+    ptsP.push([px(v), py(gmP_contrib)]);
+    ptsTot.push([px(v), py(gmTot)]);
+  }
+
+  const drawLine = (pts, color, dash=[]) => {
+    ctx.strokeStyle=color; ctx.lineWidth=2; ctx.setLineDash(dash);
+    ctx.beginPath(); ctx.moveTo(pts[0][0],pts[0][1]);
+    pts.forEach(p=>ctx.lineTo(p[0],p[1])); ctx.stroke(); ctx.setLineDash([]);
+  };
+
+  drawLine(ptsN, '#4ecdc4');
+  drawLine(ptsP, '#f6ad55');
+  drawLine(ptsTot, '#fc8181', []);
+
+  // Constant Gm target (gm1n value, to show what perfect rail-to-rail would look like)
+  ctx.strokeStyle='rgba(104,211,145,0.5)'; ctx.lineWidth=1.5; ctx.setLineDash([5,4]);
+  ctx.beginPath(); ctx.moveTo(pad.l,py(gm1n*1e3)); ctx.lineTo(W-pad.r,py(gm1n*1e3)); ctx.stroke(); ctx.setLineDash([]);
+
+  // Region shading
+  if(Vicm_min_n <= Vicm_max_p) {
+    ctx.fillStyle='rgba(58,123,213,0.08)';
+    ctx.fillRect(px(Vicm_min_n), pad.t, px(Vicm_max_p)-px(Vicm_min_n), H-pad.t-pad.b);
+    ctx.fillStyle='#3a7bd5'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('overlap', (px(Vicm_min_n)+px(Vicm_max_p))/2, pad.t+12);
+  }
+
+  ctx.fillStyle='#555'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('Vicm (V)', (pad.l+W-pad.r)/2, H-2);
+}
+
+function showTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
+  if(n===0) updateTab0(); else if(n===1) updateTab1(); else updateTab2();
+}
+function wire(ids,fn){ ids.forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('input',fn);}); }
+wire(['t0_Vn','t0_VOS','t0_Av1','t0_Vov1','t0_gmr','t0_labn','t0_labp','t0_AVth'], updateTab0);
+wire(['t1_ISS','t1_Vovn','t1_ratio','t1_KFn','t1_KFp','t1_WL'], updateTab1);
+wire(['t2_VDD','t2_Vthn','t2_Vthp','t2_Vovn','t2_gm1n','t2_gm1p'], updateTab2);
+window.addEventListener('load', () => updateTab0());
+window.addEventListener('resize', () => {
+  const a=document.querySelector('.panel.active');
+  if(a) showTab(['tab0','tab1','tab2'].indexOf(a.id));
+});
+</script>
+</body>
+</html>

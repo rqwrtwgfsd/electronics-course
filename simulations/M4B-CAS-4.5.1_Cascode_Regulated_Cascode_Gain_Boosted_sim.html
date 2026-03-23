@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CAS-4.5.1 — Regulated Cascode</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#4d9fff;--green:#00cc66;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CAS-4.5.1</div>
+  <h1>Cascode — Regulated Cascode (Gain-Boosted)</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Device and Amplifier Parameters</h2>
+      <label>g_m,M1 (mA/V): <b id="gm1_l">2.0</b> <input type="range" id="gm1" min="0.5" max="10" value="2.0" step="0.1"></label>
+      <label>g_m,M2 (mA/V): <b id="gm2_l">1.5</b> <input type="range" id="gm2" min="0.5" max="10" value="1.5" step="0.1"></label>
+      <label>r_o,M1 (kΩ): <b id="ro1_l">300</b> <input type="range" id="ro1" min="5" max="2000" value="300" step="5"></label>
+      <label>r_o,M2 (kΩ): <b id="ro2_l">250</b> <input type="range" id="ro2" min="5" max="2000" value="250" step="5"></label>
+      <label>A_amp (inner gain): <b id="aamp_l">20</b> <input type="range" id="aamp" min="1" max="100" value="20" step="1"></label>
+      <label>C_L (pF): <b id="cl_l">2.0</b> <input type="range" id="cl" min="0.1" max="20" value="2.0" step="0.1"></label>
+      <label>GBW_inner (MHz): <b id="gbwi_l">200</b> <input type="range" id="gbwi" min="1" max="10000" value="200" step="10"></label>
+
+      <div class="ro">r_out standard cascode: <span id="rout_cas">--</span> GΩ</div>
+      <div class="ro g">r_out regulated cascode: <span id="rout_rgc">--</span> GΩ</div>
+      <div class="ro">A_v standard cascode: <span id="av_cas">--</span> dB</div>
+      <div class="ro g">A_v regulated cascode: <span id="av_rgc">--</span> dB</div>
+      <div class="ro">GBW (outer, = g_m/2πC_L): <span id="gbw_outer">--</span> MHz</div>
+      <div class="ro">f_cross,inner (GBW×A_amp): <span id="f_cross">--</span> MHz</div>
+      <div class="ro" id="stab_ro">Stability: <span id="stab">--</span></div>
+
+      <div class="insight" id="insight_box">Adjust parameters to explore regulated cascode.</div>
+    </div>
+
+    <div class="card">
+      <h2>r_out vs Inner Amplifier Gain A_amp</h2>
+      <canvas id="cv" height="320"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const gm1  = +document.getElementById('gm1').value * 1e-3;
+    const gm2  = +document.getElementById('gm2').value * 1e-3;
+    const ro1  = +document.getElementById('ro1').value * 1e3;
+    const ro2  = +document.getElementById('ro2').value * 1e3;
+    const Aamp = +document.getElementById('aamp').value;
+    const CL   = +document.getElementById('cl').value * 1e-12;
+    const GBWi = +document.getElementById('gbwi').value * 1e6;
+
+    document.getElementById('gm1_l').textContent  = (gm1*1e3).toFixed(1);
+    document.getElementById('gm2_l').textContent  = (gm2*1e3).toFixed(1);
+    document.getElementById('ro1_l').textContent  = (ro1/1e3).toFixed(0);
+    document.getElementById('ro2_l').textContent  = (ro2/1e3).toFixed(0);
+    document.getElementById('aamp_l').textContent = Aamp.toFixed(0);
+    document.getElementById('cl_l').textContent   = (CL/1e-12).toFixed(1);
+    document.getElementById('gbwi_l').textContent = (GBWi/1e6).toFixed(0);
+
+    const rout_cas = ro2 + ro1 + gm2 * ro2 * ro1;
+    const rout_rgc = (1 + Aamp) * rout_cas;
+    const GBW_outer = gm1 / (2 * Math.PI * CL);
+    const f_cross   = GBW_outer * Aamp;
+    const stable    = f_cross < GBWi;
+    const Av_cas    = 20 * Math.log10(gm1 * rout_cas);
+    const Av_rgc    = 20 * Math.log10(gm1 * rout_rgc);
+
+    document.getElementById('rout_cas').textContent = (rout_cas/1e9).toFixed(3);
+    document.getElementById('rout_rgc').textContent = (rout_rgc/1e9).toFixed(2);
+    document.getElementById('av_cas').textContent   = Av_cas.toFixed(1);
+    document.getElementById('av_rgc').textContent   = Av_rgc.toFixed(1);
+    document.getElementById('gbw_outer').textContent = (GBW_outer/1e6).toFixed(2);
+    document.getElementById('f_cross').textContent  = (f_cross/1e6).toFixed(2);
+
+    const stabRo = document.getElementById('stab_ro');
+    stabRo.className = stable ? 'ro g' : 'ro warn';
+    document.getElementById('stab').textContent = stable ?
+      'Stable: f_cross < GBW_inner' : 'UNSTABLE: f_cross > GBW_inner!';
+
+    document.getElementById('insight_box').textContent =
+      'Standard: r_out = ' + (rout_cas/1e9).toFixed(2) + ' GΩ, A_v = ' + Av_cas.toFixed(1) + ' dB. ' +
+      'Regulated: r_out = ' + (rout_rgc/1e9).toFixed(1) + ' GΩ (' + (1+Aamp).toFixed(0) + '× improvement), A_v = ' + Av_rgc.toFixed(1) + ' dB. ' +
+      (stable ? 'Inner loop stable (margin = ' + (GBWi/f_cross).toFixed(1) + '×).' : 'INNER LOOP UNSTABLE — increase GBW_inner!');
+
+    draw(gm1, gm2, ro1, ro2, CL, Aamp, rout_cas);
+  }
+
+  function draw(gm1, gm2, ro1, ro2, CL, Aamp_op, rout_cas_op){
+    const cv  = document.getElementById('cv');
+    const W   = cv.parentElement.clientWidth - 36;
+    cv.width = W; cv.height = 320;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, W, 320);
+
+    const isDark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+    const axCol  = isDark ? '#8899bb' : '#8888aa';
+
+    const pL=55, pT=20, pB=40, pH=320-pT-pB, pW=W-pL-14;
+
+    // X axis: A_amp from 1 to 100 (linear)
+    // Y axis: r_out (log)
+    const Amax = 100;
+    const rout_no_boost = rout_cas_op;
+    const rout_max = rout_cas_op * 101;
+
+    const yLogMin = Math.floor(Math.log10(rout_no_boost) - 0.5);
+    const yLogMax = Math.ceil(Math.log10(rout_max) + 0.5);
+
+    function xPos(A){ return pL + (A/Amax) * pW; }
+    function yPos(r){ return pT + pH - ((Math.log10(Math.max(1,r)) - yLogMin)/(yLogMax-yLogMin)) * pH; }
+
+    // Axes
+    ctx.strokeStyle = axCol; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+pH); ctx.lineTo(pL+pW,pT+pH); ctx.stroke();
+
+    // Y grid
+    for(let e=yLogMin; e<=yLogMax; e++){
+      const y = yPos(Math.pow(10,e));
+      if(y<pT||y>pT+pH) continue;
+      const lbl = e>=9?(Math.pow(10,e)/1e9).toFixed(0)+'GΩ':e>=6?(Math.pow(10,e)/1e6).toFixed(0)+'MΩ':(Math.pow(10,e)/1e3).toFixed(0)+'kΩ';
+      ctx.fillStyle=axCol; ctx.font='8px system-ui'; ctx.textAlign='right';
+      ctx.fillText(lbl, pL-3, y+3);
+      ctx.strokeStyle=axCol+'22'; ctx.lineWidth=0.5;
+      ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pW,y); ctx.stroke();
+    }
+
+    // X labels
+    [0,20,40,60,80,100].forEach(A=>{
+      const x = xPos(A);
+      ctx.fillStyle=axCol; ctx.font='8px system-ui'; ctx.textAlign='center';
+      ctx.fillText(A===0?'0':A, x, pT+pH+16);
+      ctx.strokeStyle=axCol+'22'; ctx.lineWidth=0.5;
+      ctx.beginPath(); ctx.moveTo(x,pT); ctx.lineTo(x,pT+pH); ctx.stroke();
+    });
+
+    // Standard cascode (horizontal line, no boost)
+    const ystd = yPos(rout_no_boost);
+    ctx.strokeStyle='#cc4400'; ctx.lineWidth=1.5; ctx.setLineDash([5,4]);
+    ctx.beginPath(); ctx.moveTo(pL, ystd); ctx.lineTo(pL+pW, ystd); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#cc4400'; ctx.font='9px system-ui'; ctx.textAlign='left';
+    ctx.fillText('Standard cascode', pL+8, ystd-5);
+
+    // Regulated cascode curve: r_out = (1+A)*rout_cas
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2;
+    ctx.beginPath();
+    let first = true;
+    for(let px=0; px<=pW; px++){
+      const A = (px/pW)*Amax;
+      const r = (1+A)*rout_no_boost;
+      const y = yPos(r);
+      if(y<pT-5||y>pT+pH+5){first=true;continue;}
+      first?ctx.moveTo(pL+px,y):ctx.lineTo(pL+px,y);
+      first=false;
+    }
+    ctx.stroke();
+
+    // Operating point marker
+    const xop = xPos(Aamp_op);
+    const rop  = (1+Aamp_op)*rout_no_boost;
+    const yop  = yPos(rop);
+    ctx.fillStyle='#00994d';
+    ctx.beginPath(); ctx.arc(xop, yop, 6, 0, 2*Math.PI); ctx.fill();
+    ctx.fillStyle='#00994d'; ctx.font='bold 10px system-ui'; ctx.textAlign='left';
+    const dispR = rop>=1e9?(rop/1e9).toFixed(1)+'GΩ':rop>=1e6?(rop/1e6).toFixed(0)+'MΩ':(rop/1e3).toFixed(0)+'kΩ';
+    ctx.fillText('A_amp='+Aamp_op+' → '+dispR, xop+8, yop-6);
+
+    // Legend
+    ctx.setLineDash([5,4]); ctx.strokeStyle='#cc4400'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(pL+pW-130,pT+10); ctx.lineTo(pL+pW-110,pT+10); ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle=axCol; ctx.font='9px system-ui'; ctx.textAlign='left';
+    ctx.fillText('No boost (standard)', pL+pW-106, pT+14);
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(pL+pW-130,pT+26); ctx.lineTo(pL+pW-110,pT+26); ctx.stroke();
+    ctx.fillText('Regulated (×(1+A))', pL+pW-106, pT+30);
+
+    ctx.textAlign='center'; ctx.fillStyle=axCol; ctx.font='9px system-ui';
+    ctx.fillText('Inner Amplifier Gain A_amp →', pL+pW/2, pT+pH+30);
+    ctx.save(); ctx.translate(12, pT+pH/2); ctx.rotate(-Math.PI/2);
+    ctx.fillText('r_out (log scale) →', 0, 0); ctx.restore();
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e => e.addEventListener('input', compute));
+  compute();
+  window.addEventListener('resize', compute);
+</script>
+</body>
+</html>

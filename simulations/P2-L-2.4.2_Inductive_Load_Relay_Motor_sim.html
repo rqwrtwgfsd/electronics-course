@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-L-2.4.2 — Inductive Load: Relay and Motor</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+h1 { color: #0066cc; font-size: 1.3em; margin-bottom: 4px; }
+.subtitle { color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }
+.layout { display: flex; gap: 20px; flex-wrap: wrap; }
+.panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+.controls { width: 280px; flex-shrink: 0; }
+.viz { flex: 1; min-width: 360px; }
+label { display: block; color: #8b949e; font-size: 0.8em; margin-bottom: 4px; margin-top: 12px; }
+input[type=range] { width: 100%; accent-color: #0066cc; }
+.val { color: #0066cc; font-weight: bold; }
+canvas { background: #0d1117; border-radius: 6px; display: block; }
+.readouts { margin-top: 14px; }
+.readout-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #21262d; font-size: 0.82em; }
+.readout-label { color: #8b949e; }
+.readout-val { color: #39d353; font-weight: bold; font-family: monospace; }
+.eq { background: #21262d; border-left: 3px solid #0066cc; padding: 10px 12px; border-radius: 4px; margin-top: 14px; font-family: monospace; font-size: 0.82em; color: #a5d6ff; }
+.toggle-btn { display: block; width: 100%; margin-top: 12px; padding: 8px; background: #21262d; border: 1px solid #30363d; border-radius: 6px; color: #e6edf3; cursor: pointer; font-size: 0.85em; }
+.toggle-btn:hover { background: #2d333b; }
+.toggle-btn.active { border-color: #39d353; color: #39d353; }
+@media (prefers-color-scheme: light) {
+  body { background: #f6f8fa; color: #24292f; }
+  .panel { background: #fff; border-color: #d0d7de; }
+  canvas { background: #f6f8fa; }
+  .eq { background: #eef2ff; }
+  .toggle-btn { background: #f6f8fa; color: #24292f; }
+  .toggle-btn:hover { background: #eef2ff; }
+}
+</style>
+</head>
+<body>
+<h1>P2-L-2.4.2 — Inductive Load: Relay and Motor</h1>
+<div class="subtitle">Relay coil drive · current buildup to pull-in · hold current · release with/without flyback diode spike</div>
+<div class="layout">
+  <div class="panel controls">
+    <label>Coil Inductance L (mH): <span class="val" id="lLbl">50 mH</span></label>
+    <input type="range" id="lSlider" min="1" max="500" value="50" step="1">
+    <label>Coil Resistance R (Ω): <span class="val" id="rLbl">120 Ω</span></label>
+    <input type="range" id="rSlider" min="10" max="1000" value="120" step="10">
+    <label>Drive Voltage V (V): <span class="val" id="vLbl">12 V</span></label>
+    <input type="range" id="vSlider" min="3" max="48" value="12" step="1">
+    <label>Pull-in Threshold (% of I_final): <span class="val" id="pinLbl">60%</span></label>
+    <input type="range" id="pinSlider" min="20" max="90" value="60" step="5">
+    <button class="toggle-btn" id="diodeBtn" onclick="toggleDiode()">Flyback Diode: OFF</button>
+    <div class="readouts">
+      <div class="readout-row"><span class="readout-label">τ = L/R</span><span class="readout-val" id="tau">—</span></div>
+      <div class="readout-row"><span class="readout-label">I_final = V/R</span><span class="readout-val" id="ifin">—</span></div>
+      <div class="readout-row"><span class="readout-label">I_pull-in</span><span class="readout-val" id="ipin">—</span></div>
+      <div class="readout-row"><span class="readout-label">t_pull-in</span><span class="readout-val" id="tpin">—</span></div>
+      <div class="readout-row"><span class="readout-label">V_spike (no diode)</span><span class="readout-val" id="vspike">—</span></div>
+      <div class="readout-row"><span class="readout-label">V_clamp (with diode)</span><span class="readout-val" id="vclamp">—</span></div>
+    </div>
+    <div class="eq">τ = L/R<br>I(t) = (V/R)(1−e^(−t/τ))<br>V_spike = L×I_final / t_off<br>V_clamp = V_supply + V_f</div>
+  </div>
+  <div class="panel viz">
+    <canvas id="cv" width="580" height="420"></canvas>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const W = 580, H = 420;
+let diodeOn = false;
+
+function toggleDiode() {
+  diodeOn = !diodeOn;
+  const btn = document.getElementById('diodeBtn');
+  btn.textContent = 'Flyback Diode: ' + (diodeOn ? 'ON' : 'OFF');
+  btn.classList.toggle('active', diodeOn);
+  draw();
+}
+
+function getP() {
+  const L = parseFloat(document.getElementById('lSlider').value) * 1e-3;
+  const R = parseFloat(document.getElementById('rSlider').value);
+  const V = parseFloat(document.getElementById('vSlider').value);
+  const pinPct = parseFloat(document.getElementById('pinSlider').value) / 100;
+  return { L, R, V, pinPct };
+}
+
+function fmtT(t) {
+  if (t >= 1e-3) return (t * 1000).toFixed(2) + ' ms';
+  if (t >= 1e-6) return (t * 1e6).toFixed(2) + ' µs';
+  return (t * 1e9).toFixed(1) + ' ns';
+}
+function fmtA(a) {
+  if (Math.abs(a) >= 1) return a.toFixed(4) + ' A';
+  return (a * 1000).toFixed(2) + ' mA';
+}
+
+function draw() {
+  const p = getP();
+  const tau = p.L / p.R;
+  const Ifin = p.V / p.R;
+  const Ipin = Ifin * p.pinPct;
+  // t when I = Ipin: Ipin = Ifin(1-e^-t/tau) => t = -tau * ln(1 - Ipin/Ifin)
+  const tPin = -tau * Math.log(1 - p.pinPct);
+  // Release phase: t_off assumed = 0.5*tau for spike calculation
+  const t_off = tau * 0.3;
+  const Vspike = p.L * Ifin / t_off;
+  const Vclamp = p.V + 0.4; // Schottky diode V_f ≈ 0.4 V
+
+  document.getElementById('lLbl').textContent = (p.L * 1000).toFixed(0) + ' mH';
+  document.getElementById('rLbl').textContent = p.R.toFixed(0) + ' Ω';
+  document.getElementById('vLbl').textContent = p.V.toFixed(0) + ' V';
+  document.getElementById('pinLbl').textContent = (p.pinPct * 100).toFixed(0) + '%';
+  document.getElementById('tau').textContent = fmtT(tau);
+  document.getElementById('ifin').textContent = fmtA(Ifin);
+  document.getElementById('ipin').textContent = fmtA(Ipin);
+  document.getElementById('tpin').textContent = fmtT(tPin);
+  document.getElementById('vspike').textContent = Vspike.toFixed(1) + ' V';
+  document.getElementById('vclamp').textContent = Vclamp.toFixed(1) + ' V';
+
+  ctx.clearRect(0, 0, W, H);
+
+  const pad = { l: 70, r: 20, t: 40, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  // Time axis: 0 to 6*tau total (3*tau ON, then release)
+  const tSwitch = 3 * tau; // switch on for 3 tau
+  const tEnd = 6 * tau;
+  const Imax = Ifin * 1.2;
+
+  function tx(t) { return pad.l + (t / tEnd) * pw; }
+  function ty(i) { return pad.t + ph - (i / Imax) * ph; }
+
+  // Grid
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let g = 0; g <= 5; g++) {
+    const Iv = Imax * g / 5;
+    const yi = ty(Iv);
+    ctx.beginPath(); ctx.moveTo(pad.l, yi); ctx.lineTo(pad.l + pw, yi); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(fmtA(Iv), pad.l - 4, yi + 4);
+  }
+
+  // Axes
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t + ph); ctx.lineTo(pad.l + pw, pad.t + ph); ctx.stroke();
+
+  // Phase shading
+  ctx.fillStyle = 'rgba(0,102,204,0.08)';
+  ctx.fillRect(tx(0), pad.t, tx(tSwitch) - tx(0), ph);
+  ctx.fillStyle = 'rgba(248,81,73,0.07)';
+  ctx.fillRect(tx(tSwitch), pad.t, tx(tEnd) - tx(tSwitch), ph);
+  ctx.fillStyle = '#0066cc'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Energize (switch ON)', tx(tSwitch / 2), pad.t + 14);
+  ctx.fillStyle = '#f85149';
+  ctx.fillText('Release (switch OFF)', tx(tSwitch + (tEnd - tSwitch) / 2), pad.t + 14);
+
+  // I_final dashed line
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.moveTo(pad.l, ty(Ifin)); ctx.lineTo(pad.l + pw, ty(Ifin)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#8b949e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('I_final = ' + fmtA(Ifin), pad.l + pw - 4, ty(Ifin) - 5);
+
+  // Pull-in threshold line
+  ctx.strokeStyle = '#e3b341'; ctx.lineWidth = 1; ctx.setLineDash([4, 2]);
+  ctx.beginPath(); ctx.moveTo(pad.l, ty(Ipin)); ctx.lineTo(tx(tSwitch), ty(Ipin)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#e3b341'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('I_pull-in (' + (p.pinPct * 100).toFixed(0) + '% of I_final)', pad.l + 4, ty(Ipin) - 5);
+
+  // Main current rise curve (blue)
+  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let px = 0; px <= pw; px++) {
+    const t = (px / pw) * tEnd;
+    let I;
+    if (t <= tSwitch) {
+      I = Ifin * (1 - Math.exp(-t / tau));
+    } else {
+      const dt = t - tSwitch;
+      I = Ifin * Math.exp(-dt / tau); // free decay through flyback diode or resistor
+    }
+    if (px === 0) ctx.moveTo(pad.l, ty(I));
+    else ctx.lineTo(pad.l + px, ty(I));
+  }
+  ctx.stroke();
+
+  // Pull-in time marker
+  if (tPin < tSwitch) {
+    ctx.strokeStyle = '#39d353'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(tx(tPin), pad.t); ctx.lineTo(tx(tPin), ty(Ipin)); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#39d353'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('CLICK  t=' + fmtT(tPin), tx(tPin), pad.t + 28);
+    ctx.fillStyle = '#39d353';
+    ctx.beginPath(); ctx.arc(tx(tPin), ty(Ipin), 5, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Release phase: spike or clamped
+  const releaseX = tx(tSwitch);
+  if (!diodeOn) {
+    // Spike upward
+    const spikeH = Math.min(ph * 0.7, ph * (Vspike / (Imax * p.R + Vspike)));
+    ctx.strokeStyle = '#f85149'; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(releaseX, ty(Ifin));
+    ctx.lineTo(releaseX + 3, ty(Ifin) - spikeH * 0.8);
+    ctx.lineTo(releaseX + 6, ty(Ifin) - spikeH);
+    ctx.lineTo(releaseX + 10, ty(Ifin) - spikeH * 0.6);
+    ctx.lineTo(releaseX + 20, ty(Ifin) - spikeH * 0.1);
+    ctx.lineTo(releaseX + 30, ty(0));
+    ctx.stroke();
+    ctx.fillStyle = '#f85149'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('V_spike = ' + Vspike.toFixed(0) + ' V  !!!', releaseX + 12, ty(Ifin) - spikeH - 6);
+  } else {
+    // Clamped decay annotation
+    ctx.fillStyle = '#39d353'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('Diode clamps to +' + Vclamp.toFixed(1) + ' V', releaseX + 8, pad.t + 44);
+    // Show smooth decay
+    ctx.strokeStyle = '#39d353'; ctx.lineWidth = 2; ctx.setLineDash([5, 3]);
+    ctx.beginPath();
+    ctx.moveTo(releaseX, ty(Ifin));
+    for (let dx = 0; dx <= 60; dx++) {
+      const I2 = Ifin * Math.exp(-dx / 30);
+      ctx.lineTo(releaseX + dx * 2, ty(I2));
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#39d353'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('Smooth decay (diode ON)', releaseX + 130, ty(Ifin * 0.5));
+  }
+
+  // Legend
+  ctx.fillStyle = '#0066cc'; ctx.font = '11px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('Coil current I(t)', pad.l + pw - 4, ty(Ifin * 0.85) + 4);
+
+  ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Time', pad.l + pw / 2, H - 8);
+  ctx.save(); ctx.translate(16, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = '#8b949e'; ctx.fillText('Current (A)', 0, 0); ctx.restore();
+  ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Relay Coil Drive — Energize, Pull-In, and Release', W / 2, 20);
+}
+
+['lSlider', 'rSlider', 'vSlider', 'pinSlider'].forEach(id =>
+  document.getElementById(id).addEventListener('input', draw));
+draw();
+</script>
+</body>
+</html>

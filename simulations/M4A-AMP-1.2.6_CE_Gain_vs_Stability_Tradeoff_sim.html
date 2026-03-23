@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.2.6 — CE Gain vs Stability Trade-off</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;gap:16px;align-items:baseline;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:260px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:14px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.2.6</div>
+  <div class="topic">CE Gain vs Stability Trade-off — RE Degeneration Simulator</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>Amplifier</h3>
+      <label>IC (mA): <b id="ic_lbl">1.0</b></label>
+      <input type="range" id="ic" min="0.1" max="10" value="1" step="0.1">
+      <label>RC (kΩ): <b id="rc_lbl">10</b></label>
+      <input type="range" id="rc" min="0.5" max="50" value="10" step="0.5">
+      <label>RE1 — unbypassed (Ω): <b id="re1_lbl">0</b></label>
+      <input type="range" id="re1" min="0" max="5000" value="0" step="10">
+    </div>
+    <div class="cg">
+      <h3>Signal & Input</h3>
+      <label>Vin peak (mV): <b id="vin_lbl">20</b></label>
+      <input type="range" id="vin" min="1" max="500" value="20" step="1">
+    </div>
+    <div class="cg">
+      <h3>Results</h3>
+      <div class="rd">gm: <span id="r_gm">—</span> mA/V</div>
+      <div class="rd">gm_eff: <span id="r_gmeff">—</span> mA/V</div>
+      <div class="rd">|Av| (bypassed): <span id="r_avbp">—</span> V/V</div>
+      <div class="rd">|Av| (with RE1): <span id="r_avd">—</span> V/V</div>
+      <div class="rd">Gain reduction: <span id="r_red">—</span> ×</div>
+      <div class="rd">HD2 (bypassed): <span id="r_hdbp">—</span> %</div>
+      <div class="rd">HD2 (with RE1): <span id="r_hdd">—</span> %</div>
+      <div class="rd">Distortion reduction: <span id="r_dred">—</span> ×</div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_av">385</div><div class="l">|Av| with RE1</div></div>
+      <div class="met"><div class="v" id="m_hd">48%</div><div class="l">HD2 with RE1</div></div>
+      <div class="met"><div class="v" id="m_red">1×</div><div class="l">Gain Reduction</div></div>
+      <div class="met"><div class="v" id="m_dred">1×</div><div class="l">Distortion ÷</div></div>
+    </div>
+    <div>
+      <div class="pl">|Av| and HD2 vs RE1 — the trade-off curve</div>
+      <canvas id="tradeCanvas" height="220"></canvas>
+    </div>
+    <div>
+      <div class="pl">Temperature gain variation — bypassed vs degenerated</div>
+      <canvas id="tempCanvas" height="180"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+const VT0=0.026;
+function getVT(tempC){return(273.15+tempC)/11604;}
+
+function update(){
+  const ic=parseFloat(document.getElementById('ic').value)*1e-3;
+  const rc=parseFloat(document.getElementById('rc').value)*1e3;
+  const re1=parseFloat(document.getElementById('re1').value);
+  const vin=parseFloat(document.getElementById('vin').value)*1e-3;
+  document.getElementById('ic_lbl').textContent=(ic*1000).toFixed(1);
+  document.getElementById('rc_lbl').textContent=(rc/1000).toFixed(1);
+  document.getElementById('re1_lbl').textContent=re1.toFixed(0);
+  document.getElementById('vin_lbl').textContent=(vin*1000).toFixed(0);
+  const gm=ic/VT0;
+  const gmeff=gm/(1+gm*re1);
+  const avbp=gm*rc;
+  const avd=gmeff*rc;
+  const red=avbp/avd;
+  const hdbp=vin/(4*VT0)*100;
+  const hdd=vin/(4*VT0*(1+gm*re1))*100;
+  const dred=hdbp/hdd;
+  document.getElementById('r_gm').textContent=(gm*1000).toFixed(1);
+  document.getElementById('r_gmeff').textContent=(gmeff*1000).toFixed(2);
+  document.getElementById('r_avbp').textContent=avbp.toFixed(0);
+  document.getElementById('r_avd').textContent=avd.toFixed(1);
+  document.getElementById('r_red').textContent=red.toFixed(1);
+  document.getElementById('r_hdbp').textContent=hdbp.toFixed(1);
+  document.getElementById('r_hdd').textContent=hdd.toFixed(2);
+  document.getElementById('r_dred').textContent=dred.toFixed(1);
+  document.getElementById('m_av').textContent=avd.toFixed(0);
+  document.getElementById('m_hd').textContent=hdd.toFixed(2)+'%';
+  document.getElementById('m_red').textContent=red.toFixed(1)+'×';
+  document.getElementById('m_dred').textContent=dred.toFixed(1)+'×';
+  drawTrade(ic,rc,vin,re1);
+  drawTemp(ic,rc,re1);
+}
+
+function drawTrade(ic,rc,vin,re1_sel){
+  const canvas=document.getElementById('tradeCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:55,r:10,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const RE_MAX=5000;
+  const gm=ic/VT0;
+  const avmax=gm*rc;
+  function xOf(re){return pad.l+re/RE_MAX*pw;}
+  function yOfAv(av){return pad.t+ph-Math.min(av,avmax)/avmax*ph;}
+  function yOfHD(hd){return pad.t+ph-Math.min(hd,200)/200*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const y=yOfAv(i/4*avmax);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText((i/4*avmax).toFixed(0),2,y+3);
+  }
+  [0,500,1000,2000,3000,5000].forEach(re=>{
+    const x=xOf(re);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(re>=1000?(re/1000)+'k':re,x-8,H-4);
+  });
+
+  // Av curve
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const re=px/pw*RE_MAX;
+    const av=gm*rc/(1+gm*re);
+    const y=yOfAv(av);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  // HD2 curve (scaled to show both on same plot)
+  const hd_scale=200;
+  ctx.strokeStyle='#cc6600';ctx.lineWidth=2;ctx.setLineDash([6,3]);
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const re=px/pw*RE_MAX;
+    const hd=vin/(4*VT0*(1+gm*re))*100;
+    const y=pad.t+ph-Math.min(hd,hd_scale)/hd_scale*ph;
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();ctx.setLineDash([]);
+
+  // Current RE1 marker
+  const xc=xOf(re1_sel);
+  ctx.strokeStyle='#ff8800';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(xc,pad.t);ctx.lineTo(xc,pad.t+ph);ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.font='10px Courier New';
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.fillText('── |Av| (V/V)',W-200,20);
+  ctx.fillStyle='#cc6600';ctx.fillText('-- HD2 (% scaled)',W-200,34);
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.fillText('RE1 (Ω) →',W/2-20,H-1);
+}
+
+function drawTemp(ic,rc,re1){
+  const canvas=document.getElementById('tempCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+  const pad={l:55,r:10,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const T_MIN=-40,T_MAX=125;
+  const gm25=ic/VT0;
+  const avbp25=gm25*rc;
+  const avd25=gm25/(1+gm25*re1)*rc;
+  const AV_MAX=avbp25*1.5;
+  function xOf(t){return pad.l+(t-T_MIN)/(T_MAX-T_MIN)*pw;}
+  function yOf(av){return pad.t+ph-av/AV_MAX*ph;}
+
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const av=i/4*AV_MAX;const y=yOf(av);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(av.toFixed(0),2,y+3);
+  }
+  [-40,-20,0,25,50,85,125].forEach(t=>{
+    const x=xOf(t);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(t+'°',x-8,H-4);
+  });
+
+  // Bypassed gain vs temperature
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const t=T_MIN+px/pw*(T_MAX-T_MIN);
+    const vt=getVT(t);
+    const gm=ic/vt;
+    const av=gm*rc;
+    const y=yOf(av);
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+
+  // Degenerated gain vs temperature
+  if(re1>0){
+    ctx.strokeStyle='#cc6600';ctx.lineWidth=2;ctx.setLineDash([6,3]);
+    ctx.beginPath();
+    for(let px=0;px<=pw;px++){
+      const t=T_MIN+px/pw*(T_MAX-T_MIN);
+      const vt=getVT(t);
+      const gm=ic/vt;
+      const av=gm*rc/(1+gm*re1);
+      const y=yOf(av);
+      if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+    }
+    ctx.stroke();ctx.setLineDash([]);
+  }
+
+  // 25°C marker
+  const x25=xOf(25);
+  ctx.strokeStyle='#aaaaaa';ctx.lineWidth=1;ctx.setLineDash([2,4]);
+  ctx.beginPath();ctx.moveTo(x25,pad.t);ctx.lineTo(x25,pad.t+ph);ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.font='10px Courier New';
+  ctx.fillStyle=cs.getPropertyValue('--accent').trim();ctx.fillText('── Fully bypassed',W-220,20);
+  if(re1>0){ctx.fillStyle='#cc6600';ctx.fillText('-- With RE1='+re1+'Ω',W-220,34);}
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.fillText('Temperature (°C) →',W/2-50,H-1);
+}
+
+['ic','rc','re1','vin'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

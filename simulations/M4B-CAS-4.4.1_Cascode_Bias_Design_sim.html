@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CAS-4.4.1 — Cascode Bias Design</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#4d9fff;--green:#00cc66;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  .ro.warn span{color:#cc4400;}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CAS-4.4.1</div>
+  <h1>Cascode — Bias Design</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Bias Parameters</h2>
+      <label>V_th,n (V): <b id="vth_l">0.50</b> <input type="range" id="vth" min="0.2" max="0.9" value="0.5" step="0.01"></label>
+      <label>V_ov,M1 (mV): <b id="vov1_l">200</b> <input type="range" id="vov1" min="50" max="400" value="200" step="10"></label>
+      <label>V_ov,M2 (mV): <b id="vov2_l">200</b> <input type="range" id="vov2" min="50" max="400" value="200" step="10"></label>
+      <label>V_ov,tail (mV): <b id="vovt_l">200</b> <input type="range" id="vovt" min="50" max="400" value="200" step="10"></label>
+      <label>V_gate,M2 applied (V): <b id="vg2_l">0.90</b> <input type="range" id="vg2" min="0.3" max="3.0" value="0.90" step="0.01"></label>
+      <label>V_DD (V): <b id="vdd_l">1.8</b> <input type="range" id="vdd" min="0.6" max="3.3" value="1.8" step="0.1"></label>
+
+      <div class="ro" id="vds1_ro">V_DS,M1: <span id="vds1">--</span> V</div>
+      <div class="ro" id="m1_ro">M1 status: <span id="m1_stat">--</span></div>
+      <div class="ro">V_gate,M2,min: <span id="vg2min">--</span> V</div>
+      <div class="ro">Bias margin: <span id="margin">--</span> mV</div>
+      <div class="ro">V_out,min (standard): <span id="vout_min">--</span> V</div>
+      <div class="ro g">V_out,min (wide-swing): <span id="vout_ws">--</span> V</div>
+
+      <div class="insight" id="insight_box">Adjust V_gate,M2 to explore bias conditions.</div>
+    </div>
+
+    <div class="card">
+      <h2>Operating Point Diagram</h2>
+      <canvas id="cv" height="340"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const Vth  = +document.getElementById('vth').value;
+    const Vov1 = +document.getElementById('vov1').value / 1000;
+    const Vov2 = +document.getElementById('vov2').value / 1000;
+    const Vovt = +document.getElementById('vovt').value / 1000;
+    const Vg2  = +document.getElementById('vg2').value;
+    const VDD  = +document.getElementById('vdd').value;
+
+    document.getElementById('vth_l').textContent  = Vth.toFixed(2);
+    document.getElementById('vov1_l').textContent = (Vov1*1000).toFixed(0);
+    document.getElementById('vov2_l').textContent = (Vov2*1000).toFixed(0);
+    document.getElementById('vovt_l').textContent = (Vovt*1000).toFixed(0);
+    document.getElementById('vg2_l').textContent  = Vg2.toFixed(2);
+    document.getElementById('vdd_l').textContent  = VDD.toFixed(1);
+
+    // V_S,M2 = V_G,M2 - V_GS,M2 = Vg2 - (Vth + Vov2)
+    const Vs_M2 = Vg2 - (Vth + Vov2); // = V_D,M1
+    const Vds_M1 = Vs_M2 - Vovt;      // M1 source at V_ov,tail
+
+    const Vg2_min = Vovt + Vov1 + Vth + Vov2; // minimum gate for both in saturation
+    const margin  = (Vg2 - Vg2_min) * 1000;    // mV
+
+    const m1_ok = Vds_M1 >= Vov1;
+    const m2_in_sat_min = Vg2 - Vth + Vov2; // V_out,min for M2 in sat = Vg2 - Vth - Vov2 (M2 src) + Vov2 = Vg2 - Vth + Vov2 ? Let's recalc
+    // M2 in sat: V_DS,M2 >= V_ov,M2 -> V_D,M2 >= V_S,M2 + V_ov,M2 = Vs_M2 + Vov2
+    const Vout_min_std = Vs_M2 + Vov2; // output must be above this for M2 in saturation
+    const Vout_min_ws  = Vovt + Vov1 + Vov2; // ideal: each device just at Vov
+
+    document.getElementById('vds1').textContent  = Vds_M1.toFixed(3);
+    document.getElementById('vg2min').textContent = Vg2_min.toFixed(3);
+    document.getElementById('margin').textContent  = margin.toFixed(0);
+    document.getElementById('vout_min').textContent = Vout_min_std.toFixed(3);
+    document.getElementById('vout_ws').textContent  = Vout_min_ws.toFixed(3);
+
+    const vds1_ro = document.getElementById('vds1_ro');
+    const m1_ro   = document.getElementById('m1_ro');
+    vds1_ro.className = m1_ok ? 'ro g' : 'ro warn';
+    m1_ro.className   = m1_ok ? 'ro g' : 'ro warn';
+    document.getElementById('m1_stat').textContent = m1_ok ? 'Saturation' : 'TRIODE!';
+
+    document.getElementById('insight_box').textContent =
+      (m1_ok ? '' : 'M1 in TRIODE: V_DS,M1 = ' + (Vds_M1*1000).toFixed(0) + ' mV < V_ov = ' + (Vov1*1000).toFixed(0) + ' mV. Increase V_gate,M2. ') +
+      'V_gate,M2,min = ' + Vg2_min.toFixed(3) + ' V. Margin = ' + margin.toFixed(0) + ' mV. ' +
+      'Wide-swing V_out,min = ' + (Vout_min_ws*1000).toFixed(0) + ' mV vs standard ' + (Vout_min_std*1000).toFixed(0) + ' mV.';
+
+    draw(VDD, Vovt, Vov1, Vov2, Vth, Vg2, Vs_M2, Vds_M1, Vout_min_std, Vout_min_ws, m1_ok);
+  }
+
+  function draw(VDD, Vovt, Vov1, Vov2, Vth, Vg2, Vs_M2, Vds_M1, Vout_min_std, Vout_min_ws, m1_ok){
+    const cv = document.getElementById('cv');
+    const W  = cv.parentElement.clientWidth - 36;
+    cv.width = W; cv.height = 340;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, W, 340);
+
+    const isDark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+    const axCol  = isDark ? '#8899bb' : '#8888aa';
+
+    // Draw voltage stack diagram
+    const barX  = W/2 - 35;
+    const barW  = 70;
+    const barH  = 280;
+    const baseY = 318;
+    const topY  = baseY - barH;
+
+    function voltY(v){ return baseY - (v / VDD) * barH; }
+
+    // Background
+    ctx.fillStyle = isDark ? '#2a2a3a' : '#f8f8ff';
+    ctx.fillRect(barX, topY, barW, barH);
+    ctx.strokeStyle = axCol; ctx.lineWidth = 1;
+    ctx.strokeRect(barX, topY, barW, barH);
+
+    // Voltage levels
+    const V_gnd   = 0;
+    const V_tail  = Vovt;
+    const V_d_M1  = Vs_M2;      // M1 drain = M2 source
+    const V_g_M2  = Vg2;
+    const V_d_M2  = Math.max(Vout_min_std, V_d_M1 + Vov2); // approximate output
+    // Clip to VDD
+    const V_out_disp = Math.min(VDD, Math.max(V_d_M1 + Vov2 * 1.5, VDD * 0.6));
+
+    // Tail region
+    ctx.fillStyle = '#884400aa';
+    ctx.fillRect(barX, voltY(V_tail), barW, voltY(0) - voltY(V_tail));
+    ctx.fillStyle = '#fff'; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+    if(voltY(0)-voltY(V_tail) > 12) ctx.fillText('Tail V_ov', barX+barW/2, (voltY(0)+voltY(V_tail))/2+4);
+
+    // M1 region (V_ov,tail to V_D,M1)
+    const m1_color = m1_ok ? '#0066cc' : '#cc0000';
+    const clipped_Vd = Math.max(V_tail, Math.min(VDD, V_d_M1));
+    if(clipped_Vd > V_tail){
+      ctx.fillStyle = m1_color + '99';
+      ctx.fillRect(barX, voltY(clipped_Vd), barW, voltY(V_tail) - voltY(clipped_Vd));
+      ctx.fillStyle = '#fff'; ctx.font = '9px system-ui';
+      if(voltY(V_tail)-voltY(clipped_Vd) > 12)
+        ctx.fillText('M1 V_DS='+(Vds_M1*1000).toFixed(0)+'mV', barX+barW/2, (voltY(V_tail)+voltY(clipped_Vd))/2+4);
+    }
+
+    // M2 region (V_S,M2 to V_out)
+    const clipped_Vout = Math.min(VDD, V_out_disp);
+    if(clipped_Vout > clipped_Vd){
+      ctx.fillStyle = '#00994d99';
+      ctx.fillRect(barX, voltY(clipped_Vout), barW, voltY(clipped_Vd)-voltY(clipped_Vout));
+      ctx.fillStyle = '#fff'; ctx.font = '9px system-ui';
+      if(voltY(clipped_Vd)-voltY(clipped_Vout) > 12)
+        ctx.fillText('M2 V_DS', barX+barW/2, (voltY(clipped_Vd)+voltY(clipped_Vout))/2+4);
+    }
+
+    // V_gate,M2 line
+    if(Vg2 >= 0 && Vg2 <= VDD){
+      const yg = voltY(Vg2);
+      ctx.strokeStyle = '#ff8800'; ctx.lineWidth = 1.5; ctx.setLineDash([4,3]);
+      ctx.beginPath(); ctx.moveTo(barX - 20, yg); ctx.lineTo(barX + barW + 20, yg); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#ff8800'; ctx.font = '9px system-ui'; ctx.textAlign = 'right';
+      ctx.fillText('V_gate', barX-2, yg-2);
+    }
+
+    // Axis labels (left)
+    const keyVoltages = [0, Vovt, Math.max(0, V_d_M1), Math.min(VDD, V_out_disp), VDD];
+    const keyLabels   = ['GND', 'V_tail', 'V_S,M2', 'V_out', 'V_DD'];
+    ctx.fillStyle = axCol; ctx.font = '8px system-ui'; ctx.textAlign = 'right';
+    keyVoltages.forEach((v, i) => {
+      if(v < 0 || v > VDD) return;
+      const y = voltY(v);
+      ctx.fillText(keyLabels[i]+' '+v.toFixed(2)+'V', barX-3, y+3);
+      ctx.strokeStyle = axCol+'44'; ctx.lineWidth=0.5; ctx.setLineDash([2,2]);
+      ctx.beginPath(); ctx.moveTo(barX-18, y); ctx.lineTo(barX, y); ctx.stroke();
+      ctx.setLineDash([]);
+    });
+
+    // Scale bar on left
+    ctx.strokeStyle = axCol; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(barX-20, topY); ctx.lineTo(barX-20, baseY); ctx.stroke();
+
+    // Status annotations (right side)
+    const annX = barX + barW + 14;
+    ctx.textAlign = 'left'; ctx.font = '9px system-ui';
+
+    ctx.fillStyle = m1_ok ? '#00994d' : '#cc0000';
+    ctx.fillText('M1: ' + (m1_ok ? 'SAT' : 'TRIODE'), annX, voltY(Math.max(V_tail, V_d_M1 * 0.5))+4);
+
+    ctx.fillStyle = '#0066cc';
+    ctx.fillText('M2: SAT', annX, voltY(Math.max(0, (V_d_M1 + clipped_Vout)/2))+4);
+
+    // V_ov annotation arrows
+    const arrowY1 = voltY(V_tail + Vov1/2);
+    ctx.fillStyle = m1_ok ? '#0066cc' : '#cc0000';
+    ctx.fillText('V_ov,M1='+(Vov1*1000).toFixed(0)+'mV', annX, arrowY1);
+
+    // Legend
+    ctx.fillStyle = '#884400aa'; ctx.fillRect(barX+barW+4, topY+10, 10,10);
+    ctx.fillStyle = axCol; ctx.font='8px system-ui';
+    ctx.fillText('Tail', barX+barW+18, topY+19);
+    ctx.fillStyle = m1_color+'99'; ctx.fillRect(barX+barW+4, topY+26, 10,10);
+    ctx.fillText('M1 channel', barX+barW+18, topY+35);
+    ctx.fillStyle = '#00994d99'; ctx.fillRect(barX+barW+4, topY+42, 10,10);
+    ctx.fillText('M2 channel', barX+barW+18, topY+51);
+
+    ctx.textAlign='center'; ctx.fillStyle=axCol; ctx.font='bold 10px system-ui';
+    ctx.fillText('Cascode Operating Point', W/2, 14);
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e => e.addEventListener('input', compute));
+  compute();
+  window.addEventListener('resize', compute);
+</script>
+</body>
+</html>

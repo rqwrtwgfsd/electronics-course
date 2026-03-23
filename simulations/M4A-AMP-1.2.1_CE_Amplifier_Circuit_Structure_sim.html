@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-AMP-1.2.1 — CE Amplifier Circuit Structure</title>
+<style>
+  :root{--bg:#ffffff;--fg:#111111;--panel:#f4f4f4;--border:#cccccc;--accent:#0066cc;--grid:#dddddd;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--fg:#eeeeee;--panel:#2a2a2a;--border:#444444;--accent:#3399ff;--grid:#333333;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--fg);font-family:'Courier New',monospace;font-size:12px;}
+  header{background:var(--accent);color:#fff;padding:10px 16px;display:flex;align-items:baseline;gap:16px;}
+  .id{font-weight:bold;font-size:14px;}.topic{font-size:12px;opacity:.9;}
+  .main{display:grid;grid-template-columns:270px 1fr;height:calc(100vh - 42px);}
+  .controls{background:var(--panel);border-right:1px solid var(--border);padding:12px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;}
+  .cg{border:1px solid var(--border);border-radius:4px;padding:9px;}
+  .cg h3{font-size:11px;text-transform:uppercase;color:var(--accent);margin-bottom:7px;}
+  label{display:block;font-size:11px;margin-bottom:2px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .rd{background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:4px 7px;margin-top:4px;font-size:11px;}
+  .rd span{color:var(--accent);font-weight:bold;}
+  .status{padding:4px 8px;border-radius:3px;text-align:center;font-size:11px;font-weight:bold;margin-top:4px;}
+  .ok{background:#005500;color:#fff;}.warn{background:#885500;color:#fff;}.bad{background:#880000;color:#fff;}
+  .plots{padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;}
+  canvas{background:var(--bg);border:1px solid var(--border);border-radius:4px;display:block;width:100%;}
+  .pl{font-size:11px;color:var(--accent);margin-bottom:3px;text-transform:uppercase;}
+  .mrow{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;}
+  .met{background:var(--panel);border:1px solid var(--border);border-radius:4px;padding:7px;text-align:center;}
+  .met .v{font-size:14px;font-weight:bold;color:var(--accent);}
+  .met .l{font-size:9px;opacity:.7;margin-top:2px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4A-AMP-1.2.1</div>
+  <div class="topic">CE Amplifier Circuit Structure — DC Bias & AC Gain</div>
+</header>
+<div class="main">
+  <div class="controls">
+    <div class="cg">
+      <h3>Supply & Transistor</h3>
+      <label>VCC: <b id="vcc_lbl">12 V</b></label>
+      <input type="range" id="vcc" min="5" max="30" value="12" step="1">
+      <label>β (hFE): <b id="beta_lbl">150</b></label>
+      <input type="range" id="beta" min="50" max="500" value="150" step="10">
+    </div>
+    <div class="cg">
+      <h3>Bias Network</h3>
+      <label>R1: <b id="r1_lbl">47 kΩ</b></label>
+      <input type="range" id="r1" min="5000" max="500000" value="47000" step="1000">
+      <label>R2: <b id="r2_lbl">10 kΩ</b></label>
+      <input type="range" id="r2" min="1000" max="100000" value="10000" step="1000">
+      <label>RE: <b id="re_lbl">1 kΩ</b></label>
+      <input type="range" id="re" min="0" max="5000" value="1000" step="100">
+      <label>RC: <b id="rc_lbl">4.7 kΩ</b></label>
+      <input type="range" id="rc" min="500" max="20000" value="4700" step="100">
+    </div>
+    <div class="cg">
+      <h3>AC Signal</h3>
+      <label>Vin (mV peak): <b id="vin_lbl">10 mV</b></label>
+      <input type="range" id="vin" min="1" max="200" value="10" step="1">
+      <label>Load RL: <b id="rl_lbl">10 kΩ</b></label>
+      <input type="range" id="rl" min="100" max="100000" value="10000" step="100">
+    </div>
+    <div class="cg">
+      <h3>DC Operating Point</h3>
+      <div class="rd">VB: <span id="r_vb">—</span> V</div>
+      <div class="rd">VE: <span id="r_ve">—</span> V</div>
+      <div class="rd">IC: <span id="r_ic">—</span> mA</div>
+      <div class="rd">VC: <span id="r_vc">—</span> V</div>
+      <div class="rd">VCE: <span id="r_vce">—</span> V</div>
+      <div id="region_st" class="status ok">ACTIVE REGION</div>
+    </div>
+    <div class="cg">
+      <h3>AC Parameters</h3>
+      <div class="rd">gm: <span id="r_gm">—</span> mA/V</div>
+      <div class="rd">rπ: <span id="r_rpi">—</span> kΩ</div>
+      <div class="rd">Av: <span id="r_av">—</span> V/V</div>
+      <div class="rd">Zin: <span id="r_zin">—</span> kΩ</div>
+      <div class="rd">Zout: <span id="r_zout">—</span> kΩ</div>
+    </div>
+  </div>
+  <div class="plots">
+    <div class="mrow">
+      <div class="met"><div class="v" id="m_ic">—</div><div class="l">IC (mA)</div></div>
+      <div class="met"><div class="v" id="m_vce">—</div><div class="l">VCE (V)</div></div>
+      <div class="met"><div class="v" id="m_av">—</div><div class="l">|Av| (V/V)</div></div>
+      <div class="met"><div class="v" id="m_zin">—</div><div class="l">Zin (kΩ)</div></div>
+    </div>
+    <div>
+      <div class="pl">Input (blue) vs Output (orange) — AC waveforms</div>
+      <canvas id="waveCanvas" height="200"></canvas>
+    </div>
+    <div>
+      <div class="pl">Load Line — DC Operating Point</div>
+      <canvas id="loadCanvas" height="180"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+const VBE = 0.7, VSAT = 0.2;
+
+function fmtR(v){
+  if(v>=1e6)return(v/1e6).toFixed(2)+'MΩ';
+  if(v>=1e3)return(v/1e3).toFixed(1)+'kΩ';
+  return v.toFixed(0)+'Ω';
+}
+
+function compute(){
+  const vcc=parseFloat(document.getElementById('vcc').value);
+  const beta=parseFloat(document.getElementById('beta').value);
+  const r1=parseFloat(document.getElementById('r1').value);
+  const r2=parseFloat(document.getElementById('r2').value);
+  const re=parseFloat(document.getElementById('re').value);
+  const rc=parseFloat(document.getElementById('rc').value);
+  const vin=parseFloat(document.getElementById('vin').value)*1e-3;
+  const rl=parseFloat(document.getElementById('rl').value);
+
+  // DC analysis
+  const vb = vcc * r2/(r1+r2);
+  const ve = vb - VBE;
+  const ic = ve > 0 ? ve/re : (re===0 ? vcc/(rc+1) * 0.01 : 0);
+  const vc = vcc - ic*rc;
+  const vce = vc - ve;
+
+  // AC parameters
+  const gm = ic/0.026;
+  const rpi = beta/gm;
+  const rcrl = rc*rl/(rc+rl);
+  const av = -gm*rcrl;
+  const zin = (r1*r2/(r1+r2))*rpi/((r1*r2/(r1+r2))+rpi);
+  const zout = rc;
+
+  return {vcc,beta,r1,r2,re,rc,vin,rl,vb,ve,ic,vc,vce,gm,rpi,av,zin,zout,rcrl};
+}
+
+function update(){
+  const vcc=parseFloat(document.getElementById('vcc').value);
+  const r1=parseFloat(document.getElementById('r1').value);
+  const r2=parseFloat(document.getElementById('r2').value);
+  const re=parseFloat(document.getElementById('re').value);
+  const rc=parseFloat(document.getElementById('rc').value);
+  const vin=parseFloat(document.getElementById('vin').value);
+  const rl=parseFloat(document.getElementById('rl').value);
+
+  document.getElementById('vcc_lbl').textContent=vcc+' V';
+  document.getElementById('beta_lbl').textContent=parseFloat(document.getElementById('beta').value);
+  document.getElementById('r1_lbl').textContent=fmtR(r1);
+  document.getElementById('r2_lbl').textContent=fmtR(r2);
+  document.getElementById('re_lbl').textContent=fmtR(re);
+  document.getElementById('rc_lbl').textContent=fmtR(rc);
+  document.getElementById('vin_lbl').textContent=vin+' mV';
+  document.getElementById('rl_lbl').textContent=fmtR(rl);
+
+  const c=compute();
+  document.getElementById('r_vb').textContent=c.vb.toFixed(2);
+  document.getElementById('r_ve').textContent=c.ve.toFixed(2);
+  document.getElementById('r_ic').textContent=(c.ic*1000).toFixed(2);
+  document.getElementById('r_vc').textContent=c.vc.toFixed(2);
+  document.getElementById('r_vce').textContent=c.vce.toFixed(2);
+
+  const st=document.getElementById('region_st');
+  if(c.vce<VSAT){st.textContent='SATURATED!';st.className='status bad';}
+  else if(c.ve<0){st.textContent='CUT OFF!';st.className='status bad';}
+  else if(c.vce<1.0){st.textContent='NEAR SATURATION';st.className='status warn';}
+  else{st.textContent='ACTIVE REGION';st.className='status ok';}
+
+  document.getElementById('r_gm').textContent=(c.gm*1000).toFixed(1);
+  document.getElementById('r_rpi').textContent=(c.rpi/1000).toFixed(2);
+  document.getElementById('r_av').textContent=c.av.toFixed(1);
+  document.getElementById('r_zin').textContent=(c.zin/1000).toFixed(2);
+  document.getElementById('r_zout').textContent=(c.zout/1000).toFixed(2);
+
+  document.getElementById('m_ic').textContent=(c.ic*1000).toFixed(2);
+  document.getElementById('m_vce').textContent=c.vce.toFixed(2);
+  document.getElementById('m_av').textContent=Math.abs(c.av).toFixed(0);
+  document.getElementById('m_zin').textContent=(c.zin/1000).toFixed(2);
+
+  drawWaveform(c);
+  drawLoadLine(c);
+}
+
+function drawWaveform(c){
+  const canvas=document.getElementById('waveCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;
+  const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  // Grid
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  for(let i=0;i<=8;i++){const y=i/8*H;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  for(let i=0;i<=10;i++){const x=i/10*W;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  ctx.strokeStyle=cs.getPropertyValue('--fg').trim();ctx.lineWidth=0.5;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(0,H/2);ctx.lineTo(W,H/2);ctx.stroke();ctx.setLineDash([]);
+
+  const vout_max = Math.max(Math.abs(c.av)*c.vin, 0.1);
+  const scaleV = vout_max*1.3/(H/2-10);
+
+  // Clipping levels
+  const hr_pos = c.vcc - c.vc;
+  const hr_neg = c.vce - VSAT;
+  ctx.strokeStyle='#aa3300';ctx.lineWidth=1;ctx.setLineDash([6,3]);
+  const yPos = H/2 - hr_pos/scaleV;
+  const yNeg = H/2 + hr_neg/scaleV;
+  ctx.beginPath();ctx.moveTo(0,yPos);ctx.lineTo(W,yPos);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(0,yNeg);ctx.lineTo(W,yNeg);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#aa3300';ctx.font='9px Courier New';
+  ctx.fillText('+clip '+hr_pos.toFixed(1)+'V',4,yPos-2);
+  ctx.fillText('-clip '+hr_neg.toFixed(1)+'V',4,yNeg+10);
+
+  // Input (scaled for visibility)
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=1.5;
+  ctx.beginPath();
+  for(let px=0;px<W;px++){
+    const t=px/W*2;
+    const v=c.vin*Math.sin(2*Math.PI*t);
+    const y=H/2-v/scaleV;
+    if(px===0)ctx.moveTo(px,y);else ctx.lineTo(px,y);
+  }
+  ctx.stroke();
+
+  // Output (inverted, possibly clipped)
+  ctx.strokeStyle='#ff8800';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let px=0;px<W;px++){
+    const t=px/W*2;
+    let v=c.av*c.vin*Math.sin(2*Math.PI*t);
+    v=Math.min(v,hr_pos);
+    v=Math.max(v,-hr_neg);
+    const y=H/2-v/scaleV;
+    if(px===0)ctx.moveTo(px,y);else ctx.lineTo(px,y);
+  }
+  ctx.stroke();
+
+  ctx.font='10px Courier New';
+  ctx.fillStyle='#0066cc';ctx.fillText('── Vin (scaled)',W-180,16);
+  ctx.fillStyle='#ff8800';ctx.fillText('── Vout (180° inv)',W-180,30);
+}
+
+function drawLoadLine(c){
+  const canvas=document.getElementById('loadCanvas');
+  const W=canvas.clientWidth||600;canvas.width=W;
+  const H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const cs=getComputedStyle(document.documentElement);
+  ctx.fillStyle=cs.getPropertyValue('--bg').trim();ctx.fillRect(0,0,W,H);
+
+  const pad={l:45,r:10,t:10,b:28};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+
+  const IC_MAX = c.vcc/c.rc * 1.1;
+  const VCE_MAX = c.vcc * 1.05;
+
+  function xOf(vce){return pad.l+vce/VCE_MAX*pw;}
+  function yOf(ic){return pad.t+ph-ic/IC_MAX*ph;}
+
+  // Grid
+  ctx.strokeStyle=cs.getPropertyValue('--grid').trim();ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const ic=i/4*IC_MAX;const y=yOf(ic);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText((ic*1000).toFixed(1)+'mA',2,y+3);
+  }
+  for(let i=0;i<=5;i++){
+    const vce=i/5*VCE_MAX;const x=xOf(vce);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+    ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='9px Courier New';
+    ctx.fillText(vce.toFixed(1)+'V',x-8,H-4);
+  }
+
+  // Load line: IC = (VCC - VCE)/RC
+  ctx.strokeStyle=cs.getPropertyValue('--accent').trim();ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.moveTo(xOf(c.vcc),yOf(0));
+  ctx.lineTo(xOf(0),yOf(c.vcc/c.rc));
+  ctx.stroke();
+
+  // Q-point
+  const qx=xOf(c.vce),qy=yOf(c.ic);
+  ctx.fillStyle='#ff8800';
+  ctx.beginPath();ctx.arc(qx,qy,6,0,2*Math.PI);ctx.fill();
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='10px Courier New';
+  ctx.fillText('Q('+c.vce.toFixed(1)+'V,'+( c.ic*1000).toFixed(1)+'mA)',qx+8,qy-4);
+
+  // Axes labels
+  ctx.fillStyle=cs.getPropertyValue('--fg').trim();ctx.font='10px Courier New';
+  ctx.fillText('VCE →',W/2-20,H-1);
+  ctx.save();ctx.translate(12,H/2);ctx.rotate(-Math.PI/2);ctx.fillText('IC',0,0);ctx.restore();
+}
+
+['vcc','beta','r1','r2','re','rc','vin','rl'].forEach(id=>document.getElementById(id).addEventListener('input',update));
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

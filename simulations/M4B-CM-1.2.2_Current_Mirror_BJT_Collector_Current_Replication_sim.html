@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CM-1.2.2 — BJT Collector Current Replication</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:11px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:9px 14px;margin-top:5px;font-size:13px;}
+  .ro span{font-size:18px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);} .ro.r span{color:#cc2200;}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:12px;}
+  .tab-row{display:flex;gap:8px;margin-bottom:14px;}
+  .tab{padding:6px 14px;border-radius:6px;border:1px solid var(--border);cursor:pointer;font-size:13px;background:var(--bg2);color:var(--text2);}
+  .tab.active{background:var(--accent);color:#fff;border-color:var(--accent);}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CM-1.2.2</div>
+  <h1>Current Mirror BJT — Collector Current Replication</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Mirror Parameters</h2>
+      <label>Reference Current I_ref (μA): <b id="ir_l">200</b> μA
+        <input type="range" id="iref" min="10" max="2000" value="200" step="10">
+      </label>
+      <label>Current Gain β: <b id="b_l">100</b>
+        <input type="range" id="beta" min="20" max="400" value="100" step="5">
+      </label>
+      <label>Early Voltage V_A (V): <b id="va_l">50</b> V
+        <input type="range" id="va" min="10" max="200" value="50" step="5">
+      </label>
+      <label>V_CE output (V): <b id="vce_l">2.0</b> V
+        <input type="range" id="vce" min="0.2" max="5" value="2.0" step="0.1">
+      </label>
+      <label>Number of Outputs N: <b id="n_l">1</b>
+        <input type="range" id="nout" min="1" max="8" value="1" step="1">
+      </label>
+
+      <div class="tab-row">
+        <div class="tab active" id="tab_simple" onclick="setTopo('simple')">Simple</div>
+        <div class="tab" id="tab_wilson" onclick="setTopo('wilson')">Wilson</div>
+        <div class="tab" id="tab_cas" onclick="setTopo('cascode')">Cascode</div>
+      </div>
+
+      <div class="ro">I_out (per branch): <span id="io">--</span> μA</div>
+      <div class="ro" style="margin-top:5px">Base current error: <span id="be">--</span> %</div>
+      <div class="ro" style="margin-top:5px">Early effect error: <span id="ee">--</span> %</div>
+      <div class="ro r" style="margin-top:5px">Total error vs I_ref: <span id="terr">--</span> %</div>
+    </div>
+
+    <div class="card">
+      <h2>I_out vs V_CE (Early Effect)</h2>
+      <canvas id="cv" height="260"></canvas>
+      <div class="insight">
+        Solid line: selected topology. Dashed blue: ideal (flat) output. Early effect causes slope in simple mirror (red). Cascode mirror nearly flat (green). Wilson corrects base error but not Early effect slope.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  let topo='simple';
+  function setTopo(t){
+    topo=t;
+    ['simple','wilson','cascode'].forEach(n=>{
+      document.getElementById('tab_'+n).className='tab'+(n===t?' active':'');
+    });
+    update();
+  }
+
+  function calcError(Iref,beta,VA,VCE,N,topo){
+    const VBE=0.68;
+    let baseErr, earlyErr;
+
+    if(topo==='simple'){
+      baseErr=-(N+1)/beta;
+    } else if(topo==='wilson'){
+      baseErr=-2/(beta*beta);
+    } else { // cascode
+      baseErr=-(2*(N+1))/(beta); // cascode adds extra base currents
+    }
+
+    if(topo==='cascode'){
+      // Cascode sets V_CE of Q1 ≈ V_CE of Q2 → Early error ≈ ΔV/r_out,cas
+      // r_out,cas = gm*ro^2, gm = Iref/VT, ro = VA/Iref
+      const VT=0.02585;
+      const ro=VA/(Iref*1e-6);
+      const gm=Iref*1e-6/VT;
+      const rout_cas=gm*ro*ro;
+      earlyErr=1/VCE/rout_cas*Iref*1e-6/(Iref*1e-6); // ΔI/I = VCE/r_out ÷ Iref
+      earlyErr=(VCE)/(rout_cas*(Iref*1e-6))*0.001; // small, ~0.001%
+      earlyErr=0.0001; // representative
+    } else {
+      earlyErr=((1+VCE/VA)/(1+VBE/VA))-1;
+    }
+
+    const totalErr=baseErr+earlyErr;
+    const Iout=Iref*(1+totalErr);
+    return{Iout,baseErr:baseErr*100,earlyErr:earlyErr*100,totalErr:totalErr*100};
+  }
+
+  function update(){
+    const Iref=+document.getElementById('iref').value;
+    const beta=+document.getElementById('beta').value;
+    const VA=+document.getElementById('va').value;
+    const VCE=+document.getElementById('vce').value;
+    const N=+document.getElementById('nout').value;
+
+    document.getElementById('ir_l').textContent=Iref;
+    document.getElementById('b_l').textContent=beta;
+    document.getElementById('va_l').textContent=VA;
+    document.getElementById('vce_l').textContent=VCE.toFixed(1);
+    document.getElementById('n_l').textContent=N;
+
+    const r=calcError(Iref,beta,VA,VCE,N,topo);
+    document.getElementById('io').textContent=r.Iout.toFixed(2);
+    document.getElementById('be').textContent=(r.baseErr>=0?'+':'')+r.baseErr.toFixed(3);
+    document.getElementById('ee').textContent=(r.earlyErr>=0?'+':'')+r.earlyErr.toFixed(3);
+    document.getElementById('terr').textContent=(r.totalErr>=0?'+':'')+r.totalErr.toFixed(3);
+
+    drawSweep(Iref,beta,VA,N);
+  }
+
+  function drawSweep(Iref,beta,VA,N){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=260;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,260);
+    const pL=52,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=260-pT-pB;
+
+    const VCEmax=5;
+    const Imax=Iref*1.15;
+
+    // Axes
+    ctx.strokeStyle='#8888aa';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(pL,pT);ctx.lineTo(pL,pT+ph);ctx.lineTo(pL+pw,pT+ph);ctx.stroke();
+    ctx.fillStyle='#8888aa';ctx.font='11px system-ui';
+    ctx.fillText('I_out (μA)',2,pT+ph/2);
+    ctx.fillText('V_CE (V)',pL+pw/2-20,260-4);
+
+    for(let i=0;i<=4;i++){
+      const v=(i/4)*Imax;
+      const y=pT+ph-(i/4)*ph;
+      ctx.fillText(v.toFixed(0),2,y+4);
+      ctx.strokeStyle='#8888aa22';ctx.beginPath();ctx.moveTo(pL,y);ctx.lineTo(pL+pw,y);ctx.stroke();
+    }
+    [0,1,2,3,4,5].forEach(v=>{
+      const x=pL+(v/VCEmax)*pw;
+      ctx.fillStyle='#8888aa';ctx.fillText(v,x-4,pT+ph+16);
+    });
+
+    // VBE threshold line
+    const VBE=0.68;
+    const xSat=pL+(VBE/VCEmax)*pw;
+    ctx.strokeStyle='#aaaaaa55';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(xSat,pT);ctx.lineTo(xSat,pT+ph);ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Draw curves: simple (red), wilson (orange), cascode (green)
+    const topos=[
+      {name:'simple',color:'#cc2200',dash:[]},
+      {name:'wilson',color:'#ff8800',dash:[6,4]},
+      {name:'cascode',color:'#00994d',dash:[]},
+    ];
+
+    topos.forEach(t=>{
+      ctx.strokeStyle=t.color; ctx.lineWidth=(t.name===topo)?2.5:1.5;
+      ctx.setLineDash(t.dash);
+      ctx.beginPath(); let first=true;
+      for(let px=0;px<=pw;px++){
+        const VCE_v=px/pw*VCEmax;
+        const r=calcError(Iref,beta,VA,VCE_v,N,t.name);
+        const I=Math.max(0,r.Iout);
+        const y=pT+ph-(Math.min(I,Imax)/Imax)*ph;
+        if(VCE_v<0.2){if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);}
+        else{if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);}
+      }
+      ctx.stroke();
+    });
+    ctx.setLineDash([]);
+
+    // Ideal line
+    const yIdeal=pT+ph-(Iref/Imax)*ph;
+    ctx.strokeStyle='#0066cc55';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(pL,yIdeal);ctx.lineTo(pL+pw,yIdeal);ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Legend
+    const items=[['#cc2200','Simple',[],20],['#ff8800','Wilson',[6,4],34],['#00994d','Cascode',[],48],['#0066cc55','Ideal',[4,3],62]];
+    items.forEach(([c,lbl,d,y])=>{
+      ctx.strokeStyle=c;ctx.lineWidth=1.5;ctx.setLineDash(d);
+      ctx.beginPath();ctx.moveTo(pL+pw-120,pT+y);ctx.lineTo(pL+pw-100,pT+y);ctx.stroke();
+      ctx.setLineDash([]);ctx.fillStyle='#8888aa';ctx.font='11px system-ui';ctx.fillText(lbl,pL+pw-96,pT+y+4);
+    });
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',update));
+  update();
+  window.addEventListener('resize',update);
+</script>
+</body>
+</html>

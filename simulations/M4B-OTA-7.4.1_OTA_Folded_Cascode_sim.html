@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-OTA-7.4.1 — Folded Cascode OTA</title>
+<style>
+  :root { --bg:#ffffff; --bg2:#f5f5f5; --text:#1a1a1a; --text2:#555; --border:#ddd; --accent:#0066cc; --green:#00994d; --canvas-bg:#fafafa; --warn:#cc4400; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1a1a1a; --bg2:#242424; --text:#e8e8e8; --text2:#aaa; --border:#444; --canvas-bg:#1f1f1f; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); font-size:14px; }
+  header { background:var(--bg2); border-bottom:2px solid var(--accent); padding:12px 20px; }
+  header .id { font-family:monospace; font-size:12px; color:var(--accent); font-weight:700; }
+  header h1 { font-size:16px; margin-top:2px; }
+  .tabs { display:flex; border-bottom:1px solid var(--border); background:var(--bg2); padding:0 16px; }
+  .tab { padding:8px 16px; cursor:pointer; font-size:13px; border-bottom:3px solid transparent; color:var(--text2); }
+  .tab.active { border-bottom-color:var(--accent); color:var(--accent); font-weight:700; }
+  .tab-content { display:none; }
+  .tab-content.active { display:flex; gap:16px; padding:16px; flex-wrap:wrap; }
+  .panel { background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:14px; }
+  .sim-panel { flex:1; min-width:380px; }
+  .ctrl-panel { width:270px; min-width:240px; }
+  canvas { background:var(--canvas-bg); border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .readouts { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+  .readout { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 10px; }
+  .readout label { font-size:11px; color:var(--text2); display:block; }
+  .readout .val { font-family:monospace; font-size:14px; font-weight:700; color:var(--accent); }
+  .ctrl { margin-bottom:12px; }
+  .ctrl label { display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px; }
+  .ctrl label span { font-family:monospace; color:var(--accent); font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .section-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text2); margin-bottom:8px; }
+  .insight { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 12px; margin-top:10px; font-size:12px; color:var(--text2); line-height:1.5; }
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4B-OTA-7.4.1</div>
+  <h1>OTA — Folded Cascode OTA</h1>
+</header>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">Topology Comparison</div>
+  <div class="tab" onclick="showTab(1)">Folding Node &amp; Bias</div>
+</div>
+
+<!-- TAB 0 -->
+<div class="tab-content active" id="tab0">
+  <div class="panel sim-panel">
+    <canvas id="cv0" height="340"></canvas>
+    <div class="readouts">
+      <div class="readout"><label>Folded DC Gain</label><span class="val" id="r0-avf">—</span></div>
+      <div class="readout"><label>Tele DC Gain</label><span class="val" id="r0-avt">—</span></div>
+      <div class="readout"><label>Folded Swing</label><span class="val" id="r0-swf">—</span></div>
+      <div class="readout"><label>Tele Swing</label><span class="val" id="r0-swt">—</span></div>
+      <div class="readout"><label>GBW (both)</label><span class="val" id="r0-gbw">—</span></div>
+      <div class="readout"><label>Power ratio F/T</label><span class="val" id="r0-pwr">—</span></div>
+    </div>
+    <div class="insight" id="ins0">—</div>
+  </div>
+  <div class="panel ctrl-panel">
+    <div class="section-title">Shared Parameters</div>
+    <div class="ctrl">
+      <label>ID (µA) <span id="lbl0-id">100</span></label>
+      <input type="range" id="sl0-id" min="10" max="300" step="10" value="100" oninput="update0()">
+    </div>
+    <div class="ctrl">
+      <label>Vov input (mV) <span id="lbl0-vov">150</span></label>
+      <input type="range" id="sl0-vov" min="50" max="300" step="10" value="150" oninput="update0()">
+    </div>
+    <div class="ctrl">
+      <label>Vov cascode (mV) <span id="lbl0-vovc">100</span></label>
+      <input type="range" id="sl0-vovc" min="50" max="200" step="10" value="100" oninput="update0()">
+    </div>
+    <div class="ctrl">
+      <label>λ (V⁻¹) <span id="lbl0-lam">0.05</span></label>
+      <input type="range" id="sl0-lam" min="0.01" max="0.3" step="0.01" value="0.05" oninput="update0()">
+    </div>
+    <div class="ctrl">
+      <label>VDD (V) <span id="lbl0-vdd">1.8</span></label>
+      <input type="range" id="sl0-vdd" min="0.9" max="3.3" step="0.1" value="1.8" oninput="update0()">
+    </div>
+    <div class="ctrl">
+      <label>CL (pF) <span id="lbl0-cl">1.0</span></label>
+      <input type="range" id="sl0-cl" min="0.1" max="10" step="0.1" value="1.0" oninput="update0()">
+    </div>
+    <div class="ctrl">
+      <label>Folded I_B factor <span id="lbl0-ibf">1.5</span></label>
+      <input type="range" id="sl0-ibf" min="1.0" max="3.0" step="0.1" value="1.5" oninput="update0()">
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1 -->
+<div class="tab-content" id="tab1">
+  <div class="panel sim-panel">
+    <canvas id="cv1" height="340"></canvas>
+    <div class="readouts">
+      <div class="readout"><label>Quiescent I_fold</label><span class="val" id="r1-ifold">—</span></div>
+      <div class="readout"><label>Max input curr</label><span class="val" id="r1-imax">—</span></div>
+      <div class="readout"><label>Saturation margin</label><span class="val" id="r1-margin">—</span></div>
+      <div class="readout"><label>fp_fold</label><span class="val" id="r1-fpfold">—</span></div>
+    </div>
+    <div class="insight" id="ins1">—</div>
+  </div>
+  <div class="panel ctrl-panel">
+    <div class="section-title">Bias Currents</div>
+    <div class="ctrl">
+      <label>ISS/2 per side (µA) <span id="lbl1-iss">100</span></label>
+      <input type="range" id="sl1-iss" min="10" max="300" step="10" value="100" oninput="update1()">
+    </div>
+    <div class="ctrl">
+      <label>I_B (µA) <span id="lbl1-ib">150</span></label>
+      <input type="range" id="sl1-ib" min="10" max="400" step="10" value="150" oninput="update1()">
+    </div>
+    <div class="ctrl">
+      <label>gm_cascode (mA/V) <span id="lbl1-gmc">2.0</span></label>
+      <input type="range" id="sl1-gmc" min="0.5" max="10" step="0.5" value="2.0" oninput="update1()">
+    </div>
+    <div class="ctrl">
+      <label>C_fold (fF) <span id="lbl1-cf">100</span></label>
+      <input type="range" id="sl1-cf" min="20" max="500" step="10" value="100" oninput="update1()">
+    </div>
+    <div class="section-title" style="margin-top:8px">Input Vid (mV)</div>
+    <div class="ctrl">
+      <label>Vid for sweep <span id="lbl1-vid">0</span></label>
+      <input type="range" id="sl1-vid" min="-300" max="300" step="10" value="0" oninput="update1()">
+    </div>
+  </div>
+</div>
+
+<script>
+function showTab(n){
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.tab-content').forEach((t,i)=>t.classList.toggle('active',i===n));
+  if(n===0)update0();else update1();
+}
+function fmt(f){return f>=1e9?(f/1e9).toFixed(2)+'GHz':f>=1e6?(f/1e6).toFixed(2)+'MHz':f>=1e3?(f/1e3).toFixed(1)+'kHz':f.toFixed(0)+'Hz';}
+
+function update0(){
+  const id=parseFloat(document.getElementById('sl0-id').value)*1e-6;
+  const vov=parseFloat(document.getElementById('sl0-vov').value)*1e-3;
+  const vovc=parseFloat(document.getElementById('sl0-vovc').value)*1e-3;
+  const lam=parseFloat(document.getElementById('sl0-lam').value);
+  const vdd=parseFloat(document.getElementById('sl0-vdd').value);
+  const cl=parseFloat(document.getElementById('sl0-cl').value)*1e-12;
+  const ibf=parseFloat(document.getElementById('sl0-ibf').value);
+
+  document.getElementById('lbl0-id').textContent=(id*1e6).toFixed(0);
+  document.getElementById('lbl0-vov').textContent=(vov*1e3).toFixed(0);
+  document.getElementById('lbl0-vovc').textContent=(vovc*1e3).toFixed(0);
+  document.getElementById('lbl0-lam').textContent=lam.toFixed(2);
+  document.getElementById('lbl0-vdd').textContent=vdd.toFixed(1);
+  document.getElementById('lbl0-cl').textContent=(cl*1e12).toFixed(1);
+  document.getElementById('lbl0-ibf').textContent=ibf.toFixed(1);
+
+  const gm1=2*id/vov;
+  const gmc=2*id/vovc;
+  const ro=1/(lam*id);
+  const rout=(gmc*ro*ro)/2; // parallel of NMOS and PMOS cascode stacks
+
+  // Telescopic
+  const av_tel=gm1*rout;
+  const swing_tel=Math.max(0,vdd-5*Math.max(vov,vovc));
+  const pwr_tel=2*id*vdd; // ISS = 2*id
+
+  // Folded
+  const ib=ibf*id; // bias per side
+  const av_fold=gm1*rout; // approximately same output resistance
+  const swing_fold=Math.max(0,vdd-4*vovc);
+  const pwr_fold=(2*id+2*ib)*vdd; // tail + bias current sources
+
+  const gbw=gm1/(2*Math.PI*cl);
+
+  const fmtdB=v=>(20*Math.log10(v)).toFixed(0)+'dB';
+  document.getElementById('r0-avf').textContent=fmtdB(av_fold);document.getElementById('r0-avf').style.color=av_fold>=10000?'var(--green)':av_fold>=1000?'#cc8800':'var(--warn)';
+  document.getElementById('r0-avt').textContent=fmtdB(av_tel);
+  document.getElementById('r0-swf').textContent=swing_fold.toFixed(2)+'V';document.getElementById('r0-swf').style.color=swing_fold>=0.5?'var(--green)':swing_fold>=0.2?'#cc8800':'var(--warn)';
+  document.getElementById('r0-swt').textContent=swing_tel.toFixed(2)+'V';
+  document.getElementById('r0-gbw').textContent=fmt(gbw);
+  const pr=pwr_fold/pwr_tel;document.getElementById('r0-pwr').textContent=pr.toFixed(2)+'×';document.getElementById('r0-pwr').style.color=pr<=1.5?'var(--green)':pr<=2.5?'#cc8800':'var(--warn)';
+
+  document.getElementById('ins0').textContent=
+    `Both topologies: gm1=${(gm1*1e3).toFixed(1)}mA/V, GBW=${fmt(gbw)}. ` +
+    `Folded: swing=${swing_fold.toFixed(2)}V, power=${(pwr_fold*1e6).toFixed(0)}µW. ` +
+    `Tele: swing=${swing_tel.toFixed(2)}V, power=${(pwr_tel*1e6).toFixed(0)}µW. ` +
+    `Folded uses ${pr.toFixed(1)}× more power for ${(swing_fold/Math.max(swing_tel,0.001)).toFixed(1)}× more swing.`;
+
+  draw0(vdd,vov,vovc,swing_fold,swing_tel,ibf,id);
+}
+
+function draw0(vdd,vov,vovc,sw_f,sw_t,ibf,id){
+  const canvas=document.getElementById('cv0');
+  const W=canvas.offsetWidth||520;canvas.width=W;canvas.height=340;
+  const ctx=canvas.getContext('2d');
+  const pad={l:20,r:20,t:30,b:40};
+  const pw=W-pad.l-pad.r,ph=340-pad.t-pad.b;
+  ctx.fillStyle='var(--canvas-bg)';ctx.fillRect(0,0,W,340);
+
+  // Two side-by-side swing diagrams
+  const colW=(pw-20)/2;
+  const cols=['Telescopic','Folded Cascode'];
+  const swings=[sw_t,sw_f];
+
+  cols.forEach((label,ci)=>{
+    const cx=pad.l+ci*(colW+20);
+    const vToY=v=>pad.t+ph-v/vdd*ph;
+
+    ctx.fillStyle='var(--text2)';ctx.font='11px sans-serif';ctx.textAlign='center';ctx.fillText(label,cx+colW/2,pad.t-8);
+
+    // Supply rails
+    ctx.strokeStyle='rgba(200,0,0,0.8)';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(cx,vToY(vdd));ctx.lineTo(cx+colW,vToY(vdd));ctx.stroke();
+    ctx.beginPath();ctx.moveTo(cx,vToY(0));ctx.lineTo(cx+colW,vToY(0));ctx.stroke();
+
+    // Stack visualization
+    const sw=swings[ci];
+    const vmin=ci===0?(vov*3):(vovc*2); // bottom dead zone
+    const vmax=ci===0?(vdd-vov*2):(vdd-vovc*2); // top dead zone
+
+    // Dead zones
+    ctx.fillStyle='rgba(204,68,0,0.2)';
+    ctx.fillRect(cx+5,pad.t,colW-10,vToY(vmax)-pad.t); // top dead
+    ctx.fillRect(cx+5,vToY(vmin),colW-10,pad.t+ph-vToY(vmin)); // bottom dead
+
+    // Swing zone
+    if(sw>0){
+      ctx.fillStyle='rgba(0,153,77,0.15)';
+      ctx.fillRect(cx+5,vToY(vmax),colW-10,vToY(vmin)-vToY(vmax));
+      ctx.fillStyle='#00994d';ctx.font='bold 11px sans-serif';ctx.textAlign='center';
+      ctx.fillText(sw.toFixed(2)+'V',cx+colW/2,(vToY(vmax)+vToY(vmin))/2+4);
+    }else{
+      ctx.fillStyle='#cc4400';ctx.font='10px sans-serif';ctx.textAlign='center';
+      ctx.fillText('No swing!',cx+colW/2,pad.t+ph/2);
+    }
+
+    // Voltage labels
+    ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='left';
+    ctx.fillText('VDD='+vdd.toFixed(1)+'V',cx+2,vToY(vdd)+10);
+    ctx.fillText('VSS=0V',cx+2,vToY(0)-3);
+    ctx.fillStyle='#cc4400';ctx.font='7px monospace';
+    ctx.fillText(ci===0?'5×Vov stack':'2×Vov stack',cx+colW/2-20,vToY(vmin)+20);
+    ctx.fillText(ci===0?'2×Vov':'2×Vov',cx+colW/2-15,vToY(vmax)-5);
+
+    // Percentage
+    const pct=sw/vdd*100;
+    ctx.fillStyle='var(--text2)';ctx.font='10px monospace';ctx.textAlign='center';
+    ctx.fillText(pct.toFixed(0)+'% of VDD',cx+colW/2,pad.t+ph+14);
+  });
+}
+
+function update1(){
+  const iss2=parseFloat(document.getElementById('sl1-iss').value)*1e-6;
+  const ib=parseFloat(document.getElementById('sl1-ib').value)*1e-6;
+  const gmc=parseFloat(document.getElementById('sl1-gmc').value)/1000;
+  const cf=parseFloat(document.getElementById('sl1-cf').value)*1e-15;
+  const vid=parseFloat(document.getElementById('sl1-vid').value)*1e-3;
+  const vov=0.15; // assumed
+
+  document.getElementById('lbl1-iss').textContent=(iss2*1e6).toFixed(0);
+  document.getElementById('lbl1-ib').textContent=(ib*1e6).toFixed(0);
+  document.getElementById('lbl1-gmc').textContent=(gmc*1e3).toFixed(1);
+  document.getElementById('lbl1-cf').textContent=(cf*1e15).toFixed(0);
+  document.getElementById('lbl1-vid').textContent=(vid*1e3).toFixed(0);
+
+  const gm1=iss2/vov;
+  const id1=iss2+gm1*vid/2; // current in M1
+  const ifold=ib-id1; // current at folding node
+  const imax=iss2*2; // max ISS
+  const margin=ib-iss2*2; // safety margin (negative means saturation)
+  const fp_fold=gmc/(2*Math.PI*cf);
+
+  document.getElementById('r1-ifold').textContent=(ifold*1e6).toFixed(1)+'µA';
+  document.getElementById('r1-imax').textContent=(iss2*2*1e6).toFixed(0)+'µA (ISS)';
+  const margEl=document.getElementById('r1-margin');margEl.textContent=(margin*1e6).toFixed(1)+'µA';margEl.style.color=margin>0?'var(--green)':margin>-10e-6?'#cc8800':'var(--warn)';
+  document.getElementById('r1-fpfold').textContent=fmt(fp_fold);
+
+  document.getElementById('ins1').textContent=
+    `Quiescent: I_fold=I_B−ISS/2=${(ib*1e6).toFixed(0)}−${(iss2*1e6).toFixed(0)}=${(ifold*1e6).toFixed(0)}µA. ` +
+    `At Vid=${(vid*1e3).toFixed(0)}mV: I_D1≈${(id1*1e6).toFixed(0)}µA, I_fold=${(Math.max(0,ib-id1)*1e6).toFixed(0)}µA. ` +
+    `Margin before saturation: I_B−ISS=${((ib-2*iss2)*1e6).toFixed(0)}µA. ` +
+    `${margin>=0?'OK — OTA not saturated.':'WARNING: OTA saturates. Increase I_B.'} ` +
+    `fp_fold=${fmt(fp_fold)}.`;
+
+  draw1(iss2,ib,gmc,cf,vid,vov,ifold,fp_fold);
+}
+
+function draw1(iss2,ib,gmc,cf,vid,vov,ifold,fp_fold){
+  const canvas=document.getElementById('cv1');
+  const W=canvas.offsetWidth||520;canvas.width=W;canvas.height=340;
+  const ctx=canvas.getContext('2d');
+  const pad={l:55,r:20,t:30,b:40};
+  const pw=W-pad.l-pad.r,ph=340-pad.t-pad.b;
+  ctx.fillStyle='var(--canvas-bg)';ctx.fillRect(0,0,W,340);
+
+  // Plot I_fold vs Vid
+  const gm1=iss2/vov;
+  const vidMax=iss2/gm1*1.1;
+  const vToX=v=>pad.l+(v+vidMax)/(2*vidMax)*pw;
+  const iToY=i=>pad.t+ph-(i/(ib*1.5))*ph;
+
+  // Grid
+  ctx.strokeStyle='var(--border)';ctx.lineWidth=0.7;
+  [0,0.5,1.0,1.5].map(f=>f*ib).forEach(ii=>{
+    const y=iToY(ii);if(y<pad.t-2||y>pad.t+ph+2)return;
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+    ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='right';ctx.fillText((ii*1e6).toFixed(0)+'µA',pad.l-3,y+3);
+  });
+
+  // Saturation limit (I_fold = 0)
+  const yzero=iToY(0);ctx.strokeStyle='rgba(204,68,0,0.5)';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,yzero);ctx.lineTo(pad.l+pw,yzero);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#cc4400';ctx.font='9px monospace';ctx.textAlign='left';ctx.fillText('I_fold=0 → saturation',pad.l+2,yzero-4);
+
+  // I_B line
+  const yib=iToY(ib);ctx.strokeStyle='rgba(0,102,204,0.4)';ctx.lineWidth=1;ctx.setLineDash([3,2]);
+  ctx.beginPath();ctx.moveTo(pad.l,yib);ctx.lineTo(pad.l+pw,yib);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='rgba(0,102,204,0.7)';ctx.font='9px monospace';ctx.textAlign='right';ctx.fillText('I_B='+(ib*1e6).toFixed(0)+'µA',pad.l+pw-2,yib-4);
+
+  // I_fold vs Vid curve
+  ctx.strokeStyle='#00994d';ctx.lineWidth=2;ctx.beginPath();let first=true;
+  for(let i=0;i<=200;i++){
+    const v=-vidMax+i/200*2*vidMax;
+    const id1=Math.min(2*iss2,Math.max(0,iss2+gm1*v/2));
+    const ifl=Math.max(0,ib-id1);
+    const x=vToX(v);const y=iToY(ifl);
+    first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;
+  }ctx.stroke();
+
+  // Operating point
+  const id1_op=Math.min(2*iss2,Math.max(0,iss2+gm1*vid/2));
+  const ifl_op=Math.max(0,ib-id1_op);
+  ctx.fillStyle='#cc4400';ctx.beginPath();ctx.arc(vToX(vid),iToY(ifl_op),5,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='var(--text)';ctx.font='9px monospace';ctx.textAlign='left';
+  ctx.fillText('I_fold='+(ifl_op*1e6).toFixed(0)+'µA @ Vid='+(vid*1e3).toFixed(0)+'mV',vToX(vid)+7,iToY(ifl_op)-4);
+
+  // x-axis labels
+  ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='center';
+  [-1,-0.5,0,0.5,1].forEach(f=>ctx.fillText((f*vidMax*1e3).toFixed(0)+'mV',vToX(f*vidMax),pad.t+ph+14));
+  ctx.fillStyle='var(--text2)';ctx.font='9px sans-serif';ctx.textAlign='center';ctx.fillText('Vid (mV)',pad.l+pw/2,pad.t+ph+28);
+  ctx.save();ctx.translate(14,pad.t+ph/2);ctx.rotate(-Math.PI/2);ctx.fillStyle='var(--text2)';ctx.textAlign='center';ctx.fillText('I_fold = I_B − I_D1 (µA)',0,0);ctx.restore();
+  ctx.fillStyle='#00994d';ctx.font='9px sans-serif';ctx.textAlign='left';ctx.fillText('I_fold vs Vid',pad.l+3,pad.t+8);
+  ctx.fillStyle='var(--text2)';ctx.fillText('fp_fold=gm_c/(2π·C_fold)='+fmt(fp_fold),pad.l+3,pad.t+18);
+}
+update0();
+</script>
+</body>
+</html>

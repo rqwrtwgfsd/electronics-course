@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>M4B-2OTA-8.3.1 — Noise and Offset Simulator</title>
+<style>
+  body { font-family: 'Courier New', monospace; background: #0a0a0a; color: #e0e0e0; margin: 0; padding: 20px; }
+  h1 { color: #00bcd4; font-size: 1.1em; margin-bottom: 4px; }
+  .subtitle { color: #888; font-size: 0.85em; margin-bottom: 20px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .tab { padding: 8px 16px; background: #1a1a1a; border: 1px solid #333; cursor: pointer; font-family: inherit; font-size: 0.85em; color: #aaa; }
+  .tab.active { background: #00bcd4; color: #000; border-color: #00bcd4; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  canvas { background: #111; border: 1px solid #333; display: block; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+  .ctrl { background: #1a1a1a; border: 1px solid #333; padding: 8px 12px; min-width: 180px; }
+  .ctrl label { display: block; color: #aaa; font-size: 0.78em; margin-bottom: 4px; }
+  .ctrl input[type=range] { width: 100%; accent-color: #00bcd4; }
+  .ctrl .val { color: #00bcd4; font-size: 0.85em; }
+  .ctrl select { background: #222; color: #e0e0e0; border: 1px solid #444; padding: 4px; font-family: inherit; width: 100%; }
+  .readouts { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .ro { background: #1a1a1a; border: 1px solid #444; padding: 6px 12px; font-size: 0.82em; }
+  .ro span { color: #00bcd4; }
+  .note { color: #888; font-size: 0.8em; margin: 6px 0; }
+</style>
+</head>
+<body>
+<h1>M4B-2OTA-8.3.1 — OTA Noise, Offset, and Mismatch</h1>
+<div class="subtitle">Input-referred noise density, 1/f corner, integrated noise, and offset prediction</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab(0)">Noise Spectrum</div>
+  <div class="tab" onclick="switchTab(1)">Noise vs gm Trade-off</div>
+  <div class="tab" onclick="switchTab(2)">Offset Budget</div>
+</div>
+
+<!-- TAB 0: Noise Spectrum -->
+<div class="panel active" id="tab0">
+  <div class="controls">
+    <div class="ctrl">
+      <label>gm1 (mA/V): <span class="val" id="gm1_0_v">1.0</span></label>
+      <input type="range" id="gm1_0" min="0.05" max="10" step="0.05" value="1.0" oninput="drawNoise()">
+    </div>
+    <div class="ctrl">
+      <label>gm3/gm1 ratio: <span class="val" id="ratio_0_v">0.25</span></label>
+      <input type="range" id="ratio_0" min="0.05" max="1.5" step="0.05" value="0.25" oninput="drawNoise()">
+    </div>
+    <div class="ctrl">
+      <label>γ (noise excess): <span class="val" id="gamma_0_v">0.67</span></label>
+      <input type="range" id="gamma_0" min="0.5" max="3.0" step="0.05" value="0.67" oninput="drawNoise()">
+    </div>
+    <div class="ctrl">
+      <label>1/f corner fc (kHz): <span class="val" id="fc_0_v">100</span></label>
+      <input type="range" id="fc_0" min="1" max="10000" step="1" value="100" oninput="drawNoise()">
+    </div>
+    <div class="ctrl">
+      <label>GBW (MHz): <span class="val" id="gbw_0_v">10</span></label>
+      <input type="range" id="gbw_0" min="0.1" max="1000" step="0.5" value="10" oninput="drawNoise()">
+    </div>
+    <div class="ctrl">
+      <label>Bandwidth of interest (kHz): <span class="val" id="bw_0_v">10</span></label>
+      <input type="range" id="bw_0" min="0.1" max="10000" step="0.1" value="10" oninput="drawNoise()">
+    </div>
+  </div>
+  <canvas id="noise_canvas" width="860" height="380"></canvas>
+  <div class="readouts" id="ro0"></div>
+  <div class="note">Blue = total noise (thermal + 1/f). Orange = thermal only. Red = 1/f only. Green dashed = bandwidth of interest. The 1/f corner is where thermal = flicker.</div>
+</div>
+
+<!-- TAB 1: Noise vs gm Trade-off -->
+<div class="panel" id="tab1">
+  <div class="controls">
+    <div class="ctrl">
+      <label>Vov (mV): <span class="val" id="vov1_v">100</span></label>
+      <input type="range" id="vov1" min="20" max="400" step="5" value="100" oninput="drawNoisePower()">
+    </div>
+    <div class="ctrl">
+      <label>VDD (V): <span class="val" id="vdd1_v">1.2</span></label>
+      <input type="range" id="vdd1" min="0.6" max="5.0" step="0.1" value="1.2" oninput="drawNoisePower()">
+    </div>
+    <div class="ctrl">
+      <label>γ: <span class="val" id="gamma1_v">0.67</span></label>
+      <input type="range" id="gamma1" min="0.5" max="3.0" step="0.05" value="0.67" oninput="drawNoisePower()">
+    </div>
+    <div class="ctrl">
+      <label>gm3/gm1 ratio: <span class="val" id="ratio1_v">0.25</span></label>
+      <input type="range" id="ratio1" min="0.0" max="1.5" step="0.05" value="0.25" oninput="drawNoisePower()">
+    </div>
+  </div>
+  <canvas id="canvas1" width="860" height="360"></canvas>
+  <div class="note">Noise density vs Power (or gm1). Trade: higher gm1 (more current) → lower noise. The NPP (Noise-Power Product) is a constant for fixed Vov and VDD.</div>
+</div>
+
+<!-- TAB 2: Offset Budget -->
+<div class="panel" id="tab2">
+  <div class="controls">
+    <div class="ctrl">
+      <label>W_M1 (µm): <span class="val" id="wm1_v">20</span></label>
+      <input type="range" id="wm1" min="1" max="200" step="1" value="20" oninput="drawOffset()">
+    </div>
+    <div class="ctrl">
+      <label>L_M1 (µm): <span class="val" id="lm1_v">0.50</span></label>
+      <input type="range" id="lm1" min="0.05" max="5.0" step="0.05" value="0.5" oninput="drawOffset()">
+    </div>
+    <div class="ctrl">
+      <label>W_M3 (µm): <span class="val" id="wm3_v">10</span></label>
+      <input type="range" id="wm3" min="1" max="200" step="1" value="10" oninput="drawOffset()">
+    </div>
+    <div class="ctrl">
+      <label>L_M3 (µm): <span class="val" id="lm3_v">0.50</span></label>
+      <input type="range" id="lm3" min="0.05" max="5.0" step="0.05" value="0.5" oninput="drawOffset()">
+    </div>
+    <div class="ctrl">
+      <label>Process:
+        <select id="proc2" onchange="drawOffset()">
+          <option value="180">TSMC 180nm (A_Vth=8)</option>
+          <option value="65" selected>TSMC 65nm (A_Vth=4)</option>
+          <option value="28">TSMC 28nm (A_Vth=2)</option>
+        </select>
+      </label>
+    </div>
+    <div class="ctrl">
+      <label>gm3/gm1 ratio: <span class="val" id="ratio2_v">0.25</span></label>
+      <input type="range" id="ratio2" min="0.05" max="1.5" step="0.05" value="0.25" oninput="drawOffset()">
+    </div>
+  </div>
+  <canvas id="canvas2" width="860" height="320"></canvas>
+  <div class="readouts" id="ro2"></div>
+</div>
+
+<script>
+const kB = 1.38e-23, T = 300;
+const AVth = { '180': 8e-3, '65': 4e-3, '28': 2e-3 }; // V·µm
+
+function getSV(id, dec) {
+  const v = parseFloat(document.getElementById(id).value);
+  document.getElementById(id+'_v').textContent = v.toFixed(dec);
+  return v;
+}
+
+function drawNoise() {
+  const gm1  = getSV('gm1_0', 2) * 1e-3;
+  const ratio = getSV('ratio_0', 2);
+  const gamma = getSV('gamma_0', 2);
+  const fc   = getSV('fc_0', 0) * 1e3;
+  const gbw  = getSV('gbw_0', 1) * 1e6;
+  const bw   = getSV('bw_0', 1) * 1e3;
+
+  const Svn_th = 8 * kB * T * gamma / gm1 * (1 + ratio);
+
+  const canvas = document.getElementById('noise_canvas');
+  const ctx    = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const M = {top:40, bottom:50, left:75, right:50};
+  const pw = W-M.left-M.right, ph = H-M.top-M.bottom;
+
+  const fmin = 1, fmax = Math.min(gbw*2, 1e10);
+  const N = 300;
+  const freqs = Array.from({length:N}, (_,i) => Math.pow(10, Math.log10(fmin) + i*(Math.log10(fmax)-Math.log10(fmin))/(N-1)));
+
+  const svTh  = freqs.map(_ => Svn_th);
+  const sv1f  = freqs.map(f => Svn_th * fc / f);
+  const svTot = freqs.map((f,i) => svTh[i] + sv1f[i]);
+
+  const maxSV = Math.max(...svTot.map(Math.sqrt)) * 1.5;
+  const minSV = Math.min(...svTh.map(Math.sqrt)) * 0.3;
+
+  function xC(f)   { return M.left + (Math.log10(f)-Math.log10(fmin))/(Math.log10(fmax)-Math.log10(fmin))*pw; }
+  function yC(vn)  { return M.top + (1-(Math.log10(vn)-Math.log10(minSV))/(Math.log10(maxSV)-Math.log10(minSV)))*ph; }
+
+  // Grid
+  [1,10,100,1e3,1e4,1e5,1e6,1e7,1e8,1e9].forEach(f => {
+    if (f >= fmin && f <= fmax) {
+      const x = xC(f);
+      ctx.strokeStyle='#1a1a1a'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(x,M.top); ctx.lineTo(x,H-M.bottom); ctx.stroke();
+      ctx.fillStyle='#555'; ctx.font='9px Courier New'; ctx.textAlign='center';
+      const lab = f>=1e9?(f/1e9)+'GHz':f>=1e6?(f/1e6)+'MHz':f>=1e3?(f/1e3)+'kHz':f+'Hz';
+      ctx.fillText(lab, x, H-M.bottom+14);
+    }
+  });
+
+  // Noise curves
+  [['#ff9800', sv1f], ['#2196f3', svTh], ['#4caf50', svTot]].forEach(([color, sv], ci) => {
+    const label = ['1/f only','Thermal only','Total'][ci];
+    ctx.strokeStyle = color; ctx.lineWidth = ci===2?2.5:1.5;
+    if (ci === 0) ctx.setLineDash([3,3]);
+    ctx.beginPath();
+    sv.forEach((v,i) => {
+      const vn = Math.sqrt(v);
+      if (vn > 0 && vn >= minSV && vn <= maxSV) {
+        i===0 ? ctx.moveTo(xC(freqs[i]),yC(vn)) : ctx.lineTo(xC(freqs[i]),yC(vn));
+      }
+    });
+    ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = color; ctx.font='9px Courier New'; ctx.textAlign='left'; ctx.fillRect(M.left+10+ci*160,M.top+5,12,3);
+    ctx.fillStyle='#aaa'; ctx.fillText(label, M.left+26+ci*160, M.top+10);
+  });
+
+  // Bandwidth line
+  if (bw <= fmax) {
+    const x = xC(bw);
+    ctx.strokeStyle='#4caf50'; ctx.lineWidth=1.5; ctx.setLineDash([4,2]);
+    ctx.beginPath(); ctx.moveTo(x,M.top); ctx.lineTo(x,H-M.bottom); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#4caf50'; ctx.font='9px Courier New'; ctx.textAlign='center';
+    ctx.fillText('BW', x, M.top-4);
+  }
+
+  // fc marker
+  if (fc >= fmin && fc <= fmax) {
+    const x = xC(fc);
+    ctx.strokeStyle='#ffeb3b'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(x,M.top); ctx.lineTo(x,H-M.bottom); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#ffeb3b'; ctx.font='9px Courier New'; ctx.textAlign='center';
+    ctx.fillText('fc(1/f)', x, M.top-4);
+  }
+
+  // Y-axis labels
+  const vnTh = Math.sqrt(Svn_th);
+  [minSV, vnTh*0.5, vnTh, vnTh*2, vnTh*5, maxSV].forEach(vn => {
+    if (vn > 0) {
+      const y = yC(vn); ctx.fillStyle='#555'; ctx.font='9px Courier New'; ctx.textAlign='right';
+      ctx.fillText(vn.toFixed(2)+'nV/√Hz', M.left-4, y+3);
+    }
+  });
+
+  ctx.strokeStyle='#333'; ctx.strokeRect(M.left,M.top,pw,ph);
+  ctx.fillStyle='#888'; ctx.font='10px Courier New'; ctx.textAlign='center';
+  ctx.fillText('Input-Referred Noise Density (nV/√Hz) — log-log', M.left+pw/2, M.top-10);
+  ctx.fillText('Frequency (Hz)', M.left+pw/2, H-8);
+
+  // Integrated noise
+  const BW_int = bw;
+  let Vn_rms_sq = 0;
+  freqs.forEach((f,i) => {
+    if (i > 0 && f <= BW_int) {
+      const df = freqs[i] - freqs[i-1];
+      Vn_rms_sq += svTot[i] * df;
+    }
+  });
+  const Vn_rms = Math.sqrt(Vn_rms_sq);
+
+  document.getElementById('ro0').innerHTML = `
+    <div class="ro">Thermal noise: <span>${(Math.sqrt(Svn_th)*1e9).toFixed(2)} nV/√Hz</span></div>
+    <div class="ro">1/f at 1kHz: <span>${(Math.sqrt(Svn_th*fc/1e3)*1e9).toFixed(2)} nV/√Hz</span></div>
+    <div class="ro">Total at fc: <span>${(Math.sqrt(Svn_th*2)*1e9).toFixed(2)} nV/√Hz (√2 × thermal)</span></div>
+    <div class="ro">Integrated noise (0–${(bw/1e3).toFixed(0)}kHz): <span>${(Vn_rms*1e6).toFixed(2)} µV_rms</span></div>
+    <div class="ro">gm3/gm1 factor: <span>${(1+ratio).toFixed(2)}× thermal</span></div>`;
+}
+
+function drawNoisePower() {
+  const vov   = getSV('vov1',  0) * 1e-3;
+  const vdd   = getSV('vdd1',  1);
+  const gamma = getSV('gamma1', 2);
+  const ratio = getSV('ratio1', 2);
+
+  const canvas = document.getElementById('canvas1');
+  const ctx    = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  const MG = {top:40, bottom:50, left:80, right:120};
+  const pw = W-MG.left-MG.right, ph = H-MG.top-MG.bottom;
+
+  const gm1s = Array.from({length:80}, (_,i) => 0.01e-3 * Math.pow(1000, i/79));
+  const sns  = gm1s.map(gm1 => Math.sqrt(8*kB*T*gamma/gm1*(1+ratio))*1e9); // nV/√Hz
+  const pwrs  = gm1s.map(gm1 => gm1*vov*vdd*1e3); // mW (ISS × VDD = gm1×Vov×VDD, approximate)
+  const npps  = gm1s.map((gm1,i) => sns[i] * 1e-9 * pwrs[i] * 1e-3); // NPP in nV/√Hz × W
+
+  const maxSN = sns[0]; const minSN = sns[sns.length-1];
+  const maxPW = pwrs[pwrs.length-1];
+
+  function xC(gm1) { return MG.left + (Math.log10(gm1)-Math.log10(gm1s[0]))/(Math.log10(gm1s[gm1s.length-1])-Math.log10(gm1s[0]))*pw; }
+  function ySN(sn) { return MG.top + (1 - (Math.log10(sn)-Math.log10(minSN))/(Math.log10(maxSN)-Math.log10(minSN)))*ph; }
+
+  ctx.strokeStyle='#2196f3'; ctx.lineWidth=2.5; ctx.beginPath();
+  sns.forEach((sn,i)=>{ i===0?ctx.moveTo(xC(gm1s[i]),ySN(sn)):ctx.lineTo(xC(gm1s[i]),ySN(sn)); });
+  ctx.stroke();
+
+  // Power axis on right
+  ctx.fillStyle='#555'; ctx.font='9px Courier New'; ctx.textAlign='left';
+  [0.01,0.1,1.0,10].forEach(pw_val => {
+    if (pw_val <= maxPW) {
+      // find gm1 that gives this power
+      const gm1_at = pw_val * 1e-3 / (vov * vdd);
+      if (gm1_at >= gm1s[0] && gm1_at <= gm1s[gm1s.length-1]) {
+        const x = xC(gm1_at);
+        ctx.strokeStyle='#1a1a1a'; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(x,MG.top); ctx.lineTo(x,H-MG.bottom); ctx.stroke();
+        ctx.fillStyle='#888'; ctx.font='9px Courier New'; ctx.textAlign='center';
+        ctx.fillText(pw_val+'mW', x, H-MG.bottom+14);
+      }
+    }
+  });
+
+  // Y labels
+  [0.1,1,10,100].forEach(sn => {
+    if (sn >= minSN-1 && sn <= maxSN+1) {
+      const y = ySN(sn);
+      ctx.fillStyle='#555'; ctx.font='9px Courier New'; ctx.textAlign='right';
+      ctx.fillText(sn+'nV/√Hz', MG.left-4, y+3);
+    }
+  });
+
+  ctx.strokeStyle='#333'; ctx.strokeRect(MG.left,MG.top,pw,ph);
+  ctx.fillStyle='#888'; ctx.font='10px Courier New'; ctx.textAlign='center';
+  ctx.fillText(`Input noise (nV/√Hz) vs First-Stage Power — Vov=${(vov*1000).toFixed(0)}mV, VDD=${vdd}V, γ=${gamma.toFixed(2)}, gm3/gm1=${ratio.toFixed(2)}`, MG.left+pw/2, MG.top-10);
+  ctx.fillText('Power (mW at Vov shown)', MG.left+pw/2, H-8);
+}
+
+function drawOffset() {
+  const wm1   = getSV('wm1', 0) * 1e-6;
+  const lm1   = getSV('lm1', 2) * 1e-6;
+  const wm3   = getSV('wm3', 0) * 1e-6;
+  const lm3   = getSV('lm3', 2) * 1e-6;
+  const proc  = document.getElementById('proc2').value;
+  const ratio = getSV('ratio2', 2);
+  const Avth  = AVth[proc]; // V·m
+
+  const areaM1 = wm1 * lm1 * 1e12; // µm²
+  const areaM3 = wm3 * lm3 * 1e12;
+
+  const sigVthM1 = Avth / Math.sqrt(areaM1); // V
+  const sigVthM3 = Avth / Math.sqrt(areaM3);
+
+  const sigVOS = Math.sqrt(sigVthM1**2 + (ratio * sigVthM3)**2);
+  const sigVOS_3 = 3 * sigVOS;
+
+  const canvas = document.getElementById('canvas2');
+  const ctx    = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // Bar chart of offset contributions
+  const bars = [
+    { label: 'σΔVth M1/M2', val: sigVthM1*1000, unit:'mV', color:'#2196f3' },
+    { label: 'σΔVth M3/M4', val: sigVthM3*1000, unit:'mV', color:'#ff9800' },
+    { label: 'M3 referred (×ratio)', val: ratio*sigVthM3*1000, unit:'mV', color:'#ffeb3b' },
+    { label: 'σVOS total', val: sigVOS*1000, unit:'mV', color:'#4caf50' },
+    { label: '3σVOS (spec)', val: sigVOS_3*1000, unit:'mV', color:'#f44336' }
+  ];
+
+  const maxVal = Math.max(...bars.map(b=>b.val)) * 1.2;
+  const bw2 = (W - 80) / bars.length;
+  const MO = {top:40, bottom:60, left:40, right:40};
+  const ph = H - MO.top - MO.bottom;
+
+  bars.forEach((b, i) => {
+    const bH = (b.val / maxVal) * ph;
+    const bx = MO.left + i * bw2 + bw2*0.15;
+    const by = MO.top + ph - bH;
+    ctx.fillStyle = b.color; ctx.globalAlpha=0.8;
+    ctx.fillRect(bx, by, bw2*0.7, bH);
+    ctx.globalAlpha=1;
+    ctx.fillStyle='#ccc'; ctx.font='9px Courier New'; ctx.textAlign='center';
+    ctx.fillText(b.val.toFixed(3)+b.unit, bx+bw2*0.35, by-3);
+    ctx.fillStyle='#888'; ctx.font='9px Courier New';
+    ctx.fillText(b.label, bx+bw2*0.35, H-MO.bottom+14);
+    ctx.fillText(`(W×L=${(b===bars[0]?wm1*lm1*1e12:b===bars[1]||b===bars[2]?wm3*lm3*1e12:0).toFixed(0)}µm²)`, bx+bw2*0.35, H-MO.bottom+26);
+  });
+
+  ctx.fillStyle='#888'; ctx.font='10px Courier New'; ctx.textAlign='center';
+  ctx.fillText(`Input Offset Voltage Budget — TSMC ${proc}nm, A_Vth=${(Avth*1000).toFixed(0)}mV·µm, gm3/gm1=${ratio.toFixed(2)}`, W/2, MO.top-12);
+
+  document.getElementById('ro2').innerHTML = `
+    <div class="ro">M1/M2 area: <span>${areaM1.toFixed(1)} µm²</span></div>
+    <div class="ro">σΔVth M1/M2: <span>${(sigVthM1*1000).toFixed(3)} mV</span></div>
+    <div class="ro">σΔVth M3/M4: <span>${(sigVthM3*1000).toFixed(3)} mV</span></div>
+    <div class="ro">σVOS (1σ): <span>${(sigVOS*1000).toFixed(3)} mV</span></div>
+    <div class="ro">3σVOS: <span>${(sigVOS_3*1000).toFixed(2)} mV</span></div>
+    <div class="ro">To halve σVOS: <span>Quadruple M1/M2 area</span></div>`;
+}
+
+function switchTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===n));
+  document.querySelectorAll('.panel').forEach((p,i) => p.classList.toggle('active', i===n));
+  if (n===0) drawNoise();
+  if (n===1) drawNoisePower();
+  if (n===2) drawOffset();
+}
+drawNoise();
+</script>
+</body>
+</html>

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-L-2.4.1 — RL Circuit Application</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+h1 { color: #0066cc; font-size: 1.3em; margin-bottom: 4px; }
+.subtitle { color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }
+.layout { display: flex; gap: 20px; flex-wrap: wrap; }
+.panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+.controls { width: 280px; flex-shrink: 0; }
+.viz { flex: 1; min-width: 360px; }
+label { display: block; color: #8b949e; font-size: 0.8em; margin-bottom: 4px; margin-top: 12px; }
+input[type=range] { width: 100%; accent-color: #0066cc; }
+.val { color: #0066cc; font-weight: bold; }
+canvas { background: #0d1117; border-radius: 6px; display: block; }
+.readouts { margin-top: 14px; }
+.readout-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #21262d; font-size: 0.82em; }
+.readout-label { color: #8b949e; }
+.readout-val { color: #39d353; font-weight: bold; font-family: monospace; }
+.eq { background: #21262d; border-left: 3px solid #0066cc; padding: 10px 12px; border-radius: 4px; margin-top: 14px; font-family: monospace; font-size: 0.82em; color: #a5d6ff; }
+@media (prefers-color-scheme: light) {
+  body { background: #f6f8fa; color: #24292f; }
+  .panel { background: #fff; border-color: #d0d7de; }
+  canvas { background: #f6f8fa; }
+  .eq { background: #eef2ff; }
+}
+</style>
+</head>
+<body>
+<h1>P2-L-2.4.1 — RL Circuit Application</h1>
+<div class="subtitle">Buck converter inductor current · triangular ripple on DC average · duty cycle D = V_out/V_in · L = V_out×(1−D)/(ΔI×f_sw)</div>
+<div class="layout">
+  <div class="panel controls">
+    <label>Input Voltage V_in (V): <span class="val" id="vinLbl">12 V</span></label>
+    <input type="range" id="vinSlider" min="5" max="60" value="12" step="1">
+    <label>Output Voltage V_out (V): <span class="val" id="voutLbl">5 V</span></label>
+    <input type="range" id="voutSlider" min="1" max="55" value="5" step="1">
+    <label>Inductance L (µH): <span class="val" id="lLbl">22 µH</span></label>
+    <input type="range" id="lSlider" min="1" max="500" value="22" step="1">
+    <label>Switching Frequency f_sw (kHz): <span class="val" id="fLbl">200 kHz</span></label>
+    <input type="range" id="fSlider" min="20" max="2000" value="200" step="20">
+    <label>Load Current I_out (A): <span class="val" id="iLbl">1.0 A</span></label>
+    <input type="range" id="iSlider" min="1" max="100" value="10" step="1">
+    <div class="readouts">
+      <div class="readout-row"><span class="readout-label">Duty Cycle D</span><span class="readout-val" id="duty">—</span></div>
+      <div class="readout-row"><span class="readout-label">Ripple ΔI</span><span class="readout-val" id="dI">—</span></div>
+      <div class="readout-row"><span class="readout-label">I_peak</span><span class="readout-val" id="ipeak">—</span></div>
+      <div class="readout-row"><span class="readout-label">I_valley</span><span class="readout-val" id="ivalley">—</span></div>
+      <div class="readout-row"><span class="readout-label">L_critical (CCM)</span><span class="readout-val" id="lcrit">—</span></div>
+      <div class="readout-row"><span class="readout-label">Mode</span><span class="readout-val" id="mode">—</span></div>
+    </div>
+    <div class="eq">D = V_out / V_in<br>ΔI = V_out×(1−D) / (L×f_sw)<br>L_crit = V_out×(1−D) / (2×I_out×f_sw)</div>
+  </div>
+  <div class="panel viz">
+    <canvas id="cv" width="580" height="420"></canvas>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const W = 580, H = 420;
+
+function getP() {
+  const Vin = parseFloat(document.getElementById('vinSlider').value);
+  const Vout = Math.min(parseFloat(document.getElementById('voutSlider').value), Vin * 0.95);
+  const L = parseFloat(document.getElementById('lSlider').value) * 1e-6;
+  const f = parseFloat(document.getElementById('fSlider').value) * 1e3;
+  const Iout = parseFloat(document.getElementById('iSlider').value) / 10;
+  return { Vin, Vout, L, f, Iout };
+}
+
+function fmtA(a) {
+  if (Math.abs(a) >= 1) return a.toFixed(3) + ' A';
+  return (a * 1000).toFixed(1) + ' mA';
+}
+function fmtL(l) {
+  if (l >= 1e-3) return (l * 1000).toFixed(1) + ' mH';
+  if (l >= 1e-6) return (l * 1e6).toFixed(1) + ' µH';
+  return (l * 1e9).toFixed(0) + ' nH';
+}
+
+function draw() {
+  const p = getP();
+  const D = p.Vout / p.Vin;
+  const T = 1 / p.f;
+  const ton = D * T;
+  const toff = (1 - D) * T;
+  const dI = p.Vout * (1 - D) / (p.L * p.f);
+  const Iavg = p.Iout;
+  const Ipeak = Iavg + dI / 2;
+  const Ivalley = Iavg - dI / 2;
+  const Lcrit = p.Vout * (1 - D) / (2 * Iavg * p.f);
+  const inCCM = Ivalley >= 0;
+
+  document.getElementById('vinLbl').textContent = p.Vin.toFixed(0) + ' V';
+  document.getElementById('voutLbl').textContent = p.Vout.toFixed(0) + ' V';
+  document.getElementById('lLbl').textContent = fmtL(p.L);
+  document.getElementById('fLbl').textContent = (p.f / 1e3).toFixed(0) + ' kHz';
+  document.getElementById('iLbl').textContent = Iavg.toFixed(1) + ' A';
+  document.getElementById('duty').textContent = (D * 100).toFixed(1) + '%';
+  document.getElementById('dI').textContent = fmtA(dI);
+  document.getElementById('ipeak').textContent = fmtA(Ipeak);
+  document.getElementById('ivalley').textContent = fmtA(Math.max(Ivalley, 0));
+  document.getElementById('lcrit').textContent = fmtL(Lcrit);
+  const modeEl = document.getElementById('mode');
+  modeEl.textContent = inCCM ? 'CCM' : 'DCM';
+  modeEl.style.color = inCCM ? '#39d353' : '#f85149';
+
+  ctx.clearRect(0, 0, W, H);
+
+  const pad = { l: 70, r: 20, t: 40, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+  const nCycles = 5;
+  const tMax = nCycles * T;
+  const Imax = Math.max(Ipeak * 1.35, Iavg * 1.6, 0.01);
+  const Imin = 0;
+
+  function tx(t) { return pad.l + (t / tMax) * pw; }
+  function ty(i) { return pad.t + ph - ((i - Imin) / (Imax - Imin)) * ph; }
+
+  // Grid
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let g = 0; g <= 5; g++) {
+    const Iv = Imin + (Imax - Imin) * g / 5;
+    const yi = ty(Iv);
+    ctx.beginPath(); ctx.moveTo(pad.l, yi); ctx.lineTo(pad.l + pw, yi); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(fmtA(Iv), pad.l - 4, yi + 4);
+  }
+
+  // Axes
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t + ph); ctx.lineTo(pad.l + pw, pad.t + ph); ctx.stroke();
+
+  // ON/OFF shading for first cycle
+  ctx.fillStyle = 'rgba(0,102,204,0.10)';
+  ctx.fillRect(tx(0), pad.t, tx(ton) - tx(0), ph);
+  ctx.fillStyle = 'rgba(57,211,83,0.07)';
+  ctx.fillRect(tx(ton), pad.t, tx(T) - tx(ton), ph);
+  ctx.fillStyle = '#0066cc'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('ON  D=' + (D * 100).toFixed(0) + '%', tx(ton / 2), pad.t + 14);
+  ctx.fillStyle = '#39d353';
+  ctx.fillText('OFF  ' + (100 - D * 100).toFixed(0) + '%', tx(ton + toff / 2), pad.t + 14);
+
+  // Average current line
+  ctx.strokeStyle = '#e3b341'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
+  ctx.beginPath(); ctx.moveTo(pad.l, ty(Iavg)); ctx.lineTo(pad.l + pw, ty(Iavg)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#e3b341'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('I_avg = I_out = ' + fmtA(Iavg), pad.l + pw - 4, ty(Iavg) - 5);
+
+  // Inductor current waveform
+  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  let Istart = inCCM ? Ivalley : 0;
+  ctx.moveTo(pad.l, ty(Istart));
+
+  for (let c = 0; c < nCycles; c++) {
+    const t0 = c * T;
+    if (inCCM) {
+      ctx.lineTo(tx(t0 + ton), ty(Ipeak));
+      ctx.lineTo(tx(t0 + T), ty(Ivalley));
+    } else {
+      // DCM: rise from 0 to peak, then fall to 0, flat at 0
+      const I_dcm_pk = dI;
+      const t_fall = ton * (I_dcm_pk / (p.Vout / p.L * ton)); // simplified
+      ctx.lineTo(tx(t0 + ton), ty(I_dcm_pk));
+      ctx.lineTo(tx(Math.min(t0 + ton + t_fall, t0 + T)), ty(0));
+      ctx.lineTo(tx(t0 + T), ty(0));
+    }
+  }
+  ctx.stroke();
+
+  // ΔI annotation arrow
+  if (inCCM) {
+    const xA = tx(T * 0.65);
+    ctx.strokeStyle = '#ff7b72'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(xA, ty(Ivalley)); ctx.lineTo(xA, ty(Ipeak)); ctx.stroke();
+    const ay1 = ty(Ivalley), ay2 = ty(Ipeak);
+    ctx.fillStyle = '#ff7b72';
+    ctx.beginPath(); ctx.moveTo(xA - 4, ay1 - 6); ctx.lineTo(xA, ay1); ctx.lineTo(xA + 4, ay1 - 6); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(xA - 4, ay2 + 6); ctx.lineTo(xA, ay2); ctx.lineTo(xA + 4, ay2 + 6); ctx.fill();
+    ctx.fillStyle = '#ff7b72'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('ΔI = ' + fmtA(dI), xA + 6, (ay1 + ay2) / 2 + 4);
+  }
+
+  // Duty cycle annotation
+  const bracketY = pad.t + ph + 28;
+  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(tx(0), bracketY - 6); ctx.lineTo(tx(0), bracketY); ctx.lineTo(tx(ton), bracketY); ctx.lineTo(tx(ton), bracketY - 6); ctx.stroke();
+  ctx.fillStyle = '#0066cc'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('t_on = D×T', tx(ton / 2), bracketY + 12);
+
+  // Labels
+  ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Time (' + nCycles + ' switching cycles at ' + (p.f / 1e3).toFixed(0) + ' kHz)', pad.l + pw / 2, H - 8);
+  ctx.save(); ctx.translate(16, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillStyle = '#8b949e'; ctx.fillText('Inductor Current', 0, 0); ctx.restore();
+  ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Buck Converter — Inductor Current with Triangular Ripple', W / 2, 20);
+
+  // Equation overlay
+  ctx.fillStyle = '#a5d6ff'; ctx.font = '11px monospace'; ctx.textAlign = 'left';
+  ctx.fillText('D = ' + (D * 100).toFixed(1) + '%   ΔI = ' + fmtA(dI) + '   L_crit = ' + fmtL(Lcrit), pad.l + 4, pad.t + ph - 8);
+}
+
+['vinSlider', 'voutSlider', 'lSlider', 'fSlider', 'iSlider'].forEach(id =>
+  document.getElementById(id).addEventListener('input', draw));
+draw();
+</script>
+</body>
+</html>

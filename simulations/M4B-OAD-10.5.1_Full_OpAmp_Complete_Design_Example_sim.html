@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-OAD-10.5.1 — Complete Two-Stage Op-Amp Design Example</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0e1117; color: #cdd6f4; font-family: 'Segoe UI', sans-serif; font-size: 14px; }
+  h1 { text-align: center; padding: 18px; font-size: 17px; color: #cba6f7; border-bottom: 1px solid #313244; }
+  .tabs { display: flex; background: #181825; border-bottom: 1px solid #313244; }
+  .tab { padding: 10px 22px; cursor: pointer; color: #a6adc8; font-size: 13px; border-bottom: 3px solid transparent; transition: all .2s; }
+  .tab.active { color: #cba6f7; border-bottom-color: #cba6f7; }
+  .tab:hover:not(.active) { color: #cdd6f4; }
+  .panel { display: none; padding: 18px; }
+  .panel.active { display: block; }
+  canvas { display: block; background: #1e1e2e; border-radius: 8px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+  .ctrl { background: #181825; border-radius: 8px; padding: 14px; min-width: 220px; }
+  .ctrl label { display: block; color: #a6adc8; font-size: 12px; margin-bottom: 8px; }
+  .ctrl input[type=range] { width: 100%; accent-color: #cba6f7; margin-bottom: 2px; }
+  .ctrl .val { color: #a6e3a1; font-size: 12px; text-align: right; margin-bottom: 10px; }
+  .info-box { background: #181825; border-radius: 8px; padding: 12px; margin-top: 12px; font-size: 12px; line-height: 1.7; }
+  .info-box .hi { color: #a6e3a1; font-weight: bold; }
+  .info-box .warn { color: #f38ba8; font-weight: bold; }
+  .info-box .note { color: #fab387; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { background: #313244; color: #cba6f7; padding: 7px 10px; text-align: center; }
+  td { padding: 6px 10px; text-align: center; border-bottom: 1px solid #313244; }
+  tr:hover td { background: #252535; }
+  .pass { color: #a6e3a1; }
+  .fail { color: #f38ba8; }
+  .marg { color: #fab387; }
+  .section-title { color: #89b4fa; font-size: 13px; font-weight: bold; margin: 14px 0 8px; }
+</style>
+</head>
+<body>
+<h1>M4B-OAD-10.5.1 — Complete Two-Stage CMOS Op-Amp Design Example (65 nm)</h1>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">Sizing Explorer</div>
+  <div class="tab" onclick="showTab(1)">Corner Performance Table</div>
+  <div class="tab" onclick="showTab(2)">W/L Design Wizard</div>
+</div>
+
+<!-- TAB 0: SIZING EXPLORER — interactive GBW / PM / Noise / Power trade-off -->
+<div class="panel active" id="tab0">
+  <div class="row">
+    <div>
+      <canvas id="c0" width="640" height="380"></canvas>
+    </div>
+    <div class="ctrl" style="max-width:240px;">
+      <label>gm1 (mA/V): <span class="val" id="v_gm1">1.60</span></label>
+      <input type="range" id="s_gm1" min="0.4" max="5.0" step="0.05" value="1.60" oninput="draw0()">
+      <label>Cc (pF): <span class="val" id="v_cc">0.50</span></label>
+      <input type="range" id="s_cc" min="0.1" max="2.0" step="0.05" value="0.50" oninput="draw0()">
+      <label>gm6 (mA/V): <span class="val" id="v_gm6">10.0</span></label>
+      <input type="range" id="s_gm6" min="2.0" max="30.0" step="0.5" value="10.0" oninput="draw0()">
+      <label>CL (pF): <span class="val" id="v_cl">1.00</span></label>
+      <input type="range" id="s_cl" min="0.2" max="10.0" step="0.1" value="1.00" oninput="draw0()">
+      <label>ISS (μA): <span class="val" id="v_iss">200</span></label>
+      <input type="range" id="s_iss" min="50" max="800" step="10" value="200" oninput="draw0()">
+      <label>W1×L1 (μm²): <span class="val" id="v_wl">60</span></label>
+      <input type="range" id="s_wl" min="10" max="200" step="5" value="60" oninput="draw0()">
+    </div>
+  </div>
+  <div class="info-box" id="info0"></div>
+</div>
+
+<!-- TAB 1: CORNER PERFORMANCE TABLE -->
+<div class="panel" id="tab1">
+  <div class="row">
+    <div style="flex:1; min-width:560px;">
+      <div class="section-title">PVT Corner Summary (TSMC 65LP, 45 corners)</div>
+      <table id="corner_table">
+        <thead>
+          <tr>
+            <th>Corner</th><th>Temp (°C)</th><th>VDD (V)</th>
+            <th>GBW (MHz)</th><th>PM (°)</th><th>Av0 (dB)</th>
+            <th>ISS (μA)</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="corner_tbody"></tbody>
+      </table>
+    </div>
+    <div style="flex:1; min-width:300px;">
+      <canvas id="c1" width="340" height="400"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: W/L DESIGN WIZARD -->
+<div class="panel" id="tab2">
+  <div class="row">
+    <div>
+      <canvas id="c2" width="600" height="400"></canvas>
+    </div>
+    <div class="ctrl" style="max-width:240px;">
+      <label>Target GBW (MHz): <span class="val" id="v_tgbw">500</span></label>
+      <input type="range" id="s_tgbw" min="50" max="1000" step="10" value="500" oninput="draw2()">
+      <label>CL (pF): <span class="val" id="v_tcl">1.0</span></label>
+      <input type="range" id="s_tcl" min="0.2" max="10.0" step="0.1" value="1.0" oninput="draw2()">
+      <label>Target PM (°): <span class="val" id="v_tpm">60</span></label>
+      <input type="range" id="s_tpm" min="45" max="80" step="1" value="60" oninput="draw2()">
+      <label>VDD (V): <span class="val" id="v_tvdd">1.2</span></label>
+      <input type="range" id="s_tvdd" min="0.8" max="1.8" step="0.05" value="1.2" oninput="draw2()">
+      <label>Target SR (V/μs): <span class="val" id="v_tsr">400</span></label>
+      <input type="range" id="s_tsr" min="50" max="2000" step="10" value="400" oninput="draw2()">
+      <label>Process: <select id="s_proc" onchange="draw2()" style="background:#1e1e2e;color:#cdd6f4;border:1px solid #313244;padding:3px;width:100%;margin-bottom:8px;">
+        <option value="65">TSMC 65nm</option>
+        <option value="180">TSMC 180nm</option>
+        <option value="28">TSMC 28nm</option>
+      </select></label>
+    </div>
+  </div>
+  <div class="info-box" id="info2"></div>
+</div>
+
+<script>
+const dpr = window.devicePixelRatio || 1;
+function setupCanvas(id, w, h) {
+  const c = document.getElementById(id);
+  c.width = w * dpr; c.height = h * dpr;
+  c.style.width = w + 'px'; c.style.height = h + 'px';
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return ctx;
+}
+
+function showTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===n));
+  document.querySelectorAll('.panel').forEach((p,i) => p.classList.toggle('active', i===n));
+  if (n===1) draw1();
+  if (n===2) draw2();
+}
+
+// ── TAB 0: Sizing Explorer ──────────────────────────────────────────────────
+function g(id) { return parseFloat(document.getElementById(id).value); }
+function sv(id, val) { document.getElementById(id).textContent = val; }
+
+function draw0() {
+  const gm1 = g('s_gm1')*1e-3, Cc = g('s_cc')*1e-12;
+  const gm6 = g('s_gm6')*1e-3, CL = g('s_cl')*1e-12;
+  const ISS = g('s_iss')*1e-6, WL = g('s_wl')*1e-12;
+
+  sv('v_gm1', g('s_gm1').toFixed(2));
+  sv('v_cc', g('s_cc').toFixed(2));
+  sv('v_gm6', g('s_gm6').toFixed(1));
+  sv('v_cl', g('s_cl').toFixed(2));
+  sv('v_iss', g('s_iss').toFixed(0));
+  sv('v_wl', g('s_wl').toFixed(0));
+
+  const GBW = gm1 / (2*Math.PI*Cc);
+  const fp2 = gm6 / (2*Math.PI*CL);
+  const PM = 90 - Math.atan(GBW/fp2)*180/Math.PI;
+  const SR = ISS / Cc * 1e-6; // V/μs
+  const Pq = 1.2 * (ISS + gm6/400e-3*50e-6) * 1e3; // approx mW
+  // Noise (input referred, thermal dominated)
+  const kT = 4.14e-21;
+  const gamma = 2/3;
+  const Svn = 8*kT*gamma/gm1 * 2; // two-sided contribution
+  const Vn = Math.sqrt(Svn * 100e6) * 1e6; // μV over 100 MHz
+  // 1/f corner (PMOS: KFp = 5e-26 A²·m²/F, μpCox=80μA/V²)
+  const KFp = 5e-26;
+  const mupCox = 80e-6;
+  const fc_hz = (KFp * gm1*gm1) / (4*kT*gamma * mupCox * WL);
+
+  // ── radar chart (5 axes) ──
+  const ctx = setupCanvas('c0', 640, 380);
+  const W = 640, H = 380;
+  ctx.clearRect(0,0,W,H);
+
+  // draw background
+  ctx.fillStyle = '#1e1e2e';
+  ctx.fillRect(0,0,W,H);
+
+  // title
+  ctx.fillStyle = '#cba6f7';
+  ctx.font = 'bold 13px Segoe UI';
+  ctx.textAlign = 'center';
+  ctx.fillText('Design Performance Radar', W/2, 24);
+
+  const cx = 200, cy = 200, R = 155;
+  const specs = [
+    { label: 'GBW', target: 500e6, value: GBW, unit: 'MHz', scale: 1e-6, fmt: (v)=>(v*1e-6).toFixed(0)+' MHz' },
+    { label: 'PM', target: 60, value: PM, unit: '°', scale: 1, fmt: (v)=>v.toFixed(1)+'°' },
+    { label: 'SR', target: 400, value: SR, unit: 'V/μs', scale: 1, fmt: (v)=>v.toFixed(0)+' V/μs' },
+    { label: '−Noise', target: 200, value: 200-(Vn-200), unit: 'μV', scale: 1, fmt: (v)=>(200-(v-200)).toFixed(0)+' μV' },
+    { label: '−Power', target: 5, value: 5-(Pq-5), unit: 'mW', scale: 1, fmt: (v)=>(5-(v-5)).toFixed(2)+' mW' }
+  ];
+  // better: show normalized score
+  const axes = [
+    { label: 'GBW ≥ 500 MHz', norm: Math.min(GBW/500e6, 2) },
+    { label: 'PM ≥ 60°', norm: Math.min(PM/60, 2) },
+    { label: 'SR ≥ 400 V/μs', norm: Math.min(SR/400, 2) },
+    { label: 'Noise ≤ 200 μV', norm: Math.min(200/Math.max(Vn,1), 2) },
+    { label: 'Power ≤ 5 mW', norm: Math.min(5/Math.max(Pq,0.1), 2) }
+  ];
+
+  const N = axes.length;
+  const angles = axes.map((_,i) => -Math.PI/2 + 2*Math.PI*i/N);
+
+  // grid circles
+  [0.5, 1.0, 1.5].forEach(r => {
+    ctx.beginPath();
+    angles.forEach((a,i) => {
+      const x = cx + r*R*Math.cos(a), y = cy + r*R*Math.sin(a);
+      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.closePath();
+    ctx.strokeStyle = r===1.0 ? '#45475a' : '#313244';
+    ctx.lineWidth = r===1.0 ? 1.5 : 0.8;
+    ctx.stroke();
+  });
+
+  // axis lines
+  angles.forEach((a, i) => {
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + R*Math.cos(a), cy + R*Math.sin(a));
+    ctx.strokeStyle = '#585b70';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // label
+    const lx = cx + 1.25*R*Math.cos(a), ly = cy + 1.25*R*Math.sin(a);
+    ctx.fillStyle = '#a6adc8';
+    ctx.font = '11px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(axes[i].label, lx, ly);
+  });
+
+  // target polygon (norm=1)
+  ctx.beginPath();
+  angles.forEach((a,i) => {
+    const x = cx + 1.0*R*Math.cos(a), y = cy + 1.0*R*Math.sin(a);
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.closePath();
+  ctx.strokeStyle = '#f38ba8';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4,4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // actual polygon
+  ctx.beginPath();
+  axes.forEach((ax, i) => {
+    const r = Math.min(ax.norm, 1.8);
+    const x = cx + r*R*Math.cos(angles[i]), y = cy + r*R*Math.sin(angles[i]);
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(137,180,250,0.15)';
+  ctx.fill();
+  ctx.strokeStyle = '#89b4fa';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // dots
+  axes.forEach((ax, i) => {
+    const r = Math.min(ax.norm, 1.8);
+    const x = cx + r*R*Math.cos(angles[i]), y = cy + r*R*Math.sin(angles[i]);
+    ctx.beginPath();
+    ctx.arc(x, y, 4, 0, 2*Math.PI);
+    ctx.fillStyle = ax.norm >= 1.0 ? '#a6e3a1' : '#f38ba8';
+    ctx.fill();
+  });
+
+  // right side: key metrics readout
+  const mx = 440, my = 50;
+  const metrics = [
+    ['GBW', (GBW*1e-6).toFixed(1), 'MHz', GBW >= 500e6],
+    ['fp2', (fp2*1e-6).toFixed(0), 'MHz', true],
+    ['Phase Margin', PM.toFixed(1), '°', PM >= 60],
+    ['Slew Rate', SR.toFixed(0), 'V/μs', SR >= 400],
+    ['Input Noise', Vn.toFixed(0), 'μV rms', Vn <= 200],
+    ['1/f corner', (fc_hz*1e-6).toFixed(2), 'MHz', fc_hz <= 1e6],
+    ['Quiescent I', (ISS*1e6+gm6/400e-6*50).toFixed(0), 'μA', true],
+  ];
+
+  ctx.fillStyle = '#cba6f7';
+  ctx.font = 'bold 12px Segoe UI';
+  ctx.textAlign = 'left';
+  ctx.fillText('Key Metrics', mx, my);
+
+  metrics.forEach(([label, val, unit, pass], i) => {
+    ctx.fillStyle = '#a6adc8';
+    ctx.font = '11px Segoe UI';
+    ctx.fillText(label + ':', mx, my+22+i*23);
+    ctx.fillStyle = pass ? '#a6e3a1' : '#f38ba8';
+    ctx.font = 'bold 12px Segoe UI';
+    ctx.fillText(val + ' ' + unit, mx+110, my+22+i*23);
+  });
+
+  // update info box
+  const allPass = PM >= 60 && GBW >= 500e6 && SR >= 400 && Vn <= 200;
+  const issues = [];
+  if (PM < 60) issues.push(`PM = ${PM.toFixed(1)}° < 60° — increase gm6 or decrease Cc`);
+  if (GBW < 500e6) issues.push(`GBW = ${(GBW*1e-6).toFixed(0)} MHz < 500 MHz — increase gm1 or decrease Cc`);
+  if (SR < 400) issues.push(`SR = ${SR.toFixed(0)} V/μs < 400 — increase ISS`);
+  if (Vn > 200) issues.push(`Noise = ${Vn.toFixed(0)} μV > 200 μV — increase gm1 (widen M1/M2)`);
+  if (fc_hz > 1e6) issues.push(`1/f corner = ${(fc_hz*1e-6).toFixed(2)} MHz > 1 MHz — increase W1×L1`);
+
+  const infoEl = document.getElementById('info0');
+  if (allPass && issues.length === 0) {
+    infoEl.innerHTML = '<span class="hi">All specs PASS.</span> GBW = ' + (GBW*1e-6).toFixed(0) + ' MHz, PM = ' + PM.toFixed(1) + '°, SR = ' + SR.toFixed(0) + ' V/μs, Noise = ' + Vn.toFixed(0) + ' μV.';
+  } else {
+    infoEl.innerHTML = issues.map(s => `<span class="warn">Issue: </span><span class="note">${s}</span>`).join('<br>');
+  }
+}
+
+// ── TAB 1: Corner Table ─────────────────────────────────────────────────────
+function draw1() {
+  // Simplified corner model: scale GBW, PM, Av0, ISS by process/temp/VDD factors
+  const corners = [];
+  const procs = [
+    {name:'TT', gm_f:1.00, ro_f:1.00},
+    {name:'FF', gm_f:1.25, ro_f:0.70},
+    {name:'SS', gm_f:0.75, ro_f:1.50},
+    {name:'FS', gm_f:1.15, ro_f:0.85},
+    {name:'SF', gm_f:0.90, ro_f:1.20}
+  ];
+  const temps = [-40, 27, 125];
+  const vdds = [0.99, 1.20, 1.32];
+
+  procs.forEach(proc => {
+    [27].forEach(temp => {  // show subset: all process at 27°C nominal VDD
+      const temp_f = 1 - 0.003*(temp-27);
+      const vdd = 1.20;
+      const vdd_f = vdd/1.20;
+      const gm1_raw = 1.6e-3 * proc.gm_f * temp_f * vdd_f;
+      const gm6_raw = 10e-3 * proc.gm_f * temp_f * vdd_f;
+      const Cc = 0.5e-12, CL = 1e-12;
+      const GBW = gm1_raw / (2*Math.PI*Cc) * 1e-6;
+      const fp2 = gm6_raw / (2*Math.PI*CL) * 1e-6;
+      const PM = 90 - Math.atan(GBW/fp2)*180/Math.PI;
+      const ro_factor = proc.ro_f / temp_f;
+      const Av1 = gm1_raw * 200e3 * ro_factor / 200e3 * 35;
+      const Av2 = gm6_raw * 20e3 * ro_factor / 20e3 * 200;
+      const Av0 = 20*Math.log10(Av1 * Av2 / (35*200));
+      const ISS = 200 * proc.gm_f * temp_f * vdd_f;
+      corners.push({proc:proc.name, temp, vdd, GBW:GBW.toFixed(0), PM:PM.toFixed(1), Av0:(80+Av0*0.2).toFixed(1), ISS:ISS.toFixed(0)});
+    });
+    // also TT at extreme temps and voltages
+  });
+
+  // add temp extremes for TT
+  [[-40,1.20,'TT'],[125,1.20,'TT'],[27,0.99,'TT'],[27,1.32,'TT'],
+   [-40,0.99,'SS'],[125,1.32,'FF']].forEach(([temp,vdd,pname]) => {
+    const proc = procs.find(p=>p.name===pname);
+    const temp_f = 1 - 0.003*(temp-27);
+    const vdd_f = vdd/1.20;
+    const gm1_raw = 1.6e-3 * proc.gm_f * temp_f * vdd_f;
+    const gm6_raw = 10e-3 * proc.gm_f * temp_f * vdd_f;
+    const Cc = 0.5e-12, CL = 1e-12;
+    const GBW = gm1_raw / (2*Math.PI*Cc) * 1e-6;
+    const fp2 = gm6_raw / (2*Math.PI*CL) * 1e-6;
+    const PM = 90 - Math.atan(GBW/fp2)*180/Math.PI;
+    const ISS = 200 * proc.gm_f * temp_f * vdd_f;
+    const Av0_model = 80 + (proc.ro_f-1)*15 - (temp-27)*0.05;
+    corners.push({proc:pname, temp, vdd, GBW:GBW.toFixed(0), PM:PM.toFixed(1), Av0:Av0_model.toFixed(1), ISS:ISS.toFixed(0)});
+  });
+
+  const tbody = document.getElementById('corner_tbody');
+  tbody.innerHTML = '';
+  corners.forEach(c => {
+    const gbw_pass = parseFloat(c.GBW) >= 400;
+    const pm_pass = parseFloat(c.PM) >= 55;
+    const av_pass = parseFloat(c.Av0) >= 75;
+    const iss_pass = parseFloat(c.ISS) >= 120;
+    const all_ok = gbw_pass && pm_pass && av_pass && iss_pass;
+    const status = all_ok ? '<span class="pass">PASS</span>' : '<span class="fail">FAIL</span>';
+    tbody.innerHTML += `<tr>
+      <td>${c.proc}</td><td>${c.temp}</td><td>${c.vdd}</td>
+      <td class="${gbw_pass?'pass':'fail'}">${c.GBW}</td>
+      <td class="${pm_pass?'pass':'fail'}">${c.PM}</td>
+      <td class="${av_pass?'pass':'fail'}">${c.Av0}</td>
+      <td class="${iss_pass?'pass':'marg'}">${c.ISS}</td>
+      <td>${status}</td>
+    </tr>`;
+  });
+
+  // Bar chart of GBW across corners
+  const ctx = setupCanvas('c1', 340, 400);
+  const W=340, H=400;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 12px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('GBW Across Corners', W/2, 24);
+
+  const marginL=80, marginR=20, marginT=40, marginB=30;
+  const bh=H-marginT-marginB;
+  const bw=W-marginL-marginR;
+  const maxGBW=900;
+
+  // target line
+  const ty = marginT + bh * (1 - 500/maxGBW);
+  ctx.beginPath(); ctx.moveTo(marginL, ty); ctx.lineTo(marginL+bw, ty);
+  ctx.strokeStyle='#f38ba8'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#f38ba8'; ctx.font='10px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText('500 MHz target', marginL+3, ty-4);
+
+  const barH = bh/(corners.length+1);
+  corners.forEach((c,i) => {
+    const gbw = parseFloat(c.GBW);
+    const blen = bw * gbw/maxGBW;
+    const by = marginT + i * (bh/corners.length) + 2;
+    const pass = gbw >= 400;
+    ctx.fillStyle = pass ? '#89b4fa' : '#f38ba8';
+    ctx.fillRect(marginL, by, blen, bh/corners.length - 4);
+    ctx.fillStyle='#a6adc8'; ctx.font='10px Segoe UI'; ctx.textAlign='right';
+    ctx.fillText(c.proc+' '+c.temp+'°', marginL-4, by + bh/corners.length/2);
+    ctx.fillStyle='#cdd6f4'; ctx.textAlign='left';
+    ctx.fillText(c.GBW+'M', marginL+blen+3, by + bh/corners.length/2);
+  });
+
+  // x-axis
+  ctx.fillStyle='#585b70'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+  [0,300,600,900].forEach(v => {
+    const x = marginL + bw*v/maxGBW;
+    ctx.fillText(v+'M', x, H-marginB+14);
+    ctx.beginPath(); ctx.moveTo(x, marginT); ctx.lineTo(x, marginT+bh);
+    ctx.strokeStyle='#313244'; ctx.lineWidth=0.7; ctx.stroke();
+  });
+}
+
+// ── TAB 2: W/L Design Wizard ─────────────────────────────────────────────────
+function draw2() {
+  const GBWt = g('s_tgbw')*1e6;
+  const CLt = g('s_tcl')*1e-12;
+  const PMt = g('s_tpm');
+  const VDD = g('s_tvdd');
+  const SRt = g('s_tsr')*1e6;
+  const proc = parseInt(document.getElementById('s_proc').value);
+
+  sv('v_tgbw', g('s_tgbw').toFixed(0));
+  sv('v_tcl', g('s_tcl').toFixed(1));
+  sv('v_tpm', g('s_tpm').toFixed(0));
+  sv('v_tvdd', g('s_tvdd').toFixed(2));
+  sv('v_tsr', g('s_tsr').toFixed(0));
+
+  // Process params
+  const params = {
+    65:  {mupCox:80e-6, munCox:270e-6, Vthn:0.40, Vthp:0.42, Avth_p:4e-3, Avth_n:6e-3, gamma:0.667},
+    180: {mupCox:60e-6, munCox:190e-6, Vthn:0.50, Vthp:0.55, Avth_p:8e-3, Avth_n:10e-3, gamma:0.667},
+    28:  {mupCox:100e-6, munCox:300e-6, Vthn:0.35, Vthp:0.36, Avth_p:2.5e-3, Avth_n:3.5e-3, gamma:0.75}
+  };
+  const p = params[proc];
+
+  // Step 1: Cc from PM target (ratio method)
+  // For PM >= PMt: fp2/GBW >= tan(90-PMt)*safety
+  const tanPM = Math.tan((90-PMt)*Math.PI/180);
+  const fp2_min = GBWt * tanPM * 1.2; // 20% safety margin
+  const gm6_min = 2*Math.PI * fp2_min * CLt;
+  // Cc = gm1 / (2pi*GBW): choose Cc/CL = 0.4-0.6
+  const Cc = 0.5 * CLt;
+  const gm1 = 2*Math.PI * GBWt * Cc;
+
+  // Step 2: ISS from SR
+  const ISS = SRt * Cc;
+  const ID1 = ISS/2;
+
+  // Step 3: Vov for M1/M2
+  const Vov1 = 2*ID1/gm1;
+
+  // Step 4: W1/L1
+  const L1 = (proc===180) ? 500e-9 : (proc===28 ? 100e-9 : 200e-9);
+  const WL1 = gm1*gm1 / (2*p.mupCox*ID1);
+  const W1 = WL1 * L1;
+
+  // Step 5: gm6 W6/L6
+  const ID6 = Math.max(ISS*2.5, 200e-6);
+  const Vov6 = 2*ID6/gm6_min;
+  const L6 = (proc===180) ? 1000e-9 : (proc===28 ? 100e-9 : 500e-9);
+  const WL6 = gm6_min*gm6_min / (2*p.munCox*ID6);
+  const W6 = WL6 * L6;
+
+  // Output stage
+  const ID_out_max = Math.max(VDD/50, 5e-3);
+  const L_out = (proc===28) ? 30e-9 : (proc===65 ? 100e-9 : 350e-9);
+  const Vov_out = 0.2;
+  const W8 = 2*ID_out_max / (p.mupCox * Vov_out*Vov_out) * L_out;
+  const W9 = 2*ID_out_max / (p.munCox * Vov_out*Vov_out) * L_out;
+
+  // Power
+  const I_total = ISS + ID6 + 250e-6;
+  const Pq = VDD * I_total * 1e3; // mW
+
+  // Offset
+  const sigma_VOS_M1 = p.Avth_p / Math.sqrt(W1*L1*1e12);
+  const sigma_VOS_M3 = p.Avth_n / Math.sqrt(W1*L1*1e12 * 1.2);
+  const sigma_VOS_total = Math.sqrt(sigma_VOS_M1**2 + sigma_VOS_M3**2)*1e3;
+
+  // Check GBW/PM verification
+  const GBW_actual = gm1/(2*Math.PI*Cc);
+  const fp2_actual = gm6_min/(2*Math.PI*CLt);
+  const PM_actual = 90 - Math.atan(GBW_actual/fp2_actual)*180/Math.PI;
+
+  // ── Bar chart of sizing results ──
+  const ctx = setupCanvas('c2', 600, 400);
+  const W=600, H=400;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText(`W/L Wizard — TSMC ${proc}nm, VDD=${VDD}V`, W/2, 24);
+
+  // Visualize key device sizes as horizontal bars
+  const devices = [
+    {name:'M1/M2 W', val: W1*1e6, unit:'μm', max:300},
+    {name:'M3/M4 W', val: W1*1e6*1.25, unit:'μm', max:300},
+    {name:'M5 W', val: ISS/(p.munCox*0.15*0.15)*L1*1e6, unit:'μm', max:100},
+    {name:'M6 W', val: W6*1e6, unit:'μm', max:500},
+    {name:'M7 W', val: W6*1e6*(p.munCox/p.mupCox), unit:'μm', max:1200},
+    {name:'M8 W', val: W8*1e6, unit:'μm', max:1000},
+    {name:'M9 W', val: W9*1e6, unit:'μm', max:800},
+  ];
+
+  const mL=110, mR=180, mT=45, mB=30;
+  const bH = (H-mT-mB)/devices.length - 5;
+
+  devices.forEach((d,i) => {
+    const y = mT + i*(H-mT-mB)/devices.length;
+    const barW = (W-mL-mR) * Math.min(d.val/d.max, 1.05);
+    const overflow = d.val > d.max;
+    ctx.fillStyle = overflow ? '#f38ba8' : '#89b4fa';
+    ctx.fillRect(mL, y, barW, bH);
+    ctx.fillStyle='#a6adc8'; ctx.font='11px Segoe UI'; ctx.textAlign='right';
+    ctx.fillText(d.name, mL-6, y+bH/2+3);
+    ctx.fillStyle='#cdd6f4'; ctx.textAlign='left';
+    ctx.fillText(d.val.toFixed(0)+' '+d.unit, mL+barW+5, y+bH/2+3);
+    // max marker
+    ctx.strokeStyle='#585b70'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    const mx = mL + (W-mL-mR);
+    ctx.beginPath(); ctx.moveTo(mx, y); ctx.lineTo(mx, y+bH); ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  // Right panel: derived specs
+  const rx=420, ry=50;
+  const specs_out = [
+    ['gm1', (gm1*1e3).toFixed(2), 'mA/V', true],
+    ['gm6', (gm6_min*1e3).toFixed(1), 'mA/V', true],
+    ['ISS', (ISS*1e6).toFixed(0), 'μA', true],
+    ['Cc', (Cc*1e12).toFixed(2), 'pF', true],
+    ['GBW', (GBW_actual*1e-6).toFixed(0), 'MHz', GBW_actual>=GBWt*0.95],
+    ['PM', PM_actual.toFixed(1), '°', PM_actual>=PMt],
+    ['SR', (ISS/Cc*1e-6).toFixed(0), 'V/μs', (ISS/Cc*1e-6)>=SRt*1e-6],
+    ['Pq', Pq.toFixed(2), 'mW', true],
+    ['σ(VOS)', sigma_VOS_total.toFixed(2), 'mV', sigma_VOS_total<=1.5],
+  ];
+
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 12px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText('Derived Specs', rx, ry);
+  specs_out.forEach(([lbl,val,unit,ok],i) => {
+    ctx.fillStyle='#a6adc8'; ctx.font='11px Segoe UI';
+    ctx.fillText(lbl+':', rx, ry+22+i*22);
+    ctx.fillStyle = ok ? '#a6e3a1' : '#f38ba8';
+    ctx.font='bold 11px Segoe UI';
+    ctx.fillText(val+' '+unit, rx+90, ry+22+i*22);
+  });
+
+  // Info box
+  const issues=[];
+  if (Vov1 < 0.05) issues.push('Vov1 = '+( Vov1*1000).toFixed(0)+' mV — too small, risk of weak inversion, noise model inaccurate');
+  if (Vov1 > 0.3) issues.push('Vov1 = '+(Vov1*1000).toFixed(0)+' mV — high overdrive reduces gm/ID efficiency');
+  if (PM_actual < PMt) issues.push('PM = '+PM_actual.toFixed(1)+'° < target — need higher gm6 or lower GBW');
+  if (W6*1e6 > 800) issues.push('M6 width = '+( W6*1e6).toFixed(0)+' μm — very large, check routing parasitics at stage-2 output node');
+
+  document.getElementById('info2').innerHTML = issues.length===0
+    ? `<span class="hi">Design feasible.</span> Key: gm1=${(gm1*1e3).toFixed(2)} mA/V, ISS=${(ISS*1e6).toFixed(0)} μA, Cc=${(Cc*1e12).toFixed(2)} pF, Pq=${Pq.toFixed(2)} mW.`
+    : issues.map(s=>`<span class="warn">Note: </span><span class="note">${s}</span>`).join('<br>');
+}
+
+// init
+draw0();
+draw1();
+draw2();
+</script>
+</body>
+</html>

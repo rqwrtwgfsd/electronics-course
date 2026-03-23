@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-OAD-10.7.1 — Performance Verification & Measurement</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #0e1117; color: #cdd6f4; font-family: 'Segoe UI', sans-serif; font-size: 14px; }
+  h1 { text-align: center; padding: 18px; font-size: 17px; color: #cba6f7; border-bottom: 1px solid #313244; }
+  .tabs { display: flex; background: #181825; border-bottom: 1px solid #313244; }
+  .tab { padding: 10px 22px; cursor: pointer; color: #a6adc8; font-size: 13px; border-bottom: 3px solid transparent; transition: all .2s; }
+  .tab.active { color: #cba6f7; border-bottom-color: #cba6f7; }
+  .tab:hover:not(.active) { color: #cdd6f4; }
+  .panel { display: none; padding: 18px; }
+  .panel.active { display: block; }
+  canvas { display: block; background: #1e1e2e; border-radius: 8px; }
+  .row { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+  .ctrl { background: #181825; border-radius: 8px; padding: 14px; min-width: 220px; }
+  .ctrl label { display: block; color: #a6adc8; font-size: 12px; margin-bottom: 6px; }
+  .ctrl input[type=range] { width: 100%; accent-color: #cba6f7; margin-bottom: 2px; }
+  .ctrl .val { color: #a6e3a1; font-size: 12px; text-align: right; margin-bottom: 8px; }
+  .info-box { background: #181825; border-radius: 8px; padding: 12px; margin-top: 12px; font-size: 12px; line-height: 1.7; }
+  .hi { color: #a6e3a1; font-weight: bold; }
+  .warn { color: #f38ba8; font-weight: bold; }
+  .note { color: #fab387; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+  .leg-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #a6adc8; }
+  .leg-dot { width: 18px; height: 3px; border-radius: 2px; display: inline-block; }
+</style>
+</head>
+<body>
+<h1>M4B-OAD-10.7.1 — Op-Amp Performance Verification & Measurement</h1>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">Settling Time Analyzer</div>
+  <div class="tab" onclick="showTab(1)">Monte Carlo VOS Distribution</div>
+  <div class="tab" onclick="showTab(2)">Measurement Methodology Dashboard</div>
+</div>
+
+<!-- TAB 0: Settling time analysis -->
+<div class="panel active" id="tab0">
+  <div class="row">
+    <canvas id="c0" width="620" height="400"></canvas>
+    <div class="ctrl" style="max-width:230px;">
+      <label>gm1 (mA/V): <span class="val" id="v0_gm1">1.60</span></label>
+      <input type="range" id="r0_gm1" min="0.4" max="5.0" step="0.1" value="1.60" oninput="draw0()">
+      <label>CL (pF): <span class="val" id="v0_cl">1.0</span></label>
+      <input type="range" id="r0_cl" min="0.1" max="10.0" step="0.1" value="1.0" oninput="draw0()">
+      <label>Cc (pF): <span class="val" id="v0_cc">0.5</span></label>
+      <input type="range" id="r0_cc" min="0.05" max="3.0" step="0.05" value="0.5" oninput="draw0()">
+      <label>ISS (μA): <span class="val" id="v0_iss">200</span></label>
+      <input type="range" id="r0_iss" min="50" max="1000" step="10" value="200" oninput="draw0()">
+      <label>Step size (V): <span class="val" id="v0_step">0.6</span></label>
+      <input type="range" id="r0_step" min="0.01" max="1.2" step="0.01" value="0.6" oninput="draw0()">
+      <label>Av0 (dB): <span class="val" id="v0_av">80</span></label>
+      <input type="range" id="r0_av" min="40" max="120" step="1" value="80" oninput="draw0()">
+      <label>Accuracy target: <span class="val" id="v0_acc">12</span> bits</label>
+      <input type="range" id="r0_acc" min="8" max="16" step="1" value="12" oninput="draw0()">
+    </div>
+  </div>
+  <div class="legend">
+    <div class="leg-item"><div class="leg-dot" style="background:#89b4fa"></div>Vout(t)</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#fab387"></div>Slew phase</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#a6e3a1"></div>Accuracy window</div>
+    <div class="leg-item"><div class="leg-dot" style="background:#f38ba8;border-top:1px dashed #f38ba8;height:0"></div>Final value</div>
+  </div>
+  <div class="info-box" id="info0"></div>
+</div>
+
+<!-- TAB 1: Monte Carlo VOS -->
+<div class="panel" id="tab1">
+  <div class="row">
+    <canvas id="c1" width="580" height="400"></canvas>
+    <div class="ctrl" style="max-width:230px;">
+      <label>σ(VOS) (mV): <span class="val" id="v1_sig">0.86</span></label>
+      <input type="range" id="r1_sig" min="0.1" max="5.0" step="0.05" value="0.86" oninput="draw1()">
+      <label>Mean VOS (mV): <span class="val" id="v1_mean">0.0</span></label>
+      <input type="range" id="r1_mean" min="-3.0" max="3.0" step="0.05" value="0.0" oninput="draw1()">
+      <label>Spec limit (mV 3σ): <span class="val" id="v1_spec">3.0</span></label>
+      <input type="range" id="r1_spec" min="0.5" max="10.0" step="0.1" value="3.0" oninput="draw1()">
+      <label>Samples: <span class="val" id="v1_n">200</span></label>
+      <input type="range" id="r1_n" min="50" max="1000" step="10" value="200" oninput="draw1()">
+      <label style="margin-top:8px;">
+        <button onclick="reseed()" style="background:#313244;color:#cdd6f4;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px;">Re-run MC</button>
+      </label>
+    </div>
+  </div>
+  <div class="info-box" id="info1"></div>
+</div>
+
+<!-- TAB 2: Measurement methodology -->
+<div class="panel" id="tab2">
+  <div class="row">
+    <canvas id="c2" width="660" height="430"></canvas>
+  </div>
+  <div class="info-box" id="info2">Select a measurement block above to see method details.</div>
+</div>
+
+<script>
+const dpr = window.devicePixelRatio || 1;
+function setupCanvas(id, w, h) {
+  const c = document.getElementById(id);
+  c.width = w*dpr; c.height = h*dpr;
+  c.style.width = w+'px'; c.style.height = h+'px';
+  const ctx = c.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return ctx;
+}
+function g(id) { return parseFloat(document.getElementById(id).value); }
+function sv(id, v) { document.getElementById(id).textContent = v; }
+function showTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
+  if(n===1) draw1();
+  if(n===2) draw2();
+}
+
+// ── TAB 0: Settling Time ─────────────────────────────────────────────────────
+function draw0() {
+  const gm1=g('r0_gm1')*1e-3, CL=g('r0_cl')*1e-12;
+  const Cc=g('r0_cc')*1e-12, ISS=g('r0_iss')*1e-6;
+  const Vstep=g('r0_step'), Av0=Math.pow(10,g('r0_av')/20);
+  const bits=g('r0_acc');
+  sv('v0_gm1', g('r0_gm1').toFixed(2));
+  sv('v0_cl', g('r0_cl').toFixed(1));
+  sv('v0_cc', g('r0_cc').toFixed(2));
+  sv('v0_iss', g('r0_iss').toFixed(0));
+  sv('v0_step', g('r0_step').toFixed(2));
+  sv('v0_av', g('r0_av').toFixed(0));
+  sv('v0_acc', bits.toFixed(0));
+
+  const SR_rise = ISS / Cc; // V/s
+  const SR_ns = SR_rise * 1e-9; // V/ns
+  const tau = CL / gm1; // s
+  const tau_ns = tau * 1e9;
+  const GBW = gm1 / (2*Math.PI*Cc) * 1e-9; // GHz
+
+  // Accuracy window
+  const epsilon = Vstep / (Av0 + 1); // static gain error ε = Vstep / (Av0+1) in closed loop
+  const accuracy_target_V = Vstep / Math.pow(2, bits); // 1 LSB
+  const accuracy_pct = accuracy_target_V / Vstep * 100;
+
+  // Slew time
+  const t_slew_ns = Vstep / SR_ns;
+  // Linear settling: need to settle to accuracy_target_V
+  // V_error(t) = Vstep × exp(-t/tau)
+  // t_settle_linear = tau × ln(Vstep/accuracy_target_V) if gain error not dominant
+  const target_err_V = Math.max(accuracy_target_V, epsilon);
+  const t_settle_ns = t_slew_ns + tau_ns * Math.log(Vstep/target_err_V) * Math.max(0,1);
+
+  const ctx = setupCanvas('c0', 620, 400);
+  const W=620, H=400;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+
+  const mL=60, mR=30, mT=30, mB=45;
+  const bW=W-mL-mR, bH=H-mT-mB;
+
+  // Time axis: 0 to 3× settling time or 30 ns min
+  const tMax_ns = Math.max(t_settle_ns * 2.5, 10);
+  function tx(t) { return mL + bW*t/tMax_ns; }
+  // Voltage axis
+  function vy(v) { return mT + bH*(1 - v/Vstep); }
+
+  // Grid
+  [0, 0.2, 0.4, 0.6, 0.8, 1.0].forEach(f => {
+    const y=vy(f*Vstep);
+    ctx.beginPath(); ctx.moveTo(mL,y); ctx.lineTo(mL+bW,y);
+    ctx.strokeStyle='#313244'; ctx.lineWidth=0.7; ctx.stroke();
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='right';
+    ctx.fillText((f*Vstep).toFixed(2)+'V', mL-4, y+3);
+  });
+  const tTicks = 5;
+  for(let i=0;i<=tTicks;i++) {
+    const t=tMax_ns*i/tTicks;
+    const x=tx(t);
+    ctx.beginPath(); ctx.moveTo(x,mT); ctx.lineTo(x,mT+bH);
+    ctx.strokeStyle='#313244'; ctx.lineWidth=0.7; ctx.stroke();
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText(t.toFixed(1)+'ns', x, mT+bH+14);
+  }
+
+  // Accuracy band
+  const y_final = vy(Vstep);
+  const y_acc_hi = vy(Vstep - target_err_V);
+  const y_acc_lo = vy(Vstep + target_err_V);
+  ctx.fillStyle='rgba(166,227,161,0.1)';
+  ctx.fillRect(mL, y_final-1, bW, y_acc_hi - y_final);
+  ctx.fillStyle='rgba(166,227,161,0.1)';
+  ctx.fillRect(mL, y_final+1, bW, y_acc_lo - y_final);
+
+  // Final value line
+  ctx.beginPath(); ctx.moveTo(mL, vy(Vstep)); ctx.lineTo(mL+bW, vy(Vstep));
+  ctx.strokeStyle='#f38ba8'; ctx.lineWidth=1; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+
+  // Slew region color
+  const x_slew_end = tx(t_slew_ns);
+  ctx.fillStyle='rgba(250,179,135,0.08)';
+  ctx.fillRect(mL, mT, Math.min(x_slew_end-mL, bW), bH);
+  ctx.fillStyle='#fab387'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Slew', mL+(Math.min(x_slew_end-mL, bW))/2, mT+15);
+
+  // Vout waveform: slew then exponential
+  ctx.beginPath();
+  const nPts=400;
+  for(let i=0;i<=nPts;i++) {
+    const t_ns = tMax_ns * i/nPts;
+    let v;
+    if(t_ns < t_slew_ns) {
+      v = SR_ns * t_ns;
+    } else {
+      const t_lin = t_ns - t_slew_ns;
+      // exponential approach from Vstep (where slew ends) to Vstep
+      // actual: V approaches Vstep*(1-ε_gain), starting from SR*t_slew
+      const V_at_slew_end = Math.min(SR_ns*t_slew_ns, Vstep);
+      v = Vstep - (Vstep - V_at_slew_end)*Math.exp(-t_lin/tau_ns);
+    }
+    v = Math.min(v, Vstep*1.02);
+    const x=tx(t_ns), y=vy(v);
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  }
+  ctx.strokeStyle='#89b4fa'; ctx.lineWidth=2.5; ctx.stroke();
+
+  // Settling marker
+  const x_settle = tx(t_settle_ns);
+  if(x_settle <= mL+bW) {
+    ctx.beginPath(); ctx.moveTo(x_settle, mT); ctx.lineTo(x_settle, mT+bH);
+    ctx.strokeStyle='#a6e3a1'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#a6e3a1'; ctx.font='10px Segoe UI'; ctx.textAlign='left';
+    ctx.fillText('t_settle='+(t_settle_ns).toFixed(1)+'ns', x_settle+3, mT+30);
+  }
+
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Transient Settling Analysis', W/2, 18);
+  ctx.fillStyle='#585b70'; ctx.font='10px Segoe UI';
+  ctx.fillText('Time (ns)', W/2, H-8);
+  ctx.save(); ctx.translate(12, H/2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle='#585b70'; ctx.fillText('Vout (V)', 0, 0); ctx.restore();
+
+  const limitedBySL = epsilon > accuracy_target_V;
+  document.getElementById('info0').innerHTML =
+    `SR = ${(SR_ns*1e3).toFixed(0)} V/μs, τ = ${tau_ns.toFixed(2)} ns, GBW = ${(GBW*1e3).toFixed(0)} MHz.
+     <br>Slew time = ${t_slew_ns.toFixed(2)} ns for ${Vstep.toFixed(2)} V step.
+     Settling target = ${(accuracy_target_V*1e6).toFixed(0)} μV (${bits}-bit), gain error = ${(epsilon*1e6).toFixed(0)} μV.
+     <br>${limitedBySL ? '<span class="warn">Settling limited by DC gain error — increase Av0 or the gain will not permit '+bits+'-bit accuracy.</span>' : '<span class="hi">Settling dominated by exponential, not gain error — OK for '+bits+'-bit.</span>'}
+     <br>Total t_settle = ${t_settle_ns.toFixed(2)} ns.`;
+}
+
+// ── TAB 1: Monte Carlo ──────────────────────────────────────────────────────
+let mc_seed = 42;
+function reseed() { mc_seed = Math.random()*10000|0; draw1(); }
+
+function gaussRand(mu, sigma, seed_offset) {
+  // Box-Muller with seeded random (pseudo, for repeatability)
+  const u1 = Math.abs(Math.sin(mc_seed+seed_offset*7.3));
+  const u2 = Math.abs(Math.cos(mc_seed+seed_offset*13.7));
+  const z = Math.sqrt(-2*Math.log(Math.max(u1,1e-9))) * Math.cos(2*Math.PI*u2);
+  return mu + sigma * z;
+}
+
+function draw1() {
+  const sigma=g('r1_sig'), mean=g('r1_mean'), spec=g('r1_spec'), N=Math.round(g('r1_n'));
+  sv('v1_sig', sigma.toFixed(2));
+  sv('v1_mean', mean.toFixed(2));
+  sv('v1_spec', spec.toFixed(1));
+  sv('v1_n', N.toFixed(0));
+
+  // Generate MC samples
+  const samples=[];
+  for(let i=0;i<N;i++) {
+    // Simpler: use Math.random for visual variety (re-seeded on button press)
+    const u1=Math.random(), u2=Math.random();
+    const z = Math.sqrt(-2*Math.log(Math.max(u1,1e-9)))*Math.cos(2*Math.PI*u2);
+    samples.push(mean + sigma*z);
+  }
+
+  const ctx = setupCanvas('c1', 580, 400);
+  const W=580, H=400;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Monte Carlo: Input Offset Voltage Distribution', W/2, 20);
+
+  const mL=50, mR=20, mT=35, mB=55;
+  const bW=W-mL-mR, bH=H-mT-mB;
+
+  // Histogram
+  const vMin = -Math.max(spec*1.5, mean-4*sigma, 4);
+  const vMax =  Math.max(spec*1.5, mean+4*sigma, 4);
+  const nBins = 30;
+  const binW = (vMax-vMin)/nBins;
+  const bins = new Array(nBins).fill(0);
+  let n_pass=0, n_fail=0;
+  samples.forEach(s => {
+    const b = Math.floor((s-vMin)/binW);
+    if(b>=0 && b<nBins) bins[b]++;
+    if(Math.abs(s-mean) <= spec) n_pass++; else n_fail++;
+  });
+
+  const maxBin = Math.max(...bins);
+  function hx(v) { return mL + bW*(v-vMin)/(vMax-vMin); }
+  function hy(count) { return mT+bH*(1-count/maxBin); }
+
+  // Fill bars
+  bins.forEach((count,i) => {
+    const v_lo = vMin + i*binW, v_hi = v_lo+binW;
+    const v_mid = (v_lo+v_hi)/2;
+    const x=hx(v_lo);
+    const blen = bW*binW/(vMax-vMin);
+    const is_fail = Math.abs(v_mid-mean) > spec;
+    ctx.fillStyle = is_fail ? 'rgba(243,139,168,0.7)' : 'rgba(137,180,250,0.7)';
+    ctx.fillRect(x+1, hy(count), blen-2, mT+bH - hy(count));
+  });
+
+  // Spec lines
+  [mean+spec, mean-spec].forEach(v=>{
+    const x=hx(v);
+    ctx.beginPath(); ctx.moveTo(x,mT); ctx.lineTo(x,mT+bH);
+    ctx.strokeStyle='#f38ba8'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]); ctx.stroke(); ctx.setLineDash([]);
+  });
+  ctx.fillStyle='#f38ba8'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('±'+spec+' mV spec', hx(mean+spec), mT+bH+14);
+
+  // Gaussian fit overlay
+  const gaussPts=100;
+  ctx.beginPath();
+  for(let i=0;i<=gaussPts;i++) {
+    const v=vMin+(vMax-vMin)*i/gaussPts;
+    const pdf = N*binW/(sigma*Math.sqrt(2*Math.PI)) * Math.exp(-0.5*((v-mean)/sigma)**2);
+    const x=hx(v), y=hy(pdf);
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  }
+  ctx.strokeStyle='#a6e3a1'; ctx.lineWidth=2; ctx.stroke();
+
+  // 3σ markers
+  [-3,-2,-1,1,2,3].forEach(k=>{
+    const v=mean+k*sigma;
+    if(v>=vMin && v<=vMax) {
+      const x=hx(v);
+      ctx.beginPath(); ctx.moveTo(x,mT+bH-12); ctx.lineTo(x,mT+bH);
+      ctx.strokeStyle='#cba6f7'; ctx.lineWidth=1; ctx.stroke();
+      ctx.fillStyle='#cba6f7'; ctx.font='9px Segoe UI'; ctx.textAlign='center';
+      ctx.fillText(k+'σ', x, mT+bH+28);
+    }
+  });
+
+  // x-axis
+  const nTicks=7;
+  for(let i=0;i<=nTicks;i++) {
+    const v=vMin+(vMax-vMin)*i/nTicks;
+    ctx.fillStyle='#585b70'; ctx.font='9px Segoe UI'; ctx.textAlign='center';
+    ctx.fillText(v.toFixed(1)+'mV', hx(v), mT+bH+14);
+  }
+
+  ctx.fillStyle='#585b70'; ctx.font='10px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('VOS (mV)', W/2, H-5);
+
+  // Stats
+  const measured_mean = samples.reduce((a,b)=>a+b,0)/N;
+  const measured_var = samples.reduce((a,b)=>a+(b-measured_mean)**2,0)/N;
+  const measured_sig = Math.sqrt(measured_var);
+  const yield_pct = n_pass/N*100;
+  const three_sigma_range = measured_mean + 3*measured_sig;
+  const spec_ok = three_sigma_range <= spec && (measured_mean-3*measured_sig) >= -spec;
+
+  document.getElementById('info1').innerHTML =
+    `Measured from ${N} samples: mean = ${measured_mean.toFixed(3)} mV, σ = ${measured_sig.toFixed(3)} mV, 3σ bound = ${three_sigma_range.toFixed(2)} mV.
+     <br>Spec: |VOS| ≤ ${spec} mV (3σ).  Yield (within ±${spec} mV): ${yield_pct.toFixed(1)}%.
+     <br>${spec_ok ? '<span class="hi">3σ PASS: 3σ = '+(measured_sig*3).toFixed(2)+' mV ≤ '+spec+' mV</span>' : '<span class="warn">3σ FAIL: 3σ = '+(measured_sig*3).toFixed(2)+' mV > '+spec+' mV — increase W1×L1</span>'}
+     <br>${Math.abs(measured_mean) > sigma*0.5 ? '<span class="warn">Non-zero mean = '+measured_mean.toFixed(3)+' mV — suspect systematic offset (layout asymmetry)</span>' : '<span class="note">Mean ≈ 0 — no evidence of systematic offset.</span>'}`;
+}
+
+// ── TAB 2: Measurement Dashboard ────────────────────────────────────────────
+const methods = [
+  { label:'Av0', x:60, y:60, desc:'Open-loop DC gain: use .op + .ac at 1 Hz with Middlebrook probe or loop-break inductor (1 GH) + capacitor (1 GF). Av0 = |T(j×1Hz)|.' },
+  { label:'GBW / PM', x:200, y:60, desc:'Loop gain .ac 1Hz–10GHz. GBW = freq where |T|=0 dB. PM = 180° + phase(T) at GBW. Use Spectre STB analysis for clean results.' },
+  { label:'VOS', x:340, y:60, desc:'Unity-gain, Vin=VDD/2. VOS = Vout−Vin. Run 500-sample MC. Report mean (systematic) and 3σ (random). Check VOS vs Vicm for CMRR issues.' },
+  { label:'CMRR', x:480, y:60, desc:'Apply small AC to both inputs simultaneously in unity-gain. CMRR = Av_diff / (Vout_cm/Vicm). Plot vs frequency; check 1/f rolloff at ~1 MHz.' },
+  { label:'PSRR', x:60, y:160, desc:'AC perturbation on VDD (1 mV, via 100 Ω). PSRR+ = Av0 / |Vout/ΔVDD| in unity-gain. Check at all PVT corners. PSRR− via VSS perturbation.' },
+  { label:'Slew Rate', x:200, y:160, desc:'Large step (VDD range) in unity-gain. SR = dVout/dt at steepest slope. Report SR+ (rising) and SR− (falling) separately. Verify = ISS/Cc.' },
+  { label:'Settling', x:340, y:160, desc:'.tran with tight timestep (0.1 ns). Measure t_settle = time from step until |Vout−Vfinal| < 1 LSB. Include actual ADC switched-cap load.' },
+  { label:'Noise', x:480, y:160, desc:'.noise V(Vout) Vin 1Hz 100MHz. Check thermal floor vs 8kTγ/gm1, 1/f corner vs spec, integrated Vn_rms. Use noise contributor summary.' },
+  { label:'Zout', x:130, y:260, desc:'Inject 1A AC at output node. Zout = |Vout|. Closed-loop: Zout_cl = Zout_ol/(1+T). Verify < 50 Ω at DC, plot vs freq.' },
+  { label:'ICMR', x:280, y:260, desc:'Sweep Vicm from 0 to VDD with Vout=Vicm (follower). Flag when output deviates by > 0.5 V or op-amp saturates. ICMR = range where output tracks.' },
+  { label:'MC Stats', x:430, y:260, desc:'500 samples for VOS, 200 for GBW/PM. Sign off at (mean − 3σ) ≥ spec. Flag non-zero mean as systematic offset. Plot Gaussian fit over histogram.' },
+];
+let selected_method = -1;
+
+function draw2() {
+  const ctx = setupCanvas('c2', 660, 430);
+  const W=660, H=430;
+  ctx.fillStyle='#1e1e2e'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#cba6f7'; ctx.font='bold 13px Segoe UI'; ctx.textAlign='center';
+  ctx.fillText('Op-Amp Measurement Methodology — Click a block for details', W/2, 22);
+
+  methods.forEach((m,i) => {
+    const bw=110, bh=50;
+    const isSelected = i===selected_method;
+    ctx.fillStyle = isSelected ? '#313264' : '#252535';
+    ctx.strokeStyle = isSelected ? '#cba6f7' : '#45475a';
+    ctx.lineWidth = isSelected ? 2 : 1;
+    ctx.beginPath();
+    ctx.roundRect(m.x, m.y, bw, bh, 6);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = isSelected ? '#cba6f7' : '#89b4fa';
+    ctx.font = 'bold 12px Segoe UI';
+    ctx.textAlign='center';
+    ctx.fillText(m.label, m.x+bw/2, m.y+bh/2+4);
+  });
+
+  // Flow arrows (simplified)
+  const flowPairs = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[8,9],[9,10]];
+  flowPairs.forEach(([a,b])=>{
+    const ma=methods[a], mb=methods[b];
+    const bw=110,bh=50;
+    ctx.beginPath();
+    ctx.moveTo(ma.x+bw, ma.y+bh/2);
+    ctx.lineTo(mb.x, mb.y+bh/2);
+    ctx.strokeStyle='#45475a'; ctx.lineWidth=1; ctx.setLineDash([3,3]); ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  // Row labels
+  ctx.fillStyle='#a6adc8'; ctx.font='11px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText('DC parameters →', 10, 90);
+  ctx.fillText('AC / transient →', 10, 190);
+  ctx.fillText('Statistical / range →', 10, 290);
+
+  // Bottom: checklist legend
+  const checkY = 340;
+  ctx.fillStyle='#585b70'; ctx.font='11px Segoe UI'; ctx.textAlign='left';
+  ctx.fillText('Verification checklist (click any block for measurement method):', 20, checkY);
+  const items = ['Av0 ≥ 80 dB', 'GBW ≥ 500 MHz', 'PM ≥ 60°', 'VOS 3σ ≤ 3 mV',
+                 'SR ≥ 400 V/μs', 't_settle ≤ 5 ns', 'Noise ≤ 200 μV', 'CMRR ≥ 60 dB'];
+  items.forEach((item,i) => {
+    const col=i<4?0:1, row=i%4;
+    const x=20+col*300, y=checkY+18+row*18;
+    ctx.fillStyle='#a6e3a1'; ctx.font='10px Segoe UI';
+    ctx.fillText('[ ]  '+item, x, y);
+  });
+}
+
+// Click handler for tab2
+document.getElementById('c2').addEventListener('click', function(e) {
+  const rect = this.getBoundingClientRect();
+  const mx = (e.clientX - rect.left);
+  const my = (e.clientY - rect.top);
+  const bw=110, bh=50;
+  let found=-1;
+  methods.forEach((m,i)=>{
+    if(mx>=m.x && mx<=m.x+bw && my>=m.y && my<=m.y+bh) found=i;
+  });
+  if(found >= 0) {
+    selected_method = found;
+    draw2();
+    document.getElementById('info2').innerHTML =
+      `<span class="hi">${methods[found].label}: </span><span class="note">${methods[found].desc}</span>`;
+  }
+});
+
+draw0();
+draw1();
+draw2();
+</script>
+</body>
+</html>

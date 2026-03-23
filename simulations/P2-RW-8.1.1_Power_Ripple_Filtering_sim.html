@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-RW-8.1.1 Power Ripple Filtering</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:10px;padding:10px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:230px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.warn{color:#ff6600;font-size:11px;margin-top:4px}
+.formula{color:#ffaa00;font-size:11px;margin-top:8px;line-height:1.6}
+</style>
+</head>
+<body>
+<h1>P2-RW-8.1.1 — Power Ripple Filtering: C_bulk, ESR, f_sw</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="580" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>Converter Parameters</h2>
+<label>f_sw (kHz)
+<input type="range" id="fsw" min="10" max="1000" step="5" value="100">
+<div class="readout" id="fsw_v">f_sw = 100 kHz</div>
+</label>
+<label>I_load (A)
+<input type="range" id="iload" min="0.1" max="10" step="0.1" value="2">
+<div class="readout" id="iload_v">I_load = 2.0 A</div>
+</label>
+<h2 style="margin-top:8px">Capacitor</h2>
+<label>C_bulk (μF)
+<input type="range" id="cbulk" min="1" max="2000" step="1" value="220">
+<div class="readout" id="cbulk_v">C_bulk = 220 μF</div>
+</label>
+<label>ESR (mΩ)
+<input type="range" id="esr" min="1" max="1000" step="1" value="100">
+<div class="readout" id="esr_v">ESR = 100 mΩ</div>
+</label>
+<label>C_decouple (μF, MLCC in parallel)
+<input type="range" id="cdec" min="0" max="100" step="1" value="10">
+<div class="readout" id="cdec_v">C_decouple = 10 μF</div>
+</label>
+<h2 style="margin-top:8px">Ripple Analysis</h2>
+<div class="readout" id="dvc">ΔV_C = —</div>
+<div class="readout" id="dvesr">ΔV_ESR = —</div>
+<div class="readout" id="dvtot">ΔV_total = —</div>
+<div class="warn" id="w_esr"></div>
+<div class="formula">ΔV_C = I/(8Cf)<br>ΔV_ESR = ΔI×ESR<br>ESR dom. above 100kHz</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let fsw=100,iload=2,cbulk=220,esr=100,cdec=10;
+const W=580,H=380,PAD={l:65,r:20,t=30,b=40};
+// fix syntax
+const pad={l:65,r:20,t:30,b:40};
+const CW=W-pad.l-pad.r,CH=H-pad.t-pad.b;
+
+['fsw','iload','cbulk','esr','cdec'].forEach(id=>{
+  document.getElementById(id).oninput=function(){
+    const v=parseFloat(this.value);
+    if(id==='fsw'){fsw=v;document.getElementById('fsw_v').textContent='f_sw = '+v+' kHz';}
+    if(id==='iload'){iload=v;document.getElementById('iload_v').textContent='I_load = '+v.toFixed(1)+' A';}
+    if(id==='cbulk'){cbulk=v;document.getElementById('cbulk_v').textContent='C_bulk = '+v+' μF';}
+    if(id==='esr'){esr=v;document.getElementById('esr_v').textContent='ESR = '+v+' mΩ';}
+    if(id==='cdec'){cdec=v;document.getElementById('cdec_v').textContent='C_decouple = '+v+' μF';}
+    draw();
+  };
+});
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const C_total=(cbulk+cdec)*1e-6;
+  const dV_C=iload/(8*C_total*fsw*1e3)*1000; // mV
+  const dV_ESR=iload*(esr*1e-3)*1000; // mV
+  const dV_tot=Math.sqrt(dV_C*dV_C+dV_ESR*dV_ESR);
+  const Tsw=1/(fsw*1e3)*1e6; // μs
+  const tmax=4*Tsw;
+  const vrange=Math.max(dV_tot*3,5);
+  function toPx(t,v_mv){return[pad.l+CW*(t/tmax),pad.t+CH*(1-(v_mv+vrange/2)/vrange)];}
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=8;i++){const x=pad.l+CW*(i/8);ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=pad.t+CH*(i/5);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,pad.t+CH);ctx.moveTo(pad.l,pad.t+CH);ctx.lineTo(pad.l+CW,pad.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=4;i++){const t=tmax*i/4;ctx.fillText(t.toFixed(2)+'μs',pad.l+CW*(i/4),pad.t+CH+14);}
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){const v=-vrange/2+vrange*(1-i/5);ctx.fillText(v.toFixed(1)+'mV',pad.l-4,pad.t+CH*(i/5)+4);}
+  // Total ripple
+  ctx.strokeStyle='#00ff88';ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=600;i++){
+    const t=tmax*i/600;const p=(t%Tsw)/Tsw;
+    const v_C=dV_C*(p<0.5?(4*p-1):(3-4*p));
+    const v_ESR=dV_ESR*(p<0.5?1:-1);
+    const[x,y]=toPx(t,v_C+v_ESR);
+    if(y>pad.t-5&&y<pad.t+CH+5){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  }
+  ctx.stroke();
+  // Components
+  ctx.strokeStyle='#0066cc';ctx.setLineDash([3,2]);ctx.lineWidth=1.5;
+  ctx.beginPath();
+  for(let i=0;i<=600;i++){const t=tmax*i/600;const p=(t%Tsw)/Tsw;const v=dV_C*(p<0.5?(4*p-1):(3-4*p));const[x,y]=toPx(t,v);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  ctx.strokeStyle='#ff6600';
+  ctx.beginPath();
+  for(let i=0;i<=600;i++){const t=tmax*i/600;const p=(t%Tsw)/Tsw;const v=dV_ESR*(p<0.5?1:-1);const[x,y]=toPx(t,v);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#00ff88';ctx.font='11px Courier New';ctx.textAlign='left';
+  ctx.fillText('ΔV_pp = '+dV_tot.toFixed(2)+' mV | f_sw='+fsw+'kHz C='+cbulk+'+'+cdec+'μF ESR='+esr+'mΩ',pad.l+4,pad.t+14);
+  ctx.fillStyle='#0066cc';ctx.fillText('ΔV_C='+dV_C.toFixed(2)+'mV',pad.l+4,pad.t+28);
+  ctx.fillStyle='#ff6600';ctx.fillText('ΔV_ESR='+dV_ESR.toFixed(2)+'mV',pad.l+4,pad.t+42);
+  document.getElementById('dvc').textContent='ΔV_C = '+dV_C.toFixed(2)+' mV';
+  document.getElementById('dvesr').textContent='ΔV_ESR = '+dV_ESR.toFixed(2)+' mV';
+  document.getElementById('dvtot').textContent='ΔV_total = '+dV_tot.toFixed(2)+' mV';
+  const w=document.getElementById('w_esr');
+  if(dV_ESR>dV_C&&fsw>100){w.textContent='ESR dominates above 100kHz! Use MLCC (ESR<5mΩ) for improvement.';}
+  else if(dV_ESR>dV_C){w.textContent='ESR component dominant — replace electrolytic with MLCC.';}
+  else{w.textContent='';}
+}
+draw();
+</script>
+</body>
+</html>

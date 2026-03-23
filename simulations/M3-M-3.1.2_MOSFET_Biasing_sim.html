@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M3-M-3.1.2 MOSFET Biasing</title>
+<style>
+:root{--bg:#ffffff;--surface:#f5f5f5;--border:#cccccc;--text:#111111;--accent:#0066cc;--accent2:#0066cc;}
+@media(prefers-color-scheme:dark){:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--accent:#0066cc;--accent2:#58a6ff;}}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;padding:16px;max-width:860px;margin:0 auto;}
+h1{font-size:1.2rem;color:var(--accent2);margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:8px;}
+.note{font-size:0.85rem;color:var(--text);opacity:0.7;margin-bottom:12px;}
+canvas{width:100%;height:260px;display:block;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:12px;}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;}
+.ctrl{display:flex;flex-direction:column;gap:3px;font-size:0.82rem;}
+.ctrl label{color:var(--text);opacity:0.8;}
+input[type=range]{width:160px;accent-color:var(--accent);}
+.readouts{display:flex;flex-wrap:wrap;gap:12px;font-size:0.85rem;font-family:monospace;}
+.ro{background:var(--surface);border:1px solid var(--border);padding:4px 10px;border-radius:4px;color:var(--accent2);}
+</style></head><body>
+<h1>M3-M-3.1.2 — MOSFET Voltage Divider Bias DC Operating Point</h1>
+<p class="note">Adjust R1, R2, RD, RS to set the Q-point. See effect of source degeneration on bias stability.</p>
+<canvas id="cv"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>R1 (MΩ): <span id="r1v">10</span></label><input type="range" id="r1" min="1" max="100" value="10" step="1" oninput="sv('r1v',this.value);draw();"></div>
+  <div class="ctrl"><label>R2 (MΩ): <span id="r2v">3</span></label><input type="range" id="r2" min="0.5" max="50" value="3" step="0.5" oninput="sv('r2v',parseFloat(this.value).toFixed(1));draw();"></div>
+  <div class="ctrl"><label>RD (kΩ): <span id="rdv">2</span></label><input type="range" id="rd" min="0.5" max="10" value="2" step="0.1" oninput="sv('rdv',parseFloat(this.value).toFixed(1));draw();"></div>
+  <div class="ctrl"><label>RS (kΩ): <span id="rsv">1</span></label><input type="range" id="rs" min="0" max="5" value="1" step="0.1" oninput="sv('rsv',parseFloat(this.value).toFixed(1));draw();"></div>
+  <div class="ctrl"><label>V_T (V): <span id="vtv">1.5</span></label><input type="range" id="vt" min="0.3" max="3" value="1.5" step="0.1" oninput="sv('vtv',parseFloat(this.value).toFixed(1));draw();"></div>
+</div>
+<div class="readouts">
+  <div class="ro">V_G: <span id="vg">0</span> V</div>
+  <div class="ro">V_GS: <span id="vgs">0</span> V</div>
+  <div class="ro">I_D: <span id="id">0</span> mA</div>
+  <div class="ro">V_DS: <span id="vds">0</span> V</div>
+  <div class="ro">Region: <span id="region">-</span></div>
+</div>
+<script>
+
+const isDark=()=>window.matchMedia('(prefers-color-scheme:dark)').matches;
+function gs(id){return parseFloat(document.getElementById(id).value);}
+function sv(id,val){document.getElementById(id).textContent=val;}
+function resize(cv,draw){
+  cv.width=cv.offsetWidth*devicePixelRatio;
+  cv.height=260*devicePixelRatio;
+  cv.style.height='260px';
+  draw();
+}
+function drawAxes(ctx,W,H,pad,xl,yl,color){
+  ctx.strokeStyle=color;ctx.lineWidth=1;ctx.fillStyle=color;ctx.font=`${11*devicePixelRatio}px system-ui`;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  ctx.fillText(xl,W-pad-30,H-pad+14*devicePixelRatio);
+  ctx.save();ctx.translate(pad-14*devicePixelRatio,pad+30);ctx.rotate(-Math.PI/2);ctx.fillText(yl,0,0);ctx.restore();
+}
+
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+const VDD=15, KN=2e-3; // 2 mA/V²
+window.addEventListener('resize',()=>resize(cv,draw));
+
+function draw(){
+  const dpr=devicePixelRatio;
+  cv.width=cv.offsetWidth*dpr; cv.height=260*dpr;
+  const W=cv.width,H=cv.height,pad=55*dpr;
+  const dark=isDark();
+  const bg=dark?'#161b22':'#f5f5f5';
+  const fg=dark?'#e6edf3':'#111111';
+  const acc=dark?'#58a6ff':'#0066cc';
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  const R1=gs('r1')*1e6, R2=gs('r2')*1e6;
+  const RD=gs('rd')*1000, RS=gs('rs')*1000;
+  const VT=gs('vt');
+
+  const VG = VDD*R2/(R1+R2);
+  // Solve: I_D = (KN/2)*(VG - I_D*RS - VT)^2 iteratively
+  let ID=1e-3;
+  for(let i=0;i<100;i++){
+    const VGS=VG-ID*RS;
+    if(VGS<=VT){ ID=0; break; }
+    const id_new=(KN/2)*Math.pow(VGS-VT,2);
+    ID=(ID+id_new)/2;
+  }
+  const VGS=VG-ID*RS;
+  const VDS=VDD-ID*(RD+RS);
+  const VOD=Math.max(0,VGS-VT);
+  const region=VGS<=VT?'Cutoff':(VDS<VOD?'Triode':'Saturation');
+  const gm=KN*VOD;
+
+  sv('vg',VG.toFixed(3)); sv('vgs',VGS.toFixed(3)); sv('id',(ID*1000).toFixed(3));
+  sv('vds',VDS.toFixed(2)); sv('region',region);
+
+  // Load line
+  const idmax=VDD/(RD+RS)*1.1*1000;
+  const xsc=(W-2*pad)/VDD, ysc=(H-2*pad)/idmax;
+  drawAxes(ctx,W,H,pad,'V_DS (V)','I_D (mA)',fg);
+  ctx.font=`${10*dpr}px system-ui`; ctx.fillStyle=fg;
+  for(let v=0;v<=VDD;v+=3){ ctx.fillText(v,pad+v*xsc-5,H-pad+13*dpr); }
+  for(let i=0;i<=Math.ceil(idmax);i+=Math.ceil(idmax/5)){ ctx.fillText(i,pad-22*dpr,H-pad-i*ysc+4); }
+
+  ctx.strokeStyle=acc; ctx.lineWidth=2*dpr;
+  ctx.beginPath(); ctx.moveTo(pad+VDD*xsc,H-pad); ctx.lineTo(pad,H-pad-idmax*ysc); ctx.stroke();
+
+  // Transfer characteristic (I_D vs V_GS)
+  const vgsmax=5;
+  const txsc=(W-2*pad)/vgsmax;
+  ctx.strokeStyle='#2ed573'; ctx.lineWidth=1.5*dpr; ctx.beginPath();
+  for(let vgs=VT;vgs<=vgsmax;vgs+=0.02){
+    const id=(KN/2)*Math.pow(vgs-VT,2)*1000;
+    const x=pad+vgs*txsc; const y=H-pad-Math.min(id,idmax)*ysc;
+    if(vgs===VT) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Q-point on load line
+  const qx=pad+Math.max(0,VDS)*xsc, qy=H-pad-Math.min(ID*1000,idmax)*ysc;
+  ctx.beginPath(); ctx.arc(qx,qy,6*dpr,0,2*Math.PI);
+  ctx.fillStyle=region==='Saturation'?acc:'#ff6b6b'; ctx.fill();
+  ctx.fillStyle=acc; ctx.font=`${10*dpr}px system-ui`;
+  ctx.fillText('Q',qx+8*dpr,qy-4*dpr);
+
+  ctx.fillStyle=fg; ctx.font=`${11*dpr}px system-ui`;
+  ctx.fillText(`V_G=${VG.toFixed(2)}V  V_GS=${VGS.toFixed(2)}V  I_D=${(ID*1000).toFixed(2)}mA  V_DS=${VDS.toFixed(2)}V  [${region}]`,pad,pad-8*dpr);
+}
+draw();
+</script></body></html>

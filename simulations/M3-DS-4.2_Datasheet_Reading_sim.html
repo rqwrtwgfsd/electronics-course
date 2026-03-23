@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M3-DS-4.2 Datasheet Derating</title>
+<style>
+:root{--bg:#ffffff;--surface:#f5f5f5;--border:#cccccc;--text:#111111;--accent:#0066cc;--accent2:#0066cc;}
+@media(prefers-color-scheme:dark){:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--accent:#0066cc;--accent2:#58a6ff;}}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;padding:16px;max-width:860px;margin:0 auto;}
+h1{font-size:1.2rem;color:var(--accent2);margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:8px;}
+.note{font-size:0.85rem;color:var(--text);opacity:0.7;margin-bottom:12px;}
+canvas{width:100%;height:260px;display:block;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:12px;}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px;}
+.ctrl{display:flex;flex-direction:column;gap:3px;font-size:0.82rem;}
+.ctrl label{color:var(--text);opacity:0.8;}
+input[type=range]{width:160px;accent-color:var(--accent);}
+.readouts{display:flex;flex-wrap:wrap;gap:12px;font-size:0.85rem;font-family:monospace;}
+.ro{background:var(--surface);border:1px solid var(--border);padding:4px 10px;border-radius:4px;color:var(--accent2);}
+</style></head><body>
+<h1>M3-DS-4.2 — MOSFET Thermal Derating: T_J vs Power Dissipation</h1>
+<p class="note">Calculate actual junction temperature and available power at different ambient temperatures.</p>
+<canvas id="cv"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>P_diss (W): <span id="pv">5</span></label><input type="range" id="pd" min="0.1" max="50" value="5" step="0.1" oninput="sv('pv',parseFloat(this.value).toFixed(1));draw();"></div>
+  <div class="ctrl"><label>R_thJA (°C/W): <span id="rv">50</span></label><input type="range" id="rth" min="5" max="200" value="50" step="1" oninput="sv('rv',this.value);draw();"></div>
+  <div class="ctrl"><label>T_ambient (°C): <span id="tav">25</span></label><input type="range" id="ta" min="-40" max="125" value="25" step="1" oninput="sv('tav',this.value);draw();"></div>
+  <div class="ctrl"><label>T_J_max (°C): <span id="tjv">150</span></label><input type="range" id="tjmax" min="125" max="200" value="150" step="5" oninput="sv('tjv',this.value);draw();"></div>
+</div>
+<div class="readouts">
+  <div class="ro">T_J: <span id="tj">0</span> °C</div>
+  <div class="ro">T_J margin: <span id="margin">0</span> °C</div>
+  <div class="ro">P_max allowed: <span id="pmax">0</span> W</div>
+  <div class="ro">R_on at T_J: <span id="ron">0</span> ×spec</div>
+</div>
+<script>
+
+const isDark=()=>window.matchMedia('(prefers-color-scheme:dark)').matches;
+function gs(id){return parseFloat(document.getElementById(id).value);}
+function sv(id,val){document.getElementById(id).textContent=val;}
+function resize(cv,draw){
+  cv.width=cv.offsetWidth*devicePixelRatio;
+  cv.height=260*devicePixelRatio;
+  cv.style.height='260px';
+  draw();
+}
+function drawAxes(ctx,W,H,pad,xl,yl,color){
+  ctx.strokeStyle=color;ctx.lineWidth=1;ctx.fillStyle=color;ctx.font=`${11*devicePixelRatio}px system-ui`;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  ctx.fillText(xl,W-pad-30,H-pad+14*devicePixelRatio);
+  ctx.save();ctx.translate(pad-14*devicePixelRatio,pad+30);ctx.rotate(-Math.PI/2);ctx.fillText(yl,0,0);ctx.restore();
+}
+
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+window.addEventListener('resize',()=>resize(cv,draw));
+
+function draw(){
+  const dpr=devicePixelRatio;
+  cv.width=cv.offsetWidth*dpr; cv.height=260*dpr;
+  const W=cv.width,H=cv.height,pad=55*dpr;
+  const dark=isDark();
+  const bg=dark?'#161b22':'#f5f5f5';
+  const fg=dark?'#e6edf3':'#111111';
+  const acc=dark?'#58a6ff':'#0066cc';
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  const PD=gs('pd');
+  const RTH=gs('rth');
+  const TA=gs('ta');
+  const TJMAX=gs('tjmax');
+
+  const TJ=TA+PD*RTH;
+  const margin=TJMAX-TJ;
+  const Pmax=(TJMAX-TA)/RTH;
+  // R_on temperature coefficient: +0.6%/°C for Si MOSFET
+  const Ron_factor=1+0.006*(TJ-25);
+
+  sv('tj',TJ.toFixed(1));
+  sv('margin',margin.toFixed(1));
+  sv('pmax',Pmax.toFixed(2));
+  sv('ron',Ron_factor.toFixed(2));
+
+  // Plot T_J vs P_dissipation at different T_ambient
+  const pmax_plot=50;
+  const xsc=(W-2*pad)/pmax_plot;
+  const ysc=(H-2*pad)/200; // 0-200°C
+
+  drawAxes(ctx,W,H,pad,'P_diss (W)','T_J (°C)',fg);
+  ctx.font=`${10*dpr}px system-ui`; ctx.fillStyle=fg;
+  for(let p=0;p<=pmax_plot;p+=10){ ctx.fillText(p,pad+p*xsc-8,H-pad+13*dpr); }
+  for(let t=0;t<=200;t+=50){ ctx.fillText(t,pad-28*dpr,H-pad-t*ysc+4); }
+
+  // T_J lines for different ambient temperatures
+  const ambients=[-40,0,25,85,125];
+  const colors=['#1e90ff','#2ed573',acc,'#ffa502','#ff6b6b'];
+  ambients.forEach((ta,i)=>{
+    ctx.strokeStyle=colors[i]; ctx.lineWidth=1.5*dpr; ctx.beginPath();
+    for(let p=0;p<=pmax_plot;p+=0.5){
+      const tj=ta+p*RTH;
+      const x=pad+p*xsc; const y=H-pad-Math.min(tj,200)*ysc;
+      if(p===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    ctx.fillStyle=colors[i]; ctx.font=`${9*dpr}px system-ui`;
+    ctx.fillText(ta+'°C',W-pad+2*dpr,H-pad-(ta+pmax_plot*RTH)*ysc);
+  });
+
+  // T_J_max line
+  ctx.strokeStyle='#ff4444'; ctx.lineWidth=2*dpr; ctx.setLineDash([5*dpr,3*dpr]);
+  const ymax=H-pad-TJMAX*ysc;
+  ctx.beginPath(); ctx.moveTo(pad,ymax); ctx.lineTo(W-pad,ymax); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#ff4444'; ctx.font=`${10*dpr}px system-ui`;
+  ctx.fillText('T_J_max='+TJMAX+'°C',W-pad-80*dpr,ymax-4*dpr);
+
+  // Operating point
+  const opx=pad+PD*xsc, opy=H-pad-TJ*ysc;
+  ctx.beginPath(); ctx.arc(opx,opy,7*dpr,0,2*Math.PI);
+  ctx.fillStyle=margin>20?acc:'#ff6b6b'; ctx.fill();
+
+  ctx.fillStyle=fg; ctx.font=`${11*dpr}px system-ui`;
+  ctx.fillText(`T_J=${TJ.toFixed(0)}°C  Margin=${margin.toFixed(0)}°C  P_max=${Pmax.toFixed(1)}W  R_on=${Ron_factor.toFixed(2)}×spec`,pad,pad-8*dpr);
+}
+draw();
+</script></body></html>

@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-OAD-10.4.1 — Op-Amp Bias Circuit & PVT Simulator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; }
+  header { background: #1a1d2e; padding: 16px 24px; border-bottom: 2px solid #3a7bd5; }
+  header h1 { font-size: 1.15rem; color: #7eb3ff; font-weight: 600; }
+  header p { font-size: 0.8rem; color: #888; margin-top: 3px; }
+  .tabs { display: flex; background: #13151f; border-bottom: 1px solid #2a2d3e; }
+  .tab { padding: 11px 22px; cursor: pointer; font-size: 0.85rem; color: #888; border-bottom: 2px solid transparent; transition: all .2s; }
+  .tab.active { color: #7eb3ff; border-bottom-color: #3a7bd5; background: #1a1d2e; }
+  .tab:hover:not(.active) { color: #ccc; background: #1a1d2e55; }
+  .panel { display: none; padding: 20px 24px; }
+  .panel.active { display: block; }
+  .row { display: flex; gap: 20px; flex-wrap: wrap; }
+  .card { background: #1a1d2e; border: 1px solid #2a2d3e; border-radius: 8px; padding: 16px; flex: 1; min-width: 280px; }
+  .card h3 { font-size: 0.85rem; color: #7eb3ff; margin-bottom: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  .slider-row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+  .slider-row label { font-size: 0.78rem; color: #aaa; width: 195px; flex-shrink: 0; }
+  .slider-row input[type=range] { flex: 1; accent-color: #3a7bd5; }
+  .slider-row span { font-size: 0.78rem; color: #7eb3ff; width: 75px; text-align: right; }
+  canvas { display: block; width: 100%; border-radius: 6px; background: #12141e; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 8px; margin-top: 12px; }
+  .metric { background: #12141e; border: 1px solid #2a2d3e; border-radius: 6px; padding: 8px 12px; }
+  .metric .label { font-size: 0.7rem; color: #888; }
+  .metric .value { font-size: 1.05rem; color: #4ecdc4; font-weight: 700; margin-top: 2px; }
+  .metric .value.warn { color: #f6ad55; }
+  .metric .value.bad  { color: #fc8181; }
+  .metric .value.good { color: #68d391; }
+  .info-box { background: #12141e; border-left: 3px solid #3a7bd5; padding: 10px 14px; border-radius: 0 6px 6px 0; margin-top: 10px; font-size: 0.78rem; color: #bbb; line-height: 1.6; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 8px; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #aaa; }
+  .legend-dot { width: 14px; height: 3px; border-radius: 2px; }
+  .corner-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; margin-top: 12px; }
+  .corner-table th { background: #12141e; color: #7eb3ff; padding: 6px 8px; text-align: center; border: 1px solid #2a2d3e; }
+  .corner-table td { padding: 5px 8px; text-align: center; border: 1px solid #2a2d3e; }
+  .corner-table tr.tt { background: #1a2a1a; }
+  .corner-table tr.ff { background: #2a1a1a; }
+  .corner-table tr.ss { background: #1a1a2a; }
+  .pass { color: #68d391; font-weight: 700; }
+  .fail { color: #fc8181; font-weight: 700; }
+  .marginal { color: #f6ad55; font-weight: 700; }
+</style>
+</head>
+<body>
+<header>
+  <h1>M4B-OAD-10.4.1 — Op-Amp Bias Circuit Design and PVT Stability</h1>
+  <p>Bias current vs temperature, PVT corner table, and startup simulation</p>
+</header>
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)">Bias vs Temperature</div>
+  <div class="tab" onclick="showTab(1)">PVT Corner Analysis</div>
+  <div class="tab" onclick="showTab(2)">Startup Simulation</div>
+</div>
+
+<!-- TAB 0: Bias vs Temperature -->
+<div class="panel active" id="tab0">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:310px;">
+      <h3>Reference Parameters</h3>
+      <div class="slider-row"><label>I_ref at 27°C (µA)</label><input type="range" id="t0_Iref" min="1" max="50" step="0.5" value="5"><span id="v_t0_Iref">5.0</span></div>
+      <div class="slider-row"><label>Mirror ratio N (ISS/Iref)</label><input type="range" id="t0_N" min="1" max="50" step="1" value="10"><span id="v_t0_N">10</span></div>
+      <div class="slider-row"><label>Resistor TC (ppm/°C)</label><input type="range" id="t0_TC" min="-3000" max="5000" step="100" value="1500"><span id="v_t0_TC">1500</span></div>
+      <div class="slider-row"><label>PTAT fraction (0=none, 1=full)</label><input type="range" id="t0_ptat" min="0" max="1" step="0.05" value="0.5"><span id="v_t0_ptat">0.50</span></div>
+      <div class="slider-row"><label>Vth TC (mV/°C)</label><input type="range" id="t0_VthTC" min="-3" max="0" step="0.05" value="-1.5"><span id="v_t0_VthTC">-1.50</span></div>
+      <div class="metrics" style="grid-template-columns:1fr 1fr;">
+        <div class="metric"><div class="label">ISS at 27°C</div><div class="value" id="m0_ISS_nom">—</div></div>
+        <div class="metric"><div class="label">ISS at −40°C</div><div class="value warn" id="m0_ISS_cold">—</div></div>
+        <div class="metric"><div class="label">ISS at 125°C</div><div class="value warn" id="m0_ISS_hot">—</div></div>
+        <div class="metric"><div class="label">ISS variation</div><div class="value bad" id="m0_ISS_var">—</div></div>
+        <div class="metric"><div class="label">GBW variation (∝√ISS)</div><div class="value" id="m0_GBW_var">—</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>ISS vs Temperature (with PTAT/CTAT components)</h3>
+      <canvas id="c_temp" height="320"></canvas>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#4ecdc4;"></div>Total ISS</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#3a7bd5;"></div>PTAT component</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f6ad55;"></div>CTAT component</div>
+      </div>
+      <div class="info-box">
+        A pure resistor-based reference is CTAT (current decreases with T as resistance rises).
+        Adding a PTAT component (e.g., from VT = kT/q varying with temperature) partially cancels the temperature coefficient.
+        PTAT fraction = 1 means the full reference is PTAT. Fraction = 0 means pure CTAT (resistor-dominated).
+        Setting the fraction to cancel the TC gives a near-zero TC reference current — the analog equivalent of a bandgap.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: PVT Corner Table -->
+<div class="panel" id="tab1">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:310px;">
+      <h3>Nominal Design Point</h3>
+      <div class="slider-row"><label>GBW_nom (MHz)</label><input type="range" id="t1_GBW" min="1" max="500" step="1" value="50"><span id="v_t1_GBW">50</span></div>
+      <div class="slider-row"><label>PM_nom (°)</label><input type="range" id="t1_PM" min="45" max="80" step="1" value="65"><span id="v_t1_PM">65</span></div>
+      <div class="slider-row"><label>VDD_nom (V)</label><input type="range" id="t1_VDD" min="0.8" max="3.3" step="0.1" value="1.8"><span id="v_t1_VDD">1.8</span></div>
+      <div class="slider-row"><label>ISS_nom (µA)</label><input type="range" id="t1_ISS" min="10" max="1000" step="5" value="100"><span id="v_t1_ISS">100</span></div>
+      <div class="info-box" style="margin-top:12px;">
+        PVT corner model (simplified):
+        FF: µ +20%, Vth −10%, VDD +10%.
+        SS: µ −20%, Vth +10%, VDD −10%.
+        Temperature effect: µ ×(T_nom/T)^1.5, Vth +1.5mV × (T_nom−T)/10.
+        GBW ∝ gm1 ∝ √(ISS). PM changes via fp2/GBW ratio.
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>PVT Corner Summary Table</h3>
+      <div style="overflow-x:auto;">
+        <table class="corner-table" id="corner_table">
+          <tr><th>Corner</th><th>Temp</th><th>VDD</th><th>GBW</th><th>PM</th><th>ISS</th><th>Status</th></tr>
+        </table>
+      </div>
+      <canvas id="c_pvt" height="200" style="margin-top:12px;"></canvas>
+      <div class="info-box">
+        Each cell shows the parameter value at that PVT corner, normalized to nominal.
+        Green = within ±10% of nominal. Yellow = within ±25%. Red = outside ±25%.
+        The worst corners for GBW/PM are SS, cold, VDD_min.
+        Always verify PM ≥ 45° (preferably ≥ 55°) at the worst corner.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: Startup -->
+<div class="panel" id="tab2">
+  <div class="row">
+    <div class="card" style="min-width:230px; max-width:310px;">
+      <h3>Startup Parameters</h3>
+      <div class="slider-row"><label>VDD ramp time (µs)</label><input type="range" id="t2_tramp" min="1" max="1000" step="1" value="100"><span id="v_t2_tramp">100</span></div>
+      <div class="slider-row"><label>VDD_nom (V)</label><input type="range" id="t2_VDD" min="0.8" max="3.3" step="0.1" value="1.8"><span id="v_t2_VDD">1.8</span></div>
+      <div class="slider-row"><label>Startup threshold (×VDD)</label><input type="range" id="t2_thresh" min="0.3" max="0.8" step="0.05" value="0.5"><span id="v_t2_thresh">0.50</span></div>
+      <div class="slider-row"><label>Startup τ (ns)</label><input type="range" id="t2_tau" min="10" max="5000" step="10" value="500"><span id="v_t2_tau">500</span></div>
+      <div class="metrics" style="grid-template-columns:1fr;">
+        <div class="metric"><div class="label">Startup trigger time</div><div class="value" id="m2_t1">—</div></div>
+        <div class="metric"><div class="label">Bias settled (5τ)</div><div class="value" id="m2_t2">—</div></div>
+        <div class="metric"><div class="label">Bias vs ramp end</div><div class="value" id="m2_t3">—</div></div>
+        <div class="metric"><div class="label">Startup OK?</div><div class="value" id="m2_ok">—</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:2;">
+      <h3>VDD Ramp and Bias Node Startup Transient</h3>
+      <canvas id="c_startup" height="320"></canvas>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#4ecdc4;"></div>VDD (V)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#f6ad55;"></div>Bias node voltage</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#3a7bd5;"></div>I_ref (normalized)</div>
+      </div>
+      <div class="info-box">
+        The bias node starts at 0V (zero-current state). When VDD rises above the startup threshold (Vth of the startup MOSFET), M_start activates and drives a small current into the bias node.
+        The bias node rises with τ_startup = Cgate × R_startup.
+        The op-amp is not fully functional until the bias node reaches >95% of its final value (≥5τ).
+        A fast startup is critical in systems that power up frequently (IoT devices, wake-from-sleep).
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const T_nom = 300; // 27°C in Kelvin
+
+// ─── TAB 0: Bias vs Temperature ──────────────────────────────────────────
+function updateTab0() {
+  const Iref   = parseFloat(document.getElementById('t0_Iref').value)*1e-6;
+  const N      = parseFloat(document.getElementById('t0_N').value);
+  const TC_ppm = parseFloat(document.getElementById('t0_TC').value);
+  const ptat   = parseFloat(document.getElementById('t0_ptat').value);
+  const VthTC  = parseFloat(document.getElementById('t0_VthTC').value)*1e-3; // V/°C
+
+  document.getElementById('v_t0_Iref').textContent = (Iref*1e6).toFixed(1);
+  document.getElementById('v_t0_N').textContent    = N.toFixed(0);
+  document.getElementById('v_t0_TC').textContent   = TC_ppm.toFixed(0);
+  document.getElementById('v_t0_ptat').textContent = ptat.toFixed(2);
+  document.getElementById('v_t0_VthTC').textContent= (VthTC*1e3).toFixed(2);
+
+  const ISS_nom = N * Iref;
+
+  // I_ref(T) model:
+  // CTAT: I_ctat ∝ V_ref/R where V_ref decreases with T (Vth decreases) and R increases with T.
+  // Net CTAT coefficient: TC_r = -(|VthTC|/VGS) + TC_ppm×1e-6 per degree
+  // PTAT: I_ptat ∝ kT/q → TC = +1/T (1/300 = 3333 ppm/°C at 27°C)
+  const computeISS = (T_K) => {
+    const deltaT = T_K - T_nom; // degrees from 27°C
+    const TC_r = TC_ppm*1e-6;  // resistor TC per degree
+    const TC_ptat_per_deg = 1/T_nom; // PTAT fractional TC
+    const TC_ctat_per_deg = -TC_r; // approx CTAT (opposite of R TC)
+    const total_TC = ptat * TC_ptat_per_deg + (1-ptat) * TC_ctat_per_deg;
+    return Iref * (1 + total_TC * deltaT) * N;
+  };
+
+  const ISS_cold = computeISS(233); // -40°C
+  const ISS_hot  = computeISS(398); // 125°C
+  const variation = (Math.max(ISS_cold, ISS_hot, ISS_nom) / Math.min(ISS_cold, ISS_hot, ISS_nom) - 1)*100;
+  const GBW_var = (Math.sqrt(Math.max(ISS_cold, ISS_hot, ISS_nom)/ISS_nom) - 1)*100;
+
+  document.getElementById('m0_ISS_nom').textContent  = (ISS_nom*1e6).toFixed(1)+' µA';
+  document.getElementById('m0_ISS_cold').textContent = (ISS_cold*1e6).toFixed(1)+' µA';
+  document.getElementById('m0_ISS_hot').textContent  = (ISS_hot*1e6).toFixed(1)+' µA';
+  document.getElementById('m0_ISS_var').textContent  = '±'+variation.toFixed(0)+'%';
+  document.getElementById('m0_GBW_var').textContent  = '±'+GBW_var.toFixed(0)+'%';
+
+  // Chart
+  const cv = document.getElementById('c_temp');
+  const ctx = cv.getContext('2d');
+  const W=cv.clientWidth*devicePixelRatio||600, H=320;
+  cv.width=W; cv.height=H;
+  const pad={l:60,r:20,t:20,b:35};
+  const TArr=[], ISS_arr=[], ptat_arr=[], ctat_arr=[];
+  for(let TC=-40; TC<=125; TC+=1) {
+    const TK = TC + 273;
+    const deltaT = TK - T_nom;
+    const TC_r = TC_ppm*1e-6;
+    const TC_ptat = 1/T_nom;
+    const TC_ctat = -TC_r;
+    const I_ptat = Iref * (1 + TC_ptat * deltaT) * N;
+    const I_ctat = Iref * (1 + TC_ctat * deltaT) * N;
+    const I_tot  = Iref * (1 + (ptat*TC_ptat + (1-ptat)*TC_ctat)*deltaT) * N;
+    TArr.push(TC); ISS_arr.push(I_tot*1e6); ptat_arr.push(I_ptat*1e6); ctat_arr.push(I_ctat*1e6);
+  }
+  const allI = [...ISS_arr, ...ptat_arr, ...ctat_arr];
+  const yMin = Math.min(...allI)*0.9, yMax = Math.max(...allI)*1.1;
+  const xMin=-40, xMax=125;
+  const px = t => pad.l + (t-xMin)/(xMax-xMin)*(W-pad.l-pad.r);
+  const py = i => H - pad.b - (i-yMin)/(yMax-yMin)*(H-pad.t-pad.b);
+
+  ctx.fillStyle='#12141e'; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#1e2136'; ctx.lineWidth=1;
+  [-40,-20,0,27,50,75,100,125].forEach(t=>{
+    ctx.beginPath(); ctx.moveTo(px(t),pad.t); ctx.lineTo(px(t),H-pad.b); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(t+'°C', px(t), H-pad.b+12);
+  });
+  for(let i=yMin; i<=yMax; i+=(yMax-yMin)/5) {
+    ctx.beginPath(); ctx.moveTo(pad.l,py(i)); ctx.lineTo(W-pad.r,py(i)); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px sans-serif'; ctx.textAlign='right';
+    ctx.fillText(i.toFixed(1)+'µA', pad.l-3, py(i)+3);
+  }
+
+  const drawCurve = (arr, color, dash=[]) => {
+    ctx.strokeStyle=color; ctx.lineWidth=2; ctx.setLineDash(dash);
+    ctx.beginPath(); ctx.moveTo(px(TArr[0]),py(arr[0]));
+    arr.forEach((v,i)=>ctx.lineTo(px(TArr[i]),py(v))); ctx.stroke(); ctx.setLineDash([]);
+  };
+  drawCurve(ptat_arr, '#3a7bd5', [5,3]);
+  drawCurve(ctat_arr, '#f6ad55', [5,3]);
+  drawCurve(ISS_arr, '#4ecdc4');
+
+  // Nominal marker
+  ctx.strokeStyle='#555'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(px(27),pad.t); ctx.lineTo(px(27),H-pad.b); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#555'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('Temperature (°C)', (pad.l+W-pad.r)/2, H-2);
+}
+
+// ─── TAB 1: PVT Table ─────────────────────────────────────────────────────
+function updateTab1() {
+  const GBW_nom = parseFloat(document.getElementById('t1_GBW').value);
+  const PM_nom  = parseFloat(document.getElementById('t1_PM').value);
+  const VDD_nom = parseFloat(document.getElementById('t1_VDD').value);
+  const ISS_nom = parseFloat(document.getElementById('t1_ISS').value);
+
+  document.getElementById('v_t1_GBW').textContent = GBW_nom.toFixed(0);
+  document.getElementById('v_t1_PM').textContent  = PM_nom.toFixed(0);
+  document.getElementById('v_t1_VDD').textContent = VDD_nom.toFixed(1);
+  document.getElementById('v_t1_ISS').textContent = ISS_nom.toFixed(0);
+
+  // Corner model: µ × Vov scaling gives ISS × µ (at fixed VGS bias)
+  // GBW ∝ √ISS (gm = ISS/Vov, Vov ∝ 1/√µ so gm ∝ √(ISS × µ))
+  const corners = [
+    {name:'TT', temp:27,  VDD_f:1.0, mu_f:1.0,  Vth_f:1.0,  row_class:'tt'},
+    {name:'FF', temp:27,  VDD_f:1.1, mu_f:1.2,  Vth_f:0.9,  row_class:'ff'},
+    {name:'SS', temp:27,  VDD_f:0.9, mu_f:0.8,  Vth_f:1.1,  row_class:'ss'},
+    {name:'TT', temp:-40, VDD_f:0.9, mu_f:1.15, Vth_f:1.07, row_class:'tt'},
+    {name:'TT', temp:125, VDD_f:1.1, mu_f:0.85, Vth_f:0.93, row_class:'tt'},
+    {name:'FF', temp:-40, VDD_f:1.1, mu_f:1.35, Vth_f:0.83, row_class:'ff'},
+    {name:'SS', temp:125, VDD_f:0.9, mu_f:0.65, Vth_f:1.17, row_class:'ss'},
+  ];
+
+  // ISS ∝ µ × bias_current (simplified: ISS_corner = ISS_nom × mu_f × VDD_f)
+  // GBW ∝ √ISS
+  // PM depends on fp2/GBW ratio — simplified: PM stays within ±10° for reasonable designs
+  const table = document.getElementById('corner_table');
+  table.innerHTML = '<tr><th>Process</th><th>Temp</th><th>VDD</th><th>GBW (MHz)</th><th>PM (°)</th><th>ISS (µA)</th><th>Status</th></tr>';
+  corners.forEach(c => {
+    const ISS_c = ISS_nom * c.mu_f * c.VDD_f;
+    const GBW_c = GBW_nom * Math.sqrt(ISS_c/ISS_nom);
+    const PM_c  = PM_nom + (GBW_nom - GBW_c)*0.3; // simplified: slower GBW → fp2 also falls, PM stays
+    const VDD_c = VDD_nom * c.VDD_f;
+    const ok = GBW_c >= GBW_nom*0.5 && PM_c >= 45;
+    const margin = PM_c >= 60 ? 'pass' : PM_c >= 45 ? 'marginal' : 'fail';
+    const row = document.createElement('tr');
+    row.className = c.row_class;
+    row.innerHTML = `<td>${c.name}</td><td>${c.temp}°C</td><td>${VDD_c.toFixed(2)}V</td>
+      <td>${GBW_c.toFixed(1)}</td><td class="${margin}">${PM_c.toFixed(1)}°</td>
+      <td>${ISS_c.toFixed(0)}</td><td class="${margin}">${margin.toUpperCase()}</td>`;
+    table.appendChild(row);
+  });
+
+  // Spider chart
+  const cv = document.getElementById('c_pvt');
+  const ctx = cv.getContext('2d');
+  const W=cv.clientWidth*devicePixelRatio||600, H=200;
+  cv.width=W; cv.height=H;
+  ctx.fillStyle='#12141e'; ctx.fillRect(0,0,W,H);
+  const barW = (W-80)/(corners.length+1);
+  const pad2={l:40,r:20,t:10,b:30};
+  const yMax2=1.5, yMin2=0;
+  const totalH2 = H-pad2.t-pad2.b;
+  const py2 = v => H-pad2.b-(v-yMin2)/(yMax2-yMin2)*totalH2;
+  // 1.0 line
+  ctx.strokeStyle='#68d391'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(pad2.l,py2(1)); ctx.lineTo(W-pad2.r,py2(1)); ctx.stroke(); ctx.setLineDash([]);
+  corners.forEach((c,i) => {
+    const ISS_c = ISS_nom * c.mu_f * c.VDD_f;
+    const GBW_c = GBW_nom * Math.sqrt(ISS_c/ISS_nom);
+    const norm = GBW_c / GBW_nom;
+    const x = pad2.l + (i+0.5)*barW;
+    const bh = (Math.min(norm,yMax2)/yMax2)*totalH2;
+    const color = norm >= 0.75 ? '#4ecdc4' : '#fc8181';
+    ctx.fillStyle=color;
+    ctx.fillRect(x-barW*0.3, py2(norm), barW*0.6, H-pad2.b-py2(norm));
+    ctx.fillStyle='#aaa'; ctx.font='8px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(c.name+'/'+c.temp, x, H-pad2.b+12);
+  });
+}
+
+// ─── TAB 2: Startup ───────────────────────────────────────────────────────
+function updateTab2() {
+  const tramp  = parseFloat(document.getElementById('t2_tramp').value)*1e-6;
+  const VDD    = parseFloat(document.getElementById('t2_VDD').value);
+  const thresh = parseFloat(document.getElementById('t2_thresh').value);
+  const tau_ns = parseFloat(document.getElementById('t2_tau').value)*1e-9;
+
+  document.getElementById('v_t2_tramp').textContent = (tramp*1e6).toFixed(0);
+  document.getElementById('v_t2_VDD').textContent   = VDD.toFixed(1);
+  document.getElementById('v_t2_thresh').textContent= thresh.toFixed(2);
+  document.getElementById('v_t2_tau').textContent   = (tau_ns*1e9).toFixed(0);
+
+  const t1 = tramp * thresh; // when VDD crosses threshold
+  const t_settled = t1 + 5*tau_ns;
+  const ok = t_settled < tramp;
+
+  document.getElementById('m2_t1').textContent = (t1*1e6).toFixed(2)+' µs';
+  document.getElementById('m2_t2').textContent = (t_settled*1e6).toFixed(2)+' µs';
+  document.getElementById('m2_t3').textContent = ok ? 'Before VDD_nom' : 'After VDD_nom!';
+  const okEl = document.getElementById('m2_ok');
+  okEl.textContent = ok ? 'YES' : 'NO - extend ramp!';
+  okEl.className = 'value '+(ok?'good':'bad');
+
+  const cv = document.getElementById('c_startup');
+  const ctx = cv.getContext('2d');
+  const W=cv.clientWidth*devicePixelRatio||600, H=320;
+  cv.width=W; cv.height=H;
+  const pad={l:55,r:20,t:20,b:35};
+  const tEnd = Math.max(tramp*1.3, t_settled*1.3);
+  const px = t => pad.l + (t/tEnd)*(W-pad.l-pad.r);
+  const pyN = y => H/3 - pad.t/2 - y*(H/3-pad.t);
+  const pyB = y => 2*H/3 - y*(H/3-10);
+  const pyI = y => H - pad.b - y*(H/3-pad.b-10);
+
+  ctx.fillStyle='#12141e'; ctx.fillRect(0,0,W,H);
+  // Section labels
+  ['VDD (V)', 'Bias Node (V)', 'I_ref (norm)'].forEach((l,i) => {
+    ctx.fillStyle='#7eb3ff'; ctx.font='10px sans-serif'; ctx.textAlign='left';
+    ctx.fillText(l, pad.l+4, (i+0.5)*H/3-5);
+  });
+
+  // Dividers
+  ctx.strokeStyle='#2a2d3e'; ctx.lineWidth=0.5;
+  ctx.beginPath(); ctx.moveTo(0,H/3); ctx.lineTo(W,H/3); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0,2*H/3); ctx.lineTo(W,2*H/3); ctx.stroke();
+
+  // VDD ramp
+  ctx.strokeStyle='#4ecdc4'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(px(0),pyN(0));
+  ctx.lineTo(px(tramp), pyN(1.0));
+  ctx.lineTo(px(tEnd),  pyN(1.0));
+  ctx.stroke();
+
+  // Bias node
+  ctx.strokeStyle='#f6ad55'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(px(0),pyB(0));
+  ctx.lineTo(px(t1), pyB(0)); // stays at 0 until startup
+  for(let i=0;i<=100;i++) {
+    const t = t1 + i/100*(tEnd-t1);
+    const v = 1 - Math.exp(-(t-t1)/tau_ns);
+    ctx.lineTo(px(t), pyB(v));
+  }
+  ctx.stroke();
+
+  // I_ref normalized
+  ctx.strokeStyle='#3a7bd5'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(px(0),pyI(0));
+  ctx.lineTo(px(t1), pyI(0));
+  for(let i=0;i<=100;i++) {
+    const t = t1 + i/100*(tEnd-t1);
+    const v = 1 - Math.exp(-(t-t1)/tau_ns);
+    ctx.lineTo(px(t), pyI(v));
+  }
+  ctx.stroke();
+
+  // Markers
+  ctx.strokeStyle='#fc8181'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(px(t1),pad.t); ctx.lineTo(px(t1),H-pad.b); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(px(t_settled),pad.t); ctx.lineTo(px(t_settled),H-pad.b); ctx.stroke();
+  ctx.setLineDash([]);
+
+  const fmtT = t => t>=1e-3?(t*1e3).toFixed(1)+'ms':t>=1e-6?(t*1e6).toFixed(1)+'µs':(t*1e9).toFixed(0)+'ns';
+  ctx.fillStyle='#fc8181'; ctx.font='9px sans-serif'; ctx.textAlign='left';
+  ctx.fillText('Startup\n'+fmtT(t1), px(t1)+3, pad.t+10);
+  ctx.fillText('Settled\n'+fmtT(t_settled), px(t_settled)+3, pad.t+10);
+
+  ctx.fillStyle='#555'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('Time', (pad.l+W-pad.r)/2, H-2);
+}
+
+function showTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
+  if(n===0) updateTab0(); else if(n===1) updateTab1(); else updateTab2();
+}
+function wire(ids,fn){ ids.forEach(id=>{const el=document.getElementById(id);if(el)el.addEventListener('input',fn);}); }
+wire(['t0_Iref','t0_N','t0_TC','t0_ptat','t0_VthTC'], updateTab0);
+wire(['t1_GBW','t1_PM','t1_VDD','t1_ISS'], updateTab1);
+wire(['t2_tramp','t2_VDD','t2_thresh','t2_tau'], updateTab2);
+window.addEventListener('load', () => updateTab0());
+window.addEventListener('resize', () => {
+  const a=document.querySelector('.panel.active');
+  if(a) showTab(['tab0','tab1','tab2'].indexOf(a.id));
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-DB-6.3.1 Missing Ground Scenario</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:12px;padding:12px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:240px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.btn{display:block;width:100%;margin-top:5px;padding:6px;background:#1a1a3a;border:1px solid #334;color:#ccc;cursor:pointer;font-family:inherit;font-size:11px;border-radius:3px}
+.btn.active{background:#440000;border-color:#ff4444;color:#ff4444}
+.btn.ok{background:#004400;border-color:#00ff88;color:#00ff88}
+.sym{font-size:11px;color:#ffaa00;margin-top:8px;line-height:1.6;border-top:1px solid #222;padding-top:6px}
+.fix{font-size:11px;color:#00aaff;margin-top:5px;line-height:1.5}
+</style>
+</head>
+<body>
+<h1>P2-DB-6.3.1 — Floating Node: Missing Ground Connection</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="580" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>Mains Coupling</h2>
+<label>V_mains (V peak)
+<input type="range" id="vm" min="10" max="340" step="5" value="170">
+<div class="readout" id="vm_v">V_mains = 170 V</div>
+</label>
+<label>Coupling Capacitance C_couple (pF)
+<input type="range" id="cc" min="1" max="100" step="1" value="10">
+<div class="readout" id="cc_v">C_couple = 10 pF</div>
+</label>
+<label>Node Impedance Z_node (MΩ)
+<input type="range" id="zn" min="0.1" max="100" step="0.1" value="10">
+<div class="readout" id="zn_v">Z_node = 10 MΩ</div>
+</label>
+<h2 style="margin-top:10px">Condition</h2>
+<button class="btn active" id="b_float" onclick="setState('float')">Floating (no ground)</button>
+<button class="btn ok" id="b_gnd" onclick="setState('gnd')">Grounded (10kΩ pull)</button>
+<div class="readout" id="v_couple">V_coupled: —</div>
+<div class="sym" id="sym">Floating node picks up mains interference through stray capacitance.</div>
+<div class="fix" id="fix"></div>
+<h2 style="margin-top:10px">50 Hz Noise</h2>
+<div class="readout" id="snr">SNR: —</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let vm=170,cc=10,zn=10,state='float';
+const W=580,H=380,PAD={l:60,r:20,t:30,b:40};
+const CW=W-PAD.l-PAD.r,CH=H-PAD.t-PAD.b;
+
+function setState(s){state=s;['float','gnd'].forEach(k=>document.getElementById('b_'+k).className='btn'+(k===s?(k==='gnd'?' ok':' active'):''));draw();}
+['vm','cc','zn'].forEach(id=>{
+  document.getElementById(id).oninput=function(){
+    if(id==='vm'){vm=parseFloat(this.value);document.getElementById('vm_v').textContent='V_mains = '+vm+' V';}
+    if(id==='cc'){cc=parseFloat(this.value);document.getElementById('cc_v').textContent='C_couple = '+cc+' pF';}
+    if(id==='zn'){zn=parseFloat(this.value);document.getElementById('zn_v').textContent='Z_node = '+zn+' MΩ';}
+    draw();
+  };
+});
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const f=50,w=2*Math.PI*f;
+  const Zc=1/(w*cc*1e-12)/1e6; // MΩ coupling cap impedance
+  const Rnode=state==='float'?zn:0.01; // effective node impedance
+  const V_coupled=vm*Rnode/Math.sqrt((Rnode+Zc)*(Rnode+Zc)); // amplitude
+  const signal_level=state==='gnd'?1.5:0.5; // arbitrary signal baseline
+  const tmax=0.08; // 4 cycles at 50Hz
+  const vrange=state==='float'?Math.max(V_coupled*2,1):4;
+  function toPx(t,v){return[PAD.l+CW*(t/tmax),PAD.t+CH*(1-(v+vrange/2)/vrange)];}
+  // Grid
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=8;i++){const x=PAD.l+CW*(i/8);ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=PAD.t+CH*(i/5);ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+CH);ctx.moveTo(PAD.l,PAD.t+CH);ctx.lineTo(PAD.l+CW,PAD.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=4;i++){const t=tmax*i/4;const x=PAD.l+CW*(i/4);ctx.fillText((t*1000).toFixed(0)+'ms',x,PAD.t+CH+14);}
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){const v=vrange*(1-i/5)-vrange/2;const y=PAD.t+CH*(i/5);ctx.fillText(v.toFixed(1)+'V',PAD.l-4,y+4);}
+  // Signal (clean DC or step)
+  ctx.strokeStyle='#00ff88';ctx.lineWidth=2;ctx.setLineDash([4,3]);
+  const[xs,ys]=toPx(0,signal_level);const[xe,ye]=toPx(tmax,signal_level);
+  ctx.beginPath();ctx.moveTo(xs,ys);ctx.lineTo(xe,ye);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#00ff88';ctx.font='11px Courier New';ctx.textAlign='left';
+  ctx.fillText('Intended signal = '+signal_level.toFixed(1)+'V',PAD.l+4,PAD.t+14);
+  // Noise + signal
+  const color=state==='float'?'#ff4444':'#00aaff';
+  ctx.strokeStyle=color;ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=600;i++){
+    const t=tmax*i/600;
+    const noise=state==='float'?V_coupled*Math.sin(w*t):V_coupled*Math.sin(w*t)*0.01;
+    const v=signal_level+noise;
+    const[x,y]=toPx(t,v);
+    if(y>PAD.t-5&&y<PAD.t+CH+5){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  }
+  ctx.stroke();
+  ctx.fillStyle=color;ctx.font='11px Courier New';
+  ctx.fillText(state==='float'?'Floating: 50Hz noise = '+V_coupled.toFixed(1)+'V pk':'Grounded: noise = '+( V_coupled*0.01).toFixed(3)+'V pk',PAD.l+4,PAD.t+28);
+  document.getElementById('v_couple').textContent='V_coupled = '+V_coupled.toFixed(1)+' V peak';
+  const snr=signal_level/(V_coupled*( state==='float'?1:0.01));
+  document.getElementById('snr').textContent='SNR = '+(20*Math.log10(snr)).toFixed(1)+' dB';
+  document.getElementById('sym').textContent=state==='float'?'Floating node: '+V_coupled.toFixed(1)+'V of 50Hz noise, Z_coupling='+Zc.toFixed(1)+'MΩ':'Grounded: 10kΩ pull-to-ground reduces noise to '+(V_coupled*0.01).toFixed(2)+'V.';
+  document.getElementById('fix').textContent=state==='float'?'Fix: Add 10kΩ pull resistor to ground. Touch metal chassis — if noise disappears, confirm floating ground.':'Properly grounded. Noise reduced by '+(20*Math.log10(100)).toFixed(0)+'dB.';
+}
+setState('float');
+</script>
+</body>
+</html>

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-SO-4.2.2 — Natural Frequency</title>
+<style>
+  :root { --accent: #0066cc; --bg: #1a1a1a; --panel: #242424; --border: #333; --text: #e0e0e0; --muted: #888; }
+  @media (prefers-color-scheme: light) { :root { --bg: #f4f4f4; --panel: #fff; --border: #ccc; --text: #1a1a1a; --muted: #555; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+  h1 { font-size: 1.1rem; color: var(--accent); padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .subtitle { font-size: 0.8rem; color: var(--muted); padding: 0 16px 8px; }
+  .layout { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; }
+  .controls { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px; min-width: 230px; flex: 0 0 230px; }
+  .ctrl-group { margin-bottom: 14px; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .val { font-weight: bold; color: var(--accent); }
+  .readout { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 10px; }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 5px 7px; }
+  .card-label { font-size: 0.68rem; color: var(--muted); }
+  .card-val { font-size: 0.84rem; font-weight: bold; color: var(--accent); }
+  .canvases { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 300px; }
+  canvas { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: block; }
+</style>
+</head>
+<body>
+<h1>P2-SO-4.2.2 — Natural Frequency Explorer</h1>
+<p class="subtitle">ω₀ = 1/√(LC) &nbsp;|&nbsp; f₀ = ω₀/(2π) &nbsp;|&nbsp; Z₀ = √(L/C)</p>
+<div class="layout">
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>Inductance L (µH): <span class="val" id="vL">10.0</span></label>
+      <input type="range" id="sL" min="0.1" max="100" step="0.1" value="10">
+    </div>
+    <div class="ctrl-group">
+      <label>Capacitance C (nF): <span class="val" id="vC">10.0</span></label>
+      <input type="range" id="sC" min="0.1" max="100" step="0.1" value="10">
+    </div>
+    <div class="readout">
+      <div class="card"><div class="card-label">ω₀ (Mrad/s)</div><div class="card-val" id="rO0">10.0</div></div>
+      <div class="card"><div class="card-label">f₀</div><div class="card-val" id="rF0">1.59 MHz</div></div>
+      <div class="card"><div class="card-label">Z₀ (Ω)</div><div class="card-val" id="rZ0">31.6</div></div>
+      <div class="card"><div class="card-label">Period T</div><div class="card-val" id="rT">628 ns</div></div>
+      <div class="card"><div class="card-label">L_design @ f₀</div><div class="card-val" id="rLd">—</div></div>
+      <div class="card"><div class="card-label">C_design @ f₀</div><div class="card-val" id="rCd">—</div></div>
+    </div>
+    <div style="margin-top:12px;font-size:0.78rem;color:var(--muted);line-height:1.7;">
+      Top: iso-frequency contours on L-C plane (log scale)<br>
+      Current L,C shown as orange dot<br>
+      Bottom: time-domain resonant waveform
+    </div>
+  </div>
+  <div class="canvases">
+    <canvas id="cvContour" width="540" height="215"></canvas>
+    <canvas id="cvWave" width="540" height="185"></canvas>
+  </div>
+</div>
+<script>
+function getC2(){const d=window.matchMedia('(prefers-color-scheme: dark)').matches;return{bg:d?'#242424':'#fff',grid:d?'#2e2e2e':'#e8e8e8',mut:d?'#888':'#555'};}
+
+function fmtFreq(f){return f>=1e9?(f/1e9).toFixed(2)+' GHz':f>=1e6?(f/1e6).toFixed(2)+' MHz':f>=1e3?(f/1e3).toFixed(2)+' kHz':f.toFixed(0)+' Hz';}
+function fmtTime(t){return t<=1e-9?(t*1e12).toFixed(0)+' ps':t<=1e-6?(t*1e9).toFixed(0)+' ns':t<=1e-3?(t*1e6).toFixed(0)+' µs':(t*1e3).toFixed(2)+' ms';}
+
+function drawContour(L,C) {
+  const cv=document.getElementById('cvContour'),ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height,padL=55,padR=15,padT=22,padB=34,plotW=W-padL-padR,plotH=H-padT-padB;
+  const c=getC2();
+  ctx.fillStyle=c.bg;ctx.fillRect(0,0,W,H);
+
+  const Lmin=0.1e-6,Lmax=100e-6,Cmin=0.1e-9,Cmax=100e-9;
+  const txL=l=>padL+(Math.log10(l/Lmin)/Math.log10(Lmax/Lmin))*plotW;
+  const tyC=ci=>padT+(1-Math.log10(ci/Cmin)/Math.log10(Cmax/Cmin))*plotH;
+
+  ctx.strokeStyle=c.grid;ctx.lineWidth=1;
+  [0.1,1,10,100].forEach(lv=>{ctx.beginPath();ctx.moveTo(txL(lv*1e-6),padT);ctx.lineTo(txL(lv*1e-6),padT+plotH);ctx.stroke();});
+  [0.1,1,10,100].forEach(cv2=>{ctx.beginPath();ctx.moveTo(padL,tyC(cv2*1e-9));ctx.lineTo(padL+plotW,tyC(cv2*1e-9));ctx.stroke();});
+
+  // Iso-frequency contours: f₀ = const → LC = 1/(2πf₀)²
+  const freqs=[100e3,1e6,10e6,100e6];
+  const fColors=['#55aaff','#0066cc','#004488','#002244'];
+  freqs.forEach((f,fi)=>{
+    const LC=1/((2*Math.PI*f)*(2*Math.PI*f));
+    ctx.strokeStyle=fColors[fi];ctx.lineWidth=1.5;ctx.beginPath();
+    let first=true;
+    for(let i=0;i<=200;i++){
+      const l=Lmin*Math.pow(Lmax/Lmin,i/200);
+      const ci=LC/l;
+      if(ci>=Cmin&&ci<=Cmax){
+        if(first){ctx.moveTo(txL(l),tyC(ci));first=false;}
+        else ctx.lineTo(txL(l),tyC(ci));
+      } else first=true;
+    }
+    ctx.stroke();
+    // Label
+    const lMid=Math.sqrt(Lmin*Lmax);
+    const cLab=LC/lMid;
+    if(cLab>=Cmin&&cLab<=Cmax){
+      ctx.fillStyle=fColors[fi];ctx.font='9px sans-serif';
+      ctx.fillText(fmtFreq(f),txL(lMid)+2,tyC(cLab)-3);
+    }
+  });
+
+  // Current point
+  ctx.fillStyle='#ff8844';
+  ctx.beginPath();ctx.arc(txL(L),tyC(C),7,0,Math.PI*2);ctx.fill();
+
+  ctx.fillStyle=c.mut;ctx.font='10px sans-serif';
+  ctx.fillText('L-C iso-frequency contours',padL+4,padT+12);
+  ctx.fillText('L (µH)',padL+plotW/2-15,padT+plotH+28);
+  [0.1,1,10,100].forEach(lv=>{ctx.fillText(lv+'µ',txL(lv*1e-6)-10,padT+plotH+14);});
+  [0.1,1,10,100].forEach(cv2=>{ctx.fillText(cv2+'n',2,tyC(cv2*1e-9)+4);});
+  ctx.fillText('C (nF)',2,padT+14);
+}
+
+function drawWave(omega0) {
+  const cv=document.getElementById('cvWave'),ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height,padL=55,padR=15,padT=22,padB=30,plotW=W-padL-padR,plotH=H-padT-padB;
+  const c=getC2();
+  ctx.fillStyle=c.bg;ctx.fillRect(0,0,W,H);
+  const T=2*Math.PI/omega0,tMax=3*T;
+  const tx=t=>padL+(t/tMax)*plotW;
+  const ty=y=>padT+(1-(y+1)/2)*plotH;
+
+  ctx.strokeStyle=c.grid;ctx.lineWidth=1;
+  for(let i=0;i<=6;i++){ctx.beginPath();ctx.moveTo(tx(i*tMax/6),padT);ctx.lineTo(tx(i*tMax/6),padT+plotH);ctx.stroke();}
+  ctx.beginPath();ctx.moveTo(padL,ty(0));ctx.lineTo(padL+plotW,ty(0));ctx.stroke();
+
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2;ctx.beginPath();
+  for(let i=0;i<=400;i++){const t=i/400*tMax;const v=Math.cos(omega0*t);if(i===0)ctx.moveTo(tx(t),ty(v));else ctx.lineTo(tx(t),ty(v));}
+  ctx.stroke();
+  ctx.strokeStyle='#ff8844';ctx.lineWidth=2;ctx.beginPath();
+  for(let i=0;i<=400;i++){const t=i/400*tMax;const i2=-Math.sin(omega0*t);if(i===0)ctx.moveTo(tx(t),ty(i2));else ctx.lineTo(tx(t),ty(i2));}
+  ctx.stroke();
+
+  ctx.fillStyle='#0066cc';ctx.font='10px sans-serif';ctx.fillText('V_C(t)=cos(ω₀t)',padL+4,padT+12);
+  ctx.fillStyle='#ff8844';ctx.fillText('I_L(t)×Z₀=−sin(ω₀t)',padL+4,padT+24);
+  ctx.fillStyle=c.mut;ctx.font='10px sans-serif';
+  for(let i=0;i<=6;i++)ctx.fillText(fmtTime(i*tMax/6),tx(i*tMax/6)-15,padT+plotH+14);
+}
+
+function draw() {
+  const L=parseFloat(document.getElementById('sL').value)*1e-6;
+  const C=parseFloat(document.getElementById('sC').value)*1e-9;
+  document.getElementById('vL').textContent=(L*1e6).toFixed(1);
+  document.getElementById('vC').textContent=(C*1e9).toFixed(1);
+  const omega0=1/Math.sqrt(L*C);
+  const f0=omega0/(2*Math.PI);
+  const Z0=Math.sqrt(L/C);
+  const T=2*Math.PI/omega0;
+  document.getElementById('rO0').textContent=(omega0/1e6).toFixed(3);
+  document.getElementById('rF0').textContent=fmtFreq(f0);
+  document.getElementById('rZ0').textContent=Z0.toFixed(2);
+  document.getElementById('rT').textContent=fmtTime(T);
+  document.getElementById('rLd').textContent=(Z0/omega0*1e6).toFixed(2)+'µH';
+  document.getElementById('rCd').textContent=(1/(Z0*omega0)*1e9).toFixed(2)+'nF';
+  drawContour(L,C);
+  drawWave(omega0);
+}
+
+['sL','sC'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',draw);
+draw();
+</script>
+</body>
+</html>

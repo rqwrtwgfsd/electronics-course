@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-RW-8.1.2 Energy Storage</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:10px;padding:10px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:230px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.formula{color:#ffaa00;font-size:11px;margin-top:8px;line-height:1.6}
+</style>
+</head>
+<body>
+<h1>P2-RW-8.1.2 — Energy Storage: Hold-up Time, E = ½CV²</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="580" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>System Requirements</h2>
+<label>V_max (V)
+<input type="range" id="vmax" min="5" max="400" step="1" value="12">
+<div class="readout" id="vmax_v">V_max = 12 V</div>
+</label>
+<label>V_min (V, min operating)
+<input type="range" id="vmin" min="1" max="300" step="1" value="9">
+<div class="readout" id="vmin_v">V_min = 9 V</div>
+</label>
+<label>Load Power P (W)
+<input type="range" id="P" min="0.1" max="100" step="0.1" value="5">
+<div class="readout" id="P_v">P = 5.0 W</div>
+</label>
+<label>Hold-up Time Required (ms)
+<input type="range" id="thold" min="1" max="500" step="1" value="20">
+<div class="readout" id="thold_v">t_hold = 20 ms</div>
+</label>
+<h2 style="margin-top:10px">Capacitor</h2>
+<label>Installed C (μF)
+<input type="range" id="C" min="10" max="100000" step="10" value="1000">
+<div class="readout" id="C_v">C = 1000 μF</div>
+</label>
+<h2 style="margin-top:10px">Analysis</h2>
+<div class="readout" id="C_min">C_min = —</div>
+<div class="readout" id="E_stored">E_stored = —</div>
+<div class="readout" id="t_actual">t_hold_actual = —</div>
+<div class="readout" id="margin">Margin: —</div>
+<div class="formula">t = C(Vmax²−Vmin²)/(2P)<br>C_min = 2P×t/(Vmax²−Vmin²)<br>E = ½CV²</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let vmax=12,vmin=9,P=5,thold=20,C=1000;
+const W=580,H=380,pad={l:65,r:20,t:30,b:40};
+const CW=W-pad.l-pad.r,CH=H-pad.t-pad.b;
+
+['vmax','vmin','P','thold','C'].forEach(id=>{
+  document.getElementById(id).oninput=function(){
+    const v=parseFloat(this.value);
+    if(id==='vmax'){vmax=v;document.getElementById('vmax_v').textContent='V_max = '+v+' V';}
+    if(id==='vmin'){vmin=v;document.getElementById('vmin_v').textContent='V_min = '+v+' V';}
+    if(id==='P'){P=v;document.getElementById('P_v').textContent='P = '+v.toFixed(1)+' W';}
+    if(id==='thold'){thold=v;document.getElementById('thold_v').textContent='t_hold = '+v+' ms';}
+    if(id==='C'){C=v;document.getElementById('C_v').textContent='C = '+v+' μF';}
+    draw();
+  };
+});
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  if(vmin>=vmax){ctx.fillStyle='#ff4444';ctx.font='14px Courier New';ctx.fillText('V_min must be < V_max',50,200);return;}
+  const C_F=C*1e-6;
+  const C_min=2*P*(thold/1000)/((vmax*vmax-vmin*vmin));// F
+  const E=0.5*C_F*vmax*vmax;
+  const t_actual=C_F*(vmax*vmax-vmin*vmin)/(2*P)*1000; // ms
+  const tmax=Math.max(t_actual,thold)*2;
+  function toPx(t,v){return[pad.l+CW*(t/tmax),pad.t+CH*(1-v/(vmax*1.15))];}
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=8;i++){const x=pad.l+CW*(i/8);ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=pad.t+CH*(i/5);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,pad.t+CH);ctx.moveTo(pad.l,pad.t+CH);ctx.lineTo(pad.l+CW,pad.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=8;i++){const t=tmax*i/8;ctx.fillText(t.toFixed(1)+'ms',pad.l+CW*(i/8),pad.t+CH+14);}
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){const v=vmax*1.15*(1-i/5);ctx.fillText(v.toFixed(1)+'V',pad.l-4,pad.t+CH*(i/5)+4);}
+  // V_min line
+  const[,yvm]=toPx(0,vmin);
+  ctx.strokeStyle='#ff4444';ctx.setLineDash([4,3]);ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad.l,yvm);ctx.lineTo(pad.l+CW,yvm);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#ff4444';ctx.textAlign='left';ctx.fillText('V_min = '+vmin+'V',pad.l+4,yvm-4);
+  // Discharge curve for installed C
+  ctx.strokeStyle='#00ff88';ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=500;i++){
+    const t=tmax*i/500/1000; // s
+    const E_t=E-P*t;
+    const V=E_t>0?Math.sqrt(2*E_t/C_F):0;
+    const[x,y]=toPx(tmax*i/500,V);
+    if(y>pad.t-5&&y<pad.t+CH+5){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+    if(V<0.1)break;
+  }
+  ctx.stroke();
+  // t_actual marker
+  const[xt,yt]=toPx(t_actual,vmin);
+  ctx.strokeStyle='#00ff88';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(xt,pad.t);ctx.lineTo(xt,pad.t+CH);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#00ff88';ctx.font='10px Courier New';ctx.textAlign='left';
+  ctx.fillText('t_actual='+t_actual.toFixed(1)+'ms',xt+4,pad.t+14);
+  // t_hold requirement
+  const[xr,yr]=toPx(thold,vmin);
+  ctx.strokeStyle='#ff6600';ctx.lineWidth=1;ctx.setLineDash([4,2]);
+  ctx.beginPath();ctx.moveTo(xr,pad.t);ctx.lineTo(xr,pad.t+CH);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#ff6600';ctx.fillText('Required: '+thold+'ms',xr+4,pad.t+28);
+  // Readouts
+  document.getElementById('C_min').textContent='C_min = '+(C_min*1e6).toFixed(0)+' μF';
+  document.getElementById('E_stored').textContent='E_stored = '+(E*1000).toFixed(1)+' mJ';
+  document.getElementById('t_actual').textContent='t_hold_actual = '+t_actual.toFixed(1)+' ms';
+  const margin=t_actual/thold;
+  const mr=document.getElementById('margin');
+  if(margin>=1){mr.style.color='#00ff88';mr.textContent='Margin: '+margin.toFixed(2)+'× (PASS)';}
+  else{mr.style.color='#ff4444';mr.textContent='Margin: '+margin.toFixed(2)+'× (FAIL — increase C to '+(C_min*1e6).toFixed(0)+'μF)';}
+}
+draw();
+</script>
+</body>
+</html>

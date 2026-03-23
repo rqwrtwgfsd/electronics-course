@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-DBG-6.2.1 DC Bias Debugging</title>
+<style>
+  :root {
+    --bg: #f5f5f5; --panel: #ffffff; --border: #d0d0d0;
+    --text: #1a1a1a; --muted: #666; --accent: #1a6eb5;
+    --pass: #2d7a2d; --fail: #b52a2a; --warn: #b57a00;
+    --pass-bg: #e8f5e8; --fail-bg: #fde8e8; --warn-bg: #fff3cd;
+    --canvas-bg: #fafafa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a; --panel: #242424; --border: #3a3a3a;
+      --text: #e8e8e8; --muted: #999; --accent: #4da3f5;
+      --pass: #4caf50; --fail: #ef5350; --warn: #ffb300;
+      --pass-bg: #1a2e1a; --fail-bg: #2e1a1a; --warn-bg: #2e2200;
+      --canvas-bg: #1e1e1e;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; padding: 16px; }
+  h1 { font-size: 1.2em; color: var(--accent); margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 0.85em; margin-bottom: 16px; }
+  .layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .panel h3 { font-size: 0.9em; color: var(--accent); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .slider-row { margin-bottom: 9px; }
+  .slider-row label { display: flex; justify-content: space-between; font-size: 0.82em; color: var(--muted); margin-bottom: 3px; }
+  .slider-row label span { color: var(--text); font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .right-col { display: flex; flex-direction: column; gap: 14px; }
+  canvas { width: 100%; display: block; background: var(--canvas-bg); border-radius: 6px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.78em; font-weight: 700; }
+  .badge.pass { background: var(--pass-bg); color: var(--pass); }
+  .badge.fail { background: var(--fail-bg); color: var(--fail); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  select { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px; font-size: 0.85em; width: 100%; margin-bottom: 8px; }
+  .fault-table { width: 100%; border-collapse: collapse; font-size: 0.82em; }
+  .fault-table th { background: var(--border); padding: 5px 8px; text-align: left; }
+  .fault-table td { padding: 4px 8px; border-bottom: 1px solid var(--border); }
+  .section-divider { font-size: 0.75em; color: var(--muted); margin: 8px 0 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .node-display { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px; }
+  .node { background: var(--canvas-bg); border: 1px solid var(--border); border-radius: 4px; padding: 6px; text-align: center; }
+  .node .name { font-size: 0.72em; color: var(--muted); }
+  .node .expected { font-size: 0.8em; color: var(--muted); }
+  .node .measured { font-size: 1.1em; font-weight: 700; }
+  @media (max-width: 720px) { .layout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<h1>M4A-DBG-6.2.1 — DC Bias Debugging</h1>
+<p class="subtitle">Inverting op-amp with injected faults — find the wrong node voltage and identify the root cause</p>
+
+<div class="layout">
+<div>
+  <div class="panel" style="margin-bottom:12px">
+    <h3>Inject Fault</h3>
+    <select id="sel-fault" onchange="update()">
+      <option value="none">No fault (nominal circuit)</option>
+      <option value="rf_open">Rf open (feedback broken)</option>
+      <option value="r1_open">R1 open (input path broken)</option>
+      <option value="rf_short">Rf shorted to ground</option>
+      <option value="vinp_float">Non-inv input floating</option>
+      <option value="supply_low">Supply voltage low (−20%)</option>
+      <option value="r1_wrong">R1 wrong value (×2)</option>
+      <option value="neg_supply">Negative supply missing</option>
+      <option value="rb_open">Bias comp resistor open</option>
+    </select>
+    <div id="fault-description" style="font-size:0.8em;color:var(--warn);padding:6px 0;min-height:36px"></div>
+  </div>
+
+  <div class="panel" style="margin-bottom:12px">
+    <h3>Circuit Parameters</h3>
+    <div class="section-divider">Amplifier</div>
+    <div class="slider-row">
+      <label>Gain |Rf/R1| <span id="lbl-gain">10</span></label>
+      <input type="range" id="sl-gain" min="1" max="50" step="1" value="10" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>R1 (kΩ) <span id="lbl-r1">10</span></label>
+      <input type="range" id="sl-r1" min="1" max="100" step="1" value="10" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Supply ±Vcc (V) <span id="lbl-vcc">15</span></label>
+      <input type="range" id="sl-vcc" min="1.8" max="18" step="0.1" value="15" oninput="update()">
+    </div>
+    <div class="section-divider">Op-Amp</div>
+    <div class="slider-row">
+      <label>Vos (µV) <span id="lbl-vos">200</span></label>
+      <input type="range" id="sl-vos" min="-5000" max="5000" step="10" value="200" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Bias current Ib (nA) <span id="lbl-ib">50</span></label>
+      <input type="range" id="sl-ib" min="0.001" max="500" step="0.5" value="50" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Open-loop gain Aol (dB) <span id="lbl-aol">120</span></label>
+      <input type="range" id="sl-aol" min="40" max="160" step="5" value="120" oninput="update()">
+    </div>
+    <div class="section-divider">Measurement Conditions</div>
+    <div class="slider-row">
+      <label>Input voltage (mV) <span id="lbl-vin">0</span></label>
+      <input type="range" id="sl-vin" min="-500" max="500" step="5" value="0" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Meter impedance (MΩ) <span id="lbl-rmeter">10</span></label>
+      <input type="range" id="sl-rmeter" min="0.1" max="100" step="0.1" value="10" oninput="update()">
+    </div>
+  </div>
+</div>
+
+<div class="right-col">
+  <div class="panel">
+    <h3>Node Voltages — Expected vs. Measured</h3>
+    <div class="node-display" id="node-display"></div>
+    <div style="font-size:0.8em;color:var(--muted);margin-top:4px">Green = within ±5%. Yellow = ±5–20% deviation. Red = >20% deviation or wrong sign.</div>
+  </div>
+
+  <div class="panel">
+    <h3>Debug Decision Tree</h3>
+    <table class="fault-table" id="debug-table">
+      <thead><tr><th>Check</th><th>Expected</th><th>Measured</th><th>Deviation</th><th>Conclusion</th></tr></thead>
+      <tbody id="debug-body"></tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h3>Schematic — Current State (annotated)</h3>
+    <canvas id="c1" height="240"></canvas>
+  </div>
+
+  <div class="panel">
+    <h3>Output vs. Input — Transfer Characteristic</h3>
+    <canvas id="c2" height="160"></canvas>
+  </div>
+</div>
+</div>
+
+<script>
+function v(id) { return parseFloat(document.getElementById(id).value); }
+function lbl(id, val, dec) { const el = document.getElementById(id); if(el) el.textContent = typeof val==='number' ? val.toFixed(dec!==undefined?dec:1) : val; }
+
+const FAULT_DESC = {
+  none: '',
+  rf_open: 'Rf is open circuit — feedback path broken. Op-amp operating open-loop.',
+  r1_open: 'R1 open — input signal path broken. Summing node only connected to Rf.',
+  rf_short: 'Rf shorted to ground — output directly grounded through Rf.',
+  vinp_float: 'Non-inverting input floating — no DC return to ground.',
+  supply_low: 'Supply voltage 20% lower than nominal (power supply drooping).',
+  r1_wrong: 'R1 is 2× nominal value — gain is halved.',
+  neg_supply: 'Negative supply missing — op-amp on single supply unintentionally.',
+  rb_open: 'Bias compensation resistor open — full Ib×Rf offset at output.',
+};
+
+function computeCircuit(fault, gain, r1_nom, vcc, vos, ib, aol_dB, vin_mV, rmeter) {
+  const vin = vin_mV * 1e-3;
+  const rf_nom = r1_nom * gain * 1e3;
+  const r1_ohm = r1_nom * 1e3;
+  const aol = Math.pow(10, aol_dB / 20);
+  const vcc_actual = fault === 'supply_low' ? vcc * 0.8 : vcc;
+  const vneg = fault === 'neg_supply' ? 0 : -vcc_actual;
+
+  let rf_actual = rf_nom;
+  let r1_actual = r1_ohm;
+  let vinp = 0;
+  let rb_actual = r1_ohm * gain; // = rf, for compensation
+
+  // Apply faults
+  if (fault === 'rf_open') rf_actual = 1e15; // open
+  if (fault === 'r1_open') r1_actual = 1e15;
+  if (fault === 'rf_short') rf_actual = 1; // near-zero
+  if (fault === 'r1_wrong') r1_actual = r1_ohm * 2;
+  if (fault === 'rb_open') rb_actual = 1e15; // open
+
+  // Op-amp model
+  // Vout = Aol × (V+ - V-)
+  // Closed loop: Vout = -Rf/R1 × Vin + Vos*(1+Rf/R1) + Ib*Rf (nominal)
+
+  // Non-inverting input voltage
+  if (fault === 'vinp_float') {
+    // Bias current charges the floating input
+    vinp = ib * 1e-9 * 1e10; // essentially driven to supply
+    vinp = Math.min(vcc_actual, vinp);
+  } else {
+    // Compensation resistor to ground
+    vinp = 0; // virtual ground through compensation
+    if (fault !== 'rb_open') {
+      vinp = 0; // Rb||Rmeter to ground - negligible
+    } else {
+      vinp = ib * 1e-9 * rmeter * 1e6 * 0.5; // floating, pulls up through meter impedance
+      vinp = Math.min(vcc_actual / 2, vinp);
+    }
+  }
+
+  // Closed-loop output voltage
+  let vout, vinv, vsum;
+  if (fault === 'rf_open') {
+    // Open loop — output saturates based on Vos+Vin polarity
+    const verror = vinp - vos * 1e-6 + vin * 0;
+    vout = Math.max(vneg + 0.5, Math.min(vcc_actual - 0.5, aol * verror));
+  } else if (fault === 'rf_short') {
+    // Rf = 0: output is shorted to summing node; forms short-circuit
+    // Summing node voltage ≈ Vin (R1 alone, no feedback)
+    vout = Math.max(vneg + 0.5, Math.min(vcc_actual - 0.5, 0));
+  } else if (fault === 'neg_supply') {
+    // Negative supply is 0V — output can't go below 0V
+    const cl_gain = -(rf_actual / r1_actual);
+    const offset = vos * 1e-6 * (1 + rf_actual / r1_actual);
+    const ib_offset = ib * 1e-9 * rf_actual;
+    vout = Math.max(0.5, Math.min(vcc_actual - 0.5, cl_gain * vin + offset + ib_offset));
+  } else {
+    const cl_gain = -(rf_actual / r1_actual);
+    const vos_out = vos * 1e-6 * (1 + rf_actual / r1_actual);
+    const ib_offset_out = ib * 1e-9 * rf_actual;
+    const rb_offset = fault === 'rb_open' ? 0 : -ib * 1e-9 * rb_actual * (1 + rf_actual / r1_actual);
+    const vinp_gain_effect = vinp * (1 + rf_actual / r1_actual);
+    vout = cl_gain * vin + vos_out + ib_offset_out + rb_offset + vinp_gain_effect;
+    vout = Math.max(vneg + 0.5, Math.min(vcc_actual - 0.5, vout));
+  }
+
+  // Compute node voltages
+  const Vsum = fault === 'rf_open' ? 0.001 : // floating
+    fault === 'rf_short' ? vout : // tied to output via short
+    0; // virtual ground in normal operation (≈0V)
+
+  const V_inv_input = vin; // input voltage (before R1)
+  const measured_Vin = vin * rmeter * 1e6 / (r1_actual + rmeter * 1e6);
+
+  return {
+    vcc: vcc_actual, vneg,
+    v_supply: vcc_actual,
+    v_inv_input: vin,
+    v_summing: Vsum,
+    v_vinp: vinp,
+    v_out: vout,
+    r1_eff: r1_actual,
+    rf_eff: rf_actual,
+    gain_eff: -rf_actual / r1_actual,
+  };
+}
+
+function computeNominal(gain, r1_nom, vcc, vos, ib, vin_mV) {
+  const vin = vin_mV * 1e-3;
+  const rf_nom = r1_nom * gain * 1e3;
+  const r1_ohm = r1_nom * 1e3;
+  const vout_nom = -(rf_nom / r1_ohm) * vin + vos * 1e-6 * (1 + rf_nom / r1_ohm) + ib * 1e-9 * rf_nom;
+  return {
+    v_supply: vcc,
+    v_inv_input: vin,
+    v_summing: 0,
+    v_vinp: 0,
+    v_out: Math.max(-vcc + 0.5, Math.min(vcc - 0.5, vout_nom)),
+  };
+}
+
+function getColors() {
+  const s = getComputedStyle(document.documentElement);
+  return ['--text','--muted','--accent','--pass','--fail','--warn','--border','--canvas-bg'].reduce((o,k)=>{o[k.slice(2)]=s.getPropertyValue(k).trim();return o;},{});
+}
+function getCtx(id) {
+  const c = document.getElementById(id); const dpr = window.devicePixelRatio || 1;
+  const rect = c.getBoundingClientRect();
+  if (c._lw !== rect.width || c._lh !== rect.height) { c.width = rect.width*dpr; c.height = rect.height*dpr; c._lw = rect.width; c._lh = rect.height; }
+  const ctx = c.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0);
+  return [ctx, rect.width, rect.height];
+}
+
+function update() {
+  const fault = document.getElementById('sel-fault').value;
+  const gain = v('sl-gain');
+  const r1 = v('sl-r1');
+  const vcc = v('sl-vcc');
+  const vos = v('sl-vos');
+  const ib = v('sl-ib');
+  const aol_dB = v('sl-aol');
+  const vin_mV = v('sl-vin');
+  const rmeter = v('sl-rmeter');
+
+  lbl('lbl-gain', gain, 0);
+  lbl('lbl-r1', r1, 0);
+  lbl('lbl-vcc', vcc, 1);
+  lbl('lbl-vos', vos, 0);
+  lbl('lbl-ib', ib, 1);
+  lbl('lbl-aol', aol_dB, 0);
+  lbl('lbl-vin', vin_mV, 0);
+  lbl('lbl-rmeter', rmeter, 1);
+
+  document.getElementById('fault-description').textContent = FAULT_DESC[fault] || '';
+
+  const nominal = computeNominal(gain, r1, vcc, vos, ib, vin_mV);
+  const faulted = computeCircuit(fault, gain, r1, vcc, vos, ib, aol_dB, vin_mV, rmeter);
+
+  const nodes = [
+    { name: 'V+ Supply', exp: nominal.v_supply, meas: faulted.v_supply },
+    { name: 'Vin (input)', exp: nominal.v_inv_input, meas: faulted.v_inv_input },
+    { name: 'V+ (non-inv)', exp: nominal.v_vinp, meas: faulted.v_vinp },
+    { name: 'Summing node', exp: nominal.v_summing, meas: faulted.v_summing },
+    { name: 'Vout', exp: nominal.v_out, meas: faulted.v_out },
+    { name: 'V- Supply', exp: -nominal.v_supply, meas: faulted.vneg },
+  ];
+
+  const C = getColors();
+  document.getElementById('node-display').innerHTML = nodes.map(n => {
+    const deviation = n.exp !== 0 ? Math.abs((n.meas - n.exp) / n.exp) : Math.abs(n.meas - n.exp) / (vcc + 0.1);
+    const cls = deviation < 0.05 ? 'pass' : deviation < 0.2 ? 'warn' : 'fail';
+    const color = cls === 'pass' ? C.pass : cls === 'warn' ? C.warn : C.fail;
+    return `<div class="node"><div class="name">${n.name}</div>` +
+      `<div class="expected">exp: ${n.exp.toFixed(3)}V</div>` +
+      `<div class="measured" style="color:${color}">${n.meas.toFixed(3)}V</div></div>`;
+  }).join('');
+
+  // Debug table
+  const checks = nodes.map(n => {
+    const dev = n.exp !== 0 ? (n.meas - n.exp) / n.exp * 100 : (n.meas - n.exp) * 100;
+    const cls = Math.abs(dev) < 5 ? 'pass' : Math.abs(dev) < 20 ? 'warn' : 'fail';
+    const concl = Math.abs(dev) < 5 ? 'Normal' : Math.abs(dev) < 20 ? 'Marginal — check component' : 'FAULT — investigate';
+    return `<tr><td>${n.name}</td><td>${n.exp.toFixed(3)}V</td><td>${n.meas.toFixed(3)}V</td>` +
+      `<td>${dev > 0 ? '+' : ''}${dev.toFixed(1)}%</td>` +
+      `<td><span class="badge ${cls}">${concl}</span></td></tr>`;
+  });
+  document.getElementById('debug-body').innerHTML = checks.join('');
+
+  drawSchematic(faulted, fault, gain, r1, vcc);
+  drawTransfer(fault, gain, r1, vcc, vos, ib, aol_dB, rmeter);
+}
+
+function drawSchematic(c, fault, gain, r1, vcc) {
+  const [ctx, W, H] = getCtx('c1');
+  const C = getColors();
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = C['canvas-bg'];
+  ctx.fillRect(0, 0, W, H);
+
+  const rf = r1 * gain;
+  // Simple annotated schematic drawing
+  const mx = W / 2, my = H / 2;
+
+  // Op-amp triangle
+  const ox = mx + 60, oy = my;
+  ctx.strokeStyle = C.text; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(ox - 40, oy - 30); ctx.lineTo(ox + 40, oy); ctx.lineTo(ox - 40, oy + 30); ctx.closePath();
+  ctx.stroke();
+
+  // Non-inv input (+)
+  ctx.fillStyle = C.text; ctx.font = '11px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('+', ox - 30, oy + 5);
+  ctx.fillText('−', ox - 30, oy - 15);
+
+  // Labels
+  ctx.fillStyle = C.muted; ctx.font = '10px system-ui';
+  ctx.textAlign = 'left';
+  ctx.fillText('R1='+r1+'kΩ', 20, my - 40);
+  ctx.fillText('Rf='+rf+'kΩ', mx - 10, my - 80);
+  ctx.fillText('±'+vcc+'V', ox + 50, oy - 20);
+
+  // Node voltage annotations
+  const nodeColor = (name) => {
+    const nodes_expected = { 'vout': 0, 'vsumming': 0, 'vinp': 0 };
+    return C.accent;
+  };
+
+  // Input line
+  const inputX = 30, sumX = ox - 40, vinpY = oy + 15;
+  ctx.strokeStyle = fault === 'r1_open' ? C.fail : C.text; ctx.lineWidth = fault === 'r1_open' ? 2 : 1.5;
+  ctx.beginPath(); ctx.moveTo(inputX, oy - 15); ctx.lineTo(sumX, oy - 15); ctx.stroke();
+  ctx.fillStyle = fault === 'r1_open' ? C.fail : C.text; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Vin', inputX - 5, oy - 20);
+
+  // R1 drawn on input line
+  const r1x = (inputX + sumX) / 2;
+  ctx.fillStyle = fault === 'r1_open' ? C.fail + '44' : C.accent + '33';
+  ctx.fillRect(r1x - 15, oy - 22, 30, 12);
+  ctx.strokeStyle = fault === 'r1_open' ? C.fail : C.border; ctx.lineWidth = 1;
+  ctx.strokeRect(r1x - 15, oy - 22, 30, 12);
+  if (fault === 'r1_open') {
+    ctx.strokeStyle = C.fail; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(r1x - 10, oy - 22); ctx.lineTo(r1x + 10, oy - 10); ctx.stroke();
+  }
+
+  // Feedback path (Rf)
+  ctx.strokeStyle = fault === 'rf_open' ? C.fail : fault === 'rf_short' ? C.warn : C.text;
+  ctx.lineWidth = fault === 'rf_open' || fault === 'rf_short' ? 2 : 1.5;
+  ctx.beginPath();
+  ctx.moveTo(ox + 40, oy); // output
+  ctx.lineTo(ox + 40, oy - 70); // up
+  ctx.lineTo(sumX, oy - 70); // across
+  ctx.lineTo(sumX, oy - 15); // down to summing
+  ctx.stroke();
+
+  // Rf block on feedback
+  const rfx = (ox + 40 + sumX) / 2;
+  ctx.fillStyle = fault === 'rf_open' ? C.fail + '44' : fault === 'rf_short' ? C.warn + '44' : C.accent + '33';
+  ctx.fillRect(rfx - 15, oy - 78, 30, 12);
+  ctx.strokeStyle = fault === 'rf_open' ? C.fail : fault === 'rf_short' ? C.warn : C.border;
+  ctx.lineWidth = 1; ctx.strokeRect(rfx - 15, oy - 78, 30, 12);
+  if (fault === 'rf_open') {
+    ctx.strokeStyle = C.fail; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(rfx - 10, oy - 78); ctx.lineTo(rfx + 10, oy - 66); ctx.stroke();
+  }
+
+  // Non-inv input line and Rb
+  ctx.strokeStyle = fault === 'vinp_float' || fault === 'rb_open' ? C.fail : C.text; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(sumX, vinpY); ctx.lineTo(sumX - 40, vinpY); ctx.lineTo(sumX - 40, vinpY + 30); ctx.stroke();
+  ctx.fillStyle = C.muted; ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+  if (fault === 'vinp_float') {
+    ctx.fillStyle = C.fail; ctx.fillText('FLOAT!', sumX - 40, vinpY - 5);
+  } else if (fault === 'rb_open') {
+    ctx.fillStyle = C.fail; ctx.fillText('OPEN Rb!', sumX - 40, vinpY - 5);
+    ctx.strokeStyle = C.fail; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(sumX - 50, vinpY + 15); ctx.lineTo(sumX - 30, vinpY + 25); ctx.stroke();
+  } else {
+    ctx.fillText('Rb='+rf+'kΩ', sumX - 40, vinpY - 5);
+  }
+  ctx.fillStyle = C.muted; ctx.fillText('GND', sumX - 40, vinpY + 45);
+
+  // Output line with voltage label
+  ctx.strokeStyle = C.text; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(ox + 40, oy); ctx.lineTo(W - 20, oy); ctx.stroke();
+  ctx.fillStyle = C.accent; ctx.font = '11px system-ui'; ctx.textAlign = 'right';
+  const vout_display = c.v_out;
+  ctx.fillText('Vout = '+vout_display.toFixed(3)+'V', W - 5, oy - 5);
+
+  // Fault label
+  if (fault !== 'none') {
+    ctx.fillStyle = C.fail; ctx.font = 'bold 11px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('FAULT: ' + document.getElementById('sel-fault').options[document.getElementById('sel-fault').selectedIndex].text, W / 2, 18);
+  }
+}
+
+function drawTransfer(fault, gain, r1, vcc, vos, ib, aol_dB, rmeter) {
+  const [ctx, W, H] = getCtx('c2');
+  const C = getColors();
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = C['canvas-bg'];
+  ctx.fillRect(0, 0, W, H);
+
+  const PAD = { l: 50, r: 20, t: 20, b: 35 };
+  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+
+  function xp(vin) { return PAD.l + (vin / vcc + 1) / 2 * cW; }
+  function yp(vout) { return PAD.t + (1 - (vout / (vcc * 1.2) + 1) / 2) * cH; }
+
+  // Grid
+  ctx.strokeStyle = C.border; ctx.lineWidth = 0.5; ctx.setLineDash([2,3]);
+  ctx.beginPath(); ctx.moveTo(xp(0), PAD.t); ctx.lineTo(xp(0), PAD.t + cH); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(PAD.l, yp(0)); ctx.lineTo(PAD.l + cW, yp(0)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Nominal transfer (ideal dashed)
+  ctx.strokeStyle = C.muted; ctx.lineWidth = 1; ctx.setLineDash([4,3]);
+  const pts_nom = [];
+  for (let i = -100; i <= 100; i++) {
+    const vin = (i/100) * vcc;
+    const vout = Math.max(-vcc + 0.5, Math.min(vcc - 0.5, -gain * vin / 1000 * 1000 * 1));
+    pts_nom.push([vin, vout]);
+  }
+  ctx.beginPath();
+  pts_nom.forEach(([vin, vout], idx) => idx === 0 ? ctx.moveTo(xp(vin), yp(vout)) : ctx.lineTo(xp(vin), yp(vout)));
+  ctx.stroke(); ctx.setLineDash([]);
+
+  // Faulted transfer (solid)
+  ctx.strokeStyle = fault === 'none' ? C.pass : C.fail; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let i = -100; i <= 100; i++) {
+    const vin_mV = (i/100) * vcc * 1000;
+    const c = computeCircuit(fault, gain, r1, vcc, vos, ib, aol_dB, vin_mV, rmeter);
+    const vin = vin_mV / 1000;
+    const x = xp(vin), y = yp(c.v_out);
+    i === -100 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Axes
+  ctx.strokeStyle = C.border; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t); ctx.lineTo(PAD.l, PAD.t + cH); ctx.lineTo(PAD.l + cW, PAD.t + cH); ctx.stroke();
+  ctx.fillStyle = C.muted; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+  [-1, -0.5, 0, 0.5, 1].forEach(f => {
+    ctx.fillText((f*vcc).toFixed(1)+'V', xp(f*vcc), PAD.t + cH + 14);
+  });
+  ctx.textAlign = 'right';
+  [-1.2, -0.6, 0, 0.6, 1.2].forEach(f => {
+    ctx.fillText((f*vcc).toFixed(1), PAD.l - 3, yp(f*vcc) + 4);
+  });
+  ctx.fillStyle = C.muted; ctx.textAlign = 'center';
+  ctx.fillText('Vin →', PAD.l + cW / 2, H - 4);
+  ctx.save(); ctx.translate(14, PAD.t + cH / 2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle = C.text; ctx.font = '11px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Vout', 0, 0); ctx.restore();
+}
+
+window.addEventListener('resize', update);
+update();
+</script>
+</body>
+</html>

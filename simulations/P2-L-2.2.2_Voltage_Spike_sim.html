@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-L-2.2.2 — Voltage Spike</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+h1 { color: #0066cc; font-size: 1.3em; margin-bottom: 4px; }
+.subtitle { color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }
+.layout { display: flex; gap: 20px; flex-wrap: wrap; }
+.panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+.controls { width: 280px; flex-shrink: 0; }
+.viz { flex: 1; min-width: 360px; }
+label { display: block; color: #8b949e; font-size: 0.8em; margin-bottom: 4px; margin-top: 12px; }
+input[type=range] { width: 100%; accent-color: #0066cc; }
+select { width: 100%; background: #21262d; border: 1px solid #30363d; color: #e6edf3; padding: 6px; border-radius: 4px; margin-top: 4px; }
+.val { color: #0066cc; font-weight: bold; }
+canvas { background: #0d1117; border-radius: 6px; display: block; }
+.readouts { margin-top: 14px; }
+.readout-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #21262d; font-size: 0.82em; }
+.readout-label { color: #8b949e; }
+.readout-val { color: #39d353; font-weight: bold; font-family: monospace; }
+.readout-warn { color: #f85149; font-weight: bold; font-family: monospace; }
+.eq { background: #21262d; border-left: 3px solid #0066cc; padding: 10px 12px; border-radius: 4px; margin-top: 14px; font-family: monospace; font-size: 0.82em; color: #a5d6ff; }
+@media (prefers-color-scheme: light) {
+  body { background: #f6f8fa; color: #24292f; }
+  .panel { background: #fff; border-color: #d0d7de; }
+  canvas { background: #f6f8fa; }
+  .eq { background: #eef2ff; }
+  select { background: #f6f8fa; color: #24292f; }
+}
+</style>
+</head>
+<body>
+<h1>P2-L-2.2.2 — Voltage Spike (L·di/dt)</h1>
+<div class="subtitle">Switch-off voltage spike · flyback diode comparison · V_spike = L×I/t_off · time-domain waveform</div>
+<div class="layout">
+  <div class="panel controls">
+    <label>Inductance L (µH): <span class="val" id="lLbl">500 µH</span></label>
+    <input type="range" id="lSlider" min="10" max="5000" value="500" step="10">
+    <label>Initial Current I₀ (mA): <span class="val" id="i0Lbl">200 mA</span></label>
+    <input type="range" id="i0Slider" min="10" max="2000" value="200" step="10">
+    <label>Switch-off time t_off (ns): <span class="val" id="toffLbl">100 ns</span></label>
+    <input type="range" id="toffSlider" min="10" max="1000" value="100" step="10">
+    <label>Supply voltage V_s (V): <span class="val" id="vsLbl">12 V</span></label>
+    <input type="range" id="vsSlider" min="3" max="48" value="12" step="1">
+    <label>Protection:</label>
+    <select id="protSelect">
+      <option value="none">None (stray capacitance 50 pF)</option>
+      <option value="silicon" selected>Silicon flyback diode (V_f=0.7V)</option>
+      <option value="schottky">Schottky diode (V_f=0.35V)</option>
+      <option value="zener">Schottky + 12V Zener clamp</option>
+    </select>
+    <div class="readouts">
+      <div class="readout-row"><span class="readout-label">V_spike (no protection)</span><span class="readout-val" id="vspikeUnprot">—</span></div>
+      <div class="readout-row"><span class="readout-label">V_clamp (with protection)</span><span class="readout-val" id="vspikeClamp">—</span></div>
+      <div class="readout-row"><span class="readout-label">Spike energy E = ½LI²</span><span class="readout-val" id="espike">—</span></div>
+      <div class="readout-row"><span class="readout-label">Switch safe? (60V limit)</span><span class="readout-val" id="safeCheck">—</span></div>
+    </div>
+    <div class="eq">V_spike = L×I₀/t_off<br>V_clamp = V_supply + V_diode<br>E = ½×L×I₀²</div>
+  </div>
+  <div class="panel viz">
+    <canvas id="cv" width="580" height="420"></canvas>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const W = 580, H = 420;
+
+function getP() {
+  return {
+    L: parseFloat(document.getElementById('lSlider').value) * 1e-6,
+    I0: parseFloat(document.getElementById('i0Slider').value) * 1e-3,
+    toff: parseFloat(document.getElementById('toffSlider').value) * 1e-9,
+    Vs: parseFloat(document.getElementById('vsSlider').value),
+    prot: document.getElementById('protSelect').value
+  };
+}
+
+function fmtV(v) {
+  if (Math.abs(v) >= 1000) return (v / 1000).toFixed(1) + ' kV';
+  return v.toFixed(1) + ' V';
+}
+function fmtE(e) {
+  if (e >= 1e-3) return (e * 1000).toFixed(2) + ' mJ';
+  return (e * 1e6).toFixed(2) + ' µJ';
+}
+
+function draw() {
+  const p = getP();
+
+  const Cstray = 50e-12;
+  // Unprotected spike
+  let Vspike_unprot;
+  const tLC = Math.sqrt(p.L / Cstray);
+  if (p.toff <= tLC) {
+    Vspike_unprot = p.I0 * Math.sqrt(p.L / Cstray);
+  } else {
+    Vspike_unprot = p.L * p.I0 / p.toff;
+  }
+  Vspike_unprot += p.Vs;
+
+  // With protection
+  let Vf = 0, Vzener = 0;
+  if (p.prot === 'silicon') { Vf = 0.7; }
+  else if (p.prot === 'schottky') { Vf = 0.35; }
+  else if (p.prot === 'zener') { Vf = 0.35; Vzener = 12; }
+  const Vclamp = p.prot === 'none' ? Vspike_unprot : p.Vs + Vf + Vzener;
+
+  const Espike = 0.5 * p.L * p.I0 * p.I0;
+  const safe60 = Vclamp <= 60;
+
+  document.getElementById('lLbl').textContent = (p.L * 1e6).toFixed(0) + ' µH';
+  document.getElementById('i0Lbl').textContent = (p.I0 * 1000).toFixed(0) + ' mA';
+  document.getElementById('toffLbl').textContent = (p.toff * 1e9).toFixed(0) + ' ns';
+  document.getElementById('vsLbl').textContent = p.Vs.toFixed(0) + ' V';
+  document.getElementById('vspikeUnprot').textContent = fmtV(Math.min(Vspike_unprot, 99999));
+  document.getElementById('vspikeClamp').textContent = fmtV(Vclamp);
+  document.getElementById('espike').textContent = fmtE(Espike);
+  const safeEl = document.getElementById('safeCheck');
+  safeEl.textContent = safe60 ? '✓ Safe' : '✗ UNSAFE';
+  safeEl.className = safe60 ? 'readout-val' : 'readout-warn';
+
+  ctx.clearRect(0, 0, W, H);
+
+  const pad = { l: 70, r: 20, t: 30, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  // Show two waveforms side by side in time
+  const tTotal = 1200e-9; // 1.2 µs
+  const Vmax = Math.min(Math.max(Vspike_unprot * 1.1, Vclamp * 1.3, p.Vs * 3), 200);
+
+  function tx(t) { return pad.l + (t / tTotal) * pw; }
+  function ty(v) { return pad.t + ph - (v / Vmax) * ph; }
+
+  // Grid
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let g = 0; g <= 5; g++) {
+    const yi = ty(Vmax * g / 5);
+    ctx.beginPath(); ctx.moveTo(pad.l, yi); ctx.lineTo(pad.l + pw, yi); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(fmtV(Vmax * g / 5), pad.l - 4, yi + 4);
+  }
+  for (let g = 0; g <= 6; g++) {
+    const xi = tx(tTotal * g / 6);
+    ctx.beginPath(); ctx.moveTo(xi, pad.t); ctx.lineTo(xi, pad.t + ph); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    ctx.fillText((tTotal * g / 6 * 1e9).toFixed(0) + 'ns', xi, pad.t + ph + 16);
+  }
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t + ph); ctx.lineTo(pad.l + pw, pad.t + ph); ctx.stroke();
+
+  // Supply voltage line
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.moveTo(pad.l, ty(p.Vs)); ctx.lineTo(pad.l + pw, ty(p.Vs)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#8b949e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('V_supply = ' + p.Vs + 'V', pad.l + 4, ty(p.Vs) - 5);
+
+  // Time segments: 0-200ns ON, 200ns switch opens, 200-500ns spike, 500ns-1.2µs decay
+  const tSwitch = 200e-9;
+  const tSpikeEnd = tSwitch + p.toff;
+  const tEnd = 1200e-9;
+  const R_coil = 50; // assumed coil resistance
+
+  function buildWaveform(useClamp) {
+    const pts = [];
+    // ON phase: V = Vs
+    pts.push({ t: 0, v: p.Vs });
+    pts.push({ t: tSwitch, v: p.Vs });
+    // Spike phase
+    if (!useClamp) {
+      const Vpeak = Math.min(Vspike_unprot, Vmax * 0.98);
+      pts.push({ t: tSwitch + p.toff * 0.1, v: p.Vs });
+      pts.push({ t: tSwitch + p.toff * 0.5, v: Vpeak });
+      pts.push({ t: tSpikeEnd, v: p.Vs * 0.8 });
+      // Ringing oscillation
+      const f_ring = 1 / (2 * Math.PI * Math.sqrt(p.L * Cstray));
+      const T_ring = 1 / f_ring;
+      let amp = (Vpeak - p.Vs) * 0.5;
+      for (let dt = 0; dt < 600e-9; dt += T_ring / 20) {
+        const t = tSpikeEnd + dt;
+        const v = p.Vs + amp * Math.cos(2 * Math.PI * f_ring * dt) * Math.exp(-dt / (T_ring * 3));
+        pts.push({ t, v });
+      }
+    } else {
+      pts.push({ t: tSwitch, v: p.Vs });
+      pts.push({ t: tSwitch + 5e-9, v: Vclamp });
+      // Decay as current decays through diode
+      const tau_release = p.L * p.I0 / (Vclamp - p.Vs + 0.01);
+      for (let dt = 0; dt < 800e-9; dt += 10e-9) {
+        const t = tSwitch + 5e-9 + dt;
+        const v = p.Vs + (Vclamp - p.Vs) * Math.exp(-dt / tau_release);
+        pts.push({ t, v: Math.max(v, p.Vs - 0.1) });
+      }
+      pts.push({ t: tEnd, v: p.Vs - 0.5 });
+    }
+    return pts;
+  }
+
+  // Unprotected (red)
+  if (p.prot === 'none') {
+    const pts = buildWaveform(false);
+    ctx.strokeStyle = '#f85149'; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    pts.forEach((pt, i) => {
+      const x = tx(pt.t), y = ty(Math.min(pt.v, Vmax * 0.99));
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.fillStyle = '#f85149'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('No protection: ' + fmtV(Math.min(Vspike_unprot, 99999)), tx(tSwitch + p.toff), ty(Math.min(Vspike_unprot, Vmax * 0.99)) - 8);
+  } else {
+    // Draw both
+    const ptsUnprot = buildWaveform(false);
+    ctx.strokeStyle = '#f8514980'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 3]);
+    ctx.beginPath();
+    ptsUnprot.forEach((pt, i) => {
+      const x = tx(pt.t), y = ty(Math.min(pt.v, Vmax * 0.99));
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#f85149'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('Without diode: ' + fmtV(Math.min(Vspike_unprot, 99999)), tx(tSwitch + p.toff * 0.5), pad.t + 12);
+
+    const ptsProt = buildWaveform(true);
+    ctx.strokeStyle = '#39d353'; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ptsProt.forEach((pt, i) => {
+      const x = tx(pt.t), y = ty(Math.min(pt.v, Vmax * 0.99));
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.fillStyle = '#39d353'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('With diode: ' + fmtV(Vclamp), tx(tSwitch + 20e-9), ty(Vclamp) - 8);
+  }
+
+  // Switch event marker
+  ctx.strokeStyle = '#e3b341'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
+  ctx.beginPath(); ctx.moveTo(tx(tSwitch), pad.t); ctx.lineTo(tx(tSwitch), pad.t + ph); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#e3b341'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Switch opens', tx(tSwitch), pad.t + 14);
+
+  // 60V MOSFET limit
+  if (60 <= Vmax) {
+    ctx.strokeStyle = '#ff7b72'; ctx.lineWidth = 1; ctx.setLineDash([2, 2]);
+    ctx.beginPath(); ctx.moveTo(pad.l, ty(60)); ctx.lineTo(pad.l + pw, ty(60)); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#ff7b72'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText('60V MOSFET limit', pad.l + pw - 4, ty(60) - 5);
+  }
+
+  ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Time (ns)', pad.l + pw / 2, H - 8);
+  ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Voltage at Switch Node — Flyback Diode Spike Protection', W / 2, 18);
+}
+
+['lSlider', 'i0Slider', 'toffSlider', 'vsSlider', 'protSelect'].forEach(id =>
+  document.getElementById(id).addEventListener('input', draw));
+draw();
+</script>
+</body>
+</html>

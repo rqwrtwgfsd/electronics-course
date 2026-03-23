@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-DT-5.2.1 Worst-Case Analysis</title>
+<style>
+  :root {
+    --bg: #f5f5f5; --panel: #ffffff; --border: #d0d0d0;
+    --text: #1a1a1a; --muted: #666; --accent: #1a6eb5;
+    --pass: #2d7a2d; --fail: #b52a2a; --warn: #b57a00;
+    --pass-bg: #e8f5e8; --fail-bg: #fde8e8; --warn-bg: #fff3cd;
+    --canvas-bg: #fafafa;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a; --panel: #242424; --border: #3a3a3a;
+      --text: #e8e8e8; --muted: #999; --accent: #4da3f5;
+      --pass: #4caf50; --fail: #ef5350; --warn: #ffb300;
+      --pass-bg: #1a2e1a; --fail-bg: #2e1a1a; --warn-bg: #2e2200;
+      --canvas-bg: #1e1e1e;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; padding: 16px; }
+  h1 { font-size: 1.2em; color: var(--accent); margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 0.85em; margin-bottom: 16px; }
+  .layout { display: grid; grid-template-columns: 280px 1fr; gap: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .panel h3 { font-size: 0.9em; color: var(--accent); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .slider-row { margin-bottom: 10px; }
+  .slider-row label { display: flex; justify-content: space-between; font-size: 0.82em; color: var(--muted); margin-bottom: 3px; }
+  .slider-row label span { color: var(--text); font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .method-tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .tab-btn { padding: 5px 10px; border-radius: 5px; border: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer; font-size: 0.82em; }
+  .tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .right-col { display: flex; flex-direction: column; gap: 16px; }
+  canvas { width: 100%; display: block; background: var(--canvas-bg); border-radius: 6px; }
+  .readout-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .readout { background: var(--canvas-bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; text-align: center; }
+  .readout .val { font-size: 1.3em; font-weight: 700; color: var(--accent); }
+  .readout .lbl { font-size: 0.72em; color: var(--muted); margin-top: 2px; }
+  .budget-table { width: 100%; border-collapse: collapse; font-size: 0.82em; }
+  .budget-table th { background: var(--border); padding: 6px 8px; text-align: left; font-weight: 600; }
+  .budget-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.78em; font-weight: 700; }
+  .badge.pass { background: var(--pass-bg); color: var(--pass); }
+  .badge.fail { background: var(--fail-bg); color: var(--fail); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  .section-divider { font-size: 0.75em; color: var(--muted); margin: 8px 0 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+  @media (max-width: 700px) { .layout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<h1>M4A-DT-5.2.1 — Worst-Case Analysis</h1>
+<p class="subtitle">Inverting amplifier: EVA / RSS / Monte Carlo gain & offset budgets across tolerance + temperature + aging</p>
+
+<div class="layout">
+<div>
+  <div class="panel" style="margin-bottom:12px">
+    <h3>Analysis Method</h3>
+    <div class="method-tabs">
+      <button class="tab-btn active" id="tab-eva" onclick="setMethod('EVA')">EVA</button>
+      <button class="tab-btn" id="tab-rss" onclick="setMethod('RSS')">RSS (3σ)</button>
+      <button class="tab-btn" id="tab-mc" onclick="setMethod('MC')">Monte Carlo</button>
+    </div>
+    <div id="mc-note" style="display:none;font-size:0.78em;color:var(--muted)">Running 2000 iterations per update.</div>
+  </div>
+
+  <div class="panel" style="margin-bottom:12px">
+    <h3>Circuit Parameters</h3>
+    <div class="section-divider">Resistors</div>
+    <div class="slider-row">
+      <label>R1 (kΩ) <span id="lbl-r1">10</span></label>
+      <input type="range" id="sl-r1" min="1" max="100" step="1" value="10" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Gain |Rf/R1| <span id="lbl-gain">10</span></label>
+      <input type="range" id="sl-gain" min="1" max="100" step="1" value="10" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Resistor tolerance (%) <span id="lbl-rtol">1</span></label>
+      <input type="range" id="sl-rtol" min="0.01" max="5" step="0.01" value="1" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Resistor TC (ppm/°C) <span id="lbl-rtc">100</span></label>
+      <input type="range" id="sl-rtc" min="5" max="500" step="5" value="100" oninput="update()">
+    </div>
+    <div class="section-divider">Temperature &amp; Aging</div>
+    <div class="slider-row">
+      <label>Temp range (°C) <span id="lbl-temp">125</span></label>
+      <input type="range" id="sl-temp" min="10" max="165" step="5" value="125" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Aging drift (%) <span id="lbl-aging">0.3</span></label>
+      <input type="range" id="sl-aging" min="0" max="2" step="0.05" value="0.3" oninput="update()">
+    </div>
+    <div class="section-divider">Op-amp</div>
+    <div class="slider-row">
+      <label>Vos initial (µV) <span id="lbl-vos">200</span></label>
+      <input type="range" id="sl-vos" min="1" max="2000" step="1" value="200" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Vos TC (nV/°C) <span id="lbl-vostc">2000</span></label>
+      <input type="range" id="sl-vostc" min="5" max="10000" step="5" value="2000" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Bias current Ib (nA) <span id="lbl-ib">50</span></label>
+      <input type="range" id="sl-ib" min="0.001" max="500" step="0.5" value="50" oninput="update()">
+    </div>
+    <div class="section-divider">Specification Limits</div>
+    <div class="slider-row">
+      <label>Max gain error (%) <span id="lbl-gspec">2</span></label>
+      <input type="range" id="sl-gspec" min="0.1" max="10" step="0.1" value="2" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Max output offset (mV) <span id="lbl-ospec">5</span></label>
+      <input type="range" id="sl-ospec" min="0.1" max="50" step="0.1" value="5" oninput="update()">
+    </div>
+  </div>
+</div>
+
+<div class="right-col">
+  <div class="panel">
+    <h3>Error Budget</h3>
+    <table class="budget-table" id="budget-table">
+      <thead><tr><th>Error Source</th><th>Gain Error</th><th>Offset (output)</th><th>Status</th></tr></thead>
+      <tbody id="budget-body"></tbody>
+    </table>
+  </div>
+
+  <div class="readout-grid" id="readouts"></div>
+
+  <div class="panel">
+    <h3>Gain Tolerance Distribution (Monte Carlo / EVA / RSS)</h3>
+    <canvas id="c1" height="180"></canvas>
+  </div>
+  <div class="panel">
+    <h3>Output Offset Distribution &amp; Budget</h3>
+    <canvas id="c2" height="180"></canvas>
+  </div>
+</div>
+</div>
+
+<script>
+let METHOD = 'EVA';
+const k = 1.38e-23, T = 298;
+
+function setMethod(m) {
+  METHOD = m;
+  ['EVA','RSS','MC'].forEach(x => {
+    document.getElementById('tab-' + x.toLowerCase().replace('(3σ)','').replace(' ',''))
+      && (document.getElementById('tab-' + x.toLowerCase().split('(')[0].trim().toLowerCase()) ||
+          document.getElementById('tab-' + x.toLowerCase())
+      );
+  });
+  document.getElementById('tab-eva').classList.toggle('active', m === 'EVA');
+  document.getElementById('tab-rss').classList.toggle('active', m === 'RSS');
+  document.getElementById('tab-mc').classList.toggle('active', m === 'MC');
+  document.getElementById('mc-note').style.display = m === 'MC' ? '' : 'none';
+  update();
+}
+
+function v(id) { return parseFloat(document.getElementById(id).value); }
+function lbl(id, val, dec=1) { document.getElementById(id).textContent = typeof val === 'number' ? val.toFixed(dec) : val; }
+
+function randn() {
+  let u = 0, v2 = 0;
+  while (u === 0) u = Math.random();
+  while (v2 === 0) v2 = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v2);
+}
+
+function update() {
+  const r1 = v('sl-r1');
+  const gain = v('sl-gain');
+  const rtol = v('sl-rtol') / 100;
+  const rtc = v('sl-rtc') * 1e-6;
+  const dT = v('sl-temp');
+  const aging = v('sl-aging') / 100;
+  const vos_init = v('sl-vos') * 1e-6;
+  const vos_tc = v('sl-vostc') * 1e-9;
+  const ib = v('sl-ib') * 1e-9;
+  const gspec = v('sl-gspec') / 100;
+  const ospec = v('sl-ospec') * 1e-3;
+
+  lbl('lbl-r1', r1, 0);
+  lbl('lbl-gain', gain, 0);
+  lbl('lbl-rtol', v('sl-rtol'), 2);
+  lbl('lbl-rtc', v('sl-rtc'), 0);
+  lbl('lbl-temp', dT, 0);
+  lbl('lbl-aging', v('sl-aging'), 2);
+  lbl('lbl-vos', v('sl-vos'), 0);
+  lbl('lbl-vostc', v('sl-vostc'), 0);
+  lbl('lbl-ib', v('sl-ib'), 1);
+  lbl('lbl-gspec', v('sl-gspec'), 1);
+  lbl('lbl-ospec', v('sl-ospec'), 1);
+
+  const rf = r1 * gain * 1e3;  // Ω
+  const r1_ohm = r1 * 1e3;
+
+  // Gain error contributions (fractional)
+  const tc_drift = rtc * dT;
+  const gain_init_eva = 2 * rtol;
+  const gain_tc_eva = 2 * tc_drift;
+  const gain_aging_eva = 2 * aging;
+  const gain_total_eva = gain_init_eva + gain_tc_eva + gain_aging_eva;
+
+  const gain_init_rss = Math.sqrt(2) * rtol;
+  const gain_tc_rss = Math.sqrt(2) * tc_drift;
+  const gain_aging_rss = Math.sqrt(2) * aging;
+  const gain_total_rss = 3 * Math.sqrt(gain_init_rss**2 + gain_tc_rss**2 + gain_aging_rss**2);
+
+  // Offset contributions (output-referred, V)
+  const vos_drift = vos_tc * dT;
+  const vos_total = vos_init + vos_drift;
+  const off_vos_eva = vos_total * (1 + gain);
+  const off_ib_eva = ib * rf;
+  const off_total_eva = off_vos_eva + off_ib_eva;
+
+  const off_vos_rss = 3 * Math.sqrt((vos_init * (1+gain))**2 + (vos_drift * (1+gain))**2);
+  const off_ib_rss = ib * rf;
+  const off_total_rss = Math.sqrt(off_vos_rss**2 + off_ib_rss**2);
+
+  let gain_used, off_used;
+  let mc_gains = [], mc_offs = [];
+
+  if (METHOD === 'EVA') {
+    gain_used = gain_total_eva;
+    off_used = off_total_eva;
+  } else if (METHOD === 'RSS') {
+    gain_used = gain_total_rss;
+    off_used = off_total_rss;
+  } else {
+    // Monte Carlo
+    const N = 2000;
+    for (let i = 0; i < N; i++) {
+      const dR1 = rtol * randn() / 3;
+      const dRf = rtol * randn() / 3;
+      const dTC_R1 = tc_drift * (randn() / 3);
+      const dTC_Rf = tc_drift * (randn() / 3);
+      const dAging_R1 = aging * (randn() / 3);
+      const dAging_Rf = aging * (randn() / 3);
+      const R1_actual = r1_ohm * (1 + dR1 + dTC_R1 + dAging_R1);
+      const Rf_actual = rf * (1 + dRf + dTC_Rf + dAging_Rf);
+      const g_actual = Rf_actual / R1_actual;
+      mc_gains.push(Math.abs(g_actual / gain - 1));
+
+      const vos_sample = vos_init * randn() / 3 + vos_tc * dT * (randn() / 3);
+      const ib_sample = ib * (1 + 0.2 * randn());
+      mc_offs.push(Math.abs(vos_sample * (1 + gain) + ib_sample * Rf_actual));
+    }
+    mc_gains.sort((a,b) => a-b);
+    mc_offs.sort((a,b) => a-b);
+    gain_used = mc_gains[Math.floor(0.997 * N)]; // 3-sigma equivalent
+    off_used = mc_offs[Math.floor(0.997 * N)];
+  }
+
+  const gain_pass = gain_used <= gspec;
+  const off_pass = off_used <= ospec;
+
+  // Budget table
+  const tbody = document.getElementById('budget-body');
+  const rows = [
+    ['R1+Rf initial tol', (gain_init_eva*100).toFixed(3)+'% (EVA)', '—', gain_init_eva <= gspec/3 ? 'pass' : 'warn'],
+    ['R TC drift ('+dT+'°C)', (gain_tc_eva*100).toFixed(3)+'% (EVA)', '—', gain_tc_eva <= gspec/3 ? 'pass' : 'warn'],
+    ['Aging drift', (gain_aging_eva*100).toFixed(3)+'% (EVA)', '—', gain_aging_eva <= gspec/3 ? 'pass' : 'warn'],
+    ['Vos + drift', '—', (off_vos_eva*1000).toFixed(3)+' mV', off_vos_eva <= ospec/2 ? 'pass' : 'warn'],
+    ['Ib × Rf', '—', (off_ib_eva*1000).toFixed(3)+' mV', off_ib_eva <= ospec/2 ? 'pass' : 'warn'],
+    ['TOTAL ('+METHOD+')', (gain_used*100).toFixed(3)+'%', (off_used*1000).toFixed(3)+' mV', (gain_pass && off_pass) ? 'pass' : 'fail'],
+  ];
+  tbody.innerHTML = rows.map(r =>
+    `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td><span class="badge ${r[3]}">${r[3].toUpperCase()}</span></td></tr>`
+  ).join('');
+
+  // Readouts
+  const readoutData = [
+    { val: (gain_used*100).toFixed(2)+'%', lbl: 'Total Gain Error', cls: gain_pass ? 'pass' : 'fail' },
+    { val: (off_used*1000).toFixed(2)+'mV', lbl: 'Output Offset', cls: off_pass ? 'pass' : 'fail' },
+    { val: (rf/1e3).toFixed(1)+'kΩ', lbl: 'Rf Value', cls: '' },
+    { val: (gain_init_eva*100/gain_total_eva*100).toFixed(0)+'%', lbl: 'Init Tol Share', cls: '' },
+    { val: (gain_tc_eva*100/gain_total_eva*100).toFixed(0)+'%', lbl: 'TC Share', cls: '' },
+    { val: (gain_aging_eva*100/gain_total_eva*100).toFixed(0)+'%', lbl: 'Aging Share', cls: '' },
+  ];
+  document.getElementById('readouts').innerHTML = readoutData.map(r =>
+    `<div class="readout"><div class="val" style="color:${r.cls === 'pass' ? 'var(--pass)' : r.cls === 'fail' ? 'var(--fail)' : 'var(--accent)'}">${r.val}</div><div class="lbl">${r.lbl}</div></div>`
+  ).join('');
+
+  drawGainChart(mc_gains, gain_used, gspec, gain_init_eva, gain_tc_eva, gain_aging_eva);
+  drawOffChart(mc_offs, off_used, ospec, off_vos_eva, off_ib_eva);
+}
+
+function getCtx(id) {
+  const c = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  const rect = c.getBoundingClientRect();
+  if (c._lastW !== rect.width || c._lastH !== rect.height) {
+    c.width = rect.width * dpr;
+    c.height = rect.height * dpr;
+    c._lastW = rect.width; c._lastH = rect.height;
+  }
+  const ctx = c.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return [ctx, rect.width, rect.height];
+}
+
+function getColors() {
+  const s = getComputedStyle(document.documentElement);
+  return {
+    text: s.getPropertyValue('--text').trim(),
+    muted: s.getPropertyValue('--muted').trim(),
+    accent: s.getPropertyValue('--accent').trim(),
+    pass: s.getPropertyValue('--pass').trim(),
+    fail: s.getPropertyValue('--fail').trim(),
+    warn: s.getPropertyValue('--warn').trim(),
+    border: s.getPropertyValue('--border').trim(),
+    bg: s.getPropertyValue('--canvas-bg').trim(),
+  };
+}
+
+function drawGainChart(mc_gains, gain_used, gspec, init, tc, aging) {
+  const [ctx, W, H] = getCtx('c1');
+  const C = getColors();
+  ctx.clearRect(0, 0, W, H);
+
+  const PAD = { l: 55, r: 20, t: 20, b: 40 };
+  const cW = W - PAD.l - PAD.r;
+  const cH = H - PAD.t - PAD.b;
+
+  // Determine x range
+  const maxX = Math.max(gain_used * 1.5, gspec * 1.5) * 100;
+
+  function xp(v) { return PAD.l + (v / maxX) * cW; }
+
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(PAD.l, PAD.t, cW, cH);
+
+  // Draw spec limit
+  const sx = xp(gspec * 100);
+  ctx.strokeStyle = C.fail;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath(); ctx.moveTo(sx, PAD.t); ctx.lineTo(sx, PAD.t + cH); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = C.fail;
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('Spec', sx, PAD.t + 10);
+
+  if (METHOD === 'MC' && mc_gains.length > 0) {
+    // Histogram
+    const bins = 40;
+    const counts = new Array(bins).fill(0);
+    mc_gains.forEach(g => {
+      const bi = Math.min(bins - 1, Math.floor(g * 100 / maxX * bins));
+      counts[bi]++;
+    });
+    const maxCount = Math.max(...counts);
+    ctx.fillStyle = C.accent + '99';
+    for (let i = 0; i < bins; i++) {
+      const bx = PAD.l + (i / bins) * cW;
+      const bw = cW / bins;
+      const bh = (counts[i] / maxCount) * cH;
+      ctx.fillRect(bx, PAD.t + cH - bh, bw - 1, bh);
+    }
+  } else {
+    // Stacked bar: init + tc + aging (EVA/RSS)
+    const methods = [
+      { val: init * 100, label: 'Init', color: C.accent },
+      { val: tc * 100, label: 'TC', color: C.warn },
+      { val: aging * 100, label: 'Aging', color: C.muted },
+    ];
+    const barH = 50;
+    const by = PAD.t + (cH - barH) / 2;
+    let cx2 = PAD.l;
+    methods.forEach(m => {
+      const bw = (m.val / maxX) * cW;
+      ctx.fillStyle = m.color;
+      ctx.fillRect(cx2, by, bw, barH);
+      if (bw > 28) {
+        ctx.fillStyle = '#fff';
+        ctx.font = '10px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText(m.label, cx2 + bw / 2, by + barH / 2 + 4);
+      }
+      cx2 += bw;
+    });
+    // Total marker
+    const tx = xp(gain_used * 100);
+    ctx.strokeStyle = gain_used <= gspec/100 ? C.pass : C.fail;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(tx, PAD.t + 5); ctx.lineTo(tx, PAD.t + cH - 5); ctx.stroke();
+  }
+
+  // X axis
+  ctx.strokeStyle = C.border;
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t + cH); ctx.lineTo(PAD.l + cW, PAD.t + cH); ctx.stroke();
+  ctx.fillStyle = C.muted;
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'center';
+  for (let i = 0; i <= 5; i++) {
+    const xv = (i / 5) * maxX;
+    const xx = xp(xv);
+    ctx.fillText(xv.toFixed(1) + '%', xx, PAD.t + cH + 14);
+  }
+  ctx.save(); ctx.translate(14, PAD.t + cH / 2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle = C.text; ctx.font = '11px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText(METHOD === 'MC' ? 'Count' : 'Error source', 0, 0);
+  ctx.restore();
+  ctx.fillStyle = C.muted; ctx.textAlign = 'center';
+  ctx.fillText('Gain Error (%)', PAD.l + cW / 2, H - 4);
+}
+
+function drawOffChart(mc_offs, off_used, ospec, off_vos, off_ib) {
+  const [ctx, W, H] = getCtx('c2');
+  const C = getColors();
+  ctx.clearRect(0, 0, W, H);
+
+  const PAD = { l: 60, r: 20, t: 20, b: 40 };
+  const cW = W - PAD.l - PAD.r;
+  const cH = H - PAD.t - PAD.b;
+
+  const maxX = Math.max(off_used * 1.5, ospec * 1.5) * 1000;
+
+  function xp(v) { return PAD.l + (v / maxX) * cW; }
+
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--canvas-bg').trim();
+  ctx.fillRect(PAD.l, PAD.t, cW, cH);
+
+  const sx = xp(ospec * 1000);
+  ctx.strokeStyle = C.fail;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 4]);
+  ctx.beginPath(); ctx.moveTo(sx, PAD.t); ctx.lineTo(sx, PAD.t + cH); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = C.fail;
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'center';
+  ctx.fillText('Spec', sx, PAD.t + 10);
+
+  if (METHOD === 'MC' && mc_offs.length > 0) {
+    const bins = 40;
+    const counts = new Array(bins).fill(0);
+    mc_offs.forEach(o => {
+      const bi = Math.min(bins - 1, Math.floor(o * 1000 / maxX * bins));
+      counts[bi]++;
+    });
+    const maxCount = Math.max(...counts);
+    ctx.fillStyle = C.warn + '99';
+    for (let i = 0; i < bins; i++) {
+      const bx = PAD.l + (i / bins) * cW;
+      const bw = cW / bins;
+      const bh = (counts[i] / maxCount) * cH;
+      ctx.fillRect(bx, PAD.t + cH - bh, bw - 1, bh);
+    }
+  } else {
+    const parts = [
+      { val: off_vos * 1000, label: 'Vos×(1+G)', color: C.accent },
+      { val: off_ib * 1000, label: 'Ib×Rf', color: C.warn },
+    ];
+    const barH = 50;
+    const by = PAD.t + (cH - barH) / 2;
+    let cx2 = PAD.l;
+    parts.forEach(p => {
+      const bw = (p.val / maxX) * cW;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(cx2, by, bw, barH);
+      if (bw > 30) {
+        ctx.fillStyle = '#fff';
+        ctx.font = '10px system-ui';
+        ctx.textAlign = 'center';
+        ctx.fillText(p.label, cx2 + bw / 2, by + barH / 2 + 4);
+      }
+      cx2 += bw;
+    });
+    const tx = xp(off_used * 1000);
+    ctx.strokeStyle = off_used * 1000 <= ospec * 1000 ? C.pass : C.fail;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(tx, PAD.t + 5); ctx.lineTo(tx, PAD.t + cH - 5); ctx.stroke();
+  }
+
+  ctx.strokeStyle = C.border;
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t + cH); ctx.lineTo(PAD.l + cW, PAD.t + cH); ctx.stroke();
+  ctx.fillStyle = C.muted;
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'center';
+  for (let i = 0; i <= 5; i++) {
+    const xv = (i / 5) * maxX;
+    const xx = xp(xv);
+    ctx.fillText(xv.toFixed(1), xx, PAD.t + cH + 14);
+  }
+  ctx.save(); ctx.translate(14, PAD.t + cH / 2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle = C.text; ctx.font = '11px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText(METHOD === 'MC' ? 'Count' : 'Error source', 0, 0);
+  ctx.restore();
+  ctx.fillStyle = C.muted; ctx.textAlign = 'center';
+  ctx.fillText('Output Offset (mV)', PAD.l + cW / 2, H - 4);
+}
+
+window.addEventListener('resize', update);
+update();
+</script>
+</body>
+</html>

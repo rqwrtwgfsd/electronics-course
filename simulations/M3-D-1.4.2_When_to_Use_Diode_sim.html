@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M3-D-1.4.2 — When to Use a Diode</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--text2:#8b949e;--accent:#0066cc;--accent2:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922}
+@media(prefers-color-scheme:light){:root{--bg:#ffffff;--surface:#f6f8fa;--border:#d0d7de;--text:#24292f;--text2:#656d76;--accent:#0066cc;--accent2:#0969da;--green:#2da44e;--red:#cf222e;--yellow:#9a6700}}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;font-size:14px;padding:16px}
+h2{color:var(--accent2);font-size:16px;margin-bottom:12px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px}
+canvas{width:100%;border-radius:6px;background:var(--bg);display:block}
+.controls{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px}
+.ctrl{flex:1;min-width:180px}
+label{display:block;color:var(--text2);font-size:12px;margin-bottom:4px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.readout{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.ro{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;font-size:12px;font-family:monospace}
+.ro span{color:var(--accent2);font-weight:bold}
+.note{color:var(--text2);font-size:12px;margin-top:8px;line-height:1.5}
+</style></head>
+<body>
+<h2>M3-D-1.4.2 — Diode Application Selector</h2>
+<div class="panel">
+<canvas id="cv1" height="260"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>Supply Voltage V_s (V): <b id="lVs">12</b></label>
+    <input type="range" id="Vs" min="1.5" max="48" step="0.5" value="12"></div>
+  <div class="ctrl"><label>Load Current I_L (mA): <b id="lIL">100</b></label>
+    <input type="range" id="IL" min="1" max="2000" step="1" value="100"></div>
+  <div class="ctrl"><label>Signal Frequency (kHz): <b id="lFreq">1</b></label>
+    <input type="range" id="Freq" min="0.001" max="1000" step="1" value="1"></div>
+</div>
+<div class="readout">
+  <div class="ro">Si V_F drop: <span id="rSiLoss">0.00</span>% of V_s</div>
+  <div class="ro">Schottky recommended: <span id="rSchottky">NO</span></div>
+  <div class="ro">Speed OK (1N4007): <span id="rSpeed">YES</span></div>
+  <div class="ro">Conduction loss (Si): <span id="rPloss">0.00</span> mW</div>
+</div>
+<p class="note">Decision guide: Use Schottky when V_F loss > 5% of V_supply, or when f > 1 kHz. Use ideal diode IC when efficiency is critical. 1N4007 is too slow above 1 kHz.</p>
+</div>
+
+<div class="panel">
+<canvas id="cv2" height="260"></canvas>
+<p class="note">Efficiency comparison: Silicon vs Schottky vs Ideal Diode as load current and supply voltage vary.</p>
+</div>
+
+<script>
+
+const isDark=()=>window.matchMedia('(prefers-color-scheme:dark)').matches;
+function gs(id){return parseFloat(document.getElementById(id).value);}
+function sv(id,val){document.getElementById(id).textContent=val;}
+function resize(cv,draw){cv.width=cv.offsetWidth*devicePixelRatio;cv.height=260*devicePixelRatio;cv.getContext('2d').scale(devicePixelRatio,devicePixelRatio);draw();}
+function drawAxes(ctx,W,H,pad,xl,yl,color){
+  ctx.strokeStyle=color;ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  ctx.fillStyle=color;ctx.font='11px system-ui';
+  ctx.fillText(yl,pad+4,pad+12);ctx.fillText(xl,W-pad-2,H-pad-4);
+}
+
+const cv1=document.getElementById('cv1'),ctx1=cv1.getContext('2d');
+const cv2=document.getElementById('cv2'),ctx2=cv2.getContext('2d');
+
+function draw(){
+  const vs=gs('Vs'),il=gs('IL'),freq=gs('Freq');
+  document.getElementById('lVs').textContent=vs.toFixed(1);
+  document.getElementById('lIL').textContent=il.toFixed(0);
+  document.getElementById('lFreq').textContent=freq.toFixed(freq<10?1:0);
+  const siLoss=0.7/vs*100,schLoss=0.35/vs*100;
+  const schRecommended=siLoss>5||freq>1;
+  const speedOK=freq<1;
+  const ploss=0.7*il;
+  sv('rSiLoss',siLoss.toFixed(1));
+  sv('rSchottky',schRecommended?'YES':'NO');
+  sv('rSpeed',speedOK?'YES (f < 1 kHz)':'NO — use 1N4148 or Schottky');
+  sv('rPloss',ploss.toFixed(1));
+
+  const W=cv1.offsetWidth,H=260,pad=40;
+  ctx1.clearRect(0,0,W,H);
+  const bg=isDark()?'#0d1117':'#fff',fg=isDark()?'#8b949e':'#656d76';
+  ctx1.fillStyle=bg;ctx1.fillRect(0,0,W,H);
+
+  // Bar chart of V_F loss percentage for different diode types
+  const types=[['Ideal',0,'#58a6ff'],['Schottky',0.35,'#3fb950'],['Silicon',0.7,'#d29922'],['Ge',0.25,'#a371f7']];
+  const bw=(W-2*pad)/types.length-10;
+  const maxLoss=2;
+  types.forEach(([name,vf,color],i)=>{
+    const loss=vf/vs*100;
+    const bh=(H-2*pad)*Math.min(loss/maxLoss,1);
+    const bx=pad+i*(bw+10);
+    const by=H-pad-bh;
+    ctx1.fillStyle=color;ctx1.fillRect(bx,by,bw,bh);
+    ctx1.fillStyle=fg;ctx1.font='11px system-ui';
+    ctx1.fillText(name,bx+4,H-pad+14);
+    ctx1.fillText(loss.toFixed(1)+'%',bx+4,by-4);
+  });
+  ctx1.fillStyle=fg;ctx1.font='12px system-ui';
+  ctx1.fillText('V_F as % of V_supply = '+vs.toFixed(0)+'V',pad,pad-5);
+
+  // Efficiency chart vs current
+  const W2=cv2.offsetWidth;
+  ctx2.clearRect(0,0,W2,H);
+  ctx2.fillStyle=bg;ctx2.fillRect(0,0,W2,H);
+  drawAxes(ctx2,W2,H,pad,'I_L →','Eff% ↑',fg);
+  const maxI=2000,xsc=(W2-2*pad)/maxI,ysc=(H-2*pad)/100;
+  ctx2.fillStyle=fg;ctx2.font='10px system-ui';
+  ctx2.fillText('0',pad,H-pad+14);ctx2.fillText('2A',W2-pad-14,H-pad+14);
+  const curves=[['Ideal',0,'#58a6ff'],['Schottky',0.35,'#3fb950'],['Silicon',0.7,'#d29922']];
+  curves.forEach(([name,vf,color])=>{
+    ctx2.strokeStyle=color;ctx2.lineWidth=2;ctx2.beginPath();
+    for(let i=1;i<=maxI;i+=10){
+      const eff=(vs-vf)/vs*100;
+      const x=pad+i*xsc,y=H-pad-eff*ysc;
+      if(i===1)ctx2.moveTo(x,y);else ctx2.lineTo(x,y);
+    }
+    ctx2.stroke();
+    ctx2.fillStyle=color;ctx2.font='11px system-ui';
+    const eff=(vs-vf)/vs*100;
+    ctx2.fillText(name+' '+eff.toFixed(0)+'%',W2-pad-80,(name==='Ideal'?pad+15:name==='Schottky'?pad+30:pad+45));
+  });
+  // Operating point
+  ctx2.fillStyle='#f85149';ctx2.beginPath();
+  const xop=pad+il*xsc,yop=H-pad-(vs-0.7)/vs*100*ysc;
+  ctx2.arc(xop,yop,5,0,Math.PI*2);ctx2.fill();
+}
+
+document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',draw));
+window.addEventListener('resize',()=>{resize(cv1,draw);resize(cv2,draw);});
+resize(cv1,draw);resize(cv2,draw);
+</script>
+</body></html>

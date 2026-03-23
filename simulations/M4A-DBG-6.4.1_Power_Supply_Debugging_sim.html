@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-DBG-6.4.1 — Power Supply Debugging</title>
+<style>
+:root {
+  --bg: #f5f5f5; --surface: #ffffff; --border: #d0d0d0; --text: #1a1a1a; --text2: #555;
+  --accent: #1a6bbf; --pass: #2a7a2a; --warn: #b87000; --fail: #b82020;
+  --pass-bg: #e8f5e8; --warn-bg: #fff8e0; --fail-bg: #fde8e8; --plot-bg: #fdfdfd;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a1a; --surface: #252525; --border: #404040; --text: #e8e8e8; --text2: #aaa;
+    --accent: #4a9eff; --pass: #4aaa4a; --warn: #ddaa30; --fail: #ff5555;
+    --pass-bg: #1a2e1a; --warn-bg: #2e2200; --fail-bg: #2e1010; --plot-bg: #1e1e1e;
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 20px; }
+header h1 { font-size: 17px; font-weight: 700; color: var(--accent); }
+header p { font-size: 12px; color: var(--text2); margin-top: 2px; }
+.tab-bar { display: flex; background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 16px; }
+.tab { padding: 10px 18px; cursor: pointer; border-bottom: 3px solid transparent; color: var(--text2); font-size: 13px; font-weight: 600; transition: color .2s, border-color .2s; }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab:hover:not(.active) { color: var(--text); }
+.panel { display: none; padding: 16px; }
+.panel.active { display: block; }
+.layout { display: flex; gap: 14px; flex-wrap: wrap; }
+.sidebar { flex: 0 0 220px; display: flex; flex-direction: column; gap: 10px; }
+.main-area { flex: 1 1 400px; display: flex; flex-direction: column; gap: 10px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
+.card h3 { font-size: 12px; font-weight: 700; color: var(--text2); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 10px; }
+label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--text2); }
+label span { display: flex; justify-content: space-between; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+select { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 5px 8px; font-size: 12px; width: 100%; }
+canvas { width: 100%; display: block; border: 1px solid var(--border); border-radius: 4px; background: var(--plot-bg); }
+.metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.metric { background: var(--surface); border: 1px solid var(--border); border-radius: 5px; padding: 8px 10px; }
+.metric .val { font-size: 18px; font-weight: 700; color: var(--accent); }
+.metric .lbl { font-size: 11px; color: var(--text2); }
+.badge { display: inline-block; padding: 2px 7px; border-radius: 3px; font-size: 11px; font-weight: 700; }
+.badge.pass { background: var(--pass-bg); color: var(--pass); }
+.badge.warn { background: var(--warn-bg); color: var(--warn); }
+.badge.fail { background: var(--fail-bg); color: var(--fail); }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th { background: var(--bg); color: var(--text2); padding: 5px 8px; text-align: left; border: 1px solid var(--border); font-weight: 600; font-size: 11px; }
+td { padding: 5px 8px; border: 1px solid var(--border); }
+.fault-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.fault-btn { padding: 5px 9px; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; font-size: 11px; background: var(--surface); color: var(--text); transition: background .15s; }
+.fault-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.fault-btn:hover:not(.active) { background: var(--border); }
+</style>
+</head>
+<body>
+<header>
+  <h1>M4A-DBG-6.4.1 — Power Supply Debugging</h1>
+  <p>Supply ripple, PSRR coupling, decoupling impedance, and load transient response</p>
+</header>
+
+<div class="tab-bar">
+  <div class="tab active" onclick="showTab(0)">Ripple & PSRR</div>
+  <div class="tab" onclick="showTab(1)">Decoupling Impedance</div>
+  <div class="tab" onclick="showTab(2)">Load Transient</div>
+  <div class="tab" onclick="showTab(3)">Supply Scenarios</div>
+</div>
+
+<!-- TAB 0: Ripple & PSRR -->
+<div class="panel active" id="tab0">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="card">
+        <h3>Supply Parameters</h3>
+        <label><span>Supply ripple (mV p-p) <b id="v_rip">50</b></span>
+          <input type="range" id="sl_rip" min="1" max="500" value="50" oninput="upd0()"></label>
+        <label><span>Ripple frequency (kHz) <b id="v_rf">500</b></span>
+          <input type="range" id="sl_rf" min="10" max="3000" step="10" value="500" oninput="upd0()"></label>
+      </div>
+      <div class="card">
+        <h3>Op-Amp PSRR Model</h3>
+        <label><span>PSRR at DC (dB) <b id="v_p0">80</b></span>
+          <input type="range" id="sl_p0" min="40" max="120" step="5" value="80" oninput="upd0()"></label>
+        <label><span>PSRR pole freq (kHz) <b id="v_pp">10</b></span>
+          <input type="range" id="sl_pp" min="1" max="100" step="1" value="10" oninput="upd0()"></label>
+        <label><span>Closed-loop gain (dB) <b id="v_clg">40</b></span>
+          <input type="range" id="sl_clg" min="0" max="60" step="5" value="40" oninput="upd0()"></label>
+        <label><span>Noise budget (mV rms) <b id="v_nb">1</b></span>
+          <input type="range" id="sl_nb" min="0.1" max="100" step="0.1" value="1" oninput="upd0()"></label>
+      </div>
+      <div class="card metrics">
+        <div class="metric"><div class="val" id="m_psrr">--</div><div class="lbl">PSRR at f_ripple</div></div>
+        <div class="metric"><div class="val" id="m_vin">--</div><div class="lbl">Ripple→Input (µV)</div></div>
+        <div class="metric"><div class="val" id="m_vout">--</div><div class="lbl">Output noise (mV)</div></div>
+        <div class="metric"><div class="val" id="m_bdg">--</div><div class="lbl">Budget status</div></div>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="card">
+        <h3>PSRR vs Frequency — and Output Noise Contribution</h3>
+        <canvas id="c0" height="320"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: Decoupling Impedance -->
+<div class="panel" id="tab1">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="card">
+        <h3>Capacitor 1</h3>
+        <label><span>Value (µF) <b id="v_c1">10</b></span>
+          <input type="range" id="sl_c1" min="0.001" max="100" step="0.001" value="10" oninput="upd1()"></label>
+        <label><span>ESR (mΩ) <b id="v_esr1">50</b></span>
+          <input type="range" id="sl_esr1" min="1" max="500" step="1" value="50" oninput="upd1()"></label>
+        <label><span>ESL (nH) <b id="v_esl1">5</b></span>
+          <input type="range" id="sl_esl1" min="0.1" max="20" step="0.1" value="5" oninput="upd1()"></label>
+      </div>
+      <div class="card">
+        <h3>Capacitor 2 (HF)</h3>
+        <label><span>Value (nF) <b id="v_c2">100</b></span>
+          <input type="range" id="sl_c2" min="1" max="1000" step="1" value="100" oninput="upd1()"></label>
+        <label><span>ESR (mΩ) <b id="v_esr2">30</b></span>
+          <input type="range" id="sl_esr2" min="1" max="200" step="1" value="30" oninput="upd1()"></label>
+        <label><span>ESL (nH) <b id="v_esl2">1</b></span>
+          <input type="range" id="sl_esl2" min="0.1" max="5" step="0.1" value="1" oninput="upd1()"></label>
+      </div>
+      <div class="card">
+        <h3>Trace Inductance</h3>
+        <label><span>Trace length to IC (mm) <b id="v_tr">5</b></span>
+          <input type="range" id="sl_tr" min="0" max="50" step="1" value="5" oninput="upd1()"></label>
+        <p style="font-size:11px;color:var(--text2);margin-top:6px">≈1 nH/mm rule of thumb for PCB trace</p>
+      </div>
+      <div class="card">
+        <h3>Key Frequencies</h3>
+        <table>
+          <tr><th>Cap</th><th>SRF</th></tr>
+          <tr><td>C1 (bulk)</td><td id="t_srf1">--</td></tr>
+          <tr><td>C2 (HF)</td><td id="t_srf2">--</td></tr>
+          <tr><td>Anti-resonance</td><td id="t_ares">--</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="card">
+        <h3>Decoupling Network Impedance vs Frequency</h3>
+        <canvas id="c1" height="360"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 2: Load Transient -->
+<div class="panel" id="tab2">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="card">
+        <h3>Load Step Parameters</h3>
+        <label><span>Current step ΔI (mA) <b id="v_di">100</b></span>
+          <input type="range" id="sl_di" min="10" max="500" step="10" value="100" oninput="upd2()"></label>
+        <label><span>Step rise time (µs) <b id="v_rt">1</b></span>
+          <input type="range" id="sl_rt" min="0.1" max="10" step="0.1" value="1" oninput="upd2()"></label>
+        <label><span>Supply inductance (µH) <b id="v_ls">2</b></span>
+          <input type="range" id="sl_ls" min="0" max="20" step="0.1" value="2" oninput="upd2()"></label>
+        <label><span>Local bulk cap (µF) <b id="v_cb">10</b></span>
+          <input type="range" id="sl_cb" min="1" max="1000" step="1" value="10" oninput="upd2()"></label>
+        <label><span>Regulator bandwidth (kHz) <b id="v_rbw">10</b></span>
+          <input type="range" id="sl_rbw" min="1" max="200" step="1" value="10" oninput="upd2()"></label>
+      </div>
+      <div class="card metrics">
+        <div class="metric"><div class="val" id="m_droop">--</div><div class="lbl">Peak droop (mV)</div></div>
+        <div class="metric"><div class="val" id="m_settle">--</div><div class="lbl">Settle time (µs)</div></div>
+        <div class="metric"><div class="val" id="m_lspike">--</div><div class="lbl">L spike (mV)</div></div>
+        <div class="metric"><div class="val" id="m_cbstat">--</div><div class="lbl">Bulk cap status</div></div>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="card">
+        <h3>Supply Voltage During Load Transient</h3>
+        <canvas id="c2" height="340"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 3: Supply Scenarios -->
+<div class="panel" id="tab3">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="card">
+        <h3>Scenario</h3>
+        <div class="fault-btns">
+          <button class="fault-btn active" onclick="setScen(0,this)">Clean supply</button>
+          <button class="fault-btn" onclick="setScen(1,this)">Switching ripple (500kHz)</button>
+          <button class="fault-btn" onclick="setScen(2,this)">60 Hz ground loop</button>
+          <button class="fault-btn" onclick="setScen(3,this)">LDO oscillation</button>
+          <button class="fault-btn" onclick="setScen(4,this)">Load step droop</button>
+          <button class="fault-btn" onclick="setScen(5,this)">Poor decoupling (resonance)</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Diagnosis</h3>
+        <p id="sc_desc" style="font-size:12px;line-height:1.6;color:var(--text2)">Ideal supply: clean DC at nominal voltage. No ripple, no ground noise.</p>
+        <br>
+        <table>
+          <tr><th>Parameter</th><th>Value</th></tr>
+          <tr><td>Ripple freq</td><td id="d_freq">--</td></tr>
+          <tr><td>Ripple amplitude</td><td id="d_amp">--</td></tr>
+          <tr><td>Root cause</td><td id="d_cause">--</td></tr>
+          <tr><td>Fix</td><td id="d_fix">--</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="main-area">
+      <div class="card">
+        <h3>Supply Voltage Waveform</h3>
+        <canvas id="c3" height="260"></canvas>
+      </div>
+      <div class="card">
+        <h3>Spectrum (FFT)</h3>
+        <canvas id="c3s" height="200"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const sl = id => parseFloat($(id).value);
+
+function showTab(n) {
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('active',i===n));
+  document.querySelectorAll('.tab').forEach((t,i)=>t.classList.toggle('active',i===n));
+  if(n===0) upd0();
+  if(n===1) upd1();
+  if(n===2) upd2();
+  if(n===3) drawScen();
+}
+
+function dpr(c) {
+  const r=window.devicePixelRatio||1;
+  const rect=c.getBoundingClientRect();
+  c.width=rect.width*r; c.height=rect.height*r;
+  const ctx=c.getContext('2d'); ctx.scale(r,r);
+  return {ctx,w:rect.width,h:rect.height};
+}
+function tc(name){return getComputedStyle(document.documentElement).getPropertyValue(name).trim();}
+
+/* ── TAB 0: PSRR ── */
+function upd0(){
+  const rip=sl('sl_rip'), rf=sl('sl_rf')*1e3, p0=sl('sl_p0'), pp=sl('sl_pp')*1e3;
+  const clg=sl('sl_clg'), nb=sl('sl_nb');
+  $('v_rip').textContent=rip; $('v_rf').textContent=sl('sl_rf');
+  $('v_p0').textContent=p0; $('v_pp').textContent=sl('sl_pp');
+  $('v_clg').textContent=clg; $('v_nb').textContent=nb;
+
+  // PSRR at ripple freq (single-pole rolloff)
+  const psrr_db = p0 - 20*Math.log10(Math.sqrt(1+(rf/pp)*(rf/pp)));
+  const v_in = (rip/1000)*Math.pow(10,-psrr_db/20)*1e6; // µV rms ≈ pp/√8 approx pk→rms
+  const v_out_mV = v_in/1e6*Math.pow(10,clg/20)*1e3;
+  const status = v_out_mV < nb ? 'PASS' : v_out_mV < nb*3 ? 'WARN' : 'FAIL';
+  $('m_psrr').textContent=psrr_db.toFixed(0)+' dB';
+  $('m_vin').textContent=(v_in).toFixed(0)+' µV';
+  $('m_vout').textContent=v_out_mV.toFixed(2)+' mV';
+  $('m_bdg').innerHTML=`<span class="badge ${status.toLowerCase()}">${status}</span>`;
+
+  drawPSRR(rip,rf,p0,pp,clg,nb,psrr_db,v_out_mV);
+}
+
+function drawPSRR(rip,rf,p0,pp,clg,nb,psrr_at_rf,v_out_at_rf){
+  const c=$('c0');
+  const {ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=55,padR=20,padT=20,padB=140;
+  const pw=w-padL-padR,ph=(h-padT-padB)/2;
+  const text=tc('--text'),text2=tc('--text2'),border=tc('--border'),accent=tc('--accent');
+
+  const fmin=100,fmax=100e6;
+  const logMin=Math.log10(fmin),logMax=Math.log10(fmax);
+  const psrrMax=p0+10,psrrMin=-20;
+  const noiseMax=Math.max(v_out_at_rf*3,10),noiseMin=0;
+
+  const psrrTop=padT,psrrH=ph;
+  const noiseTop=padT+ph+20,noiseH=ph;
+
+  function fx(f){return padL+(Math.log10(f)-logMin)/(logMax-logMin)*pw;}
+  function fy_psrr(v){return psrrTop+(1-(v-psrrMin)/(psrrMax-psrrMin))*psrrH;}
+  function fy_noise(v){return noiseTop+(1-v/noiseMax)*noiseH;}
+
+  // Grid PSRR
+  ctx.strokeStyle=border;ctx.lineWidth=.5;
+  for(let g=psrrMin;g<=psrrMax;g+=20){
+    const y=fy_psrr(g);ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();
+    ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(g+'dB',padL-4,y+4);}
+  for(let g=0;g<=noiseMax;g+=noiseMax/4){
+    const y=fy_noise(g);ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();
+    ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(g.toFixed(1)+'mV',padL-4,y+4);}
+  for(let e=2;e<=8;e++){
+    for(let m=1;m<10;m++){const f=m*Math.pow(10,e);if(f<fmin||f>fmax)continue;
+      const x=fx(f);ctx.beginPath();ctx.moveTo(x,psrrTop);ctx.lineTo(x,psrrTop+psrrH);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(x,noiseTop);ctx.lineTo(x,noiseTop+noiseH);ctx.stroke();
+      if(m===1){ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';
+        const lbl=f>=1e6?(f/1e6).toFixed(0)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f+'';
+        ctx.fillText(lbl,x,noiseTop+noiseH+14);}
+    }
+  }
+
+  // Labels
+  ctx.fillStyle=text;ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+  ctx.fillText('PSRR (dB)',padL+4,psrrTop+14);
+  ctx.fillText('Output noise contribution (mV pk-pk)',padL+4,noiseTop+14);
+
+  // PSRR curve
+  ctx.beginPath();ctx.strokeStyle=accent;ctx.lineWidth=2;
+  const N=300;
+  for(let i=0;i<=N;i++){const f=Math.pow(10,logMin+i*(logMax-logMin)/N);
+    const psrr=p0-20*Math.log10(Math.sqrt(1+(f/pp)*(f/pp)));
+    const x=fx(f),y=fy_psrr(Math.max(psrrMin,Math.min(psrrMax,psrr)));
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+
+  // Output noise curve
+  ctx.beginPath();ctx.strokeStyle='#e67e22';ctx.lineWidth=2;
+  const G_lin=Math.pow(10,clg/20);
+  for(let i=0;i<=N;i++){const f=Math.pow(10,logMin+i*(logMax-logMin)/N);
+    const psrr=p0-20*Math.log10(Math.sqrt(1+(f/pp)*(f/pp)));
+    const v_in=rip*Math.pow(10,-psrr/20);
+    const v_out=v_in*G_lin;
+    const x=fx(f),y=fy_noise(Math.max(0,Math.min(noiseMax,v_out)));
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+
+  // Noise budget line
+  if(nb<=noiseMax){
+    ctx.setLineDash([4,3]);ctx.strokeStyle='#2ecc71';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(padL,fy_noise(nb));ctx.lineTo(padL+pw,fy_noise(nb));ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#2ecc71';ctx.font='11px sans-serif';ctx.textAlign='left';
+    ctx.fillText('Budget: '+nb+' mV',padL+4,fy_noise(nb)-5);}
+
+  // Ripple frequency marker
+  if(rf>=fmin&&rf<=fmax){
+    const x=fx(rf);
+    ctx.setLineDash([3,3]);ctx.strokeStyle='#e74c3c';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(x,psrrTop);ctx.lineTo(x,psrrTop+psrrH);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(x,noiseTop);ctx.lineTo(x,noiseTop+noiseH);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#e74c3c';ctx.font='10px sans-serif';ctx.textAlign='center';
+    const fl=rf>=1e6?(rf/1e6).toFixed(1)+'M':rf>=1e3?(rf/1e3).toFixed(0)+'k':rf+'';
+    ctx.fillText('f_ripple='+fl+'Hz',x,psrrTop+psrrH+14);}
+
+  ctx.strokeStyle=border;ctx.lineWidth=1;
+  ctx.strokeRect(padL,psrrTop,pw,psrrH);ctx.strokeRect(padL,noiseTop,pw,noiseH);
+
+  const lx=padL+pw-200,ly=h-padB+12;
+  ctx.fillStyle=accent;ctx.fillRect(lx,ly,16,3);ctx.fillStyle=text;ctx.font='11px sans-serif';ctx.textAlign='left';ctx.fillText('PSRR (dB)',lx+20,ly+4);
+  ctx.fillStyle='#e67e22';ctx.fillRect(lx+90,ly,16,3);ctx.fillStyle=text;ctx.fillText('Output noise (mV)',lx+110,ly+4);
+  ctx.fillStyle='#2ecc71';ctx.fillRect(lx,ly+16,16,3);ctx.fillStyle=text;ctx.fillText('Noise budget',lx+20,ly+20);
+  ctx.fillStyle='#e74c3c';ctx.fillRect(lx+90,ly+16,16,3);ctx.fillStyle=text;ctx.fillText('f_ripple',lx+110,ly+20);
+}
+
+/* ── TAB 1: Decoupling Impedance ── */
+function upd1(){
+  const c1=sl('sl_c1')*1e-6, esr1=sl('sl_esr1')*1e-3, esl1=sl('sl_esl1')*1e-9;
+  const c2=sl('sl_c2')*1e-9, esr2=sl('sl_esr2')*1e-3, esl2=sl('sl_esl2')*1e-9;
+  const tr=sl('sl_tr')*1e-9;
+  $('v_c1').textContent=sl('sl_c1'); $('v_esr1').textContent=sl('sl_esr1'); $('v_esl1').textContent=sl('sl_esl1');
+  $('v_c2').textContent=sl('sl_c2'); $('v_esr2').textContent=sl('sl_esr2'); $('v_esl2').textContent=sl('sl_esl2');
+  $('v_tr').textContent=sl('sl_tr');
+
+  const srf1=1/(2*Math.PI*Math.sqrt(esl1*c1));
+  const srf2=1/(2*Math.PI*Math.sqrt(esl2*c2));
+  const ares=1/(2*Math.PI*Math.sqrt((esl1+esl2+tr)*(c1*c2/(c1+c2))));
+  $('t_srf1').textContent=srf1>=1e6?(srf1/1e6).toFixed(1)+' MHz':srf1>=1e3?(srf1/1e3).toFixed(0)+' kHz':srf1.toFixed(0)+' Hz';
+  $('t_srf2').textContent=srf2>=1e6?(srf2/1e6).toFixed(1)+' MHz':srf2>=1e3?(srf2/1e3).toFixed(0)+' kHz':srf2.toFixed(0)+' Hz';
+  $('t_ares').textContent=ares>=1e6?(ares/1e6).toFixed(1)+' MHz':ares>=1e3?(ares/1e3).toFixed(0)+' kHz':ares.toFixed(0)+' Hz';
+
+  drawDecoupling(c1,esr1,esl1,c2,esr2,esl2,tr+esl1,srf1,srf2);
+}
+
+function impedance(f,C,ESR,ESL){
+  const w=2*Math.PI*f;
+  const Xc=1/(w*C), XL=w*ESL;
+  return Math.sqrt(ESR*ESR+(XL-Xc)*(XL-Xc));
+}
+function parallelZ(Z1,Z2){return Z1*Z2/(Z1+Z2);}
+
+function drawDecoupling(c1,esr1,esl1,c2,esr2,esl2,esl_trace,srf1,srf2){
+  const c=$('c1');
+  const {ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=60,padR=20,padT=20,padB=80;
+  const pw=w-padL-padR,ph=h-padT-padB;
+  const text=tc('--text'),text2=tc('--text2'),border=tc('--border'),accent=tc('--accent');
+
+  const fmin=1e3,fmax=1e9;
+  const logMin=Math.log10(fmin),logMax=Math.log10(fmax);
+  const zMax=3,zMin=-4; // log10 of impedance in Ω
+
+  function fx(f){return padL+(Math.log10(f)-logMin)/(logMax-logMin)*pw;}
+  function fy(z){const lz=Math.log10(Math.max(1e-5,z));return padT+(1-(lz-zMin)/(zMax-zMin))*ph;}
+
+  ctx.strokeStyle=border;ctx.lineWidth=.5;
+  for(let z=zMin;z<=zMax;z++){
+    const y=fy(Math.pow(10,z));ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();
+    ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';
+    const lbl=z>=0?Math.pow(10,z).toFixed(0)+'Ω':Math.pow(10,z).toFixed(z===-1?2:z===-2?3:4)+'Ω';
+    ctx.fillText(lbl,padL-4,y+4);}
+  for(let e=3;e<=9;e++){
+    for(let m=1;m<10;m++){const f=m*Math.pow(10,e);if(f<fmin||f>fmax)continue;
+      const x=fx(f);ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();
+      if(m===1){ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';
+        const lbl=f>=1e9?(f/1e9).toFixed(0)+'G':f>=1e6?(f/1e6).toFixed(0)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f+'';
+        ctx.fillText(lbl,x,padT+ph+16);}
+    }
+  }
+
+  const N=400;
+  // C1 alone (blue dashed)
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#4a9eff';ctx.lineWidth=1.5;
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){const f=Math.pow(10,logMin+i*(logMax-logMin)/N);
+    const Z=impedance(f,c1,esr1,esl1+esl_trace);
+    const x=fx(f),y=fy(Z);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  // C2 alone (orange dashed)
+  ctx.strokeStyle='#e67e22';
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){const f=Math.pow(10,logMin+i*(logMax-logMin)/N);
+    const Z=impedance(f,c2,esr2,esl2);
+    const x=fx(f),y=fy(Z);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // Combined (solid green)
+  ctx.strokeStyle='#2ecc71';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=N;i++){const f=Math.pow(10,logMin+i*(logMax-logMin)/N);
+    const Z1=impedance(f,c1,esr1,esl1+esl_trace);
+    const Z2=impedance(f,c2,esr2,esl2);
+    const Zp=parallelZ(Z1,Z2);
+    const x=fx(f),y=fy(Zp);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+
+  // SRF markers
+  [srf1,'#4a9eff',esl1+esl_trace,c1,'C1 SRF'],[srf2,'#e67e22',esl2,c2,'C2 SRF']].forEach(([f,col,L,C,lbl])=>{
+    if(f<fmin||f>fmax)return;
+    const x=fx(f);
+    ctx.setLineDash([3,3]);ctx.strokeStyle=col;ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=col;ctx.font='10px sans-serif';ctx.textAlign='center';
+    ctx.fillText(lbl,x,padT+10);
+  });
+
+  ctx.strokeStyle=border;ctx.lineWidth=1;ctx.strokeRect(padL,padT,pw,ph);
+  ctx.fillStyle=text;ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+  ctx.fillText('Supply Impedance |Z(f)| — dB-log scale',padL+4,padT+14);
+  ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.fillText('Frequency',padL+pw/2-30,padT+ph+36);
+
+  const lx=padL,ly=h-padB+20;
+  ctx.fillStyle='#4a9eff';ctx.fillRect(lx,ly,16,2);ctx.setLineDash([5,3]);ctx.strokeStyle='#4a9eff';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(lx,ly+1);ctx.lineTo(lx+16,ly+1);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=text;ctx.font='11px sans-serif';ctx.textAlign='left';ctx.fillText('C1 bulk',lx+20,ly+4);
+  ctx.fillStyle='#e67e22';ctx.beginPath();ctx.setLineDash([5,3]);ctx.strokeStyle='#e67e22';ctx.lineWidth=1.5;
+  ctx.moveTo(lx+80,ly+1);ctx.lineTo(lx+96,ly+1);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=text;ctx.fillText('C2 HF',lx+100,ly+4);
+  ctx.fillStyle='#2ecc71';ctx.beginPath();ctx.strokeStyle='#2ecc71';ctx.lineWidth=2;
+  ctx.moveTo(lx+160,ly+1);ctx.lineTo(lx+176,ly+1);ctx.stroke();
+  ctx.fillStyle=text;ctx.fillText('Parallel combo',lx+180,ly+4);
+}
+
+/* ── TAB 2: Load Transient ── */
+function upd2(){
+  const di=sl('sl_di')*1e-3, rt=sl('sl_rt')*1e-6, ls=sl('sl_ls')*1e-6;
+  const cb=sl('sl_cb')*1e-6, rbw=sl('sl_rbw')*1e3;
+  $('v_di').textContent=sl('sl_di'); $('v_rt').textContent=sl('sl_rt');
+  $('v_ls').textContent=sl('sl_ls'); $('v_cb').textContent=sl('sl_cb');
+  $('v_rbw').textContent=sl('sl_rbw');
+
+  const L_spike=ls*di/Math.max(1e-9,rt)*1000;
+  const C_droop=di*rt/Math.max(1e-15,cb)*1000;
+  const peak_droop=Math.max(L_spike,C_droop);
+  const settle=1/(2*Math.PI*rbw)*5*1e6;
+  const stat=peak_droop<50?'PASS':peak_droop<200?'WARN':'FAIL';
+  $('m_lspike').textContent=L_spike.toFixed(0)+' mV';
+  $('m_droop').textContent=peak_droop.toFixed(0)+' mV';
+  $('m_settle').textContent=settle.toFixed(0)+' µs';
+  $('m_cbstat').innerHTML=`<span class="badge ${stat.toLowerCase()}">${stat}</span>`;
+
+  drawTransient(di,rt,ls,cb,rbw,L_spike,C_droop,peak_droop);
+}
+
+function drawTransient(di,rt,ls,cb,rbw,Lspike,Cdroop,peak){
+  const c=$('c2');
+  const {ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=60,padR=20,padT=20,padB=60;
+  const pw=w-padL-padR,ph=h-padT-padB;
+  const text=tc('--text'),text2=tc('--text2'),border=tc('--border'),accent=tc('--accent');
+
+  // Time axis: show 5 settling time constants
+  const tau_settle=1/(2*Math.PI*rbw);
+  const tmax=Math.max(rt*10,tau_settle*5);
+  const Vnom=3.3;
+  const droop_total=Math.max(Lspike,Cdroop)/1000;
+  const vMin=Vnom-droop_total*1.3-0.05, vMax=Vnom+0.05;
+
+  function tx(t){return padL+t/tmax*pw;}
+  function ty(v){return padT+(1-(v-vMin)/(vMax-vMin))*ph;}
+
+  ctx.strokeStyle=tc('--border');ctx.lineWidth=.5;
+  for(let i=0;i<=5;i++){const t=i*tmax/5;const x=tx(t);
+    ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();
+    ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';
+    const us=t*1e6;ctx.fillText(us.toFixed(1)+'µs',x,padT+ph+16);}
+  const vstep=(vMax-vMin)/4;
+  for(let i=0;i<=4;i++){const v=vMin+i*vstep;const y=ty(v);
+    ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();
+    ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(v.toFixed(3)+'V',padL-4,y+4);}
+
+  // Nominal line
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,ty(Vnom));ctx.lineTo(padL+pw,ty(Vnom));ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Simulate supply voltage
+  // Model: V(t) = Vnom - Lspike*exp(-t/τL) - Cdroop*(1-exp(-t/τC)) + recovery
+  const N=500;
+  ctx.beginPath();ctx.strokeStyle=accent;ctx.lineWidth=2;
+  const tauL=rt/3, tauC=cb/di*0.2, tauRec=1/(2*Math.PI*rbw);
+  for(let i=0;i<=N;i++){
+    const t=i*tmax/N;
+    let v=Vnom;
+    if(t>rt/2){
+      const dt=t-rt/2;
+      const spike=Lspike/1000*Math.exp(-dt/Math.max(1e-9,tauL));
+      const droop=Cdroop/1000*(1-Math.exp(-dt/Math.max(1e-9,tauC)))*Math.exp(-dt/Math.max(1e-9,tauRec));
+      v=Vnom-spike-droop;
+    }
+    const x=tx(t),y=ty(Math.max(vMin,v));
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Peak annotation
+  ctx.fillStyle='#e74c3c';ctx.font='11px sans-serif';ctx.textAlign='left';
+  ctx.fillText('Peak droop: '+peak.toFixed(0)+' mV',padL+6,ty(Vnom-droop_total)+14);
+
+  ctx.strokeStyle=border;ctx.lineWidth=1;ctx.strokeRect(padL,padT,pw,ph);
+  ctx.fillStyle=text;ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+  ctx.fillText('Supply Voltage Transient',padL+4,padT+14);
+  ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.fillText('Time',padL+pw/2,padT+ph+36);
+}
+
+/* ── TAB 3: Scenarios ── */
+const scens=[
+  {name:'Clean supply',freq:'DC only',amp:'<1 mV',cause:'None',fix:'None',
+   desc:'Ideal regulated supply. Clean DC voltage with no switching noise or ripple.',
+   gen:(t,Vn)=>Vn},
+  {name:'Switching ripple 500kHz',freq:'500 kHz',amp:'80 mV pk-pk',cause:'Inadequate output filter on switching reg',fix:'Increase Cout or add LC post-filter',
+   desc:'Typical switching regulator output: 80 mV pk-pk ripple at 500 kHz switching frequency. Observe on oscilloscope with AC coupling to see ripple on DC level.',
+   gen:(t,Vn)=>Vn+0.04*Math.sin(2*Math.PI*500e3*t)+0.008*Math.sin(2*Math.PI*1e6*t)},
+  {name:'60 Hz ground loop',freq:'60 Hz + 120 Hz',amp:'30 mV pk-pk',cause:'Ground loop from mains connection',fix:'Star grounding, break ground loop, isolation transformer',
+   desc:'Ground loop: 60 Hz mains current flows through ground path, creating voltage at signal reference. 120 Hz harmonics also present from rectifier. Seen on oscilloscope as slow sinusoidal oscillation on DC.',
+   gen:(t,Vn)=>Vn+0.015*Math.sin(2*Math.PI*60*t)+0.006*Math.sin(2*Math.PI*120*t+0.5)},
+  {name:'LDO oscillation',freq:'200 kHz (burst)',amp:'500 mV pk-pk',cause:'Wrong output cap ESR — LDO instability',fix:'Add series R to output cap to restore ESR range',
+   desc:'LDO oscillating due to insufficient output capacitor ESR. Bursting behavior: oscillation at 200 kHz modulated by a slower envelope as thermal effects interact with the loop.',
+   gen:(t,Vn)=>{const env=0.5*(1+Math.sin(2*Math.PI*5e3*t));return Vn+env*0.25*Math.sin(2*Math.PI*200e3*t);}},
+  {name:'Load step droop',freq:'Single transient',amp:'200 mV droop',cause:'Insufficient local bypass capacitance',fix:'Add 100 µF bulk cap at load',
+   desc:'100 mA load step at t=10 µs: supply voltage droops due to finite supply inductance and limited local capacitance. Regulator recovers over ~20 µs.',
+   gen:(t,Vn)=>{if(t<10e-6)return Vn;const dt=t-10e-6;return Vn-0.2*Math.exp(-dt/5e-6)*Math.exp(-dt/20e-6);}},
+  {name:'Poor decoupling (resonance)',freq:'~50 MHz resonance',amp:'Variable by freq',cause:'Anti-resonance between bulk and ceramic caps',fix:'Add intermediate 1 µF cap + resistance damping',
+   desc:'Anti-resonance between bulk capacitor and ceramic decoupling creates a high-impedance peak around 50 MHz. High-frequency supply disturbance sees amplification at resonance. Visible as high-frequency ringing on supply transient.',
+   gen:(t,Vn)=>Vn+0.01*Math.cos(2*Math.PI*50e6*t)*Math.exp(-t/100e-9)+0.002*Math.sin(2*Math.PI*150e6*t)}
+];
+let currentScen=0;
+
+function setScen(n,btn){
+  currentScen=n;
+  document.querySelectorAll('.fault-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  drawScen();
+}
+
+function drawScen(){
+  const sc=scens[currentScen];
+  $('sc_desc').textContent=sc.desc;
+  $('d_freq').textContent=sc.freq;
+  $('d_amp').textContent=sc.amp;
+  $('d_cause').textContent=sc.cause;
+  $('d_fix').textContent=sc.fix;
+
+  const Vnom=3.3;
+  // Choose time window appropriate for the scenario
+  const twindow=[100e-6,10e-6,100e-3,20e-6,100e-6,500e-9][currentScen];
+  const N=1000;
+  const samples=[];
+  for(let i=0;i<N;i++){const t=i*twindow/N;samples.push(sc.gen(t,Vnom));}
+
+  drawSupplyWave(samples,twindow,Vnom);
+  drawSupplyFFT(samples,twindow,Vnom);
+}
+
+function drawSupplyWave(samples,twindow,Vnom){
+  const c=$('c3');
+  const {ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=55,padR=20,padT=20,padB=35;
+  const pw=w-padL-padR,ph=h-padT-padB;
+  const text=tc('--text'),text2=tc('--text2'),border=tc('--border'),accent=tc('--accent');
+  const N=samples.length;
+  const vMin=Math.min(...samples)-0.02, vMax=Math.max(...samples)+0.02;
+  const vRange=Math.max(vMax-vMin,0.01);
+
+  function tx(i){return padL+i/N*pw;}
+  function ty(v){return padT+(1-(v-vMin)/vRange)*ph;}
+
+  ctx.strokeStyle=border;ctx.lineWidth=.5;
+  for(let i=0;i<=4;i++){const t=i*twindow/4;const x=padL+i*pw/4;
+    ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();
+    ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';
+    const us=t*1e6;const ms=t*1e3;
+    ctx.fillText(t>=1e-3?ms.toFixed(1)+'ms':t>=1e-6?us.toFixed(1)+'µs':(t*1e9).toFixed(0)+'ns',x,padT+ph+16);}
+  for(let i=0;i<=4;i++){const v=vMin+i*vRange/4;const y=ty(v);
+    ctx.beginPath();ctx.moveTo(padL,y);ctx.lineTo(padL+pw,y);ctx.stroke();
+    ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='right';ctx.fillText(v.toFixed(3)+'V',padL-4,y+4);}
+
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,ty(Vnom));ctx.lineTo(padL+pw,ty(Vnom));ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.beginPath();ctx.strokeStyle=accent;ctx.lineWidth=1.5;
+  for(let i=0;i<N;i++){const x=tx(i),y=ty(samples[i]);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  ctx.stroke();
+
+  ctx.strokeStyle=border;ctx.lineWidth=1;ctx.strokeRect(padL,padT,pw,ph);
+  ctx.fillStyle=tc('--text');ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+  ctx.fillText('Supply Voltage',padL+4,padT+14);
+}
+
+function drawSupplyFFT(samples,twindow,Vnom){
+  const c=$('c3s');
+  const {ctx,w,h}=dpr(c);
+  const bg=tc('--plot-bg');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  const padL=55,padR=20,padT=15,padB=35;
+  const pw=w-padL-padR,ph=h-padT-padB;
+  const text=tc('--text'),text2=tc('--text2'),border=tc('--border'),accent=tc('--accent');
+  const N=samples.length;
+  const fs=N/twindow;
+
+  // Simple DFT magnitude (first half only, DC removed)
+  const M=Math.min(N/2,256);
+  const mag=new Float32Array(M);
+  const dc=samples.reduce((a,b)=>a+b,0)/N;
+  for(let k=1;k<M;k++){
+    let re=0,im=0;
+    for(let n=0;n<N;n++){const a=2*Math.PI*k*n/N;re+=(samples[n]-dc)*Math.cos(a);im-=(samples[n]-dc)*Math.sin(a);}
+    mag[k]=Math.sqrt(re*re+im*im)/N;
+  }
+
+  const maxMag=Math.max(...mag.slice(1))||1e-6;
+  function fx(k){return padL+k/M*pw;}
+  function fy(v){return padT+(1-v/maxMag)*ph;}
+
+  ctx.strokeStyle=tc('--border');ctx.lineWidth=.5;
+  for(let i=0;i<=4;i++){const x=padL+i*pw/4;const f=i*M/4*(fs/N);
+    ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+ph);ctx.stroke();
+    ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.textAlign='center';
+    const lbl=f>=1e6?(f/1e6).toFixed(1)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f.toFixed(0);
+    ctx.fillText(lbl+'Hz',x,padT+ph+16);}
+
+  ctx.fillStyle=accent;
+  for(let k=1;k<M;k++){
+    const x=fx(k),y=fy(mag[k]),barH=Math.max(0,padT+ph-y);
+    ctx.fillRect(x,y,Math.max(1,pw/M-1),barH);}
+
+  ctx.strokeStyle=border;ctx.lineWidth=1;ctx.strokeRect(padL,padT,pw,ph);
+  ctx.fillStyle=tc('--text');ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+  ctx.fillText('Spectrum',padL+4,padT+13);
+  ctx.fillStyle=text2;ctx.font='10px sans-serif';ctx.fillText('Frequency',padL+pw/2-30,padT+ph+32);
+}
+
+window.addEventListener('load',()=>{upd0();upd1();upd2();drawScen();});
+window.addEventListener('resize',()=>{upd0();upd1();upd2();drawScen();});
+</script>
+</body>
+</html>

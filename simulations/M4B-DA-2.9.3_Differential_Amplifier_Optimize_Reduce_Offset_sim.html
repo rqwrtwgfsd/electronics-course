@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-DA-2.9.3 — Optimize: Reduce Offset</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  select{width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text);font-size:13px;margin-bottom:10px;}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  .ro.warn span{color:#cc4400;}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-DA-2.9.3</div>
+  <h1>Differential Amplifier — Optimize: Reduce Offset</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Offset Reduction Controls</h2>
+      <label>W×L pair (μm²): <b id="wln_l">20</b> μm² <input type="range" id="wln" min="1" max="2000" value="20" step="1"></label>
+      <label>W×L load (μm²): <b id="wlp_l">20</b> μm² <input type="range" id="wlp" min="1" max="2000" value="20" step="1"></label>
+      <label>A_VT,n (mV·μm): <b id="avtn_l">5.0</b> <input type="range" id="avtn" min="1" max="15" value="5" step="0.5"></label>
+      <label>A_VT,p (mV·μm): <b id="avtp_l">7.0</b> <input type="range" id="avtp" min="1" max="15" value="7" step="0.5"></label>
+      <label>g_m,p/g_m,n: <b id="gmr_l">1.0</b> <input type="range" id="gmr" min="0.1" max="3" value="1.0" step="0.1"></label>
+      <label>Dynamic correction:
+        <select id="dyn">
+          <option value="0">None (Pelgrom only)</option>
+          <option value="1">Trim (±3mV, 7-bit DAC)</option>
+          <option value="2">Auto-zero (C_AZ = 1 pF)</option>
+          <option value="3">Chopper (residual 5 μV)</option>
+        </select>
+      </label>
+      <label>Spec V_os 3σ (mV): <b id="spec_l">1.0</b> mV <input type="range" id="spec" min="0.01" max="10" value="1.0" step="0.01"></label>
+
+      <div class="ro">σ pair (mV): <span id="sn_d">--</span></div>
+      <div class="ro" style="margin-top:4px">σ load IR (mV): <span id="sp_d">--</span></div>
+      <div class="ro g" style="margin-top:4px">σ total (mV): <span id="st_d">--</span></div>
+      <div class="ro" id="res_ro" style="margin-top:4px">3σ residual after correction: <span id="res_d">--</span> mV</div>
+      <div class="ro" id="pass_ro" style="margin-top:4px">Result: <span id="pass_d">--</span></div>
+    </div>
+
+    <div class="card">
+      <h2>σ(V_os) vs W×L — Pelgrom Scaling</h2>
+      <canvas id="cv" height="300"></canvas>
+      <div class="insight">
+        Pair (blue) and load IR (red) scale as 1/√(WL). Total (green) is RSS combination. Dynamic correction (trimming / auto-zero / chopper) reduces the residual independent of device sizing.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function getResidual(svos_3s_mV, dyn){
+    if(dyn===0) return svos_3s_mV; // no correction
+    if(dyn===1){
+      // trim: 7-bit DAC, ±3mV → step = 6mV/128 = 46.9 μV. Residual = step/2 = 23.4 μV → 3σ = 23.4 μV
+      const step=6/(128); // mV
+      return Math.sqrt((step/2)**2); // quantization residual in mV — approximately
+    }
+    if(dyn===2){
+      // auto-zero: kT/C on 1 pF = 64 μV rms → 3σ = 192 μV = 0.192 mV
+      return 0.192;
+    }
+    if(dyn===3){
+      // chopper: residual 5 μV → 3σ = 0.015 mV
+      return 0.015;
+    }
+    return svos_3s_mV;
+  }
+
+  function compute(){
+    const wln=+document.getElementById('wln').value;
+    const wlp=+document.getElementById('wlp').value;
+    const avtn=+document.getElementById('avtn').value;
+    const avtp=+document.getElementById('avtp').value;
+    const gmr=+document.getElementById('gmr').value;
+    const dyn=+document.getElementById('dyn').value;
+    const spec=+document.getElementById('spec').value;
+
+    document.getElementById('wln_l').textContent=wln.toFixed(0);
+    document.getElementById('wlp_l').textContent=wlp.toFixed(0);
+    document.getElementById('avtn_l').textContent=avtn.toFixed(1);
+    document.getElementById('avtp_l').textContent=avtp.toFixed(1);
+    document.getElementById('gmr_l').textContent=gmr.toFixed(1);
+    document.getElementById('spec_l').textContent=spec.toFixed(2);
+
+    const sn=avtn/Math.sqrt(wln);
+    const sp_ir=gmr*avtp/Math.sqrt(wlp);
+    const st=Math.sqrt(sn**2+sp_ir**2);
+    const svos_3s=3*st;
+    const residual=getResidual(svos_3s, dyn);
+
+    document.getElementById('sn_d').textContent=sn.toFixed(3);
+    document.getElementById('sp_d').textContent=sp_ir.toFixed(3);
+    document.getElementById('st_d').textContent=st.toFixed(3);
+    document.getElementById('res_d').textContent=residual.toFixed(3);
+
+    const resRo=document.getElementById('res_ro');
+    resRo.className='ro';
+
+    const passRo=document.getElementById('pass_ro');
+    if(residual<=spec){
+      passRo.className='ro g';
+      document.getElementById('pass_d').textContent='PASS — '+residual.toFixed(3)+' mV ≤ '+spec+' mV';
+    } else {
+      passRo.className='ro warn';
+      document.getElementById('pass_d').textContent='FAIL — '+residual.toFixed(3)+' mV > '+spec+' mV';
+    }
+
+    draw(avtn, avtp, gmr, spec, wln, wlp, dyn);
+  }
+
+  function draw(avtn, avtp, gmr, spec, wln_op, wlp_op, dyn){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=300;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,300);
+    const pL=55,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=300-pT-pB;
+
+    const wlMin=1, wlMax=2000;
+    const svMax=20, svMin=0;
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText('σ(V_os) mV', 2, pT+ph/2);
+    ctx.fillText('W×L (μm²)', pL+pw/2-14, 300-4);
+
+    for(let mv=0;mv<=svMax;mv+=5){
+      const y=pT+ph-((mv-svMin)/(svMax-svMin))*ph;
+      ctx.fillStyle='#8888aa'; ctx.font='9px system-ui'; ctx.fillText(mv, 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+    [1,10,50,200,500,2000].forEach(v=>{
+      const x=pL+((v-wlMin)/(wlMax-wlMin))*pw;
+      ctx.fillStyle='#8888aa'; ctx.font='8px system-ui'; ctx.fillText(v, x-8, pT+ph+14);
+    });
+
+    // Pair
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2; ctx.setLineDash([]);
+    ctx.beginPath(); let first=true;
+    for(let px=0;px<=pw;px++){
+      const wl=wlMin+(px/pw)*(wlMax-wlMin);
+      const sv=avtn/Math.sqrt(wl);
+      const y=pT+ph-((sv-svMin)/(svMax-svMin))*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // Load IR
+    ctx.strokeStyle='#cc2200'; ctx.lineWidth=2; ctx.setLineDash([4,3]);
+    ctx.beginPath(); first=true;
+    for(let px=0;px<=pw;px++){
+      const wl=wlMin+(px/pw)*(wlMax-wlMin);
+      const sv=gmr*avtp/Math.sqrt(wl);
+      const y=pT+ph-((sv-svMin)/(svMax-svMin))*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // Total 1σ
+    ctx.strokeStyle='#00994d'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+    ctx.beginPath(); first=true;
+    for(let px=0;px<=pw;px++){
+      const wl=wlMin+(px/pw)*(wlMax-wlMin);
+      const sn=avtn/Math.sqrt(wl);
+      const sp=gmr*avtp/Math.sqrt(wl);
+      const sv=Math.sqrt(sn**2+sp**2);
+      const y=pT+ph-((sv-svMin)/(svMax-svMin))*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // Dynamic correction floor
+    const sn_op=avtn/Math.sqrt(wln_op);
+    const sp_op=gmr*avtp/Math.sqrt(wlp_op);
+    const st_op=Math.sqrt(sn_op**2+sp_op**2);
+    const res_floor=getResidual(3*st_op, dyn);
+    if(dyn>0&&res_floor<svMax){
+      const yfloor=pT+ph-((res_floor/3-svMin)/(svMax-svMin))*ph; // display as 1σ equiv
+      ctx.strokeStyle='#ff8800'; ctx.lineWidth=1.5; ctx.setLineDash([6,3]);
+      ctx.beginPath(); ctx.moveTo(pL,yfloor); ctx.lineTo(pL+pw,yfloor); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle='#ff8800'; ctx.font='8px system-ui';
+      const dynNames=['','Trim','AZ','Chop'];
+      ctx.fillText(dynNames[dyn]+' floor: '+(res_floor).toFixed(3)+'mV 3σ', pL+4, yfloor-3);
+    }
+
+    // Spec line (as 1σ = spec/3)
+    const specSigma=spec/3;
+    if(specSigma<=svMax){
+      const yspec=pT+ph-((specSigma-svMin)/(svMax-svMin))*ph;
+      ctx.strokeStyle='#44444466'; ctx.lineWidth=1; ctx.setLineDash([5,4]);
+      ctx.beginPath(); ctx.moveTo(pL,yspec); ctx.lineTo(pL+pw,yspec); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle='#444'; ctx.font='8px system-ui';
+      ctx.fillText('σ limit = '+specSigma.toFixed(3)+' mV', pL+4, yspec-3);
+    }
+
+    // Op point
+    const xop=pL+((wln_op-wlMin)/(wlMax-wlMin))*pw;
+    const yop=pT+ph-((st_op-svMin)/(svMax-svMin))*ph;
+    ctx.fillStyle='#00994d';
+    ctx.beginPath(); ctx.arc(xop,yop,6,0,2*Math.PI); ctx.fill();
+
+    const items=[{c:'#0066cc',lbl:'σ pair',d:[]},{c:'#cc2200',lbl:'σ load IR',d:[4,3]},{c:'#00994d',lbl:'σ total',d:[]}];
+    items.forEach(({c,lbl,d},i)=>{
+      ctx.strokeStyle=c; ctx.lineWidth=1.8; ctx.setLineDash(d);
+      ctx.beginPath(); ctx.moveTo(pL+pw-100, pT+12+14*i); ctx.lineTo(pL+pw-80, pT+12+14*i); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle='#8888aa'; ctx.font='10px system-ui'; ctx.fillText(lbl, pL+pw-76, pT+16+14*i);
+    });
+  }
+
+  document.querySelectorAll('input[type=range],select').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-DT-5.3.1 Simulation Strategy</title>
+<style>
+  :root {
+    --bg: #f5f5f5; --panel: #ffffff; --border: #d0d0d0;
+    --text: #1a1a1a; --muted: #666; --accent: #1a6eb5;
+    --pass: #2d7a2d; --fail: #b52a2a; --warn: #b57a00;
+    --pass-bg: #e8f5e8; --fail-bg: #fde8e8; --warn-bg: #fff3cd;
+    --canvas-bg: #fafafa;
+    --c1: #1a6eb5; --c2: #e07b00; --c3: #2d7a2d; --c4: #8b1a8b; --c5: #b52a2a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a; --panel: #242424; --border: #3a3a3a;
+      --text: #e8e8e8; --muted: #999; --accent: #4da3f5;
+      --pass: #4caf50; --fail: #ef5350; --warn: #ffb300;
+      --pass-bg: #1a2e1a; --fail-bg: #2e1a1a; --warn-bg: #2e2200;
+      --canvas-bg: #1e1e1e;
+      --c1: #4da3f5; --c2: #ffb300; --c3: #4caf50; --c4: #ce93d8; --c5: #ef5350;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; padding: 16px; }
+  h1 { font-size: 1.2em; color: var(--accent); margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 0.85em; margin-bottom: 16px; }
+  .layout { display: grid; grid-template-columns: 280px 1fr; gap: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .panel h3 { font-size: 0.9em; color: var(--accent); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .slider-row { margin-bottom: 10px; }
+  .slider-row label { display: flex; justify-content: space-between; font-size: 0.82em; color: var(--muted); margin-bottom: 3px; }
+  .slider-row label span { color: var(--text); font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .right-col { display: flex; flex-direction: column; gap: 14px; }
+  canvas { width: 100%; display: block; background: var(--canvas-bg); border-radius: 6px; }
+  .tab-row { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .tab-btn { padding: 5px 10px; border-radius: 5px; border: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer; font-size: 0.82em; }
+  .tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.78em; font-weight: 700; }
+  .badge.pass { background: var(--pass-bg); color: var(--pass); }
+  .badge.fail { background: var(--fail-bg); color: var(--fail); }
+  .badge.warn { background: var(--warn-bg); color: var(--warn); }
+  .readout-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .readout { flex: 1; min-width: 90px; background: var(--canvas-bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; text-align: center; }
+  .readout .val { font-size: 1.15em; font-weight: 700; }
+  .readout .lbl { font-size: 0.72em; color: var(--muted); margin-top: 2px; }
+  .sim-plan { width: 100%; border-collapse: collapse; font-size: 0.8em; }
+  .sim-plan th { background: var(--border); padding: 5px 8px; text-align: left; }
+  .sim-plan td { padding: 4px 8px; border-bottom: 1px solid var(--border); }
+  .section-divider { font-size: 0.75em; color: var(--muted); margin: 8px 0 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+  @media (max-width: 720px) { .layout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<h1>M4A-DT-5.3.1 — Simulation Strategy</h1>
+<p class="subtitle">Inverting amplifier verification: DC → AC → Transient → Noise → Sweep in correct order</p>
+
+<div class="layout">
+<div>
+  <div class="panel" style="margin-bottom:12px">
+    <h3>Simulation Mode</h3>
+    <div class="tab-row">
+      <button class="tab-btn active" id="tab-ac" onclick="setMode('ac')">AC / Bode</button>
+      <button class="tab-btn" id="tab-tran" onclick="setMode('tran')">Transient</button>
+      <button class="tab-btn" id="tab-noise" onclick="setMode('noise')">Noise</button>
+      <button class="tab-btn" id="tab-sweep" onclick="setMode('sweep')">Tolerance Sweep</button>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom:12px">
+    <h3>Circuit Parameters</h3>
+    <div class="section-divider">Amplifier</div>
+    <div class="slider-row">
+      <label>Nominal gain |Rf/R1| <span id="lbl-gain">10</span></label>
+      <input type="range" id="sl-gain" min="1" max="100" step="1" value="10" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>GBW (MHz) <span id="lbl-gbw">10</span></label>
+      <input type="range" id="sl-gbw" min="0.1" max="100" step="0.1" value="10" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Extra pole fp2 (MHz) <span id="lbl-fp2">50</span></label>
+      <input type="range" id="sl-fp2" min="0.5" max="200" step="0.5" value="50" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Slew rate (V/µs) <span id="lbl-sr">10</span></label>
+      <input type="range" id="sl-sr" min="0.1" max="100" step="0.1" value="10" oninput="update()">
+    </div>
+    <div class="section-divider">Specifications</div>
+    <div class="slider-row">
+      <label>BW spec (kHz) <span id="lbl-bwspec">100</span></label>
+      <input type="range" id="sl-bwspec" min="1" max="2000" step="1" value="100" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>PM spec (°) <span id="lbl-pmspec">45</span></label>
+      <input type="range" id="sl-pmspec" min="20" max="90" step="1" value="45" oninput="update()">
+    </div>
+    <div class="section-divider" id="extra-label">Transient / Sweep</div>
+    <div class="slider-row">
+      <label>Step amplitude (V) <span id="lbl-vstep">1</span></label>
+      <input type="range" id="sl-vstep" min="0.1" max="20" step="0.1" value="1" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Resistor tolerance (%) <span id="lbl-rtol">1</span></label>
+      <input type="range" id="sl-rtol" min="0.01" max="10" step="0.01" value="1" oninput="update()">
+    </div>
+    <div class="section-divider">Noise</div>
+    <div class="slider-row">
+      <label>en (nV/√Hz) <span id="lbl-en">5</span></label>
+      <input type="range" id="sl-en" min="0.3" max="50" step="0.1" value="5" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>R1 value (kΩ) <span id="lbl-r1">10</span></label>
+      <input type="range" id="sl-r1" min="0.1" max="1000" step="0.1" value="10" oninput="update()">
+    </div>
+  </div>
+</div>
+
+<div class="right-col">
+  <div class="readout-row" id="readouts"></div>
+  <div class="panel">
+    <h3 id="chart1-title">Bode Plot — Gain &amp; Phase</h3>
+    <canvas id="c1" height="210"></canvas>
+  </div>
+  <div class="panel">
+    <h3 id="chart2-title">Verification Plan — Simulation Results</h3>
+    <canvas id="c2" height="180"></canvas>
+  </div>
+</div>
+</div>
+
+<script>
+let MODE = 'ac';
+
+function setMode(m) {
+  MODE = m;
+  ['ac','tran','noise','sweep'].forEach(x => {
+    document.getElementById('tab-'+x).classList.toggle('active', m === x);
+  });
+  document.getElementById('chart1-title').textContent = {
+    ac: 'Bode Plot — Gain & Phase',
+    tran: 'Step Response — Time Domain',
+    noise: 'Noise Spectral Density',
+    sweep: 'Gain vs. Tolerance Corner'
+  }[m];
+  document.getElementById('chart2-title').textContent = {
+    ac: 'Loop Gain (Open Loop) — Phase Margin Analysis',
+    tran: 'Slew Rate & Settling',
+    noise: 'Integrated Noise vs. Bandwidth',
+    sweep: 'Tolerance Distribution — EVA / RSS'
+  }[m];
+  update();
+}
+
+function v(id) { return parseFloat(document.getElementById(id).value); }
+function lbl(id, val, dec) { const el = document.getElementById(id); if(el) el.textContent = typeof val==='number' ? val.toFixed(dec!==undefined?dec:1) : val; }
+
+function getColors() {
+  const s = getComputedStyle(document.documentElement);
+  return ['--text','--muted','--accent','--pass','--fail','--warn','--border','--canvas-bg','--c1','--c2','--c3','--c4','--c5'].reduce((o,k)=>{o[k.slice(2)]=s.getPropertyValue(k).trim();return o;},{});
+}
+
+function getCtx(id) {
+  const c = document.getElementById(id);
+  const dpr = window.devicePixelRatio || 1;
+  const rect = c.getBoundingClientRect();
+  if (c._lw !== rect.width || c._lh !== rect.height) {
+    c.width = rect.width * dpr; c.height = rect.height * dpr;
+    c._lw = rect.width; c._lh = rect.height;
+  }
+  const ctx = c.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return [ctx, rect.width, rect.height];
+}
+
+function loopGain(f, gbw, gain, fp2) {
+  // Open-loop gain (Aol), closed-loop gain = G
+  // Single dominant pole model + fp2
+  const fud = gbw * 1e6;
+  const fp2Hz = fp2 * 1e6;
+  const noise_gain = 1 + gain;
+  const fc_cl = fud / noise_gain;
+  // Aol = fud / f (single pole approx)
+  // Loop gain T = Aol * beta = Aol / noise_gain
+  const aol_mag = fud / Math.sqrt(1 + (f/fud)**2);  // single pole Aol
+  const aol_phase = -Math.atan(f/fud);
+  const beta = 1 / noise_gain;
+  // Add second pole
+  const pole2_mag = 1 / Math.sqrt(1 + (f/fp2Hz)**2);
+  const pole2_phase = -Math.atan(f/fp2Hz);
+  const t_mag = aol_mag * beta * pole2_mag;
+  const t_phase_deg = (aol_phase + pole2_phase) * 180 / Math.PI;
+  return { t_mag, t_phase_deg };
+}
+
+function closedLoopGain(f, gbw, gain, fp2) {
+  const fud = gbw * 1e6;
+  const fp2Hz = fp2 * 1e6;
+  // Closed loop approx for inverting amp
+  const cl_bw = fud / (1 + gain);
+  const cl_mag = gain / Math.sqrt(1 + (f/cl_bw)**2);
+  const cl_phase = -Math.atan(f/cl_bw) - Math.atan(f/fp2Hz);
+  return { mag: cl_mag, phase_deg: cl_phase * 180 / Math.PI };
+}
+
+function update() {
+  const gain = v('sl-gain');
+  const gbw = v('sl-gbw');
+  const fp2 = v('sl-fp2');
+  const sr = v('sl-sr');
+  const bwspec = v('sl-bwspec');
+  const pmspec = v('sl-pmspec');
+  const vstep = v('sl-vstep');
+  const rtol = v('sl-rtol');
+  const en = v('sl-en') * 1e-9;
+  const r1 = v('sl-r1') * 1e3;
+
+  lbl('lbl-gain', gain, 0);
+  lbl('lbl-gbw', gbw, 1);
+  lbl('lbl-fp2', fp2, 0);
+  lbl('lbl-sr', sr, 1);
+  lbl('lbl-bwspec', bwspec, 0);
+  lbl('lbl-pmspec', pmspec, 0);
+  lbl('lbl-vstep', vstep, 1);
+  lbl('lbl-rtol', rtol, 2);
+  lbl('lbl-en', v('sl-en'), 1);
+  lbl('lbl-r1', v('sl-r1'), 1);
+
+  // Compute key results
+  const cl_bw = gbw * 1e6 / (1 + gain);
+  const bw_pass = cl_bw >= bwspec * 1e3;
+
+  // Phase margin: find gain crossover (|T| = 1)
+  let pm = 180, fc = 0;
+  let prevMag = Infinity;
+  for (let fi = 1; fi <= 1e8; fi *= 1.05) {
+    const { t_mag, t_phase_deg } = loopGain(fi, gbw, gain, fp2);
+    if (t_mag <= 1 && prevMag > 1) {
+      const { t_phase_deg: ph } = loopGain(fi, gbw, gain, fp2);
+      pm = 180 + ph;
+      fc = fi;
+      break;
+    }
+    prevMag = t_mag;
+  }
+  const pm_pass = pm >= pmspec;
+
+  // Slew rate demand at fc
+  const sr_demand = 2 * Math.PI * bwspec * 1e3 * vstep;
+  const sr_pass = sr * 1e6 >= sr_demand;
+
+  // Noise
+  const rf = r1 * gain;
+  const k = 1.38e-23, T = 298;
+  const en_total = Math.sqrt(en**2 + (4*k*T*r1) + (4*k*T*rf));
+  const bw_noise = cl_bw;
+  const noise_rms = en_total * Math.sqrt(bw_noise) * 1e6; // µV
+
+  const readoutData = [
+    { val: (cl_bw/1e3).toFixed(1)+' kHz', lbl: '-3dB BW', pass: bw_pass },
+    { val: pm.toFixed(1)+'°', lbl: 'Phase Margin', pass: pm_pass },
+    { val: (fc/1e3).toFixed(1)+' kHz', lbl: 'Gain Crossover', pass: true },
+    { val: noise_rms.toFixed(2)+' µV', lbl: 'Output Noise RMS', pass: noise_rms < 100 },
+    { val: (sr_demand*1e-6).toFixed(2)+' V/µs', lbl: 'SR Demand', pass: sr_pass },
+    { val: (gain * (1 + rtol/100 + 0)).toFixed(2)+' V/V', lbl: 'Gain +Tol', pass: gain*(1+rtol/100) <= gain*1.03 },
+  ];
+  document.getElementById('readouts').innerHTML = readoutData.map(r =>
+    `<div class="readout"><div class="val" style="color:var(--${r.pass?'pass':'fail'})">${r.val}</div><div class="lbl">${r.lbl}</div></div>`
+  ).join('');
+
+  if (MODE === 'ac') { drawAC(gain, gbw, fp2, bwspec, pmspec); drawLoopGain(gain, gbw, fp2, pmspec, pm); }
+  else if (MODE === 'tran') { drawTransient(gain, gbw, fp2, sr, vstep, pm); drawSlewMap(gain, gbw, sr, vstep); }
+  else if (MODE === 'noise') { drawNoise(gain, en, r1, gbw); drawNoiseInt(gain, en, r1, gbw); }
+  else { drawSweep(gain, rtol, gbw, fp2); drawSweepDist(gain, rtol); }
+}
+
+const PAD = { l: 58, r: 20, t: 20, b: 40 };
+
+function drawAC(gain, gbw, fp2, bwspec, pmspec) {
+  const [ctx, W, H] = getCtx('c1');
+  const C = getColors();
+  ctx.clearRect(0, 0, W, H);
+  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+  const halfH = cH / 2;
+  ctx.fillStyle = C['canvas-bg'];
+  ctx.fillRect(PAD.l, PAD.t, cW, cH);
+
+  const freqs = Array.from({length:200}, (_,i) => Math.pow(10, 2 + i/199 * 6));
+  const cl_bw = gbw * 1e6 / (1 + gain);
+
+  // Two panels: gain top, phase bottom
+  function xp(f) { return PAD.l + (Math.log10(f)-2)/6 * cW; }
+  function ygain(dB) { return PAD.t + (1 - (dB - (-20)) / 80) * halfH; } // -20 to 60 dB
+  function yphase(deg) { return PAD.t + halfH + (1 - (deg - (-270)) / 270) * halfH; }
+
+  ctx.strokeStyle = C.border; ctx.lineWidth = 0.5; ctx.setLineDash([2,3]);
+  [0, 20, 40, 60].forEach(db => { const y = ygain(db); ctx.beginPath(); ctx.moveTo(PAD.l,y); ctx.lineTo(PAD.l+cW,y); ctx.stroke(); });
+  [-45, -90, -135, -180, -225, -270].forEach(ph => { const y = yphase(ph); ctx.beginPath(); ctx.moveTo(PAD.l,y); ctx.lineTo(PAD.l+cW,y); ctx.stroke(); });
+  [100, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8].forEach(f => { const x = xp(f); ctx.beginPath(); ctx.moveTo(x,PAD.t); ctx.lineTo(x,PAD.t+cH); ctx.stroke(); });
+  ctx.setLineDash([]);
+
+  // Gain curve
+  ctx.strokeStyle = C.c1; ctx.lineWidth = 2;
+  ctx.beginPath();
+  freqs.forEach((f, i) => {
+    const { mag } = closedLoopGain(f, gbw, gain, fp2);
+    const dB = 20 * Math.log10(Math.max(1e-6, mag));
+    const x = xp(f), y = ygain(dB);
+    i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+
+  // Phase curve
+  ctx.strokeStyle = C.c2; ctx.lineWidth = 2;
+  ctx.beginPath();
+  freqs.forEach((f, i) => {
+    const { phase_deg } = closedLoopGain(f, gbw, gain, fp2);
+    const x = xp(f), y = yphase(phase_deg);
+    i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+
+  // BW spec line
+  const xBW = xp(bwspec * 1e3);
+  ctx.strokeStyle = C.fail; ctx.lineWidth = 1.5; ctx.setLineDash([5,3]);
+  ctx.beginPath(); ctx.moveTo(xBW, PAD.t); ctx.lineTo(xBW, PAD.t + halfH); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = C.fail; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('BW spec', xBW, PAD.t + 12);
+
+  // Mid divider
+  ctx.strokeStyle = C.border; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t + halfH); ctx.lineTo(PAD.l + cW, PAD.t + halfH); ctx.stroke();
+
+  // Axes labels
+  ctx.fillStyle = C.muted; ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+  [0,20,40,60].forEach(db => ctx.fillText(db+'dB', PAD.l - 4, ygain(db)+4));
+  ctx.textAlign = 'right';
+  [-90,-180,-270].forEach(ph => ctx.fillText(ph+'°', PAD.l - 4, yphase(ph)+4));
+  ctx.textAlign = 'center';
+  [100, '1k', '10k', '100k', '1M', '10M', '100M'].forEach((lbl2, i) => {
+    const f = [100, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8][i];
+    ctx.fillText(lbl2, xp(f), PAD.t + cH + 14);
+  });
+  ctx.fillStyle = C.c1; ctx.textAlign = 'left'; ctx.fillText('Gain', PAD.l + 5, PAD.t + 14);
+  ctx.fillStyle = C.c2; ctx.fillText('Phase', PAD.l + 5, PAD.t + halfH + 14);
+}
+
+function drawLoopGain(gain, gbw, fp2, pmspec, pm_actual) {
+  const [ctx, W, H] = getCtx('c2');
+  const C = getColors();
+  ctx.clearRect(0, 0, W, H);
+  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+  ctx.fillStyle = C['canvas-bg'];
+  ctx.fillRect(PAD.l, PAD.t, cW, cH);
+
+  const freqs = Array.from({length:200}, (_,i) => Math.pow(10, 2 + i/199 * 6));
+
+  function xp(f) { return PAD.l + (Math.log10(f)-2)/6 * cW; }
+  function ydB(dB) { return PAD.t + (1 - (dB + 20) / 100) * cH; }  // -20 to 80 dB
+
+  ctx.strokeStyle = C.border; ctx.lineWidth = 0.5; ctx.setLineDash([2,3]);
+  [-20, 0, 20, 40, 60, 80].forEach(db => { const y = ydB(db); ctx.beginPath(); ctx.moveTo(PAD.l,y); ctx.lineTo(PAD.l+cW,y); ctx.stroke(); });
+  ctx.setLineDash([]);
+
+  // 0 dB line
+  ctx.strokeStyle = C.border; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, ydB(0)); ctx.lineTo(PAD.l + cW, ydB(0)); ctx.stroke();
+
+  // Loop gain magnitude
+  ctx.strokeStyle = C.c1; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  freqs.forEach((f, i) => {
+    const { t_mag } = loopGain(f, gbw, gain, fp2);
+    const dB = 20 * Math.log10(Math.max(1e-6, t_mag));
+    const x = xp(f), y = ydB(dB);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Find gain crossover for PM arrow
+  let prevMag = Infinity, fc = 0, pm = 180;
+  for (let fi = 100; fi <= 1e8; fi *= 1.05) {
+    const { t_mag, t_phase_deg } = loopGain(fi, gbw, gain, fp2);
+    if (t_mag <= 1 && prevMag > 1) {
+      pm = 180 + t_phase_deg;
+      fc = fi;
+      break;
+    }
+    prevMag = t_mag;
+  }
+
+  if (fc > 0) {
+    const xFC = xp(fc);
+    ctx.strokeStyle = C.accent; ctx.lineWidth = 1; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(xFC, PAD.t); ctx.lineTo(xFC, PAD.t + cH); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = C.accent; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+    const pmColor = pm >= pmspec ? C.pass : C.fail;
+    ctx.fillStyle = pmColor;
+    ctx.fillText('PM = '+pm.toFixed(1)+'°', xFC, PAD.t + cH - 5);
+    ctx.fillText('fc', xFC, PAD.t + 12);
+  }
+
+  // Axes
+  ctx.fillStyle = C.muted; ctx.font = '10px system-ui';
+  ctx.textAlign = 'right';
+  [-20, 0, 20, 40, 60, 80].forEach(db => ctx.fillText(db+'dB', PAD.l - 4, ydB(db)+4));
+  ctx.textAlign = 'center';
+  [100,'1k','10k','100k','1M','10M','100M'].forEach((lbl2, i) => {
+    const f = [100,1e3,1e4,1e5,1e6,1e7,1e8][i];
+    ctx.fillText(lbl2, xp(f), PAD.t + cH + 14);
+  });
+  ctx.fillStyle = C.c1; ctx.textAlign = 'left'; ctx.font = '10px system-ui';
+  ctx.fillText('Open-loop gain |T(jf)|', PAD.l + 5, PAD.t + 14);
+  ctx.fillStyle = C.muted; ctx.textAlign = 'center';
+  ctx.fillText('Frequency (Hz)', PAD.l + cW/2, H - 4);
+}
+
+function drawTransient(gain, gbw, fp2, sr, vstep, pm) {
+  const [ctx, W, H] = getCtx('c1');
+  const C = getColors();
+  ctx.clearRect(0, 0, W, H);
+  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+  ctx.fillStyle = C['canvas-bg'];
+  ctx.fillRect(PAD.l, PAD.t, cW, cH);
+
+  const cl_bw = gbw * 1e6 / (1 + gain);
+  const wd = 2 * Math.PI * cl_bw;
+  const zeta = Math.max(0.01, Math.min(1.5, pm / 100));
+  const wn = wd / Math.sqrt(Math.max(0.001, 1 - zeta*zeta));
+  const target = vstep * gain;
+  const slewRate = sr * 1e6;
+
+  const tEnd = 5 / cl_bw;
+  const N = 500;
+
+  function xp(t) { return PAD.l + (t / tEnd) * cW; }
+  function yp(v2) { return PAD.t + (1 - (v2 / (target * 1.5))) * cH; }
+
+  ctx.strokeStyle = C.border; ctx.lineWidth = 0.5; ctx.setLineDash([2,3]);
+  [0, 0.5, 1, 1.5].forEach(f => {
+    const y = yp(f * target);
+    ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l + cW, y); ctx.stroke();
+    ctx.fillStyle = C.muted; ctx.font = '9px system-ui'; ctx.textAlign = 'right';
+    ctx.fillText((f * target).toFixed(1)+'V', PAD.l - 3, y + 4);
+  });
+  ctx.setLineDash([]);
+
+  // Target line
+  ctx.strokeStyle = C.muted; ctx.lineWidth = 1; ctx.setLineDash([5,3]);
+  const ytarget = yp(target);
+  ctx.beginPath(); ctx.moveTo(PAD.l, ytarget); ctx.lineTo(PAD.l + cW, ytarget); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Simulate: slew then 2nd order
+  const pts = [];
+  let slewEnd = 0;
+  const slewTime = target / slewRate;
+
+  for (let i = 0; i <= N; i++) {
+    const t = (i / N) * tEnd;
+    let v2;
+    if (slewRate < Infinity && t < slewTime) {
+      v2 = slewRate * t;
+      slewEnd = t;
+    } else {
+      const t2 = t - slewEnd;
+      const v0 = slewRate * slewEnd;
+      if (zeta < 1) {
+        const wd2 = wn * Math.sqrt(1 - zeta*zeta);
+        v2 = target - (target - v0) * Math.exp(-zeta * wn * t2) * Math.cos(wd2 * t2);
+        // Correction for initial velocity
+        v2 = target * (1 - Math.exp(-zeta * wn * t2) * (Math.cos(wd2 * t2) + zeta/Math.sqrt(1-zeta*zeta) * Math.sin(wd2 * t2)));
+      } else {
+        v2 = target * (1 - (1 + wn*t2) * Math.exp(-wn * t2));
+      }
+      if (slewRate * slewEnd > 0) v2 = Math.max(v2, Math.min(slewRate * t, target * 1.3));
+    }
+    pts.push({ t, v: Math.min(v2, target * 1.3) });
+  }
+
+  // Draw response
+  const overshoot = Math.max(...pts.map(p => p.v));
+  const overshoot_pct = (overshoot / target - 1) * 100;
+
+  ctx.strokeStyle = pm >= 45 ? C.c3 : C.fail;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  pts.forEach((p, i) => {
+    const x = xp(p.t), y = yp(p.v);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Overshoot marker
+  if (overshoot > target * 1.01) {
+    const ovPt = pts.reduce((a, b) => b.v > a.v ? b : a);
+    const xov = xp(ovPt.t), yov = yp(ovPt.v);
+    ctx.fillStyle = C.fail; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText(overshoot_pct.toFixed(1)+'% OS', xov, yov - 6);
+    ctx.beginPath(); ctx.arc(xov, yov, 4, 0, 2*Math.PI);
+    ctx.fill();
+  }
+
+  ctx.strokeStyle = C.border; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t); ctx.lineTo(PAD.l, PAD.t + cH); ctx.lineTo(PAD.l + cW, PAD.t + cH); ctx.stroke();
+  ctx.fillStyle = C.muted; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Time', PAD.l + cW/2, H - 4);
+}
+
+function drawSlewMap(gain, gbw, sr, vstep) {
+  const [ctx, W, H] = getCtx('c2');
+  const C = getColors();
+  ctx.clearRect(0, 0, W, H);
+  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+  ctx.fillStyle = C['canvas-bg'];
+  ctx.fillRect(PAD.l, PAD.t, cW, cH);
+
+  const fMax = gbw * 1e6 / gain * 2;
+  const vMax = sr * 1e6 / (2 * Math.PI * 1e3) * 1.5;
+
+  function xp(f) { return PAD.l + (f / fMax) * cW; }
+  function yp(v2) { return PAD.t + (1 - v2 / vMax) * cH; }
+
+  // Slew limit: FPBW at each amplitude = SR / (2π×V)
+  ctx.fillStyle = C.fail + '33';
+  ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t);
+  for (let i = 0; i <= 100; i++) {
+    const v2 = (i/100) * vMax;
+    const fpbw = v2 > 0 ? sr * 1e6 / (2 * Math.PI * v2) : fMax;
+    const x = Math.min(xp(fpbw), PAD.l + cW);
+    ctx.lineTo(x, yp(v2));
+  }
+  ctx.lineTo(PAD.l + cW, PAD.t);
+  ctx.closePath(); ctx.fill();
+
+  ctx.strokeStyle = C.fail; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i <= 100; i++) {
+    const v2 = (i/100) * vMax;
+    const fpbw = v2 > 0 ? sr * 1e6 / (2 * Math.PI * v2) : fMax;
+    const x = Math.min(xp(fpbw), PAD.l + cW);
+    i === 0 ? ctx.moveTo(x, yp(v2)) : ctx.lineTo(x, yp(v2));
+  }
+  ctx.stroke();
+
+  // Current operating point
+  const target = vstep * gain;
+  const cl_bw = gbw * 1e6 / (1 + gain);
+  const x0 = xp(cl_bw), y0 = yp(target);
+  const fpbw_at_target = target > 0 ? sr * 1e6 / (2 * Math.PI * target) : fMax;
+  const slewing = cl_bw > fpbw_at_target;
+  ctx.fillStyle = slewing ? C.fail : C.pass;
+  ctx.beginPath(); ctx.arc(x0, y0, 6, 0, 2*Math.PI); ctx.fill();
+  ctx.fillStyle = slewing ? C.fail : C.pass;
+  ctx.font = '10px system-ui'; ctx.textAlign = 'left';
+  ctx.fillText(slewing ? 'SLEWING' : 'OK', x0 + 10, y0 + 4);
+
+  ctx.strokeStyle = C.border; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t); ctx.lineTo(PAD.l, PAD.t + cH); ctx.lineTo(PAD.l + cW, PAD.t + cH); ctx.stroke();
+  ctx.fillStyle = C.muted; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Frequency', PAD.l + cW/2, H - 4);
+  ctx.save(); ctx.translate(14, PAD.t + cH/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('Amplitude (V)', 0, 0); ctx.restore();
+  ctx.fillStyle = C.fail; ctx.textAlign = 'center';
+  ctx.fillText('Slew-limited region (red)', PAD.l + cW * 0.7, PAD.t + 15);
+}
+
+function drawNoise(gain, en, r1, gbw) {
+  const [ctx, W, H] = getCtx('c1');
+  const C = getColors();
+  ctx.clearRect(0, 0, W, H);
+  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+  ctx.fillStyle = C['canvas-bg'];
+  ctx.fillRect(PAD.l, PAD.t, cW, cH);
+
+  const k = 1.38e-23, T = 298;
+  const rf = r1 * gain;
+  const ng = 1 + gain;
+  const cl_bw = gbw * 1e6 / ng;
+  const fc_1f = 100;
+
+  const noiseMin = 1e-10, noiseMax = 1e-7;
+  const logNMin = Math.log10(noiseMin), logNMax = Math.log10(noiseMax);
+
+  function xp(f) { return PAD.l + Math.log10(f/10) / 7 * cW; } // 10 Hz to 10 MHz
+  function yp(n) { const lv = Math.log10(Math.max(noiseMin, n)); return PAD.t + (1-(lv-logNMin)/(logNMax-logNMin)) * cH; }
+
+  ctx.strokeStyle = C.border; ctx.lineWidth = 0.5; ctx.setLineDash([2,3]);
+  [1e-10, 3e-10, 1e-9, 3e-9, 1e-8, 3e-8, 1e-7].forEach(n => {
+    const y = yp(n);
+    ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(PAD.l+cW, y); ctx.stroke();
+  });
+  ctx.setLineDash([]);
+
+  const sources = [
+    { label: 'en (opamp)', color: C.c1, fn: f => en * Math.sqrt(1 + fc_1f/f) },
+    { label: '√4kTR1', color: C.c2, fn: f => Math.sqrt(4*k*T*r1) },
+    { label: '√4kTRf', color: C.c3, fn: f => Math.sqrt(4*k*T*rf) },
+    { label: 'Total (output-ref)', color: C.text, fn: f => {
+      const e_total = Math.sqrt((en*Math.sqrt(1+fc_1f/f)*ng)**2 + (Math.sqrt(4*k*T*r1)*ng)**2 + (Math.sqrt(4*k*T*rf))**2);
+      return e_total;
+    }},
+  ];
+
+  sources.forEach(s => {
+    ctx.strokeStyle = s.color; ctx.lineWidth = s.label === 'Total (output-ref)' ? 2.5 : 1.5;
+    ctx.beginPath();
+    for (let i = 0; i <= 100; i++) {
+      const f = Math.pow(10, 1 + i/100 * 6);
+      const n = s.fn(f);
+      const x = xp(f), y = yp(n);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.fillStyle = s.color; ctx.font = '10px system-ui'; ctx.textAlign = 'left';
+    const f_lbl = 1e4;
+    ctx.fillText(s.label, xp(f_lbl) + 3, yp(s.fn(f_lbl)) - 3);
+  });
+
+  // BW marker
+  const xBW = xp(cl_bw);
+  if (xBW > PAD.l && xBW < PAD.l + cW) {
+    ctx.strokeStyle = C.accent; ctx.lineWidth = 1; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(xBW, PAD.t); ctx.lineTo(xBW, PAD.t + cH); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = C.accent; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+    ctx.fillText('BW', xBW, PAD.t + 12);
+  }
+
+  ctx.strokeStyle = C.border; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t); ctx.lineTo(PAD.l, PAD.t+cH); ctx.lineTo(PAD.l+cW, PAD.t+cH); ctx.stroke();
+  ctx.fillStyle = C.muted; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+  ['10Hz','100Hz','1kHz','10kHz','100kHz','1MHz','10MHz'].forEach((lbl2,i) => {
+    ctx.fillText(lbl2, xp(Math.pow(10,1+i)), PAD.t + cH + 14);
+  });
+  ctx.save(); ctx.translate(14, PAD.t+cH/2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle = C.text; ctx.font = '11px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Noise (V/√Hz)', 0, 0); ctx.restore();
+}
+
+function drawNoiseInt(gain, en, r1, gbw) {
+  const [ctx, W, H] = getCtx('c2');
+  const C = getColors();
+  ctx.clearRect(0, 0, W, H);
+  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+  ctx.fillStyle = C['canvas-bg'];
+  ctx.fillRect(PAD.l, PAD.t, cW, cH);
+
+  const k = 1.38e-23, T = 298;
+  const rf = r1 * gain;
+  const ng = 1 + gain;
+  const cl_bw = gbw * 1e6 / ng;
+
+  const bwPoints = Array.from({length:80}, (_,i) => Math.pow(10, 1 + i/79 * 5));
+  const fc_1f = 100;
+
+  function xp(f) { return PAD.l + (Math.log10(f)-1)/5 * cW; }
+  function yp(n) { return PAD.t + (1 - Math.log10(n/1e-7) / Math.log10(1e-4/1e-7)) * cH; }
+
+  ctx.strokeStyle = C.c1; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  bwPoints.forEach((bw, i) => {
+    // Integrate noise from 1 Hz to bw using approximation
+    const en_flat = Math.sqrt((en * ng)**2 + (Math.sqrt(4*k*T*r1)*ng)**2 + (Math.sqrt(4*k*T*rf))**2);
+    const integrated = en_flat * Math.sqrt(bw) * 1e6; // µV
+    const x = xp(bw), y = PAD.t + (1 - integrated/5000) * cH;
+    i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+
+  // Spec line example at 100 µV rms
+  const specY = PAD.t + (1 - 100/5000) * cH;
+  ctx.strokeStyle = C.fail; ctx.lineWidth = 1; ctx.setLineDash([5,3]);
+  ctx.beginPath(); ctx.moveTo(PAD.l, specY); ctx.lineTo(PAD.l + cW, specY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = C.fail; ctx.font = '10px system-ui'; ctx.textAlign = 'left';
+  ctx.fillText('100µV spec', PAD.l + 5, specY - 4);
+
+  // BW marker
+  const xBW = xp(cl_bw);
+  ctx.strokeStyle = C.accent; ctx.lineWidth = 1; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(xBW, PAD.t); ctx.lineTo(xBW, PAD.t+cH); ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.strokeStyle = C.border; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t); ctx.lineTo(PAD.l, PAD.t+cH); ctx.lineTo(PAD.l+cW, PAD.t+cH); ctx.stroke();
+  ctx.fillStyle = C.muted; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+  ['10Hz','100Hz','1kHz','10kHz','100kHz'].forEach((lbl2, i) => {
+    ctx.fillText(lbl2, xp(Math.pow(10,1+i)), PAD.t + cH + 14);
+  });
+  ctx.save(); ctx.translate(14, PAD.t+cH/2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle = C.text; ctx.font = '11px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Integrated Output Noise (µV)', 0, 0); ctx.restore();
+  ctx.fillStyle = C.muted; ctx.textAlign = 'center';
+  ctx.fillText('Integration Bandwidth', PAD.l + cW/2, H - 4);
+}
+
+function drawSweep(gain, rtol, gbw, fp2) {
+  const [ctx, W, H] = getCtx('c1');
+  const C = getColors();
+  ctx.clearRect(0, 0, W, H);
+  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+  ctx.fillStyle = C['canvas-bg'];
+  ctx.fillRect(PAD.l, PAD.t, cW, cH);
+
+  // Gain vs. Rf tolerance (sweep Rf from -tol to +tol, R1 at -tol for worst case)
+  const N = 100;
+  const gMin = gain * (1 - rtol/100) / (1 + rtol/100);
+  const gMax = gain * (1 + rtol/100) / (1 - rtol/100);
+  const specBand = gain * 0.02;
+
+  function xp(t) { return PAD.l + (t + rtol) / (2*rtol) * cW; }
+  function yp(g) { return PAD.t + (1 - (g - gMin*0.95) / (gMax*1.05 - gMin*0.95)) * cH; }
+
+  // Spec band
+  ctx.fillStyle = C.pass + '22';
+  const specY1 = yp(gain + specBand), specY2 = yp(gain - specBand);
+  ctx.fillRect(PAD.l, specY1, cW, specY2 - specY1);
+  ctx.strokeStyle = C.pass; ctx.lineWidth = 1; ctx.setLineDash([5,3]);
+  ctx.beginPath(); ctx.moveTo(PAD.l, specY1); ctx.lineTo(PAD.l + cW, specY1); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(PAD.l, specY2); ctx.lineTo(PAD.l + cW, specY2); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Nominal gain
+  const ynominal = yp(gain);
+  ctx.strokeStyle = C.muted; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, ynominal); ctx.lineTo(PAD.l + cW, ynominal); ctx.stroke();
+
+  // Rf swept, R1 at nominal
+  ctx.strokeStyle = C.c1; ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i <= N; i++) {
+    const dRf = -rtol + (i/N) * 2 * rtol;
+    const g = gain * (1 + dRf/100);
+    const x = xp(dRf), y = yp(g);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Worst case: Rf at +tol, R1 at -tol
+  ctx.strokeStyle = C.fail; ctx.lineWidth = 2; ctx.setLineDash([5,3]);
+  const gWorst = gain * (1 + rtol/100) / (1 - rtol/100);
+  const gBest = gain * (1 - rtol/100) / (1 + rtol/100);
+  ctx.beginPath(); ctx.moveTo(PAD.l, yp(gWorst)); ctx.lineTo(PAD.l + cW, yp(gWorst)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(PAD.l, yp(gBest)); ctx.lineTo(PAD.l + cW, yp(gBest)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = C.fail; ctx.font = '10px system-ui'; ctx.textAlign = 'right';
+  ctx.fillText('EVA worst', PAD.l + cW - 4, yp(gWorst) - 4);
+  ctx.fillText('EVA best', PAD.l + cW - 4, yp(gBest) + 12);
+
+  ctx.strokeStyle = C.border; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t); ctx.lineTo(PAD.l, PAD.t+cH); ctx.lineTo(PAD.l+cW, PAD.t+cH); ctx.stroke();
+  ctx.fillStyle = C.muted; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Rf tolerance (%)', PAD.l + cW/2, H - 4);
+  ctx.save(); ctx.translate(14, PAD.t+cH/2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle = C.text; ctx.font = '11px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Closed-Loop Gain (V/V)', 0, 0); ctx.restore();
+}
+
+function drawSweepDist(gain, rtol) {
+  const [ctx, W, H] = getCtx('c2');
+  const C = getColors();
+  ctx.clearRect(0, 0, W, H);
+  const cW = W - PAD.l - PAD.r, cH = H - PAD.t - PAD.b;
+  ctx.fillStyle = C['canvas-bg'];
+  ctx.fillRect(PAD.l, PAD.t, cW, cH);
+
+  // Histogram of Monte Carlo gains
+  const N = 2000;
+  const gains_mc = [];
+  for (let i = 0; i < N; i++) {
+    const dRf = (Math.random() * 2 - 1) * rtol/100;
+    const dR1 = (Math.random() * 2 - 1) * rtol/100;
+    gains_mc.push(gain * (1 + dRf) / (1 + dR1));
+  }
+
+  const gEVA = gain * (1 + rtol/100) / (1 - rtol/100);
+  const gEVAlow = gain * (1 - rtol/100) / (1 + rtol/100);
+  const gSpec_hi = gain * 1.02, gSpec_lo = gain * 0.98;
+
+  const bins = 50;
+  const gMin = gEVAlow * 0.99, gMax = gEVA * 1.01;
+  const counts = new Array(bins).fill(0);
+  gains_mc.forEach(g => {
+    const bi = Math.min(bins-1, Math.max(0, Math.floor((g - gMin) / (gMax - gMin) * bins)));
+    counts[bi]++;
+  });
+  const maxCount = Math.max(...counts);
+
+  function xp(g) { return PAD.l + (g - gMin) / (gMax - gMin) * cW; }
+  function yp(c) { return PAD.t + (1 - c / maxCount) * cH; }
+
+  // Spec band
+  ctx.fillStyle = C.pass + '33';
+  ctx.fillRect(xp(gSpec_lo), PAD.t, xp(gSpec_hi) - xp(gSpec_lo), cH);
+
+  counts.forEach((c, i) => {
+    const glo = gMin + (i/bins) * (gMax - gMin);
+    const ghi = gMin + ((i+1)/bins) * (gMax - gMin);
+    const inSpec = glo >= gSpec_lo && ghi <= gSpec_hi;
+    ctx.fillStyle = inSpec ? C.pass + '99' : C.fail + '99';
+    const bx = xp(glo), bw = xp(ghi) - xp(glo);
+    ctx.fillRect(bx, yp(c), bw-1, maxCount > 0 ? cH - (yp(c) - PAD.t) : 0);
+  });
+
+  // EVA lines
+  [gEVA, gEVAlow].forEach(g => {
+    ctx.strokeStyle = C.fail; ctx.lineWidth = 2; ctx.setLineDash([5,3]);
+    ctx.beginPath(); ctx.moveTo(xp(g), PAD.t); ctx.lineTo(xp(g), PAD.t+cH); ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  // Nominal
+  const xnom = xp(gain);
+  ctx.strokeStyle = C.accent; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(xnom, PAD.t); ctx.lineTo(xnom, PAD.t+cH); ctx.stroke();
+
+  ctx.strokeStyle = C.border; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD.l, PAD.t); ctx.lineTo(PAD.l, PAD.t+cH); ctx.lineTo(PAD.l+cW, PAD.t+cH); ctx.stroke();
+  ctx.fillStyle = C.muted; ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Gain (V/V)', PAD.l + cW/2, H - 4);
+  ctx.save(); ctx.translate(14, PAD.t+cH/2); ctx.rotate(-Math.PI/2);
+  ctx.fillStyle = C.text; ctx.font = '11px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Monte Carlo Count', 0, 0); ctx.restore();
+  ctx.fillStyle = C.pass; ctx.textAlign = 'center';
+  ctx.fillText('Green = within ±2% spec', PAD.l + cW/2, PAD.t + 14);
+}
+
+window.addEventListener('resize', update);
+update();
+</script>
+</body>
+</html>

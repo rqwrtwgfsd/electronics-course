@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-FC-6.6.1 — Three-Stage NMC</title>
+<style>
+  :root { --bg:#ffffff; --bg2:#f5f5f5; --text:#1a1a1a; --text2:#555; --border:#ddd; --accent:#0066cc; --green:#00994d; --canvas-bg:#fafafa; --warn:#cc4400; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#1a1a1a; --bg2:#242424; --text:#e8e8e8; --text2:#aaa; --border:#444; --canvas-bg:#1f1f1f; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); font-size:14px; }
+  header { background:var(--bg2); border-bottom:2px solid var(--accent); padding:12px 20px; }
+  header .id { font-family:monospace; font-size:12px; color:var(--accent); font-weight:700; }
+  header h1 { font-size:16px; margin-top:2px; }
+  .container { display:flex; gap:16px; padding:16px; flex-wrap:wrap; }
+  .panel { background:var(--bg2); border:1px solid var(--border); border-radius:6px; padding:14px; }
+  .sim-panel { flex:1; min-width:380px; }
+  .ctrl-panel { width:270px; min-width:240px; }
+  canvas { background:var(--canvas-bg); border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .readouts { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+  .readout { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 10px; }
+  .readout label { font-size:11px; color:var(--text2); display:block; }
+  .readout .val { font-family:monospace; font-size:14px; font-weight:700; color:var(--accent); }
+  .ctrl { margin-bottom:12px; }
+  .ctrl label { display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px; }
+  .ctrl label span { font-family:monospace; color:var(--accent); font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  .section-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text2); margin-bottom:8px; }
+  .insight { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 12px; margin-top:10px; font-size:12px; color:var(--text2); line-height:1.5; }
+  .warn-box { background:#fff3e0; border:1px solid #cc8800; border-radius:4px; padding:6px 10px; margin-top:6px; font-size:11px; color:#885500; display:none; }
+</style>
+</head>
+<body>
+<header>
+  <div class="id">M4B-FC-6.6.1</div>
+  <h1>Frequency Compensation — Three-Stage NMC</h1>
+</header>
+<div class="container">
+  <div class="panel sim-panel">
+    <canvas id="cv" height="330"></canvas>
+    <div class="readouts">
+      <div class="readout"><label>GBW</label><span class="val" id="r-gbw">—</span></div>
+      <div class="readout"><label>Dominant fp1</label><span class="val" id="r-fp1">—</span></div>
+      <div class="readout"><label>fp2 (inner)</label><span class="val" id="r-fp2">—</span></div>
+      <div class="readout"><label>fp3 (output)</label><span class="val" id="r-fp3">—</span></div>
+      <div class="readout"><label>Phase Margin</label><span class="val" id="r-pm">—</span></div>
+      <div class="readout"><label>Cc_i/Cc_o valid?</label><span class="val" id="r-valid">—</span></div>
+    </div>
+    <div class="warn-box" id="warn-box">NMC constraint violated: Cc_i ≥ Cc_o × gm2/(2gm1). Reduce GBW or switch to RNMC.</div>
+    <div class="insight" id="ins">—</div>
+  </div>
+  <div class="panel ctrl-panel">
+    <div class="section-title">Three-Stage Parameters</div>
+    <div class="ctrl">
+      <label>gm1 (mA/V) <span id="lbl-gm1">1.0</span></label>
+      <input type="range" id="sl-gm1" min="0.1" max="3" step="0.1" value="1.0" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>gm2 (mA/V) <span id="lbl-gm2">4.0</span></label>
+      <input type="range" id="sl-gm2" min="1" max="15" step="0.5" value="4.0" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>gm3 (mA/V) <span id="lbl-gm3">10.0</span></label>
+      <input type="range" id="sl-gm3" min="1" max="30" step="0.5" value="10.0" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>CL (pF) <span id="lbl-cl">1.0</span></label>
+      <input type="range" id="sl-cl" min="0.1" max="20" step="0.1" value="1.0" oninput="update()">
+    </div>
+    <div class="section-title" style="margin-top:8px">NMC Capacitors</div>
+    <div class="ctrl">
+      <label>Cc_o (pF) <span id="lbl-cco">3.0</span></label>
+      <input type="range" id="sl-cco" min="0.1" max="20" step="0.1" value="3.0" oninput="update()">
+    </div>
+    <div class="ctrl">
+      <label>Cc_i (pF) <span id="lbl-cci">1.0</span></label>
+      <input type="range" id="sl-cci" min="0.05" max="10" step="0.05" value="1.0" oninput="update()">
+    </div>
+    <div class="section-title" style="margin-top:8px">Options</div>
+    <div class="ctrl">
+      <label style="align-items:center">Nulling Rs (eliminate RHP zeros)
+        <input type="checkbox" id="chk-rs" onchange="update()" style="width:auto;margin-left:8px">
+      </label>
+    </div>
+    <div style="margin-top:8px">
+      <button style="width:100%;padding:6px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:700" onclick="autoSize()">Auto-size Cc_i for PM≥60°</button>
+    </div>
+  </div>
+</div>
+<script>
+function fmt(f){return f>=1e9?(f/1e9).toFixed(2)+'GHz':f>=1e6?(f/1e6).toFixed(2)+'MHz':f>=1e3?(f/1e3).toFixed(1)+'kHz':f.toFixed(1)+'Hz';}
+
+function autoSize(){
+  const gm1=parseFloat(document.getElementById('sl-gm1').value)/1000;
+  const gm2=parseFloat(document.getElementById('sl-gm2').value)/1000;
+  const cco=parseFloat(document.getElementById('sl-cco').value)*1e-12;
+  const GBW=gm1/(2*Math.PI*cco);
+  const fp2_target=2.5*GBW;
+  const cci_opt=gm2/(2*Math.PI*fp2_target)*1e12;
+  document.getElementById('sl-cci').value=Math.min(10,Math.max(0.05,cci_opt)).toFixed(2);
+  update();
+}
+
+function phase3p(f,fp1,fp2,fp3,fz_rhp1,fz_rhp2,useRs){
+  let p=-(Math.atan(f/fp1)+Math.atan(f/fp2)+Math.atan(f/fp3));
+  if(!useRs){
+    if(fz_rhp1>0&&fz_rhp1<1e20) p-=Math.atan(f/fz_rhp1);
+    if(fz_rhp2>0&&fz_rhp2<1e20) p-=Math.atan(f/fz_rhp2);
+  }
+  return p*180/Math.PI;
+}
+function mag3p(f,a0,fp1,fp2,fp3,fz1,fz2,useRs){
+  let m=a0/Math.sqrt(1+(f/fp1)**2)/Math.sqrt(1+(f/fp2)**2)/Math.sqrt(1+(f/fp3)**2);
+  if(!useRs){if(fz1<1e20)m*=Math.sqrt(1+(f/fz1)**2);if(fz2<1e20)m*=Math.sqrt(1+(f/fz2)**2);}
+  return m;
+}
+function findCross3(a0,fp1,fp2,fp3,fz1,fz2,useRs){
+  let lo=1e1,hi=1e13;
+  for(let i=0;i<60;i++){const m=Math.sqrt(lo*hi);mag3p(m,a0,fp1,fp2,fp3,fz1,fz2,useRs)>1?lo=m:hi=m;}
+  return Math.sqrt(lo*hi);
+}
+
+function update(){
+  const gm1=parseFloat(document.getElementById('sl-gm1').value)/1000;
+  const gm2=parseFloat(document.getElementById('sl-gm2').value)/1000;
+  const gm3=parseFloat(document.getElementById('sl-gm3').value)/1000;
+  const cl=parseFloat(document.getElementById('sl-cl').value)*1e-12;
+  const cco=parseFloat(document.getElementById('sl-cco').value)*1e-12;
+  const cci=parseFloat(document.getElementById('sl-cci').value)*1e-12;
+  const useRs=document.getElementById('chk-rs').checked;
+
+  document.getElementById('lbl-gm1').textContent=(gm1*1000).toFixed(1);
+  document.getElementById('lbl-gm2').textContent=(gm2*1000).toFixed(1);
+  document.getElementById('lbl-gm3').textContent=(gm3*1000).toFixed(1);
+  document.getElementById('lbl-cl').textContent=(cl*1e12).toFixed(1);
+  document.getElementById('lbl-cco').textContent=(cco*1e12).toFixed(1);
+  document.getElementById('lbl-cci').textContent=(cci*1e12).toFixed(2);
+
+  const a0=gm1*gm2*gm3*(1e5)*(1e5)*(1e5); // approximate with Rout=100kΩ each
+  // Use A0=80dB for display
+  const A0=10000;
+  const GBW=gm1/(2*Math.PI*cco);
+  const fp1=GBW/A0;
+  const fp2=gm2/(2*Math.PI*cci);
+  const fp3=gm3/(2*Math.PI*cl);
+  const fz1=gm3/(2*Math.PI*cco); // outer cap RHP zero
+  const fz2=gm3/(2*Math.PI*cci); // inner cap RHP zero
+
+  const fc=findCross3(A0,fp1,fp2,fp3,useRs?1e30:fz1,useRs?1e30:fz2,useRs);
+  const pm=180+phase3p(fc,fp1,fp2,fp3,useRs?1e30:fz1,useRs?1e30:fz2,useRs);
+
+  // NMC validity: Cc_i < Cc_o * gm2/(2*gm1)
+  const cci_max=cco*gm2/(2*gm1);
+  const valid=cci<=cci_max;
+
+  document.getElementById('r-gbw').textContent=fmt(GBW);
+  document.getElementById('r-fp1').textContent=fmt(fp1);
+  document.getElementById('r-fp2').textContent=fmt(fp2);
+  document.getElementById('r-fp3').textContent=fmt(fp3);
+  const pmEl=document.getElementById('r-pm');pmEl.textContent=pm.toFixed(1)+'°';pmEl.style.color=pm>=60?'var(--green)':pm>=45?'#cc8800':'var(--warn)';
+  const valEl=document.getElementById('r-valid');
+  valEl.textContent=valid?'YES (Cc_i<'+( cci_max*1e12).toFixed(2)+'pF)':'NO — UNSTABLE';
+  valEl.style.color=valid?'var(--green)':'var(--warn)';
+  document.getElementById('warn-box').style.display=valid?'none':'block';
+
+  document.getElementById('ins').textContent=
+    `GBW=${fmt(GBW)}. fp1=${fmt(fp1)}, fp2=${fmt(fp2)}, fp3=${fmt(fp3)}. ` +
+    `fp2/GBW=${( fp2/GBW).toFixed(1)}× (need >2 for stability). ` +
+    `RHP zeros: outer at ${fmt(fz1)}, inner at ${fmt(fz2)}. ` +
+    (useRs?'Nulling Rs enabled — RHP zeros cancelled.':'RHP zeros present — PM reduced. Enable nulling Rs.')+
+    ` PM=${pm.toFixed(1)}°.`;
+
+  draw(A0,fp1,fp2,fp3,fz1,fz2,fc,pm,GBW,useRs,valid);
+}
+
+function draw(a0,fp1,fp2,fp3,fz1,fz2,fc,pm,GBW,useRs,valid){
+  const canvas=document.getElementById('cv');
+  const W=canvas.offsetWidth||500;canvas.width=W;canvas.height=330;
+  const ctx=canvas.getContext('2d');
+  const pad={l:52,r:15,t:20,b:35};
+  const pw=W-pad.l-pad.r,ph=330-pad.t-pad.b;
+  ctx.fillStyle='var(--canvas-bg)';ctx.fillRect(0,0,W,330);
+
+  const magH=ph*0.47,phH=ph*0.47;
+  const magTop=pad.t,phTop=pad.t+magH+5;
+  const fMin=1e1,fMax=1e12;
+  const lMin=Math.log10(fMin),lMax=Math.log10(fMax);
+  const fToX=f=>pad.l+(Math.log10(Math.max(f,fMin))-lMin)/(lMax-lMin)*pw;
+  const mToY=(m,top,h)=>top+h-((m+20)/120)*h;
+  const pToY=(p,top,h)=>top+h-((p+270)/270)*h;
+
+  ctx.strokeStyle='var(--border)';ctx.lineWidth=0.7;
+  [-20,0,20,40,60,80].forEach(m=>{const y=mToY(m,magTop,magH);if(y<magTop-2||y>magTop+magH+2)return;ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='right';ctx.fillText(m+'dB',pad.l-3,y+3);});
+  [-270,-180,-90,0].forEach(p=>{const y=pToY(p,phTop,phH);ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='right';ctx.fillText(p+'°',pad.l-3,y+3);});
+
+  ctx.strokeStyle='rgba(0,0,0,0.15)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  const y0=mToY(0,magTop,magH);ctx.beginPath();ctx.moveTo(pad.l,y0);ctx.lineTo(pad.l+pw,y0);ctx.stroke();
+  const y180=pToY(-180,phTop,phH);ctx.strokeStyle='rgba(204,68,0,0.35)';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(pad.l,y180);ctx.lineTo(pad.l+pw,y180);ctx.stroke();ctx.setLineDash([]);
+
+  // Magnitude
+  ctx.strokeStyle=valid?'#0066cc':'#cc4400';ctx.lineWidth=2;ctx.beginPath();let first=true;
+  for(let i=0;i<=400;i++){const f=Math.pow(10,lMin+i/400*(lMax-lMin));const m=20*Math.log10(Math.max(mag3p(f,a0,fp1,fp2,fp3,useRs?1e30:fz1,useRs?1e30:fz2,useRs),1e-9));const x=fToX(f);const y=mToY(m,magTop,magH);if(y<magTop-10||y>magTop+magH+10){first=true;continue;}first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;}ctx.stroke();
+
+  // Phase
+  ctx.strokeStyle='#00994d';ctx.lineWidth=2;ctx.beginPath();first=true;
+  for(let i=0;i<=400;i++){const f=Math.pow(10,lMin+i/400*(lMax-lMin));const p=phase3p(f,fp1,fp2,fp3,useRs?1e30:fz1,useRs?1e30:fz2,useRs);const x=fToX(f);const y=pToY(Math.max(-270,p),phTop,phH);first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;}ctx.stroke();
+
+  // Without RHP zeros for comparison (when not using Rs)
+  if(!useRs){
+    ctx.strokeStyle='rgba(0,153,77,0.3)';ctx.lineWidth=1;ctx.setLineDash([3,2]);ctx.beginPath();first=true;
+    for(let i=0;i<=400;i++){const f=Math.pow(10,lMin+i/400*(lMax-lMin));const p=phase3p(f,fp1,fp2,fp3,1e30,1e30,true);const x=fToX(f);const y=pToY(Math.max(-270,p),phTop,phH);first?ctx.moveTo(x,y):ctx.lineTo(x,y);first=false;}ctx.stroke();ctx.setLineDash([]);
+  }
+
+  // Pole markers
+  [[fp1,'fp1','#0066cc'],[fp2,'fp2','#0044aa'],[fp3,'fp3','#6600cc']].forEach(([f,label,col],i)=>{
+    if(f<fMin||f>fMax)return;
+    const x=fToX(f);ctx.strokeStyle=col+'66';ctx.lineWidth=1;ctx.setLineDash([2,2]);
+    ctx.beginPath();ctx.moveTo(x,magTop);ctx.lineTo(x,magTop+magH);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=col;ctx.font='8px monospace';ctx.textAlign='center';ctx.fillText(label,x,magTop+10+i*9);
+  });
+
+  if(!useRs){
+    [[fz1,'fz1','#cc4400'],[fz2,'fz2','#cc6600']].forEach(([f,label,col])=>{
+      if(f<fMin||f>fMax)return;
+      const x=fToX(f);ctx.strokeStyle=col+'55';ctx.lineWidth=1;ctx.setLineDash([2,2]);
+      ctx.beginPath();ctx.moveTo(x,phTop);ctx.lineTo(x,phTop+15);ctx.stroke();ctx.setLineDash([]);
+      ctx.fillStyle=col;ctx.font='8px monospace';ctx.textAlign='center';ctx.fillText(label+'(RHP)',x,phTop+25);
+    });
+  }
+
+  // fc marker
+  if(fc>=fMin&&fc<=fMax){
+    const x=fToX(fc);ctx.strokeStyle='#cc440088';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(x,magTop);ctx.lineTo(x,phTop+phH);ctx.stroke();ctx.setLineDash([]);
+    const ph_fc=phase3p(fc,fp1,fp2,fp3,useRs?1e30:fz1,useRs?1e30:fz2,useRs);
+    const ycf=pToY(ph_fc,phTop,phH);
+    ctx.fillStyle=pm>=60?'#00994d':pm>=45?'#cc8800':'#cc4400';
+    ctx.beginPath();ctx.arc(fToX(fc),ycf,4,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='var(--text)';ctx.font='bold 9px monospace';ctx.textAlign='left';ctx.fillText('PM='+pm.toFixed(0)+'°',fToX(fc)+5,ycf-3);
+  }
+
+  ctx.fillStyle='#0066cc';ctx.font='9px sans-serif';ctx.textAlign='left';ctx.fillText('|T| (NMC)',pad.l+2,magTop+9);
+  ctx.fillStyle='#00994d';ctx.fillText('∠T'+(!useRs?' (dashed=no RHP zeros)':''),pad.l+2,phTop+9);
+  ctx.fillStyle='var(--text)';ctx.font='8px monospace';ctx.textAlign='center';
+  ['10','100','1k','10k','100k','1M','10M','100M','1G','10G'].forEach((l,i)=>ctx.fillText(l,fToX(Math.pow(10,1+i)),phTop+phH+14));
+}
+update();
+</script>
+</body>
+</html>

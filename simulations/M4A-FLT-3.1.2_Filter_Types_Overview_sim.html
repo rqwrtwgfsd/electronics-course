@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-FLT-3.1.2 Filter Types Overview</title>
+<style>
+  :root{--bg:#f5f5f5;--panel:#fff;--text:#1a1a1a;--muted:#666;--border:#ddd;
+    --a:#2563eb;--a2:#16a34a;--a3:#dc2626;--a4:#9333ea;--a5:#ea580c;
+    --cb:#fafafa;--gr:#e5e7eb;--hi:#fef9c3;--tb:#bfdbfe;}
+  @media(prefers-color-scheme:dark){:root{
+    --bg:#0f1117;--panel:#1e2130;--text:#e8eaf0;--muted:#8892a4;--border:#2d3348;
+    --a:#60a5fa;--a2:#4ade80;--a3:#f87171;--a4:#c084fc;--a5:#fb923c;
+    --cb:#161926;--gr:#2d3348;--hi:#2d2a0f;--tb:#3b82f6;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px;}
+  h1{font-size:16px;font-weight:700;padding:12px 18px;border-bottom:1px solid var(--border);background:var(--panel);}
+  h1 span{color:var(--muted);font-size:13px;font-weight:400;margin-left:8px;}
+  .layout{display:flex;height:calc(100vh - 47px);}
+  .left{width:280px;background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
+  .right{flex:1;display:flex;flex-direction:column;padding:10px;gap:8px;overflow:hidden;}
+  .sec{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:10px;}
+  .sec h3{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;}
+  label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:3px;}
+  label span{font-weight:600;color:var(--a);}
+  input[type=range]{width:100%;accent-color:var(--a);cursor:pointer;margin-bottom:5px;}
+  select{width:100%;padding:5px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text);font-size:12px;margin-bottom:4px;}
+  canvas{display:block;border-radius:6px;background:var(--cb);border:1px solid var(--border);width:100%;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+  .card{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;}
+  .card .lb{font-size:10px;color:var(--muted);text-transform:uppercase;}
+  .card .vl{font-size:13px;font-weight:700;font-family:monospace;color:var(--a);margin-top:2px;}
+  .tip{background:var(--hi);border:1px solid var(--tb);border-radius:6px;padding:8px;font-size:11px;line-height:1.5;}
+  .type-btn{flex:1;padding:6px;text-align:center;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:5px;cursor:pointer;background:var(--bg);color:var(--muted);transition:all .15s;}
+  .type-btn.active{background:var(--a);color:#fff;border-color:var(--a);}
+  .btn-row{display:flex;gap:4px;}
+  .approx-btn{flex:1;padding:4px;text-align:center;font-size:10px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg);color:var(--muted);transition:all .15s;}
+  .approx-btn.active{background:var(--a4);color:#fff;border-color:var(--a4);}
+</style>
+</head>
+<body>
+<h1>M4A-FLT-3.1.2 — Filter Types Overview <span>Compare LP/HP/BP/Notch with Butterworth/Chebyshev/Bessel/Elliptic</span></h1>
+<div class="layout">
+<div class="left">
+
+  <div class="sec">
+    <h3>Filter Type</h3>
+    <div class="btn-row" style="margin-bottom:6px;">
+      <div class="type-btn active" id="btn_lp" onclick="setType('lp')">Low-Pass</div>
+      <div class="type-btn" id="btn_hp" onclick="setType('hp')">High-Pass</div>
+    </div>
+    <div class="btn-row">
+      <div class="type-btn" id="btn_bp" onclick="setType('bp')">Bandpass</div>
+      <div class="type-btn" id="btn_notch" onclick="setType('notch')">Notch</div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3>Approximation</h3>
+    <div class="btn-row">
+      <div class="approx-btn active" id="apx_bw" onclick="setApprox('butter')">Butter</div>
+      <div class="approx-btn" id="apx_ch" onclick="setApprox('cheby')">Cheby</div>
+      <div class="approx-btn" id="apx_bs" onclick="setApprox('bessel')">Bessel</div>
+      <div class="approx-btn" id="apx_el" onclick="setApprox('ellip')">Elliptic</div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h3>Parameters</h3>
+    <label>Order (poles) <span id="lbl_ord">2</span></label>
+    <input type="range" id="order" min="1" max="8" value="2" step="1" oninput="update()">
+    <label>Corner Freq (kHz) <span id="lbl_fc">1.0</span></label>
+    <input type="range" id="fc" min="0.1" max="100" value="1" step="0.1" oninput="update()">
+    <label>Ripple dB (Cheby) <span id="lbl_rip">1.0</span></label>
+    <input type="range" id="ripple" min="0.1" max="3" value="1" step="0.1" oninput="update()">
+    <label>Notch Q <span id="lbl_q">10</span></label>
+    <input type="range" id="notch_q" min="1" max="50" value="10" step="1" oninput="update()">
+  </div>
+
+  <div class="sec">
+    <h3>Readings</h3>
+    <div class="grid2">
+      <div class="card"><div class="lb">-3 dB freq</div><div class="vl" id="r_3db">—</div></div>
+      <div class="card"><div class="lb">-20 dB freq</div><div class="vl" id="r_20db">—</div></div>
+      <div class="card"><div class="lb">Rolloff</div><div class="vl" id="r_roll">—</div></div>
+      <div class="card"><div class="lb">Phase @fc</div><div class="vl" id="r_phase">—</div></div>
+    </div>
+  </div>
+
+  <div class="tip" id="tip">Select type and approximation to compare responses.</div>
+
+</div>
+<div class="right">
+  <canvas id="c_mag" style="flex:3;"></canvas>
+  <canvas id="c_phase" style="flex:2;"></canvas>
+</div>
+</div>
+<script>
+let ftype='lp', approx='butter';
+
+function setType(t){
+  ftype=t;
+  ['lp','hp','bp','notch'].forEach(x=>document.getElementById('btn_'+x).classList.toggle('active',x===t));
+  update();
+}
+function setApprox(a){
+  approx=a;
+  ['butter','cheby','bessel','ellip'].forEach(x=>{
+    const id={butter:'apx_bw',cheby:'apx_ch',bessel:'apx_bs',ellip:'apx_el'}[x];
+    document.getElementById(id).classList.toggle('active',x===a);
+  });
+  update();
+}
+
+function cv(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+
+// Butterworth normalized LP poles
+function butterPoles(n) {
+  const p=[];
+  for(let k=1;k<=n;k++){
+    const th=Math.PI*(2*k+n-1)/(2*n);
+    p.push({re:Math.cos(th),im:Math.sin(th)});
+  }
+  return p;
+}
+
+// Simplified gain computation via prototype
+function computeGain(f, fc, order, type, rip, q_notch) {
+  const u=f/fc;
+  let mag_db;
+  if(type==='notch'){
+    const num=Math.abs(u*u-1);
+    const den=Math.sqrt((u*u-1)**2+(u/q_notch)**2);
+    mag_db=20*Math.log10(Math.max(num/den,1e-10));
+    return mag_db;
+  }
+  let norm_u = type==='hp' ? 1/Math.max(u,1e-9) : u;
+  if(type==='bp'){
+    const Q=1; // flat
+    const ub=Math.abs(u-1/u)/1; // bandpass prototype
+    norm_u=Math.abs(ub);
+  }
+  switch(approx){
+    case 'butter': {
+      const Cn2=Math.pow(norm_u,2*order);
+      mag_db=-10*Math.log10(1+Cn2);
+      break;
+    }
+    case 'cheby': {
+      // Chebyshev: |H|^2 = 1/(1 + eps^2 * Tn^2(u))
+      const eps=Math.sqrt(Math.pow(10,rip/10)-1);
+      let Tn;
+      if(norm_u<=1) Tn=Math.cos(order*Math.acos(Math.max(-1,Math.min(1,norm_u))));
+      else Tn=Math.cosh(order*Math.acosh(norm_u));
+      mag_db=-10*Math.log10(1+eps*eps*Tn*Tn);
+      break;
+    }
+    case 'bessel': {
+      // Approximate Bessel: same as Butterworth but with wider corner (correction factor)
+      const corr=[1,1,1.36,1.76,2.11,2.43,2.70,2.95,3.18][Math.min(order,8)];
+      const nu=norm_u/corr;
+      const Cn2=Math.pow(nu,2*order);
+      mag_db=-10*Math.log10(1+Cn2);
+      break;
+    }
+    case 'ellip': {
+      // Approximate elliptic: use very steep rolloff simulation
+      if(norm_u<0.9) mag_db=0;
+      else if(norm_u<1) {
+        const ripple_lin=rip;
+        mag_db=-ripple_lin*(norm_u-0.9)/0.1;
+      } else {
+        // Very steep
+        mag_db=-Math.pow(order,1.5)*40*Math.log10(norm_u);
+      }
+      break;
+    }
+    default: mag_db=0;
+  }
+  if(type==='hp') mag_db=mag_db; // already handled by norm_u inversion
+  return mag_db;
+}
+
+function computePhase(f, fc, order, type, q_notch) {
+  const u=f/fc;
+  let ph=0;
+  if(type==='notch'){
+    ph=Math.atan2(u/q_notch, u*u-1)*180/Math.PI;
+    return ph;
+  }
+  // Approximate: n × (-arctan(u)) for LP, n × (+arctan(1/u) - 90) for HP
+  if(type==='lp') ph=-order*Math.atan(u)*180/Math.PI;
+  else if(type==='hp') ph=order*(90-Math.atan(u)*180/Math.PI)-order*90;
+  else ph=0; // simplified
+  return ph;
+}
+
+function find3dB(fc, order, type, rip, q_notch) {
+  if(type==='notch') return fc;
+  let lo=fc*0.01, hi=fc*100;
+  for(let i=0;i<60;i++){
+    const m=Math.sqrt(lo*hi);
+    if(computeGain(m,fc,order,type,rip,q_notch)>-3) lo=m; else hi=m;
+  }
+  return Math.sqrt(lo*hi);
+}
+function find20dB(fc, order, type, rip, q_notch) {
+  if(type==='notch') return fc;
+  let lo=fc, hi=fc*1000;
+  for(let i=0;i<60;i++){
+    const m=Math.sqrt(lo*hi);
+    if(computeGain(m,fc,order,type,rip,q_notch)>-20) lo=m; else hi=m;
+  }
+  return Math.sqrt(lo*hi);
+}
+
+function fmtHz(f){
+  if(f>=1e6) return (f/1e6).toFixed(2)+' MHz';
+  if(f>=1e3) return (f/1e3).toFixed(1)+' kHz';
+  return f.toFixed(f>100?0:1)+' Hz';
+}
+
+function update(){
+  const order=parseInt(document.getElementById('order').value);
+  const fc_khz=parseFloat(document.getElementById('fc').value);
+  const rip=parseFloat(document.getElementById('ripple').value);
+  const q_notch=parseFloat(document.getElementById('notch_q').value);
+  const fc=fc_khz*1e3;
+
+  document.getElementById('lbl_ord').textContent=order;
+  document.getElementById('lbl_fc').textContent=fc_khz.toFixed(1);
+  document.getElementById('lbl_rip').textContent=rip.toFixed(1);
+  document.getElementById('lbl_q').textContent=q_notch;
+
+  const f3=find3dB(fc,order,ftype,rip,q_notch);
+  const f20=find20dB(fc,order,ftype,rip,q_notch);
+  const rolloff=order*20;
+  const ph_at_fc=computePhase(fc,fc,order,ftype,q_notch);
+
+  document.getElementById('r_3db').textContent=fmtHz(f3);
+  document.getElementById('r_20db').textContent=fmtHz(f20);
+  document.getElementById('r_roll').textContent='-'+rolloff+' dB/dec';
+  document.getElementById('r_phase').textContent=ph_at_fc.toFixed(0)+'°';
+
+  const tips={
+    lp:{butter:'Butterworth LP: maximally flat passband, -3 dB at corner.',
+        cheby:'Chebyshev LP: steeper rolloff with equiripple in passband.',
+        bessel:'Bessel LP: flat group delay, preserves pulse shapes.',
+        ellip:'Elliptic LP: steepest rolloff, ripple in both passband and stopband.'},
+    hp:{butter:'Butterworth HP: flat above corner, attenuates below.',
+        cheby:'Chebyshev HP: steep rolloff below corner, equiripple above.',
+        bessel:'Bessel HP: linear phase version of high-pass.',
+        ellip:'Elliptic HP: maximum stopband attenuation below corner.'},
+    bp:{butter:'Bandpass: passes band around corner, attenuates both sides.',
+        cheby:'Chebyshev BP: narrower transition bands.',
+        bessel:'Bessel BP: uniform group delay in passband.',
+        ellip:'Elliptic BP: sharpest transitions into stopband.'},
+    notch:{butter:'Notch filter: deep null at corner frequency. Q sets null width.',
+           cheby:'Notch with Chebyshev-like selectivity.',
+           bessel:'Notch with linear phase (minimal pulse distortion).',
+           ellip:'Notch with maximum selectivity.'},
+  };
+  document.getElementById('tip').textContent=tips[ftype][approx]||'';
+
+  drawMag(fc,order,rip,q_notch,f3);
+  drawPhase(fc,order,q_notch);
+}
+
+function getCtx(id){
+  const c=document.getElementById(id);
+  c.width=c.offsetWidth*devicePixelRatio;
+  c.height=c.offsetHeight*devicePixelRatio;
+  const x=c.getContext('2d');
+  x.scale(devicePixelRatio,devicePixelRatio);
+  x.W=c.offsetWidth;x.H=c.offsetHeight;
+  return x;
+}
+
+function drawMag(fc,order,rip,q_notch,f3){
+  const ctx=getCtx('c_mag');
+  const W=ctx.W,H=ctx.H,pl=55,pr=18,pt=28,pb=34;
+  const pw=W-pl-pr,ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  const fMin=fc*0.01,fMax=fc*100;
+  const lMin=Math.log10(fMin),lMax=Math.log10(fMax);
+  const dbMin=-80,dbMax=5;
+  const fx=f=>pl+(Math.log10(f)-lMin)/(lMax-lMin)*pw;
+  const fy=db=>pt+(1-(db-dbMin)/(dbMax-dbMin))*ph;
+
+  // Grid
+  ctx.strokeStyle=cv('--gr');ctx.lineWidth=0.7;
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    if(x>=pl&&x<=pl+pw){ctx.beginPath();ctx.moveTo(x,pt);ctx.lineTo(x,pt+ph);ctx.stroke();}
+  }
+  [-80,-60,-40,-20,0].forEach(db=>{
+    const y=fy(db);
+    ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+pw,y);ctx.stroke();
+    ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';ctx.fillText(db,2,y+4);
+  });
+
+  // -3 dB reference
+  ctx.strokeStyle=cv('--a3');ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pl,fy(-3));ctx.lineTo(pl+pw,fy(-3));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=cv('--a3');ctx.font='10px system-ui';ctx.fillText('-3 dB',pl+4,fy(-3)-3);
+
+  // Corner freq marker
+  const xfc=fx(fc);
+  ctx.strokeStyle=cv('--a2');ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(xfc,pt);ctx.lineTo(xfc,pt+ph);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=cv('--a2');ctx.font='10px system-ui';
+  ctx.fillText('fc',xfc+2,pt+12);
+
+  // Filter curve
+  const colors={lp:cv('--a'),hp:cv('--a2'),bp:cv('--a4'),notch:cv('--a3')};
+  ctx.strokeStyle=colors[ftype];ctx.lineWidth=2.5;
+  ctx.beginPath();let first=true;
+  for(let i=0;i<=600;i++){
+    const lf=lMin+i/600*(lMax-lMin);
+    const f=Math.pow(10,lf);
+    const db=computeGain(f,fc,order,ftype,rip,q_notch);
+    const x=pl+i/600*pw,y=fy(Math.max(dbMin,Math.min(dbMax,db)));
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // f3 dot
+  const xf3=fx(f3);
+  ctx.fillStyle=colors[ftype];
+  ctx.beginPath();ctx.arc(xf3,fy(-3),5,0,2*Math.PI);ctx.fill();
+
+  // Axes
+  ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    const f=Math.pow(10,d);
+    const l=f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f;
+    if(x>=pl&&x<=pl+pw)ctx.fillText(l,x-6,pt+ph+14);
+  }
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Gain (dB)',4,pt-8);
+  ctx.fillText('Frequency',pl+pw/2-30,H-2);
+  const titles={lp:'Low-Pass',hp:'High-Pass',bp:'Bandpass',notch:'Notch'};
+  const approxNames={butter:'Butterworth',cheby:'Chebyshev',bessel:'Bessel',ellip:'Elliptic'};
+  ctx.fillText(titles[ftype]+' — '+approxNames[approx]+' Order '+parseInt(document.getElementById('order').value),pl+4,pt-10);
+}
+
+function drawPhase(fc,order,q_notch){
+  const ctx=getCtx('c_phase');
+  const W=ctx.W,H=ctx.H,pl=55,pr=18,pt=22,pb=30;
+  const pw=W-pl-pr,ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  const fMin=fc*0.01,fMax=fc*100;
+  const lMin=Math.log10(fMin),lMax=Math.log10(fMax);
+  const phMin=-200,phMax=200;
+  const fx=f=>pl+(Math.log10(f)-lMin)/(lMax-lMin)*pw;
+  const fy=p=>pt+(1-(p-phMin)/(phMax-phMin))*ph;
+
+  ctx.strokeStyle=cv('--gr');ctx.lineWidth=0.7;
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    if(x>=pl&&x<=pl+pw){ctx.beginPath();ctx.moveTo(x,pt);ctx.lineTo(x,pt+ph);ctx.stroke();}
+  }
+  [-180,-90,0,90,180].forEach(p=>{
+    const y=fy(p);
+    if(y>=pt&&y<=pt+ph){
+      ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+pw,y);ctx.stroke();
+      ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';ctx.fillText(p+'°',2,y+4);
+    }
+  });
+
+  const colors={lp:cv('--a'),hp:cv('--a2'),bp:cv('--a4'),notch:cv('--a3')};
+  ctx.strokeStyle=colors[ftype];ctx.lineWidth=2;
+  ctx.beginPath();let first=true;
+  for(let i=0;i<=600;i++){
+    const lf=lMin+i/600*(lMax-lMin);
+    const f=Math.pow(10,lf);
+    const p=computePhase(f,fc,order,ftype,q_notch);
+    const x=pl+i/600*pw,y=fy(Math.max(phMin,Math.min(phMax,p)));
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    const f=Math.pow(10,d);
+    const l=f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f;
+    if(x>=pl&&x<=pl+pw)ctx.fillText(l,x-6,pt+ph+14);
+  }
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Phase (°)',4,pt-4);
+  ctx.fillText('Frequency',pl+pw/2-30,H-2);
+}
+
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

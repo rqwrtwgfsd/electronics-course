@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>M4B-2OTA-8.2.1 — Two-Stage OTA Design Sizing Simulator</title>
+<style>
+  body { font-family: 'Courier New', monospace; background: #0a0a0a; color: #e0e0e0; margin: 0; padding: 20px; }
+  h1 { color: #00bcd4; font-size: 1.1em; margin-bottom: 4px; }
+  .subtitle { color: #888; font-size: 0.85em; margin-bottom: 20px; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .tab { padding: 8px 16px; background: #1a1a1a; border: 1px solid #333; cursor: pointer; font-family: inherit; font-size: 0.85em; color: #aaa; }
+  .tab.active { background: #00bcd4; color: #000; border-color: #00bcd4; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  canvas { background: #111; border: 1px solid #333; display: block; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+  .ctrl { background: #1a1a1a; border: 1px solid #333; padding: 8px 12px; min-width: 180px; }
+  .ctrl label { display: block; color: #aaa; font-size: 0.78em; margin-bottom: 4px; }
+  .ctrl input[type=range] { width: 100%; accent-color: #00bcd4; }
+  .ctrl .val { color: #00bcd4; font-size: 0.85em; }
+  .ctrl select { background: #222; color: #e0e0e0; border: 1px solid #444; padding: 4px; font-family: inherit; width: 100%; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .result-box { background: #111; border: 1px solid #333; padding: 12px; }
+  .result-box h3 { color: #ffeb3b; font-size: 0.9em; margin: 0 0 10px 0; border-bottom: 1px solid #333; padding-bottom: 4px; }
+  .rrow { display: flex; justify-content: space-between; font-size: 0.82em; margin: 4px 0; }
+  .rrow .rl { color: #888; }
+  .rrow .rv { color: #00bcd4; }
+  .rrow .pass { color: #4caf50; }
+  .rrow .fail { color: #f44336; }
+  .rrow .warn { color: #ffeb3b; }
+  .step-flow { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+  .step { background: #1a1a1a; border-left: 3px solid #333; padding: 8px 12px; font-size: 0.82em; }
+  .step.active { border-left-color: #00bcd4; }
+  .step .snum { color: #00bcd4; font-weight: bold; margin-right: 6px; }
+  .step .sval { color: #4caf50; }
+  .step .sfail { color: #f44336; }
+</style>
+</head>
+<body>
+<h1>M4B-2OTA-8.2.1 — Two-Stage OTA Systematic Sizing</h1>
+<div class="subtitle">Step-by-step 7-step procedure: enter specs, get full device sizing with verification</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab(0)">7-Step Sizing</div>
+  <div class="tab" onclick="switchTab(1)">Power vs PM Trade-off</div>
+  <div class="tab" onclick="switchTab(2)">SR vs GBW Trade-off</div>
+</div>
+
+<!-- TAB 0: 7-Step Sizing -->
+<div class="panel active" id="tab0">
+  <div class="controls">
+    <div class="ctrl">
+      <label>GBW target (MHz): <span class="val" id="s_gbw_v">100</span></label>
+      <input type="range" id="s_gbw" min="1" max="5000" step="1" value="100" oninput="runSizing()">
+    </div>
+    <div class="ctrl">
+      <label>CL (pF): <span class="val" id="s_cl_v">3.0</span></label>
+      <input type="range" id="s_cl" min="0.1" max="50" step="0.1" value="3.0" oninput="runSizing()">
+    </div>
+    <div class="ctrl">
+      <label>PM target (°): <span class="val" id="s_pm_v">60</span></label>
+      <input type="range" id="s_pm" min="30" max="85" step="1" value="60" oninput="runSizing()">
+    </div>
+    <div class="ctrl">
+      <label>VDD (V): <span class="val" id="s_vdd_v">1.2</span></label>
+      <input type="range" id="s_vdd" min="0.6" max="5.0" step="0.1" value="1.2" oninput="runSizing()">
+    </div>
+    <div class="ctrl">
+      <label>Vov1 (mV): <span class="val" id="s_vov1_v">100</span></label>
+      <input type="range" id="s_vov1" min="30" max="350" step="5" value="100" oninput="runSizing()">
+    </div>
+    <div class="ctrl">
+      <label>Vov2 (mV): <span class="val" id="s_vov2_v">100</span></label>
+      <input type="range" id="s_vov2" min="50" max="350" step="5" value="100" oninput="runSizing()">
+    </div>
+    <div class="ctrl">
+      <label>Cc ratio (Cc/CL): <span class="val" id="s_ccratio_v">0.50</span></label>
+      <input type="range" id="s_ccratio" min="0.05" max="1.5" step="0.05" value="0.50" oninput="runSizing()">
+    </div>
+    <div class="ctrl">
+      <label>Process:
+        <select id="s_proc" onchange="runSizing()">
+          <option value="180">TSMC 180nm</option>
+          <option value="65" selected>TSMC 65nm</option>
+          <option value="28">TSMC 28nm</option>
+        </select>
+      </label>
+    </div>
+    <div class="ctrl">
+      <label>First stage type:
+        <select id="s_stage1" onchange="runSizing()">
+          <option value="simple">Simple diff pair</option>
+          <option value="cascode" selected>Telescopic cascode</option>
+        </select>
+      </label>
+    </div>
+    <div class="ctrl">
+      <label>Analog L multiplier (×Lmin): <span class="val" id="s_lmul_v">3</span></label>
+      <input type="range" id="s_lmul" min="1" max="10" step="1" value="3" oninput="runSizing()">
+    </div>
+  </div>
+
+  <div class="step-flow" id="steps_output"></div>
+
+  <div class="grid2">
+    <div class="result-box" id="summary_left">
+      <h3>Device Summary</h3>
+    </div>
+    <div class="result-box" id="summary_right">
+      <h3>Performance Verification</h3>
+    </div>
+  </div>
+</div>
+
+<!-- TAB 1: Power vs PM Trade-off -->
+<div class="panel" id="tab1">
+  <div class="controls">
+    <div class="ctrl">
+      <label>GBW (MHz): <span class="val" id="t1_gbw_v">100</span></label>
+      <input type="range" id="t1_gbw" min="1" max="2000" step="1" value="100" oninput="drawTradeoff1()">
+    </div>
+    <div class="ctrl">
+      <label>CL (pF): <span class="val" id="t1_cl_v">3.0</span></label>
+      <input type="range" id="t1_cl" min="0.1" max="30" step="0.1" value="3.0" oninput="drawTradeoff1()">
+    </div>
+    <div class="ctrl">
+      <label>VDD (V): <span class="val" id="t1_vdd_v">1.2</span></label>
+      <input type="range" id="t1_vdd" min="0.6" max="5.0" step="0.1" value="1.2" oninput="drawTradeoff1()">
+    </div>
+    <div class="ctrl">
+      <label>Vov1 = Vov2 (mV): <span class="val" id="t1_vov_v">100</span></label>
+      <input type="range" id="t1_vov" min="30" max="300" step="5" value="100" oninput="drawTradeoff1()">
+    </div>
+  </div>
+  <canvas id="chart1" width="860" height="380"></canvas>
+</div>
+
+<!-- TAB 2: SR vs GBW -->
+<div class="panel" id="tab2">
+  <div class="controls">
+    <div class="ctrl">
+      <label>CL (pF): <span class="val" id="t2_cl_v">3.0</span></label>
+      <input type="range" id="t2_cl" min="0.1" max="30" step="0.1" value="3.0" oninput="drawTradeoff2()">
+    </div>
+    <div class="ctrl">
+      <label>Vov1 (mV): <span class="val" id="t2_vov_v">100</span></label>
+      <input type="range" id="t2_vov" min="30" max="300" step="5" value="100" oninput="drawTradeoff2()">
+    </div>
+    <div class="ctrl">
+      <label>Cc/CL ratio: <span class="val" id="t2_ratio_v">0.50</span></label>
+      <input type="range" id="t2_ratio" min="0.1" max="1.5" step="0.05" value="0.5" oninput="drawTradeoff2()">
+    </div>
+  </div>
+  <canvas id="chart2" width="860" height="380"></canvas>
+  <div style="font-size:0.8em;color:#888;margin-top:8px">SR = ISS/Cc. For a given ISS (which sets gm1 and thus GBW), SR and GBW are coupled. Higher GBW needs higher gm1 → higher ISS → higher SR. But Cc sets GBW independently of ISS via GBW=gm1/2πCc. Increasing Cc reduces GBW without changing SR. Decreasing Cc increases GBW and reduces SR.</div>
+</div>
+
+<script>
+const PROC_P = {
+  '180': { unCox: 270e-6, upCox: 70e-6, Lmin: 180e-9, lambda0: 0.05, vth_n: 0.5 },
+  '65':  { unCox: 500e-6, upCox: 120e-6, Lmin: 65e-9,  lambda0: 0.15, vth_n: 0.4 },
+  '28':  { unCox: 650e-6, upCox: 200e-6, Lmin: 28e-9,  lambda0: 0.25, vth_n: 0.35 }
+};
+
+function getSV(id, dec) {
+  const v = parseFloat(document.getElementById(id).value);
+  document.getElementById(id+'_v').textContent = v.toFixed(dec);
+  return v;
+}
+
+function runSizing() {
+  const gbw   = getSV('s_gbw', 0) * 1e6;
+  const cl    = getSV('s_cl', 1) * 1e-12;
+  const pm    = getSV('s_pm', 0);
+  const vdd   = getSV('s_vdd', 1);
+  const vov1  = getSV('s_vov1', 0) * 1e-3;
+  const vov2  = getSV('s_vov2', 0) * 1e-3;
+  const ccR   = getSV('s_ccratio', 2);
+  const proc  = document.getElementById('s_proc').value;
+  const st1   = document.getElementById('s_stage1').value;
+  const lmul  = getSV('s_lmul', 0);
+  const P     = PROC_P[proc];
+  const L_anal = P.Lmin * lmul;
+  const lambda = P.lambda0 / (L_anal / 1e-6); // λ ∝ 1/L
+
+  const Cc = cl * ccR;
+
+  // Step 1
+  const gm1 = gbw * 2 * Math.PI * Cc;
+
+  // Step 2
+  const ID1 = gm1 * vov1 / 2;
+  const ISS = 2 * ID1;
+  const WL1 = 2 * ID1 / (P.unCox * vov1 ** 2);
+  const W1  = WL1 * L_anal;
+
+  // Step 3
+  const tanPM = Math.tan(pm * Math.PI / 180);
+  const fp2_req = gbw * tanPM;
+  const gm2 = fp2_req * 2 * Math.PI * cl;
+
+  // Step 4
+  const ID2 = gm2 * vov2 / 2;
+  const WL6 = 2 * ID2 / (P.unCox * vov2 ** 2);
+  const WL7 = 2 * ID2 / (P.upCox * vov2 ** 2);
+
+  // Step 5 verify
+  const cc_ok = Cc < cl;
+  const actual_gbw = gm1 / (2 * Math.PI * Cc);
+
+  // Gain calculation
+  const ro1 = 1 / (lambda * ID1);
+  let Rout1;
+  if (st1 === 'cascode') {
+    Rout1 = gm1 * ro1 * ro1 / 2; // simplified
+  } else {
+    Rout1 = ro1 / 2;
+  }
+  const Av1 = gm1 * Rout1;
+
+  const ro2 = 1 / (lambda * ID2);
+  const Rout2 = ro2 / 2;
+  const Av2 = gm2 * Rout2;
+  const Av_total = Av1 * Av2;
+
+  // Power
+  const IDD = ISS + ID2;
+  const Pwr = IDD * vdd;
+
+  // Swing
+  const swing_max = vdd - vov2;
+  const swing_min = vov2;
+  const swing = (swing_max - swing_min) / vdd * 100;
+
+  // SR
+  const SR = ISS / Cc; // V/s → convert to V/µs
+
+  // RHP zero
+  const fz = gm2 / (2 * Math.PI * Cc);
+
+  // Step output
+  const fmt = (v, u) => {
+    if (u === 'mA/V') return (v*1000).toFixed(3)+' mA/V';
+    if (u === 'µA')   return (v*1e6).toFixed(1)+' µA';
+    if (u === 'pF')   return (v*1e12).toFixed(2)+' pF';
+    if (u === 'MHz')  return (v/1e6).toFixed(1)+' MHz';
+    if (u === 'GHz')  return (v/1e9).toFixed(2)+' GHz';
+    if (u === 'kΩ')   return (v/1e3).toFixed(1)+' kΩ';
+    if (u === 'MΩ')   return (v/1e6).toFixed(1)+' MΩ';
+    if (u === 'mW')   return (v*1000).toFixed(3)+' mW';
+    if (u === 'µm')   return (v*1e6).toFixed(2)+' µm';
+    return v.toFixed(2) + ' ' + u;
+  };
+
+  const steps = [
+    { n:1, title:'Compute gm1', items:[
+      `gm1 = GBW × 2π × Cc = ${fmt(gbw,'MHz')} × 2π × ${fmt(Cc,'pF')} = <span class="sval">${fmt(gm1,'mA/V')}</span>`
+    ]},
+    { n:2, title:'Size input pair (M1/M2)', items:[
+      `ID1 = gm1 × Vov1/2 = ${fmt(gm1,'mA/V')} × ${(vov1*1000).toFixed(0)}mV/2 = <span class="sval">${fmt(ID1,'µA')}</span>`,
+      `ISS = 2 × ID1 = <span class="sval">${fmt(ISS,'µA')}</span>`,
+      `W/L_M1 = <span class="sval">${WL1.toFixed(1)}</span>  (W = ${fmt(W1,'µm')}, L = ${(L_anal*1e9).toFixed(0)}nm)`,
+      `ro1 = 1/(λ×ID1) = <span class="sval">${fmt(ro1,'kΩ')}</span>  (λ=${lambda.toFixed(2)}/V at L=${(L_anal*1e9).toFixed(0)}nm)`
+    ]},
+    { n:3, title:'Compute gm2 for PM', items:[
+      `PM = ${pm}° → tan(PM) = ${tanPM.toFixed(2)} → fp2_req = GBW×tan(PM) = <span class="sval">${fmt(fp2_req,'MHz')}</span>`,
+      `gm2 = fp2_req × 2π × CL = <span class="sval">${fmt(gm2,'mA/V')}</span>`,
+      `gm2/gm1 = <span class="sval">${(gm2/gm1).toFixed(2)}</span>`
+    ]},
+    { n:4, title:'Size stage 2 (M6/M7)', items:[
+      `ID2 = gm2 × Vov2/2 = <span class="sval">${fmt(ID2,'µA')}</span>`,
+      `W/L_M6 (NMOS) = <span class="sval">${WL6.toFixed(1)}</span>`,
+      `W/L_M7 (PMOS) = <span class="sval">${WL7.toFixed(1)}</span>  (µp ratio = ${(P.upCox/P.unCox).toFixed(2)})`
+    ]},
+    { n:5, title:'Set Cc and verify', items:[
+      `Cc = CL × ${ccR.toFixed(2)} = <span class="sval">${fmt(Cc,'pF')}</span>  ${cc_ok?'<span class="sval">Cc < CL ✓</span>':'<span class="sfail">Cc ≥ CL — pole splitting may fail!</span>'}`,
+      `Actual GBW = gm1/(2πCc) = <span class="sval">${fmt(actual_gbw,'MHz')}</span>`,
+      `fp2 = gm2/(2πCL) = <span class="sval">${fmt(fp2_req,'MHz')}</span>`,
+      `fp2/GBW = <span class="sval">${(fp2_req/actual_gbw).toFixed(2)}</span>  ${fp2_req/actual_gbw >= tanPM*0.95 ? '<span class="sval">✓</span>':'<span class="sfail">✗</span>'}`
+    ]},
+    { n:6, title:'Nulling Rs', items:[
+      `Rs = 1/gm2 = <span class="sval">${(1/gm2*1000).toFixed(0)} Ω</span>`,
+      `Implement as transistor M_Rs with VGS = VGS_M6 (self-tracking)`,
+      `RHP zero without Rs: fz = <span class="sval">${fmt(fz,'MHz')}</span>  →  fz/GBW = ${(fz/actual_gbw).toFixed(1)}`
+    ]},
+    { n:7, title:'Power and swing verify', items:[
+      `Total IDD = ISS + ID2 = ${fmt(ISS,'µA')} + ${fmt(ID2,'µA')} = <span class="sval">${fmt(IDD,'µA')}</span>`,
+      `Power = <span class="sval">${fmt(Pwr,'mW')}</span>`,
+      `Swing = ${vdd}V − 2×${(vov2*1000).toFixed(0)}mV = <span class="sval">${(swing).toFixed(0)}% VDD</span>`,
+      `SR = ISS/Cc = <span class="sval">${(SR*1e-6).toFixed(0)} V/µs</span>`
+    ]}
+  ];
+
+  document.getElementById('steps_output').innerHTML = steps.map(s =>
+    `<div class="step active">
+      <span class="snum">Step ${s.n}:</span> ${s.title}
+      <ul style="margin:4px 0 0 20px;list-style:none;padding:0">${s.items.map(i=>`<li style="margin:2px 0">→ ${i}</li>`).join('')}</ul>
+    </div>`).join('');
+
+  document.getElementById('summary_left').innerHTML = `
+    <h3>Device Summary</h3>
+    <div class="rrow"><span class="rl">Process:</span><span class="rv">TSMC ${proc}nm</span></div>
+    <div class="rrow"><span class="rl">gm1:</span><span class="rv">${fmt(gm1,'mA/V')}</span></div>
+    <div class="rrow"><span class="rl">ISS:</span><span class="rv">${fmt(ISS,'µA')}</span></div>
+    <div class="rrow"><span class="rl">W/L_M1:</span><span class="rv">${WL1.toFixed(1)}</span></div>
+    <div class="rrow"><span class="rl">gm2:</span><span class="rv">${fmt(gm2,'mA/V')}</span></div>
+    <div class="rrow"><span class="rl">ID2:</span><span class="rv">${fmt(ID2,'µA')}</span></div>
+    <div class="rrow"><span class="rl">W/L_M6:</span><span class="rv">${WL6.toFixed(1)}</span></div>
+    <div class="rrow"><span class="rl">W/L_M7:</span><span class="rv">${WL7.toFixed(1)}</span></div>
+    <div class="rrow"><span class="rl">Cc:</span><span class="rv">${fmt(Cc,'pF')}</span></div>
+    <div class="rrow"><span class="rl">Rs:</span><span class="rv">${(1/gm2*1000).toFixed(0)} Ω</span></div>`;
+
+  const avC = Av_total >= 1e4 ? 'pass' : Av_total >= 1000 ? 'warn' : 'fail';
+  const pmSimple = 90 - Math.atan(actual_gbw/fp2_req) * 180/Math.PI;
+  const pmC = pmSimple >= pm ? 'pass' : pmSimple >= pm-10 ? 'warn' : 'fail';
+
+  document.getElementById('summary_right').innerHTML = `
+    <h3>Performance Verification</h3>
+    <div class="rrow"><span class="rl">Actual GBW:</span><span class="rv">${fmt(actual_gbw,'MHz')}</span></div>
+    <div class="rrow"><span class="rl">DC Gain Av1:</span><span class="rv">${(20*Math.log10(Av1)).toFixed(0)} dB</span></div>
+    <div class="rrow"><span class="rl">DC Gain Av2:</span><span class="rv">${(20*Math.log10(Av2)).toFixed(0)} dB</span></div>
+    <div class="rrow"><span class="rl">Total Gain:</span><span class="rv ${avC}">${(20*Math.log10(Av_total)).toFixed(0)} dB</span></div>
+    <div class="rrow"><span class="rl">Estimated PM:</span><span class="rv ${pmC}">${pmSimple.toFixed(1)}°</span></div>
+    <div class="rrow"><span class="rl">Output Swing:</span><span class="rv">${swing.toFixed(0)}% VDD</span></div>
+    <div class="rrow"><span class="rl">Slew Rate:</span><span class="rv">${(SR*1e-6).toFixed(0)} V/µs</span></div>
+    <div class="rrow"><span class="rl">Total IDD:</span><span class="rv">${fmt(IDD,'µA')}</span></div>
+    <div class="rrow"><span class="rl">Power:</span><span class="rv">${fmt(Pwr,'mW')}</span></div>
+    <div class="rrow"><span class="rl">FoM_S:</span><span class="rv">${(actual_gbw/1e6 * cl/1e-12 / (IDD/1e-3)).toFixed(0)} GHz·pF/A</span></div>`;
+}
+
+function drawTradeoff1() {
+  const gbw = getSV('t1_gbw',0)*1e6, cl = getSV('t1_cl',1)*1e-12;
+  const vdd = getSV('t1_vdd',1), vov = getSV('t1_vov',0)*1e-3;
+
+  const canvas = document.getElementById('chart1');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  const M2 = {top:40,bottom:50,left:70,right:100};
+  const pw = W-M2.left-M2.right, ph = H-M2.top-M2.bottom;
+
+  // Sweep PM from 30 to 85°
+  const pms = Array.from({length:60}, (_,i) => 30 + i);
+  const idds = pms.map(pm => {
+    const tanPM = Math.tan(pm*Math.PI/180);
+    const gm1 = gbw * 2 * Math.PI * cl;
+    const id1 = gm1 * vov / 2;
+    const iss = 2 * id1;
+    const fp2_req = gbw * tanPM;
+    const gm2 = fp2_req * 2 * Math.PI * cl;
+    const id2 = gm2 * vov / 2;
+    return (iss + id2) * 1e6;
+  });
+
+  const maxIDD = Math.max(...idds) * 1.1;
+
+  function xC(pm) { return M2.left + (pm-30)/55 * pw; }
+  function yC(idd) { return M2.top + (1 - idd/maxIDD) * ph; }
+
+  // Grid
+  [30,45,60,75,85].forEach(pm => {
+    const x = xC(pm);
+    ctx.strokeStyle = pm===60?'#ffeb3b':'#1a1a1a'; ctx.lineWidth = pm===60?1.5:1;
+    ctx.beginPath(); ctx.moveTo(x,M2.top); ctx.lineTo(x,H-M2.bottom); ctx.stroke();
+    ctx.fillStyle = pm===60?'#ffeb3b':'#555'; ctx.font='9px Courier New'; ctx.textAlign='center';
+    ctx.fillText(pm+'°', x, H-M2.bottom+14);
+  });
+  [0,25,50,75].forEach(frac => {
+    const idd = maxIDD * frac/100;
+    const y = yC(idd);
+    ctx.strokeStyle='#1a1a1a'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(M2.left,y); ctx.lineTo(M2.left+pw,y); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px Courier New'; ctx.textAlign='right';
+    ctx.fillText(idd.toFixed(0)+'µA', M2.left-4, y+3);
+  });
+
+  ctx.strokeStyle='#00bcd4'; ctx.lineWidth=2.5; ctx.beginPath();
+  pms.forEach((pm,i) => { i===0?ctx.moveTo(xC(pm),yC(idds[i])):ctx.lineTo(xC(pm),yC(idds[i])); });
+  ctx.stroke();
+
+  // Current PM marker
+  const curPM = parseFloat(document.getElementById('s_pm').value);
+  const curIDD = pms.map((p,i)=>({pm:p,idd:idds[i]})).find(d=>Math.abs(d.pm-curPM)<1);
+  if (curIDD) {
+    const x = xC(curIDD.pm), y = yC(curIDD.idd);
+    ctx.fillStyle='#ffeb3b'; ctx.beginPath(); ctx.arc(x,y,5,0,2*Math.PI); ctx.fill();
+    ctx.fillStyle='#ffeb3b'; ctx.font='9px Courier New'; ctx.textAlign='left';
+    ctx.fillText(`${curIDD.idd.toFixed(0)}µA @ ${curPM}°`, x+8, y+4);
+  }
+
+  ctx.strokeStyle='#333'; ctx.strokeRect(M2.left,M2.top,pw,ph);
+  ctx.fillStyle='#888'; ctx.font='10px Courier New'; ctx.textAlign='center';
+  ctx.fillText(`Total IDD (µA) vs PM target — GBW=${(gbw/1e6).toFixed(0)}MHz, CL=${(cl*1e12).toFixed(1)}pF, Vov=${(vov*1000).toFixed(0)}mV`, M2.left+pw/2, M2.top-10);
+  ctx.fillText('Phase Margin Target (°)', M2.left+pw/2, H-8);
+}
+
+function drawTradeoff2() {
+  const cl    = getSV('t2_cl', 1) * 1e-12;
+  const vov   = getSV('t2_vov', 0) * 1e-3;
+  const ratio = getSV('t2_ratio', 2);
+
+  const canvas = document.getElementById('chart2');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  const M2 = {top:40,bottom:50,left:80,right:60};
+  const pw = W-M2.left-M2.right, ph = H-M2.top-M2.bottom;
+
+  const gbws = Array.from({length:60}, (_,i) => 1e6 * (1 + i*50));
+  const Cc   = cl * ratio;
+  const srs  = gbws.map(gbw => {
+    const gm1 = gbw * 2 * Math.PI * Cc;
+    const iss = gm1 * vov;
+    return iss / Cc / 1e6; // V/µs
+  });
+
+  const maxSR  = Math.max(...srs) * 1.1;
+  const maxGBW = Math.max(...gbws);
+
+  function xC(gbw) { return M2.left + (gbw/maxGBW)*pw; }
+  function ySR(sr) { return M2.top + (1-sr/maxSR)*ph; }
+
+  [0,25,50,75,100].forEach(frac => {
+    const sr = maxSR*frac/100;
+    const y = ySR(sr);
+    ctx.strokeStyle='#1a1a1a'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(M2.left,y); ctx.lineTo(M2.left+pw,y); ctx.stroke();
+    ctx.fillStyle='#555'; ctx.font='9px Courier New'; ctx.textAlign='right';
+    ctx.fillText(sr.toFixed(0)+'V/µs', M2.left-4, y+3);
+  });
+
+  ctx.strokeStyle='#4caf50'; ctx.lineWidth=2.5; ctx.beginPath();
+  gbws.forEach((gbw,i)=>{ i===0?ctx.moveTo(xC(gbw),ySR(srs[i])):ctx.lineTo(xC(gbw),ySR(srs[i])); });
+  ctx.stroke();
+
+  ctx.strokeStyle='#333'; ctx.strokeRect(M2.left,M2.top,pw,ph);
+  [0,500e6,1000e6,1500e6,2000e6,2500e6,3000e6].forEach(f => {
+    const x = xC(f);
+    ctx.fillStyle='#555'; ctx.font='9px Courier New'; ctx.textAlign='center';
+    ctx.fillText((f/1e6).toFixed(0)+'MHz', x, H-M2.bottom+14);
+  });
+  ctx.fillStyle='#888'; ctx.font='10px Courier New'; ctx.textAlign='center';
+  ctx.fillText(`SR (V/µs) vs GBW — CL=${(cl*1e12).toFixed(1)}pF, Vov=${(vov*1000).toFixed(0)}mV, Cc/CL=${ratio.toFixed(2)} (SR=ISS/Cc, ISS=gm1×Vov=GBW×2π×Cc×Vov)`, M2.left+pw/2, M2.top-10);
+  ctx.fillText('GBW (MHz)', M2.left+pw/2, H-8);
+}
+
+function switchTab(n) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===n));
+  document.querySelectorAll('.panel').forEach((p,i) => p.classList.toggle('active', i===n));
+  if (n===0) runSizing();
+  if (n===1) drawTradeoff1();
+  if (n===2) drawTradeoff2();
+}
+runSizing();
+</script>
+</body>
+</html>

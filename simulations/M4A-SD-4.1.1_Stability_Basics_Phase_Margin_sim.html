@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-SD-4.1.1 Stability Basics and Phase Margin</title>
+<style>
+  :root{--bg:#f5f5f5;--panel:#fff;--text:#1a1a1a;--muted:#666;--border:#ddd;
+    --a:#2563eb;--a2:#16a34a;--a3:#dc2626;--a4:#9333ea;--a5:#ea580c;
+    --cb:#fafafa;--gr:#e5e7eb;--hi:#fef9c3;--tb:#bfdbfe;}
+  @media(prefers-color-scheme:dark){:root{
+    --bg:#0f1117;--panel:#1e2130;--text:#e8eaf0;--muted:#8892a4;--border:#2d3348;
+    --a:#60a5fa;--a2:#4ade80;--a3:#f87171;--a4:#c084fc;--a5:#fb923c;
+    --cb:#161926;--gr:#2d3348;--hi:#2d2a0f;--tb:#3b82f6;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px;}
+  h1{font-size:16px;font-weight:700;padding:12px 18px;border-bottom:1px solid var(--border);background:var(--panel);}
+  h1 span{color:var(--muted);font-size:13px;font-weight:400;margin-left:8px;}
+  .layout{display:flex;height:calc(100vh - 47px);}
+  .left{width:290px;background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
+  .right{flex:1;display:flex;flex-direction:column;padding:10px;gap:8px;overflow:hidden;}
+  .sec{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:10px;}
+  .sec h3{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;}
+  label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:3px;}
+  label span{font-weight:600;color:var(--a);}
+  input[type=range]{width:100%;accent-color:var(--a);cursor:pointer;margin-bottom:5px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:5px;}
+  .card{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:6px 8px;}
+  .card .lb{font-size:10px;color:var(--muted);text-transform:uppercase;}
+  .card .vl{font-size:14px;font-weight:700;font-family:monospace;color:var(--a);margin-top:2px;}
+  .card.g .vl{color:var(--a2);}
+  .card.r .vl{color:var(--a3);}
+  .card.p .vl{color:var(--a4);}
+  .card.o .vl{color:var(--a5);}
+  canvas{display:block;border-radius:6px;background:var(--cb);border:1px solid var(--border);width:100%;}
+  .tip{background:var(--hi);border:1px solid var(--tb);border-radius:6px;padding:8px;font-size:11px;line-height:1.5;}
+  .verdict{padding:8px 12px;border-radius:6px;font-size:13px;font-weight:700;text-align:center;}
+  .verdict.stable{background:#d1fae5;color:#065f46;}
+  .verdict.marginal{background:#fef3c7;color:#92400e;}
+  .verdict.unstable{background:#fee2e2;color:#991b1b;}
+  @media(prefers-color-scheme:dark){
+    .verdict.stable{background:#064e3b;color:#6ee7b7;}
+    .verdict.marginal{background:#78350f;color:#fcd34d;}
+    .verdict.unstable{background:#7f1d1d;color:#fca5a5;}
+  }
+</style>
+</head>
+<body>
+<h1>M4A-SD-4.1.1 — Stability Basics and Phase Margin <span>Bode plot, crossover, phase margin, step response</span></h1>
+<div class="layout">
+<div class="left">
+
+  <div class="sec">
+    <h3>Op-Amp Parameters</h3>
+    <label>GBW (MHz) <span id="lbl_gbw">10</span></label>
+    <input type="range" id="gbw" min="0.1" max="100" value="10" step="0.1" oninput="update()">
+    <label>Closed-Loop Gain <span id="lbl_gain">1</span></label>
+    <input type="range" id="cl_gain" min="1" max="100" value="1" step="1" oninput="update()">
+  </div>
+
+  <div class="sec">
+    <h3>Load and Extra Poles</h3>
+    <label>Capacitive Load (pF) <span id="lbl_cl">0</span></label>
+    <input type="range" id="c_load" min="0" max="10000" value="0" step="100" oninput="update()">
+    <label>Series R (Ω) <span id="lbl_rs">0</span></label>
+    <input type="range" id="r_series" min="0" max="1000" value="0" step="10" oninput="update()">
+    <label>Extra Pole (kHz) <span id="lbl_ep">∞</span></label>
+    <input type="range" id="extra_pole" min="1" max="1000" value="1000" step="1" oninput="update()">
+    <label>Op-Amp Rout (Ω) <span id="lbl_rout">50</span></label>
+    <input type="range" id="rout" min="1" max="500" value="50" step="1" oninput="update()">
+  </div>
+
+  <div class="sec">
+    <h3>Stability Analysis</h3>
+    <div class="grid2">
+      <div class="card"><div class="lb">Crossover fc</div><div class="vl" id="r_fc">—</div></div>
+      <div class="card g"><div class="lb">Phase Margin</div><div class="vl" id="r_pm">—</div></div>
+      <div class="card o"><div class="lb">Gain Margin</div><div class="vl" id="r_gm">—</div></div>
+      <div class="card p"><div class="lb">Load Pole</div><div class="vl" id="r_lp">—</div></div>
+    </div>
+    <div class="verdict" id="verdict" style="margin-top:8px;">—</div>
+  </div>
+
+  <div class="tip" id="tip">Add capacitive load to degrade phase margin. Add series R to restore it.</div>
+
+</div>
+<div class="right">
+  <canvas id="c_bode" style="flex:3;"></canvas>
+  <canvas id="c_step" style="flex:2;"></canvas>
+</div>
+</div>
+<script>
+function cv(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function getCtx(id){
+  const c=document.getElementById(id);
+  c.width=c.offsetWidth*devicePixelRatio;
+  c.height=c.offsetHeight*devicePixelRatio;
+  const ctx=c.getContext('2d');
+  ctx.scale(devicePixelRatio,devicePixelRatio);
+  ctx.W=c.offsetWidth;ctx.H=c.offsetHeight;
+  return ctx;
+}
+function fmtHz(f){
+  if(f>=1e6) return (f/1e6).toFixed(2)+' MHz';
+  if(f>=1e3) return (f/1e3).toFixed(f>100000?0:1)+' kHz';
+  return f.toFixed(f>100?0:1)+' Hz';
+}
+
+function loopGainMag(f, gbw_hz, cl_gain, c_load_pf, r_series, rout, extra_pole_khz) {
+  // Open-loop gain: A(f) = A0/(1 + jf/fp1)  where fp1 is dominant pole
+  // For simplicity: A(jf) ≈ GBW/f at frequencies above dominant pole
+  // Noise gain for closed-loop gain = cl_gain: Beta = 1/cl_gain
+  // Loop gain T = A*Beta = A/cl_gain
+  // At frequency f: |A(jf)| = GBW / (f * sqrt(1+(f/gbw)^2))  simplified: GBW/f
+  const A_ol = gbw_hz / Math.max(f, 1); // single-pole model
+  const beta = 1/cl_gain;
+  let T = A_ol * beta;
+  // Load pole effect: additional pole from Rout (effective with series R) and CL
+  if(c_load_pf > 0) {
+    const R_eff = rout + r_series;
+    const fp_load = 1/(2*Math.PI*R_eff*c_load_pf*1e-12);
+    T /= Math.sqrt(1 + (f/fp_load)**2);
+  }
+  // Extra pole
+  if(extra_pole_khz < 1000) {
+    const fp_ex = extra_pole_khz * 1e3;
+    T /= Math.sqrt(1 + (f/fp_ex)**2);
+  }
+  // But also zero from series R (if CL > 0)
+  if(c_load_pf > 0 && r_series > 0) {
+    const fz = 1/(2*Math.PI*r_series*c_load_pf*1e-12);
+    T *= Math.sqrt(1 + (f/fz)**2); // zero restores some gain
+  }
+  return T;
+}
+
+function loopGainPhase(f, gbw_hz, cl_gain, c_load_pf, r_series, rout, extra_pole_khz) {
+  // Phase of open-loop gain
+  let ph = -Math.atan(f/gbw_hz)*180/Math.PI; // from single pole GBW rolloff
+  ph -= 90; // additional 90 from the integrating region below GBW (DC pole)
+  // Load pole
+  if(c_load_pf > 0) {
+    const R_eff = rout + r_series;
+    const fp_load = 1/(2*Math.PI*R_eff*c_load_pf*1e-12);
+    ph -= Math.atan(f/fp_load)*180/Math.PI;
+  }
+  // Extra pole
+  if(extra_pole_khz < 1000) {
+    const fp_ex = extra_pole_khz * 1e3;
+    ph -= Math.atan(f/fp_ex)*180/Math.PI;
+  }
+  // Series R zero restores phase
+  if(c_load_pf > 0 && r_series > 0) {
+    const fz = 1/(2*Math.PI*r_series*c_load_pf*1e-12);
+    ph += Math.atan(f/fz)*180/Math.PI;
+  }
+  return ph;
+}
+
+function update() {
+  const gbw = parseFloat(document.getElementById('gbw').value)*1e6;
+  const cl_gain = parseInt(document.getElementById('cl_gain').value);
+  const c_load = parseFloat(document.getElementById('c_load').value);
+  const r_series = parseFloat(document.getElementById('r_series').value);
+  const extra_pole_khz = parseFloat(document.getElementById('extra_pole').value);
+  const rout = parseFloat(document.getElementById('rout').value);
+
+  document.getElementById('lbl_gbw').textContent = parseFloat(document.getElementById('gbw').value).toFixed(1);
+  document.getElementById('lbl_gain').textContent = cl_gain;
+  document.getElementById('lbl_cl').textContent = c_load;
+  document.getElementById('lbl_rs').textContent = r_series;
+  document.getElementById('lbl_ep').textContent = extra_pole_khz>=1000?'∞':extra_pole_khz+' kHz';
+  document.getElementById('lbl_rout').textContent = rout;
+
+  // Find crossover frequency
+  let fc = gbw/cl_gain;
+  let lo=1, hi=gbw;
+  for(let i=0;i<80;i++){
+    const m=Math.sqrt(lo*hi);
+    if(loopGainMag(m,gbw,cl_gain,c_load,r_series,rout,extra_pole_khz)>1) lo=m; else hi=m;
+  }
+  fc = Math.sqrt(lo*hi);
+
+  // Phase at crossover
+  const ph_at_fc = loopGainPhase(fc, gbw, cl_gain, c_load, r_series, rout, extra_pole_khz);
+  const pm = 180 + ph_at_fc;
+
+  // Gain margin: at phase = -180°, find |T|
+  let f180 = gbw*10;
+  lo=fc; hi=gbw*1000;
+  for(let i=0;i<80;i++){
+    const m=Math.sqrt(lo*hi);
+    const ph=loopGainPhase(m,gbw,cl_gain,c_load,r_series,rout,extra_pole_khz);
+    if(ph>-180) lo=m; else hi=m;
+  }
+  f180=Math.sqrt(lo*hi);
+  const T_at_180=loopGainMag(f180,gbw,cl_gain,c_load,r_series,rout,extra_pole_khz);
+  const gm = T_at_180>0?-20*Math.log10(T_at_180):Infinity;
+
+  // Load pole
+  const lp = c_load>0 ? 1/(2*Math.PI*(rout+r_series)*c_load*1e-12) : Infinity;
+
+  document.getElementById('r_fc').textContent = fmtHz(fc);
+  document.getElementById('r_pm').textContent = pm.toFixed(1)+'°';
+  document.getElementById('r_gm').textContent = isFinite(gm)?gm.toFixed(1)+' dB':'∞';
+  document.getElementById('r_lp').textContent = isFinite(lp)?fmtHz(lp):'None';
+
+  const verd = document.getElementById('verdict');
+  if(pm >= 45) {
+    verd.className='verdict stable';
+    verd.textContent = `STABLE — Phase Margin = ${pm.toFixed(1)}°`;
+  } else if(pm >= 20) {
+    verd.className='verdict marginal';
+    verd.textContent = `MARGINAL — PM = ${pm.toFixed(1)}° (need ≥45°)`;
+  } else {
+    verd.className='verdict unstable';
+    verd.textContent = `UNSTABLE — PM = ${pm.toFixed(1)}° (oscillation likely)`;
+  }
+
+  document.getElementById('tip').textContent =
+    c_load > 0 && pm < 45
+    ?`Load capacitance ${c_load}pF creates pole at ${fmtHz(lp)}, reducing PM to ${pm.toFixed(1)}°. Add series R to restore margin.`
+    :pm >= 60
+    ?`Robust stability: PM=${pm.toFixed(1)}°. Step response will have <10% overshoot.`
+    :`PM=${pm.toFixed(1)}°. Acceptable but add margin by reducing CL or adding series R.`;
+
+  drawBode(gbw, cl_gain, c_load, r_series, rout, extra_pole_khz, fc, pm);
+  drawStep(pm, fc);
+}
+
+function drawBode(gbw, cl_gain, c_load, r_series, rout, ep_khz, fc, pm) {
+  const ctx = getCtx('c_bode');
+  const W=ctx.W, H=ctx.H, pl=55, pr=18, pt=28, pb=34;
+  const pw=W-pl-pr, ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  const fMin = 1, fMax = gbw*20;
+  const lMin = Math.log10(fMin), lMax = Math.log10(fMax);
+  const dbMin = -40, dbMax = 60;
+  const phMin = -270, phMax = 10;
+  const fx = f => pl+(Math.log10(f)-lMin)/(lMax-lMin)*pw;
+  const fyMag = db => pt+(1-(db-dbMin)/(dbMax-dbMin))*ph*0.55;
+  const fyPh = p => pt+ph*0.6+(1-(p-phMin)/(phMax-phMin))*ph*0.35;
+
+  // Grid
+  ctx.strokeStyle=cv('--gr');ctx.lineWidth=0.7;
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    if(x>=pl&&x<=pl+pw){ctx.beginPath();ctx.moveTo(x,pt);ctx.lineTo(x,pt+ph);ctx.stroke();}
+  }
+  [dbMin,-20,0,20,40,dbMax].forEach(db=>{
+    const y=fyMag(db);
+    if(y>=pt&&y<=pt+ph){
+      ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+pw,y);ctx.stroke();
+      ctx.fillStyle=cv('--muted');ctx.font='9px system-ui';ctx.fillText(db+'dB',2,y+3);
+    }
+  });
+  [-270,-180,-90,0].forEach(p=>{
+    const y=fyPh(p);
+    if(y>=pt&&y<=pt+ph){
+      ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+pw,y);ctx.stroke();
+      ctx.fillStyle=cv('--muted');ctx.font='9px system-ui';ctx.fillText(p+'°',2,y+3);
+    }
+  });
+
+  // 0 dB line (crossover)
+  ctx.strokeStyle=cv('--a5');ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pl,fyMag(0));ctx.lineTo(pl+pw,fyMag(0));ctx.stroke();ctx.setLineDash([]);
+  // -180° line
+  ctx.strokeStyle=cv('--a3');ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pl,fyPh(-180));ctx.lineTo(pl+pw,fyPh(-180));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=cv('--a3');ctx.font='9px system-ui';ctx.fillText('-180° (instability)',pl+4,fyPh(-180)-2);ctx.setLineDash([]);
+
+  // Magnitude curve
+  ctx.strokeStyle=cv('--a');ctx.lineWidth=2.5;
+  ctx.beginPath();let first=true;
+  for(let i=0;i<=700;i++){
+    const lf=lMin+i/700*(lMax-lMin);
+    const f=Math.pow(10,lf);
+    const T=loopGainMag(f,gbw,cl_gain,c_load,r_series,rout,ep_khz);
+    const db=20*Math.log10(Math.max(T,1e-6));
+    const x=pl+i/700*pw,y=fyMag(Math.max(dbMin,Math.min(dbMax,db)));
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Phase curve
+  ctx.strokeStyle=cv('--a4');ctx.lineWidth=2;
+  ctx.beginPath();first=true;
+  for(let i=0;i<=700;i++){
+    const lf=lMin+i/700*(lMax-lMin);
+    const f=Math.pow(10,lf);
+    const ph=loopGainPhase(f,gbw,cl_gain,c_load,r_series,rout,ep_khz);
+    const x=pl+i/700*pw,y=fyPh(Math.max(phMin,Math.min(phMax,ph)));
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // fc marker and phase margin annotation
+  const xfc=fx(fc);
+  const ph_fc=loopGainPhase(fc,gbw,cl_gain,c_load,r_series,rout,ep_khz);
+  ctx.strokeStyle=cv('--a2');ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(xfc,pt);ctx.lineTo(xfc,pt+ph);ctx.stroke();ctx.setLineDash([]);
+  // Phase margin arrow
+  const y_fc_ph=fyPh(ph_fc);
+  const y_180=fyPh(-180);
+  const pm_color=pm>=45?cv('--a2'):pm>=20?cv('--a5'):cv('--a3');
+  ctx.strokeStyle=pm_color;ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(xfc,y_fc_ph);ctx.lineTo(xfc,y_180);ctx.stroke();
+  ctx.fillStyle=pm_color;ctx.font='bold 10px system-ui';
+  ctx.fillText('PM='+pm.toFixed(1)+'°',xfc+4,Math.min(y_fc_ph,y_180)+Math.abs(y_fc_ph-y_180)/2);
+
+  // Labels
+  ctx.fillStyle=cv('--muted');ctx.font='9px system-ui';
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    const f=Math.pow(10,d);
+    const l=f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f;
+    if(x>=pl&&x<=pl+pw)ctx.fillText(l,x-6,pt+ph+14);
+  }
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Loop Gain (dB) & Phase',pl+4,pt-10);
+  ctx.fillStyle=cv('--a');ctx.font='10px system-ui';ctx.fillText('|T(jf)|',pl+pw-50,pt+14);
+  ctx.fillStyle=cv('--a4');ctx.fillText('∠T(jf)',pl+pw-50,pt+26);
+}
+
+function drawStep(pm, fc) {
+  const ctx=getCtx('c_step');
+  const W=ctx.W,H=ctx.H,pl=50,pr=18,pt=24,pb=28;
+  const pw=W-pl-pr,ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Closed-Loop Step Response',pl+4,pt-8);
+
+  const T=5/fc;
+  const tx=t=>pl+t/T*pw;
+  const vy=v=>pt+ph*0.05+(1-v)*ph*0.9;
+
+  // Estimate closed-loop step response from phase margin
+  const Q_cl = 1/(2*Math.sin(pm*Math.PI/180));
+  const wn=2*Math.PI*fc;
+
+  function stepResp(t){
+    const zeta=1/(2*Math.max(Q_cl,0.1));
+    if(pm<=0) return 1+Math.sin(wn*t)*0.5; // oscillation approx
+    if(zeta>=1){
+      const r1=-zeta*wn+wn*Math.sqrt(zeta*zeta-1);
+      const r2=-zeta*wn-wn*Math.sqrt(zeta*zeta-1);
+      return Math.max(0,1+(r2*Math.exp(r1*t)-r1*Math.exp(r2*t))/(r1-r2));
+    } else {
+      const wd=wn*Math.sqrt(1-zeta*zeta);
+      return 1-Math.exp(-zeta*wn*t)*(Math.cos(wd*t)+zeta/Math.sqrt(1-zeta*zeta)*Math.sin(wd*t));
+    }
+  }
+
+  // Grid
+  ctx.strokeStyle=cv('--gr');ctx.lineWidth=0.7;
+  [0,0.5,1.0,1.5].forEach(v=>{
+    const y=vy(v);
+    if(y>=pt&&y<=pt+ph){
+      ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+pw,y);ctx.stroke();
+      ctx.fillStyle=cv('--muted');ctx.font='9px system-ui';ctx.fillText(v.toFixed(1),2,y+3);
+    }
+  });
+
+  // Step response
+  const pm_color=pm>=45?cv('--a2'):pm>=20?cv('--a5'):cv('--a3');
+  ctx.strokeStyle=pm_color;ctx.lineWidth=2.5;
+  ctx.beginPath();let first=true;
+  for(let i=0;i<=500;i++){
+    const t=i/500*T;
+    const v=stepResp(t);
+    const x=tx(t),y=vy(Math.max(-0.3,Math.min(2,v)));
+    if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Unity line
+  ctx.strokeStyle=cv('--muted');ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pl,vy(1));ctx.lineTo(pl+pw,vy(1));ctx.stroke();ctx.setLineDash([]);
+
+  // Overshoot
+  let maxV=0;
+  for(let i=0;i<=1000;i++){
+    const t=i/1000*T;
+    const v=stepResp(t);
+    if(v>maxV) maxV=v;
+  }
+  const overshoot=(maxV-1)*100;
+  ctx.fillStyle=pm_color;ctx.font='bold 11px system-ui';
+  ctx.fillText('OS='+(overshoot>0?overshoot.toFixed(1):'0')+'%',pl+pw-70,pt+14);
+
+  ctx.fillStyle=cv('--muted');ctx.font='9px system-ui';
+  [1,2,3,4,5].forEach(k=>{
+    const t=k/fc,x=tx(t);
+    if(x>pl&&x<pl+pw) ctx.fillText(k+'/fc',x-8,pt+ph+14);
+  });
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Amplitude',4,pt-4);
+}
+
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

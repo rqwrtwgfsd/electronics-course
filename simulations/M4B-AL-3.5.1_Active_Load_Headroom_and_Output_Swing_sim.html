@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-AL-3.5.1 — Headroom and Output Swing</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  select{width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text);font-size:13px;margin-bottom:10px;}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  .ro.warn span{color:#cc4400;}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-AL-3.5.1</div>
+  <h1>Active Load — Headroom and Output Swing</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Headroom Parameters</h2>
+      <label>V_DD (V): <b id="vdd_l">1.8</b> V <input type="range" id="vdd" min="0.5" max="3.3" value="1.8" step="0.1"></label>
+      <label>V_ov,n (mV): <b id="vovn_l">200</b> mV <input type="range" id="vovn" min="50" max="400" value="200" step="10"></label>
+      <label>|V_ov,p| (mV): <b id="vovp_l">200</b> mV <input type="range" id="vovp" min="50" max="400" value="200" step="10"></label>
+      <label>Topology:
+        <select id="topo">
+          <option value="0">Simple active load</option>
+          <option value="1">Telescopic cascode</option>
+          <option value="2">Folded-cascode (standard bias)</option>
+          <option value="3">Folded-cascode (wide-swing)</option>
+          <option value="4">Two-stage second stage</option>
+        </select>
+      </label>
+      <label>Output bias offset from center (mV): <b id="off_l">0</b> <input type="range" id="off" min="-500" max="500" value="0" step="10"></label>
+
+      <div class="ro">V_out,min (mV): <span id="vmin_d">--</span></div>
+      <div class="ro" style="margin-top:4px">V_out,max (mV): <span id="vmax_d">--</span></div>
+      <div class="ro g" style="margin-top:4px">Symmetric swing (mVpp): <span id="swing_d">--</span></div>
+      <div class="ro" id="viable_ro" style="margin-top:4px">Status: <span id="viable_d">--</span></div>
+      <div class="insight">
+        Swing = V_DD − N_NMOS × V_ov,n − N_PMOS × |V_ov,p|. Cascodes add N layers to each side. Wide-swing maintains N=2 but reduces NMOS minimum from (V_th + V_ov) to V_ov per device.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Voltage Budget Visualization</h2>
+      <canvas id="cv" height="300"></canvas>
+    </div>
+  </div>
+</div>
+<script>
+  function getHeadroom(topo, vovn, vovp, vdd){
+    // returns {nmos_head (from GND), pmos_head (from VDD), vmin, vmax}
+    let nmos_h, pmos_h;
+    if(topo===0){nmos_h=vovn; pmos_h=vovp;}
+    else if(topo===1){nmos_h=2*vovn; pmos_h=2*vovp;}
+    else if(topo===2){nmos_h=2*vovn; pmos_h=2*vovp;}
+    else if(topo===3){nmos_h=vovn; pmos_h=vovp;} // wide-swing: same 2Vov but from Vov perspective already accounts for cascode
+    else {nmos_h=vovn; pmos_h=vovp;} // two-stage: simple output
+    return {nmos_h, pmos_h, vmin:nmos_h, vmax:vdd-pmos_h};
+  }
+
+  function compute(){
+    const vdd=+document.getElementById('vdd').value;
+    const vovn=+document.getElementById('vovn').value/1000;
+    const vovp=+document.getElementById('vovp').value/1000;
+    const topo=+document.getElementById('topo').value;
+    const off=+document.getElementById('off').value/1000;
+
+    document.getElementById('vdd_l').textContent=vdd.toFixed(1);
+    document.getElementById('vovn_l').textContent=(vovn*1000).toFixed(0);
+    document.getElementById('vovp_l').textContent=(vovp*1000).toFixed(0);
+    document.getElementById('off_l').textContent=(off*1000).toFixed(0);
+
+    const {nmos_h, pmos_h, vmin, vmax}=getHeadroom(topo, vovn, vovp, vdd);
+    const midpoint=vdd/2+off;
+    const swing_pos=vmax-midpoint;
+    const swing_neg=midpoint-vmin;
+    const swing=2*Math.min(swing_pos,swing_neg)*1000;
+
+    document.getElementById('vmin_d').textContent=(vmin*1000).toFixed(0);
+    document.getElementById('vmax_d').textContent=(vmax*1000).toFixed(0);
+    document.getElementById('swing_d').textContent=Math.max(0,swing).toFixed(0);
+
+    const v_ro=document.getElementById('viable_ro');
+    if(vmin>=vmax){v_ro.className='ro warn';document.getElementById('viable_d').textContent='NOT VIABLE';}
+    else if(swing<200){v_ro.className='ro warn';document.getElementById('viable_d').textContent='TIGHT — swing < 200 mV';}
+    else{v_ro.className='ro g';document.getElementById('viable_d').textContent='OK — '+Math.max(0,swing).toFixed(0)+' mVpp';}
+
+    draw(vdd, vmin, vmax, midpoint, nmos_h, pmos_h, topo);
+  }
+
+  const topoNames=['Simple','Telescopic','Folded-cas (std)','Folded-cas (wide)','Two-stage'];
+
+  function draw(vdd, vmin, vmax, midpoint, nmos_h, pmos_h, topo){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=300;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,300);
+
+    // Draw voltage budget stacked bar
+    const margin=40, bw=80;
+    const pH=300-80, pT2=30;
+    const yScale=v=>pT2+pH-(v/vdd)*pH;
+    const x0=(W-bw)/2;
+
+    // Background bar (V_DD)
+    ctx.fillStyle='#8888aa22';
+    ctx.fillRect(x0,pT2,bw,pH);
+
+    // GND region (NMOS headroom)
+    ctx.fillStyle='#cc220066';
+    const hNMOS=Math.min(nmos_h/vdd,1)*pH;
+    ctx.fillRect(x0,pT2+pH-hNMOS,bw,hNMOS);
+    ctx.fillStyle='#cc2200'; ctx.font='10px system-ui'; ctx.textAlign='center';
+    if(hNMOS>14) ctx.fillText('NMOS '+( nmos_h*1000).toFixed(0)+'mV', x0+bw/2, pT2+pH-hNMOS/2+4);
+
+    // VDD region (PMOS headroom)
+    ctx.fillStyle='#0066cc66';
+    const hPMOS=Math.min(pmos_h/vdd,1)*pH;
+    ctx.fillRect(x0,pT2,bw,hPMOS);
+    ctx.fillStyle='#0066cc'; ctx.font='10px system-ui';
+    if(hPMOS>14) ctx.fillText('PMOS '+(pmos_h*1000).toFixed(0)+'mV', x0+bw/2, pT2+hPMOS/2+4);
+
+    // Swing region
+    if(vmax>vmin){
+      const swingTop=yScale(vmax);
+      const swingBot=yScale(vmin);
+      ctx.fillStyle='#00994d44';
+      ctx.fillRect(x0,swingTop,bw,swingBot-swingTop);
+      ctx.fillStyle='#00994d'; ctx.font='11px system-ui';
+      ctx.fillText('Swing', x0+bw/2, (swingTop+swingBot)/2+4);
+      ctx.font='9px system-ui';
+      ctx.fillText((( vmax-vmin)*1000).toFixed(0)+' mV', x0+bw/2, (swingTop+swingBot)/2+16);
+    }
+
+    // Midpoint marker
+    const yMid=yScale(midpoint);
+    ctx.strokeStyle='#ff880088'; ctx.lineWidth=2; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(x0-10,yMid); ctx.lineTo(x0+bw+10,yMid); ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle='#ff8800'; ctx.font='9px system-ui'; ctx.textAlign='left';
+    ctx.fillText('V_DC='+(midpoint*1000).toFixed(0)+'mV', x0+bw+14, yMid+4);
+
+    // V_DD and GND labels
+    ctx.fillStyle='#8888aa'; ctx.font='10px system-ui';
+    ctx.fillText('V_DD='+vdd.toFixed(1)+'V', x0, pT2-5);
+    ctx.fillText('GND', x0, pT2+pH+15);
+
+    // Y axis ticks
+    for(let v=0;v<=vdd;v+=0.2){
+      const y=yScale(v);
+      ctx.strokeStyle='#8888aa44'; ctx.lineWidth=1; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(x0-5,y); ctx.lineTo(x0,y); ctx.stroke();
+      ctx.fillStyle='#8888aa'; ctx.font='8px system-ui'; ctx.textAlign='right';
+      ctx.fillText(v.toFixed(1), x0-8, y+4);
+    }
+
+    // Title
+    ctx.fillStyle='#8888aa'; ctx.font='11px system-ui'; ctx.textAlign='center';
+    ctx.fillText(topoNames[topo], x0+bw/2, pT2-14);
+    ctx.textAlign='left';
+  }
+
+  document.querySelectorAll('input[type=range],select').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

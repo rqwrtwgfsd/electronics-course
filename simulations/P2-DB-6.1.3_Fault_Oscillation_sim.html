@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-DB-6.1.3 Fault: Unexpected Oscillation</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:12px;padding:12px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:240px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.warn{color:#ff6600;font-size:11px;margin-top:4px;line-height:1.5}
+.fix{color:#00aaff;font-size:11px;margin-top:6px;line-height:1.5;border-top:1px solid #2a2a4a;padding-top:6px}
+.formula{color:#ffaa00;font-size:11px;margin-top:8px;line-height:1.6}
+.sel-btn{display:block;width:100%;margin-top:5px;padding:5px;background:#1a1a3a;border:1px solid #334;color:#ccc;cursor:pointer;font-family:inherit;font-size:11px;border-radius:3px}
+.sel-btn.active{background:#2a1a00;border-color:#ff6600;color:#ffaa00}
+</style>
+</head>
+<body>
+<h1>P2-DB-6.1.3 — Fault: Unexpected Oscillation in RC Output</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="580" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>Parasitic LC Parameters</h2>
+<label>Parasitic Inductance L (nH)
+<input type="range" id="Lpar" min="1" max="500" step="1" value="50">
+<div class="readout" id="Lpar_v">L = 50 nH</div>
+</label>
+<label>Stray Capacitance C (pF)
+<input type="range" id="Cpar" min="5" max="500" step="5" value="100">
+<div class="readout" id="Cpar_v">C = 100 pF</div>
+</label>
+<label>Damping Resistance R (Ω)
+<input type="range" id="Rdamp" min="0" max="300" step="1" value="5">
+<div class="readout" id="Rdamp_v">R_damp = 5 Ω</div>
+</label>
+<h2 style="margin-top:10px">Root Cause Category</h2>
+<button class="sel-btn active" id="b_trace" onclick="setCtx('trace')">PCB Trace + Via Inductance</button>
+<button class="sel-btn" id="b_esr" onclick="setCtx('esr')">Capacitor ESL</button>
+<button class="sel-btn" id="b_lead" onclick="setCtx('lead')">Long Lead / Wire</button>
+<h2 style="margin-top:10px">Derived Parameters</h2>
+<div class="readout" id="f0">f₀ = —</div>
+<div class="readout" id="Z0">Z₀ = √(L/C) = —</div>
+<div class="readout" id="zeta">ζ = —</div>
+<div class="readout" id="R_crit">R_damp needed = —</div>
+<div class="warn" id="ring_warn"></div>
+<div class="fix" id="fix_msg"></div>
+<div class="formula">f₀ = 1/(2π√LC)<br>ζ = R/(2Z₀)<br>R_fix ≥ 2×Z₀ for no ring</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let L=50,C=100,R=5,ctxMode='trace';
+const W=580,H=380,PAD={l:60,r:20,t:30,b:40};
+const CW=W-PAD.l-PAD.r,CH=H-PAD.t-PAD.b;
+const Vin=5;
+
+function setCtx(m){ctxMode=m;['trace','esr','lead'].forEach(k=>document.getElementById('b_'+k).classList.toggle('active',k===m));draw();}
+['Lpar','Cpar','Rdamp'].forEach(id=>{
+  document.getElementById(id).oninput=function(){
+    if(id==='Lpar'){L=parseFloat(this.value);document.getElementById('Lpar_v').textContent='L = '+L+' nH';}
+    if(id==='Cpar'){C=parseFloat(this.value);document.getElementById('Cpar_v').textContent='C = '+C+' pF';}
+    if(id==='Rdamp'){R=parseFloat(this.value);document.getElementById('Rdamp_v').textContent='R_damp = '+R+' Ω';}
+    draw();
+  };
+});
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const Lh=L*1e-9,Ch=C*1e-12;
+  const w0=1/Math.sqrt(Lh*Ch);
+  const f0=w0/(2*Math.PI);
+  const Z0=Math.sqrt(Lh/Ch);
+  const alpha=R/(2*Lh);
+  const zeta_val=R/(2*Z0);
+  const Td=2*Math.PI/w0;
+  const R_crit=2*Z0;
+  // Time scale
+  const tmax=Math.min(15*Td*1e9,500); // ns
+  function toPx(t,v){
+    const vmin=-Vin*0.4,vmax=Vin*1.6;
+    return[PAD.l+CW*(t/tmax),PAD.t+CH*(1-(v-vmin)/(vmax-vmin))];
+  }
+  // Grid
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=8;i++){const x=PAD.l+CW*(i/8);ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=PAD.t+CH*(i/5);ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+CH);ctx.moveTo(PAD.l,PAD.t+CH);ctx.lineTo(PAD.l+CW,PAD.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  for(let i=0;i<=8;i++){const t=tmax*i/8;const x=PAD.l+CW*(i/8);ctx.fillText(t.toFixed(0)+'ns',x,PAD.t+CH+14);}
+  ctx.textAlign='right';
+  const vmin=-Vin*0.4,vmax_v=Vin*1.6;
+  for(let i=0;i<=5;i++){const v=vmin+(vmax_v-vmin)*(1-i/5);const y=PAD.t+CH*(i/5);ctx.fillText(v.toFixed(1)+'V',PAD.l-4,y+4);}
+  // Vin ref
+  const[,yvf]=toPx(0,Vin);
+  ctx.strokeStyle='#333';ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(PAD.l,yvf);ctx.lineTo(PAD.l+CW,yvf);ctx.stroke();ctx.setLineDash([]);
+  // Zero line
+  const[,y0]=toPx(0,0);
+  ctx.strokeStyle='#2a2a2a';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,y0);ctx.lineTo(PAD.l+CW,y0);ctx.stroke();
+  // Waveform
+  const underdamped=zeta_val<1;
+  const color=underdamped?'#ff6600':'#00ff88';
+  ctx.strokeStyle=color;ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=1000;i++){
+    const t_s=tmax*i/1000*1e-9;
+    let v;
+    if(underdamped){
+      const wd=w0*Math.sqrt(1-zeta_val*zeta_val);
+      v=Vin*(1-Math.exp(-alpha*t_s)*(Math.cos(wd*t_s)+alpha/wd*Math.sin(wd*t_s)));
+    } else {
+      const q=Math.sqrt(alpha*alpha-w0*w0);
+      v=Vin*(1-(Math.exp((-alpha+q)*t_s)*(alpha+q)-Math.exp((-alpha-q)*t_s)*(alpha-q))/(2*q));
+    }
+    const[x,y]=toPx(tmax*i/1000,v);
+    if(y>PAD.t-10&&y<PAD.t+CH+10){i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+  }
+  ctx.stroke();
+  // Readouts
+  document.getElementById('f0').textContent='f₀ = '+(f0/1e6).toFixed(2)+' MHz';
+  document.getElementById('Z0').textContent='Z₀ = √(L/C) = '+Z0.toFixed(1)+' Ω';
+  document.getElementById('zeta').textContent='ζ = '+zeta_val.toFixed(3);
+  document.getElementById('R_crit').textContent='R_fix = 2×Z₀ = '+R_crit.toFixed(1)+' Ω';
+  const warn=document.getElementById('ring_warn');
+  const fixm=document.getElementById('fix_msg');
+  if(zeta_val<0.5){warn.textContent='SEVERE: ζ='+zeta_val.toFixed(2)+' < 0.5 — large overshoot, many rings. EMI and false triggering likely.';}
+  else if(zeta_val<1){warn.textContent='Ringing: ζ='+zeta_val.toFixed(2)+'<1. Some overshoot. Add R_damp ≥ '+R_crit.toFixed(0)+' Ω.';}
+  else{warn.textContent='';fixm.textContent='';}
+  const ctx_labels={trace:'PCB trace: shorten trace, add via stitching, use 0402/0201 decoupling.',esr:'Capacitor ESL: use parallel capacitors, C0G type, reduce loop area.',lead:'Long lead: solder directly, no flying leads, use SMD components.'};
+  fixm.textContent=underdamped?'Fix: '+ctx_labels[ctxMode]+' Or add series R_damp = '+R_crit.toFixed(0)+' Ω.':'No ringing — R_damp sufficient.';
+  ctx.fillStyle=color;ctx.font='11px Courier New';ctx.textAlign='left';
+  ctx.fillText(underdamped?'Ringing at '+( f0/1e6).toFixed(2)+' MHz':'Damped — no oscillation',PAD.l+10,PAD.t+16);
+}
+setCtx('trace');
+</script>
+</body>
+</html>

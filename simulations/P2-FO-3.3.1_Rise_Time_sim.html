@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-FO-3.3.1 — Rise Time</title>
+<style>
+  :root { --accent: #0066cc; --bg: #1a1a1a; --panel: #242424; --border: #333; --text: #e0e0e0; --muted: #888; }
+  @media (prefers-color-scheme: light) { :root { --bg: #f4f4f4; --panel: #fff; --border: #ccc; --text: #1a1a1a; --muted: #555; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+  h1 { font-size: 1.1rem; color: var(--accent); padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .subtitle { font-size: 0.8rem; color: var(--muted); padding: 0 16px 8px; }
+  .layout { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; }
+  .controls { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px; min-width: 230px; flex: 0 0 230px; }
+  .ctrl-group { margin-bottom: 14px; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .val { font-weight: bold; color: var(--accent); }
+  .readout { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 12px; }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; }
+  .card-label { font-size: 0.7rem; color: var(--muted); }
+  .card-val { font-size: 0.88rem; font-weight: bold; color: var(--accent); }
+  canvas { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: block; }
+  .canvas-wrap { flex: 1; min-width: 300px; }
+</style>
+</head>
+<body>
+<h1>P2-FO-3.3.1 — Rise Time Tool</h1>
+<p class="subtitle">t_r = 2.197τ (10%→90%) &nbsp;|&nbsp; BW × t_r = 0.3501</p>
+<div class="layout">
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>Time constant τ (ms): <span class="val" id="vTau">10.0</span></label>
+      <input type="range" id="sTau" min="1" max="50" step="0.5" value="10">
+    </div>
+    <div class="ctrl-group">
+      <label>Final value y(∞): <span class="val" id="vYinf">1.0</span></label>
+      <input type="range" id="sYinf" min="0.5" max="5" step="0.1" value="1">
+    </div>
+    <div class="readout">
+      <div class="card"><div class="card-label">t₁₀ = 0.1054τ</div><div class="card-val" id="rT10">1.05 ms</div></div>
+      <div class="card"><div class="card-label">t₉₀ = 2.3026τ</div><div class="card-val" id="rT90">23.03 ms</div></div>
+      <div class="card"><div class="card-label">Rise time t_r</div><div class="card-val" id="rTr">21.97 ms</div></div>
+      <div class="card"><div class="card-label">BW = 0.35/t_r</div><div class="card-val" id="rBW">15.9 Hz</div></div>
+      <div class="card"><div class="card-label">BW × t_r</div><div class="card-val" id="rProd">0.350</div></div>
+      <div class="card"><div class="card-label">10% level</div><div class="card-val" id="rY10">0.100</div></div>
+    </div>
+    <div style="margin-top:12px;font-size:0.78rem;color:var(--muted);line-height:1.7;">
+      t₁₀ = −τ·ln(0.9) = 0.1054τ<br>
+      t₉₀ = −τ·ln(0.1) = 2.3026τ<br>
+      t_r = t₉₀ − t₁₀ = 2.197τ<br>
+      BW = 1/(2πτ)<br>
+      BW·t_r = 2.197/(2π) = 0.3501
+    </div>
+  </div>
+  <div class="canvas-wrap">
+    <canvas id="cv" width="540" height="420"></canvas>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function draw() {
+  const tau = parseFloat(document.getElementById('sTau').value);
+  const yInf = parseFloat(document.getElementById('sYinf').value);
+  document.getElementById('vTau').textContent = tau.toFixed(1);
+  document.getElementById('vYinf').textContent = yInf.toFixed(1);
+
+  const t10 = -Math.log(1 - 0.1) * tau;
+  const t90 = -Math.log(1 - 0.9) * tau;
+  const tr = t90 - t10;
+  const bw = 0.3501 / (tr / 1000);
+
+  document.getElementById('rT10').textContent = t10.toFixed(2) + ' ms';
+  document.getElementById('rT90').textContent = t90.toFixed(2) + ' ms';
+  document.getElementById('rTr').textContent = tr.toFixed(2) + ' ms';
+  document.getElementById('rBW').textContent = bw.toFixed(1) + ' Hz';
+  document.getElementById('rProd').textContent = (bw * tr / 1000).toFixed(4);
+  document.getElementById('rY10').textContent = (yInf * 0.1).toFixed(3);
+
+  const W = cv.width, H = cv.height;
+  const padL = 60, padR = 20, padT = 30, padB = 50;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const tMax = 5 * tau;
+  const yMax = yInf * 1.1;
+
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  ctx.fillStyle = isDark ? '#242424' : '#fff'; ctx.fillRect(0, 0, W, H);
+  const gridC = isDark ? '#2e2e2e' : '#e8e8e8';
+  const mutC = isDark ? '#888' : '#555';
+
+  const tx = t => padL + (t / tMax) * plotW;
+  const ty = y => padT + (1 - y / yMax) * plotH;
+
+  ctx.strokeStyle = gridC; ctx.lineWidth = 1;
+  for (let i = 0; i <= 5; i++) { ctx.beginPath(); ctx.moveTo(tx(i * tMax / 5), padT); ctx.lineTo(tx(i * tMax / 5), padT + plotH); ctx.stroke(); }
+  for (let i = 0; i <= 5; i++) { ctx.beginPath(); ctx.moveTo(padL, padT + i * plotH / 5); ctx.lineTo(padL + plotW, padT + i * plotH / 5); ctx.stroke(); }
+
+  ctx.strokeStyle = mutC; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, padT + plotH); ctx.lineTo(padL + plotW, padT + plotH); ctx.stroke();
+
+  // y(∞) dashed
+  ctx.setLineDash([5, 4]); ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(padL, ty(yInf)); ctx.lineTo(padL + plotW, ty(yInf)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // 10% horizontal
+  ctx.setLineDash([3, 3]); ctx.strokeStyle = '#44aa44'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(padL, ty(yInf * 0.1)); ctx.lineTo(tx(t10), ty(yInf * 0.1)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(tx(t10), ty(yInf * 0.1)); ctx.lineTo(tx(t10), padT + plotH); ctx.stroke();
+
+  // 90% horizontal
+  ctx.strokeStyle = '#ee4444';
+  ctx.beginPath(); ctx.moveTo(padL, ty(yInf * 0.9)); ctx.lineTo(tx(t90), ty(yInf * 0.9)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(tx(t90), ty(yInf * 0.9)); ctx.lineTo(tx(t90), padT + plotH); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Main curve
+  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let i = 0; i <= 500; i++) {
+    const t = i / 500 * tMax;
+    const y = yInf * (1 - Math.exp(-t / tau));
+    if (i === 0) ctx.moveTo(tx(t), ty(y)); else ctx.lineTo(tx(t), ty(y));
+  }
+  ctx.stroke();
+
+  // Dots
+  [[t10, yInf * 0.1, '#44aa44'], [t90, yInf * 0.9, '#ee4444']].forEach(([t, y, col]) => {
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(tx(t), ty(y), 5, 0, Math.PI * 2); ctx.fill();
+  });
+
+  // Rise time bracket
+  const yBrkt = ty(yInf * 0.5);
+  ctx.strokeStyle = '#ffaa00'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(tx(t10), yBrkt); ctx.lineTo(tx(t90), yBrkt); ctx.stroke();
+  // arrowheads
+  [[tx(t10), 1], [tx(t90), -1]].forEach(([x, dir]) => {
+    ctx.beginPath(); ctx.moveTo(x, yBrkt); ctx.lineTo(x + dir * 8, yBrkt - 4); ctx.moveTo(x, yBrkt); ctx.lineTo(x + dir * 8, yBrkt + 4); ctx.stroke();
+  });
+
+  ctx.fillStyle = '#ffaa00'; ctx.font = '11px sans-serif';
+  ctx.fillText(`t_r = ${tr.toFixed(2)} ms`, tx(t10) + (tx(t90) - tx(t10)) / 2 - 35, yBrkt - 7);
+
+  // Labels
+  ctx.fillStyle = '#44aa44'; ctx.font = '10px sans-serif';
+  ctx.fillText('10%', padL + 4, ty(yInf * 0.1) - 4);
+  ctx.fillStyle = '#ee4444';
+  ctx.fillText('90%', padL + 4, ty(yInf * 0.9) - 4);
+  ctx.fillStyle = '#0066cc';
+  ctx.fillText(`y(∞)=${yInf.toFixed(2)}`, padL + plotW - 85, ty(yInf) - 7);
+  ctx.fillStyle = '#cc44cc'; ctx.font = '11px sans-serif';
+  ctx.fillText(`BW = ${bw.toFixed(1)} Hz`, padL + 4, padT + 18);
+
+  ctx.fillStyle = mutC; ctx.font = '10px sans-serif';
+  for (let i = 0; i <= 5; i++) ctx.fillText((i * tMax / 5).toFixed(1), tx(i * tMax / 5) - 10, padT + plotH + 18);
+  ctx.fillText('t (ms)', padL + plotW / 2 - 15, padT + plotH + 36);
+  for (let i = 0; i <= 5; i++) ctx.fillText((i * yMax / 5).toFixed(2), 2, ty(i * yMax / 5) + 4);
+}
+
+['sTau','sYinf'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+draw();
+</script>
+</body>
+</html>

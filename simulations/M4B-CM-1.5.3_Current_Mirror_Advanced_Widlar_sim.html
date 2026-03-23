@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CM-1.5.3 — Widlar Current Source</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:17px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CM-1.5.3</div>
+  <h1>Current Mirror Advanced — Widlar Current Source</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Widlar Parameters</h2>
+      <label>Reference Current I_ref (μA): <b id="iref_l">500</b> μA <input type="range" id="iref" min="50" max="2000" value="500" step="10"></label>
+      <label>Emitter Resistor R_E (kΩ): <b id="re_l">5.0</b> kΩ <input type="range" id="re" min="0.1" max="50" value="5" step="0.1"></label>
+      <label>Temperature T (°C): <b id="temp_l">27</b> °C <input type="range" id="temp" min="-40" max="125" value="27" step="1"></label>
+
+      <div class="ro">V_T (thermal voltage): <span id="vt_d">--</span> mV</div>
+      <div class="ro g" style="margin-top:4px">I_out (solved): <span id="iout_d">--</span> μA</div>
+      <div class="ro" style="margin-top:4px">I_out / I_ref ratio: <span id="ratio_d">--</span></div>
+      <div class="ro" style="margin-top:4px">V_BE,2 drop: <span id="vbe2_d">--</span> mV</div>
+      <div class="ro" style="margin-top:4px">PTAT sensitivity: <span id="ptat_d">--</span> ppm/°C</div>
+      <div class="insight">
+        Widlar equation: I_out × R_E = V_T × ln(I_ref / I_out). At large R_E, I_out can be orders of magnitude smaller than I_ref. The output current has a PTAT (Proportional to Absolute Temperature) characteristic — it rises with temperature.
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>I_out vs R_E and Temperature Sweep</h2>
+      <canvas id="cv" height="280"></canvas>
+      <div class="insight">
+        Top: I_out vs R_E shows the compression of current — increasing R_E forces I_out lower in a highly nonlinear way. Bottom marker shows the current operating point. Right: Temperature sweep shows PTAT rise of I_out with increasing T.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  // Solve Widlar equation: I_out * RE = VT * ln(Iref/Iout)
+  // Using Newton-Raphson on f(x) = x*RE - VT*ln(Iref/x) = 0
+  function solveWidlar(Iref, RE, VT) {
+    if(RE < 1) return Iref; // degenerate: no RE => simple mirror
+    let x = Iref * 0.1; // initial guess
+    for(let i=0;i<200;i++){
+      const f = x*RE - VT*Math.log(Iref/x);
+      const df = RE + VT/x;
+      const dx = -f/df;
+      x += dx;
+      if(x<=0) x=1e-12;
+      if(Math.abs(dx)<1e-15) break;
+    }
+    return x;
+  }
+
+  function compute(){
+    const Iref = +document.getElementById('iref').value * 1e-6;
+    const RE   = +document.getElementById('re').value * 1e3;
+    const TC   = +document.getElementById('temp').value;
+
+    document.getElementById('iref_l').textContent = (Iref*1e6).toFixed(0);
+    document.getElementById('re_l').textContent   = (RE/1e3).toFixed(1);
+    document.getElementById('temp_l').textContent = TC.toFixed(0);
+
+    const T  = TC + 273.15;
+    const VT = 1.380649e-23 * T / 1.602176634e-19;
+    const Iout = solveWidlar(Iref, RE, VT);
+    const VBE2 = VT * Math.log(Iout / 1e-15); // approx with IS=1fA
+
+    // PTAT sensitivity: dI_out/dT / I_out in ppm/°C
+    const T2 = T + 1;
+    const VT2 = 1.380649e-23 * T2 / 1.602176634e-19;
+    const Iout2 = solveWidlar(Iref, RE, VT2);
+    const ptat = ((Iout2 - Iout) / Iout) * 1e6; // ppm/°C
+
+    document.getElementById('vt_d').textContent   = (VT*1e3).toFixed(3);
+    document.getElementById('iout_d').textContent = (Iout*1e6).toFixed(3);
+    document.getElementById('ratio_d').textContent= (Iout/Iref).toExponential(3);
+    document.getElementById('vbe2_d').textContent = (VBE2*1e3).toFixed(1);
+    document.getElementById('ptat_d').textContent = ptat.toFixed(0);
+
+    drawPlot(Iref, RE, VT, Iout, T);
+  }
+
+  function drawPlot(Iref, RE, VT, Iout_op, T){
+    const cv = document.getElementById('cv');
+    const W = cv.parentElement.clientWidth - 36;
+    cv.width = W; cv.height = 280;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0,0,W,280);
+
+    // Split canvas: left = I_out vs RE, right = I_out vs Temperature
+    const midX = Math.floor(W/2) - 10;
+    const pL=50, pR=10, pT=18, pB=34;
+
+    // ---- Left panel: I_out vs R_E ----
+    const pw1 = midX - pL - 8;
+    const ph  = 280 - pT - pB;
+    const REmax = 50e3;
+    const Imax_uA = Iref * 1e6;
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw1,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='9px system-ui';
+    ctx.fillText('I_out (μA)', 2, pT+ph/2);
+    ctx.fillText('R_E (kΩ)', pL+pw1/2-15, 280-4);
+
+    // Y axis ticks
+    for(let i=0;i<=4;i++){
+      const v = i/4*Imax_uA; const y=pT+ph-(i/4)*ph;
+      ctx.fillStyle='#8888aa'; ctx.fillText(v.toFixed(0), 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw1,y); ctx.stroke();
+    }
+    // X axis ticks
+    [0,10,20,30,40,50].forEach(v=>{
+      const x=pL+(v/50)*pw1; ctx.fillStyle='#8888aa'; ctx.fillText(v, x-8, pT+ph+14);
+    });
+
+    // I_out vs RE curve
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+    ctx.beginPath(); let first=true;
+    for(let px=0;px<=pw1;px++){
+      const re_val = (px/pw1)*REmax;
+      let iout_val;
+      if(re_val<100){ iout_val = Iref*1e6; }
+      else { iout_val = solveWidlar(Iref, re_val, VT)*1e6; }
+      const y = pT+ph-(Math.min(iout_val,Imax_uA)/Imax_uA)*ph;
+      if(first){ctx.moveTo(pL+px,y);first=false;}else ctx.lineTo(pL+px,y);
+    }
+    ctx.stroke();
+
+    // Operating point marker
+    const re_op_kO = RE/1e3;
+    const xop = pL + (RE/REmax)*pw1;
+    const yop = pT+ph-(Math.min(Iout_op*1e6,Imax_uA)/Imax_uA)*ph;
+    ctx.fillStyle='#cc2200'; ctx.beginPath(); ctx.arc(xop,yop,5,0,2*Math.PI); ctx.fill();
+    ctx.fillStyle='#cc2200'; ctx.font='9px system-ui'; ctx.fillText('OP',xop+6,yop-4);
+
+    ctx.fillStyle='#0066cc'; ctx.font='10px system-ui'; ctx.fillText('I_out vs R_E', pL+4, pT+12);
+
+    // ---- Right panel: I_out vs Temperature ----
+    const x2start = midX + 10;
+    const pw2 = W - x2start - pR;
+    const Tmin=-40, Tmax=125;
+    const Imax2_uA = solveWidlar(Iref, RE, 1.380649e-23*( (Tmin+273.15) ) / 1.602176634e-19)*1e6 * 1.5;
+    const Imax2_calc = solveWidlar(Iref, RE, 1.380649e-23*(Tmax+273.15)/1.602176634e-19)*1e6*1.1;
+    const Imax2 = Math.max(Imax2_calc, 0.1);
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(x2start+pL,pT); ctx.lineTo(x2start+pL,pT+ph); ctx.lineTo(x2start+pL+pw2,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='9px system-ui';
+    ctx.fillText('I_out (μA)', x2start+2, pT+ph/2);
+    ctx.fillText('Temp (°C)', x2start+pL+pw2/2-18, 280-4);
+
+    for(let i=0;i<=4;i++){
+      const v=i/4*Imax2; const y=pT+ph-(i/4)*ph;
+      ctx.fillStyle='#8888aa'; ctx.fillText(v.toFixed(2), x2start+2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(x2start+pL,y); ctx.lineTo(x2start+pL+pw2,y); ctx.stroke();
+    }
+    [-40,0,27,85,125].forEach(v=>{
+      const x=x2start+pL+((v-Tmin)/(Tmax-Tmin))*pw2;
+      ctx.fillStyle='#8888aa'; ctx.fillText(v, x-8, pT+ph+14);
+    });
+
+    ctx.strokeStyle='#00994d'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+    ctx.beginPath(); first=true;
+    for(let px=0;px<=pw2;px++){
+      const Tc = Tmin + (px/pw2)*(Tmax-Tmin);
+      const Tk = Tc + 273.15;
+      const vt = 1.380649e-23*Tk/1.602176634e-19;
+      const iout = solveWidlar(Iref, RE, vt)*1e6;
+      const y = pT+ph-(Math.min(iout,Imax2)/Imax2)*ph;
+      if(first){ctx.moveTo(x2start+pL+px,y);first=false;}else ctx.lineTo(x2start+pL+px,y);
+    }
+    ctx.stroke();
+
+    // Temperature operating point
+    const xop2 = x2start + pL + ((T-273.15-Tmin)/(Tmax-Tmin))*pw2;
+    const yop2 = pT+ph-(Math.min(Iout_op*1e6,Imax2)/Imax2)*ph;
+    ctx.fillStyle='#cc2200'; ctx.beginPath(); ctx.arc(xop2,yop2,5,0,2*Math.PI); ctx.fill();
+
+    ctx.fillStyle='#00994d'; ctx.font='10px system-ui'; ctx.fillText('I_out vs T (PTAT)', x2start+pL+4, pT+12);
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

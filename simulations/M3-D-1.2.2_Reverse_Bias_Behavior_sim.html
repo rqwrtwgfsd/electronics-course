@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M3-D-1.2.2 Reverse Bias Behavior</title>
+<style>
+  :root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--accent:#0066cc;--accent2:#58a6ff;--text:#e6edf3;--subtext:#8b949e;--green:#3fb950;--red:#f85149;--orange:#d29922;}
+  @media(prefers-color-scheme:light){:root{--bg:#fff;--surface:#f6f8fa;--border:#d0d7de;--accent:#0066cc;--accent2:#0969da;--text:#24292f;--subtext:#57606a;--green:#1a7f37;--red:#d1242f;--orange:#9a6700;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;padding:20px;}
+  h1{color:var(--accent2);font-size:1.3rem;margin-bottom:4px;}
+  .sub{color:var(--subtext);font-size:0.85rem;margin-bottom:16px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;}
+  h2{font-size:0.95rem;color:var(--accent2);margin-bottom:10px;}
+  canvas{display:block;width:100%;}
+  .ctrl{display:flex;flex-direction:column;gap:10px;}
+  label{font-size:0.82rem;color:var(--subtext);}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro-box{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;font-family:monospace;font-size:0.82rem;margin-top:10px;}
+  .ro{display:flex;justify-content:space-between;margin-bottom:4px;}
+  .ro b{color:var(--accent2);}
+  .hl{color:var(--green);font-weight:bold;}
+</style>
+</head>
+<body>
+<h1>M3-D-1.2.2 — Reverse Bias Behavior</h1>
+<p class="sub">C_j vs V_R curve and reverse saturation current</p>
+<div class="grid">
+  <div class="card"><h2>Simulation</h2><canvas id="c" height="260"></canvas></div>
+  <div class="card"><h2>Controls</h2>
+    <div class="ctrl"><div><label>Reverse Voltage V_R (V): <b id="vrLbl">5</b></label><input type="range" id="vrS" min="0" max="30" value="5" step="0.1" oninput="document.getElementById('vrLbl').textContent=parseFloat(this.value).toFixed(1)"></div>
+<div><label>C_j0 (pF): <b id="cj0L">30</b></label><input type="range" id="cjS" min="1" max="100" value="30" oninput="document.getElementById('cj0L').textContent=this.value"></div>
+<div><label>I_s0 (x10⁻¹² A): <b id="isL">1</b></label><input type="range" id="isS" min="0.01" max="100" value="1" step="0.01" oninput="document.getElementById('isL').textContent=parseFloat(this.value).toFixed(2)"></div>
+<div><label>Temperature T (K): <b id="tL">300</b></label><input type="range" id="tS" min="250" max="450" value="300" step="5" oninput="document.getElementById('tL').textContent=this.value"></div></div>
+    <div class="ro-box"><div class="ro"><span>V_R applied</span><b id="ro_vr">—</b></div>
+<div class="ro"><span>C_j at V_R</span><b id="ro_cj" class="hl">—</b></div>
+<div class="ro"><span>Capacitance reduction</span><b id="ro_ratio">—</b></div>
+<div class="ro"><span>I_s at temperature</span><b id="ro_is">—</b></div>
+<div class="ro"><span>Temperature</span><b id="ro_t">—</b></div></div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const isDark=()=>window.matchMedia('(prefers-color-scheme:dark)').matches;
+function gs(id){return parseFloat(document.getElementById(id).value);}
+function resize(){cv.width=cv.offsetWidth*devicePixelRatio;cv.height=260*devicePixelRatio;ctx.scale(devicePixelRatio,devicePixelRatio);draw();}
+function drawAxes(W,H,pad,xl,yl){
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  ctx.strokeStyle=isDark()?'#333':'#ddd';ctx.lineWidth=1;ctx.strokeRect(pad.l,pad.t,pw,ph);
+  for(let i=1;i<5;i++){
+    ctx.beginPath();ctx.moveTo(pad.l+pw*i/5,pad.t);ctx.lineTo(pad.l+pw*i/5,pad.t+ph);ctx.strokeStyle=isDark()?'#222':'#eee';ctx.stroke();
+    ctx.beginPath();ctx.moveTo(pad.l,pad.t+ph*i/5);ctx.lineTo(pad.l+pw,pad.t+ph*i/5);ctx.stroke();
+  }
+  ctx.fillStyle=isDark()?'#666':'#888';ctx.font='10px system-ui';
+  ctx.textAlign='center';ctx.fillText(xl,pad.l+pw/2,H-3);
+  ctx.save();ctx.translate(12,pad.t+ph/2);ctx.rotate(-Math.PI/2);ctx.fillText(yl,0,0);ctx.restore();
+}
+function draw(){
+  const VR=gs('vrS'),Cj0=gs('cjS'),Vbi=0.65;
+  const T=gs('tS'),Is0=gs('isS')*1e-12;
+  const k=1.381e-23,q=1.602e-19;
+  const Is=Is0*Math.pow(T/300,3)*Math.exp(-1.12*q/k*(1/T-1/300));
+  const W=cv.width/devicePixelRatio,H=260;
+  ctx.clearRect(0,0,W,H);
+  const pad={l:50,r:15,t:18,b:32};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const VRmax=30;
+  drawAxes(W,H,pad,'V_R (V)','C_j (pF)');
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2.5;ctx.beginPath();
+  for(let px=0;px<=pw;px++){
+    const vr=VRmax*px/pw;
+    const cj=Cj0/Math.sqrt(1+vr/Vbi);
+    const y=pad.t+ph*(1-cj/(Cj0*1.1));
+    if(px===0)ctx.moveTo(pad.l+px,y);else ctx.lineTo(pad.l+px,y);
+  }
+  ctx.stroke();
+  const Cj=Cj0/Math.sqrt(1+VR/Vbi);
+  const xop=pad.l+VR/VRmax*pw;
+  const yop=pad.t+ph*(1-Cj/(Cj0*1.1));
+  ctx.fillStyle='#f85149';ctx.beginPath();ctx.arc(xop,yop,5,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#f85149';ctx.font='10px monospace';ctx.textAlign='left';
+  ctx.fillText(Cj.toFixed(2)+'pF',xop+7,yop-3);
+  ctx.fillStyle=isDark()?'#666':'#888';ctx.font='10px monospace';
+  ctx.textAlign='right';ctx.fillText(Cj0.toFixed(0)+'pF',pad.l-3,pad.t+6);
+  ctx.textAlign='center';ctx.fillText('0',pad.l,pad.t+ph+12);ctx.fillText('30V',pad.l+pw,pad.t+ph+12);
+  document.getElementById('ro_vr').textContent=VR.toFixed(1)+' V';
+  document.getElementById('ro_cj').textContent=Cj.toFixed(2)+' pF';
+  document.getElementById('ro_ratio').textContent=(Cj0/Cj).toFixed(2)+'x reduction';
+  document.getElementById('ro_is').textContent=(Is>1e-9?(Is*1e9).toFixed(2)+' nA':(Is*1e12).toFixed(2)+' pA');
+  document.getElementById('ro_t').textContent=T+' K ('+(T-273)+'C)';
+}
+document.querySelectorAll('input[type=range]').forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',resize);
+resize();
+</script>
+</body>
+</html>

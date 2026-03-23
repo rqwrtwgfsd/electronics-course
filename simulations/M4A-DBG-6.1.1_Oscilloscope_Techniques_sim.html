@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-DBG-6.1.1 Oscilloscope Techniques</title>
+<style>
+  :root {
+    --bg: #f5f5f5; --panel: #ffffff; --border: #d0d0d0;
+    --text: #1a1a1a; --muted: #666; --accent: #1a6eb5;
+    --pass: #2d7a2d; --fail: #b52a2a; --warn: #b57a00;
+    --canvas-bg: #0a1a0a; --grid: #1a3a1a; --trace1: #00ff00; --trace2: #ffaa00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a; --panel: #242424; --border: #3a3a3a;
+      --text: #e8e8e8; --muted: #999; --accent: #4da3f5;
+      --pass: #4caf50; --fail: #ef5350; --warn: #ffb300;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; font-size: 14px; padding: 16px; }
+  h1 { font-size: 1.2em; color: var(--accent); margin-bottom: 4px; }
+  .subtitle { color: var(--muted); font-size: 0.85em; margin-bottom: 16px; }
+  .layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .panel h3 { font-size: 0.9em; color: var(--accent); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .slider-row { margin-bottom: 9px; }
+  .slider-row label { display: flex; justify-content: space-between; font-size: 0.82em; color: var(--muted); margin-bottom: 3px; }
+  .slider-row label span { color: var(--text); font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .right-col { display: flex; flex-direction: column; gap: 14px; }
+  .scope-screen { width: 100%; aspect-ratio: 4/3; background: var(--canvas-bg); border-radius: 6px; border: 2px solid #333; display: block; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.78em; font-weight: 700; }
+  .badge.pass { background: #1a2e1a; color: #4caf50; }
+  .badge.fail { background: #2e1a1a; color: #ef5350; }
+  .badge.warn { background: #2e2200; color: #ffb300; }
+  .tab-row { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .tab-btn { padding: 5px 10px; border-radius: 5px; border: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer; font-size: 0.82em; }
+  .tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .meas-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .meas { flex: 1; min-width: 80px; background: #0a1a0a; border: 1px solid #1a3a1a; border-radius: 4px; padding: 6px; text-align: center; }
+  .meas .val { font-size: 1.05em; font-weight: 700; color: #00ff00; font-family: monospace; }
+  .meas .lbl { font-size: 0.7em; color: #4a6a4a; margin-top: 1px; }
+  .section-divider { font-size: 0.75em; color: var(--muted); margin: 8px 0 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+  select { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px; font-size: 0.85em; width: 100%; margin-bottom: 8px; }
+  @media (max-width: 720px) { .layout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<h1>M4A-DBG-6.1.1 — Oscilloscope Techniques</h1>
+<p class="subtitle">Simulated oscilloscope: probe effects, bandwidth limiting, trigger modes, and measurement artifacts</p>
+
+<div class="layout">
+<div>
+  <div class="panel" style="margin-bottom:12px">
+    <h3>Signal Source</h3>
+    <div class="section-divider">Waveform</div>
+    <select id="sel-waveform" onchange="update()">
+      <option value="sine">Sine wave</option>
+      <option value="square">Square wave</option>
+      <option value="step">Step (rising edge)</option>
+      <option value="clipped">Clipped sine</option>
+      <option value="ringing">Step with ringing</option>
+      <option value="osc">Oscillation (unstable)</option>
+    </select>
+    <div class="slider-row">
+      <label>Frequency (kHz) <span id="lbl-freq">100</span></label>
+      <input type="range" id="sl-freq" min="1" max="10000" step="1" value="100" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Amplitude (V) <span id="lbl-amp">2</span></label>
+      <input type="range" id="sl-amp" min="0.01" max="10" step="0.01" value="2" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>DC offset (V) <span id="lbl-dc">0</span></label>
+      <input type="range" id="sl-dc" min="-5" max="5" step="0.1" value="0" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Rise time (ns) <span id="lbl-rt">50</span></label>
+      <input type="range" id="sl-rt" min="1" max="1000" step="1" value="50" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Ringing freq (MHz) <span id="lbl-rf">20</span></label>
+      <input type="range" id="sl-rf" min="1" max="200" step="1" value="20" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Ringing Q <span id="lbl-rq">3</span></label>
+      <input type="range" id="sl-rq" min="0.5" max="20" step="0.1" value="3" oninput="update()">
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom:12px">
+    <h3>Oscilloscope Settings</h3>
+    <div class="section-divider">Timebase &amp; Vertical</div>
+    <div class="slider-row">
+      <label>Time/div (µs) <span id="lbl-tdiv">1</span></label>
+      <input type="range" id="sl-tdiv" min="0.001" max="100" step="0.001" value="1" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>V/div (V) <span id="lbl-vdiv">1</span></label>
+      <input type="range" id="sl-vdiv" min="0.001" max="5" step="0.001" value="1" oninput="update()">
+    </div>
+    <div class="slider-row">
+      <label>Vertical offset (V) <span id="lbl-voff">0</span></label>
+      <input type="range" id="sl-voff" min="-10" max="10" step="0.1" value="0" oninput="update()">
+    </div>
+    <div class="section-divider">Probe &amp; Coupling</div>
+    <select id="sel-coupling" onchange="update()">
+      <option value="dc">DC Coupling</option>
+      <option value="ac">AC Coupling</option>
+    </select>
+    <select id="sel-probe" onchange="update()">
+      <option value="10x">10× Probe (10 pF, 10 MΩ)</option>
+      <option value="1x">1× Probe (100 pF, 1 MΩ)</option>
+      <option value="passive_bad">10× Under-compensated</option>
+      <option value="passive_over">10× Over-compensated</option>
+    </select>
+    <div class="section-divider">Bandwidth Limit</div>
+    <select id="sel-bwlimit" onchange="update()">
+      <option value="none">Full bandwidth (500 MHz)</option>
+      <option value="20">20 MHz bandwidth limit</option>
+      <option value="100">100 MHz bandwidth limit</option>
+      <option value="200">200 MHz bandwidth limit</option>
+    </select>
+    <div class="section-divider">Probe Ground Lead</div>
+    <div class="slider-row">
+      <label>Ground lead length (cm) <span id="lbl-gl">5</span></label>
+      <input type="range" id="sl-gl" min="0" max="30" step="1" value="5" oninput="update()">
+    </div>
+  </div>
+</div>
+
+<div class="right-col">
+  <div class="panel" style="background:#0a1a0a; border-color:#1a3a1a;">
+    <div class="meas-row" id="meas-row"></div>
+    <canvas id="scope" class="scope-screen"></canvas>
+    <div style="margin-top:6px; font-size:0.75em; color:#4a6a4a; text-align:center" id="scope-info"></div>
+  </div>
+
+  <div class="panel">
+    <h3>Measurement Quality Assessment</h3>
+    <table style="width:100%;border-collapse:collapse;font-size:0.82em" id="quality-table">
+      <thead><tr style="background:var(--border)"><th style="padding:5px 8px;text-align:left">Parameter</th><th>Value</th><th>Issue</th><th>Status</th></tr></thead>
+      <tbody id="quality-body"></tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h3>Frequency Content (FFT)</h3>
+    <canvas id="fft-canvas" height="160"></canvas>
+  </div>
+</div>
+</div>
+
+<script>
+const SAMPLES = 10000;
+const TDIVS = 10;
+const VDIVS = 8;
+
+function v(id) { return parseFloat(document.getElementById(id).value); }
+function lbl(id, val, dec) { const el = document.getElementById(id); if(el) el.textContent = typeof val==='number' ? val.toFixed(dec!==undefined?dec:1) : val; }
+
+function generateSignal(N, tTotal) {
+  const freq = v('sl-freq') * 1e3;
+  const amp = v('sl-amp');
+  const dc = v('sl-dc');
+  const rt = v('sl-rt') * 1e-9;
+  const rfring = v('sl-rf') * 1e6;
+  const rq = v('sl-rq');
+  const waveform = document.getElementById('sel-waveform').value;
+
+  const samples = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const t = (i / N) * tTotal;
+    let y = 0;
+    switch (waveform) {
+      case 'sine':
+        y = amp * Math.sin(2 * Math.PI * freq * t);
+        break;
+      case 'square': {
+        const ph = (t * freq) % 1;
+        y = amp * (ph < 0.5 ? 1 : -1);
+        // Bandlimit square (first 10 harmonics)
+        y = 0;
+        for (let h = 1; h <= 10; h += 2) {
+          y += (4 / Math.PI / h) * amp * Math.sin(2 * Math.PI * freq * h * t);
+        }
+        break;
+      }
+      case 'step': {
+        // Rising edge at t=0.3*tTotal
+        const te = 0.3 * tTotal;
+        y = amp * (t < te ? 0 : (1 - Math.exp(-(t-te) / (rt / 2.2))));
+        break;
+      }
+      case 'clipped': {
+        const raw = amp * 1.5 * Math.sin(2 * Math.PI * freq * t);
+        y = Math.max(-amp, Math.min(amp, raw));
+        break;
+      }
+      case 'ringing': {
+        const te = 0.3 * tTotal;
+        if (t < te) { y = 0; break; }
+        const tr_t = t - te;
+        y = amp * (1 - Math.exp(-tr_t / (rt / 2.2)));
+        // Add ringing
+        const wd = 2 * Math.PI * rfring;
+        const decay = rfring / (2 * rq);
+        y += amp * 0.3 * Math.exp(-decay * tr_t) * Math.sin(wd * tr_t);
+        break;
+      }
+      case 'osc': {
+        // Growing oscillation for unstable case
+        const env = Math.exp(t / tTotal * 2);
+        y = amp * Math.min(env, 3) * Math.sin(2 * Math.PI * rfring * t);
+        break;
+      }
+    }
+    samples[i] = y + dc;
+  }
+  return samples;
+}
+
+function applyProbeAndBW(samples, tTotal) {
+  const probe = document.getElementById('sel-probe').value;
+  const bwlimitStr = document.getElementById('sel-bwlimit').value;
+  const gl = v('sl-gl') / 100; // meters
+  const N = samples.length;
+  const dt = tTotal / N;
+  const result = new Float32Array(samples);
+
+  // Probe compensation effect (under/over)
+  if (probe === 'passive_bad' || probe === 'passive_over') {
+    // Apply a simple RC filter or peaking
+    const tau = 20e-9; // 20 ns compensation error
+    for (let i = 1; i < N; i++) {
+      if (probe === 'passive_bad') {
+        result[i] = result[i-1] + (dt / (dt + tau)) * (samples[i] - result[i-1]);
+      } else {
+        // Over-compensated: add derivative term
+        result[i] = samples[i] + tau * (samples[i] - samples[Math.max(0,i-1)]) / dt * 0.3;
+      }
+    }
+  }
+
+  // Ground lead ringing resonance
+  if (gl > 0.01) {
+    const L = 1e-9 * gl * 100; // 1 nH/cm
+    const C_probe = probe.includes('1x') ? 100e-12 : 10e-12;
+    const f_res = 1 / (2 * Math.PI * Math.sqrt(L * C_probe));
+    const Q_res = 3;
+    const decay = 2 * Math.PI * f_res / (2 * Q_res);
+    // Inject ringing at edges
+    let prevDiff = 0;
+    for (let i = 1; i < N; i++) {
+      const diff = result[i] - result[i-1];
+      const edge_strength = Math.abs(diff) / (v('sl-amp') + 0.01);
+      if (edge_strength > 0.01) {
+        // Add resonance artifact
+        const t_from_edge = (i - i) * dt;
+        result[i] += edge_strength * v('sl-amp') * 0.15 * Math.exp(-decay * dt * 3) * Math.sin(2 * Math.PI * f_res * dt);
+      }
+    }
+  }
+
+  // Bandwidth limit (single-pole RC lowpass)
+  if (bwlimitStr !== 'none') {
+    const bw = parseFloat(bwlimitStr) * 1e6;
+    const tau_bw = 1 / (2 * Math.PI * bw);
+    const alpha = dt / (dt + tau_bw);
+    for (let i = 1; i < N; i++) {
+      result[i] = result[i-1] + alpha * (result[i] - result[i-1]);
+    }
+  }
+
+  // 1× probe loading effect (add noise from high capacitance)
+  if (probe === '1x') {
+    for (let i = 0; i < N; i++) {
+      result[i] += (Math.random() - 0.5) * 0.02 * v('sl-amp');
+    }
+  }
+
+  // AC coupling (high-pass)
+  if (document.getElementById('sel-coupling').value === 'ac') {
+    const tau_ac = 1 / (2 * Math.PI * 10); // 10 Hz HP
+    const alpha_ac = tau_ac / (tau_ac + dt);
+    let hp = result[0];
+    for (let i = 1; i < N; i++) {
+      hp = alpha_ac * (hp + result[i] - result[i-1]);
+      result[i] = hp;
+    }
+  }
+
+  // Add noise
+  const noise_level = probe === '1x' ? 0.01 : 0.003;
+  for (let i = 0; i < N; i++) {
+    result[i] += (Math.random() - 0.5) * noise_level * v('sl-amp') * 2;
+  }
+
+  return result;
+}
+
+function computeFFT(samples, N) {
+  // Simple DFT for first 20 harmonics
+  const freq = v('sl-freq') * 1e3;
+  const tTotal = v('sl-tdiv') * 1e-6 * TDIVS;
+  const T = tTotal;
+  const fund_samples = Math.round(freq * T);
+  const results = [];
+  for (let h = 1; h <= 15; h++) {
+    const f = h * freq;
+    let re = 0, im = 0;
+    for (let i = 0; i < N; i++) {
+      const phase = 2 * Math.PI * f * (i / N) * T;
+      re += samples[i] * Math.cos(phase);
+      im -= samples[i] * Math.sin(phase);
+    }
+    const mag = Math.sqrt(re*re + im*im) / (N / 2);
+    results.push({ f, h, mag });
+  }
+  return results;
+}
+
+function update() {
+  const tdiv = v('sl-tdiv') * 1e-6;
+  const vdiv = v('sl-vdiv');
+  const voff = v('sl-voff');
+  const freq = v('sl-freq') * 1e3;
+  const amp = v('sl-amp');
+
+  lbl('lbl-freq', v('sl-freq'), 0);
+  lbl('lbl-amp', amp, 2);
+  lbl('lbl-dc', v('sl-dc'), 1);
+  lbl('lbl-rt', v('sl-rt'), 0);
+  lbl('lbl-rf', v('sl-rf'), 0);
+  lbl('lbl-rq', v('sl-rq'), 1);
+  lbl('lbl-tdiv', v('sl-tdiv'), 3);
+  lbl('lbl-vdiv', vdiv, 3);
+  lbl('lbl-voff', voff, 1);
+  lbl('lbl-gl', v('sl-gl'), 0);
+
+  const tTotal = tdiv * TDIVS;
+  const raw = generateSignal(SAMPLES, tTotal);
+  const processed = applyProbeAndBW(raw, tTotal);
+
+  drawScope(processed, tTotal, vdiv, voff);
+  drawFFT(processed, tTotal);
+  computeMeasurements(processed, tTotal, vdiv);
+  computeQuality(freq, amp, tTotal, vdiv);
+}
+
+function drawScope(data, tTotal, vdiv, voff) {
+  const canvas = document.getElementById('scope');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  if (canvas._lw !== rect.width || canvas._lh !== rect.height) {
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    canvas._lw = rect.width; canvas._lh = rect.height;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const W = rect.width, H = rect.height;
+
+  ctx.fillStyle = '#060e06';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid
+  const gridX = W / TDIVS, gridY = H / VDIVS;
+  ctx.strokeStyle = '#1a3a1a';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= TDIVS; i++) {
+    ctx.beginPath(); ctx.moveTo(i * gridX, 0); ctx.lineTo(i * gridX, H); ctx.stroke();
+  }
+  for (let j = 0; j <= VDIVS; j++) {
+    ctx.beginPath(); ctx.moveTo(0, j * gridY); ctx.lineTo(W, j * gridY); ctx.stroke();
+  }
+
+  // Center crosshair
+  ctx.strokeStyle = '#2a5a2a';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(W/2, 0); ctx.lineTo(W/2, H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke();
+
+  // Scale markers
+  ctx.fillStyle = '#3a7a3a';
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('+' + (vdiv * VDIVS/2).toFixed(2) + 'V', 4, 14);
+  ctx.fillText('-' + (vdiv * VDIVS/2).toFixed(2) + 'V', 4, H - 4);
+  ctx.textAlign = 'center';
+  ctx.fillText('0', W/2 + 3, H/2 - 3);
+
+  // Waveform
+  ctx.strokeStyle = '#00e800';
+  ctx.lineWidth = 1.5;
+  ctx.shadowColor = '#00ff00';
+  ctx.shadowBlur = 2;
+  ctx.beginPath();
+  const N = data.length;
+  for (let i = 0; i < N; i++) {
+    const x = (i / N) * W;
+    const y_val = (data[i] - voff) / (vdiv * VDIVS) * H;
+    const y = H/2 - y_val;
+    const yc = Math.max(0, Math.min(H, y));
+    if (i === 0) ctx.moveTo(x, yc);
+    else ctx.lineTo(x, yc);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Zero voltage reference line
+  const y0 = H/2 - (-voff) / (vdiv * VDIVS) * H;
+  ctx.strokeStyle = '#ff880033';
+  ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(0, y0); ctx.lineTo(W, y0); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Info bar
+  const bwlimit = document.getElementById('sel-bwlimit').value;
+  const probe = document.getElementById('sel-probe').value;
+  const coupling = document.getElementById('sel-coupling').value;
+  document.getElementById('scope-info').textContent =
+    v('sl-tdiv').toFixed(3) + ' µs/div  |  ' + v('sl-vdiv').toFixed(3) + ' V/div  |  ' +
+    coupling.toUpperCase() + '  |  ' + probe.replace('_',' ') + '  |  BW: ' + (bwlimit === 'none' ? '500 MHz' : bwlimit + ' MHz');
+}
+
+function drawFFT(data, tTotal) {
+  const canvas = document.getElementById('fft-canvas');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  if (canvas._lw !== rect.width || canvas._lh !== rect.height) {
+    canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+    canvas._lw = rect.width; canvas._lh = rect.height;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const W = rect.width, H = rect.height;
+
+  const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--canvas-bg').trim();
+  ctx.fillStyle = bgColor;
+  ctx.fillRect(0, 0, W, H);
+
+  const harmonics = computeFFT(data, data.length);
+  const maxMag = Math.max(...harmonics.map(h => h.mag), 0.001);
+
+  const barW = (W - 60) / harmonics.length - 2;
+  const PAD_L = 50, PAD_B = 30, cH = H - PAD_B - 20;
+
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim();
+  ctx.font = '10px system-ui'; ctx.textAlign = 'center';
+
+  harmonics.forEach((h, i) => {
+    const x = PAD_L + i * (barW + 2);
+    const barH = (h.mag / maxMag) * cH;
+    const dBc = 20 * Math.log10(h.mag / Math.max(harmonics[0].mag, 1e-10));
+    const color = i === 0 ? '#4da3f5' : dBc < -60 ? '#3a7a3a' : dBc < -40 ? '#ffb300' : '#ef5350';
+    ctx.fillStyle = color + 'cc';
+    ctx.fillRect(x, 20 + cH - barH, barW, barH);
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim();
+    ctx.fillText('H' + h.h, x + barW/2, H - 6);
+    if (h.mag > maxMag * 0.05) {
+      ctx.fillStyle = color;
+      ctx.fillText(dBc.toFixed(0)+'dBc', x + barW/2, 20 + cH - barH - 3);
+    }
+  });
+
+  // Y axis
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--border').trim();
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD_L, 20); ctx.lineTo(PAD_L, 20 + cH); ctx.stroke();
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--muted').trim();
+  ctx.textAlign = 'right'; ctx.fillText('0 dBc', PAD_L - 3, 24);
+  ctx.fillText('-60 dBc', PAD_L - 3, 20 + cH);
+}
+
+function computeMeasurements(data, tTotal, vdiv) {
+  const N = data.length;
+  const sorted = Array.from(data).sort((a,b) => a-b);
+  const max = sorted[Math.round(0.98*N)];
+  const min = sorted[Math.round(0.02*N)];
+  const pk2pk = max - min;
+  const mean = data.reduce((s,v2) => s+v2, 0) / N;
+  const rms = Math.sqrt(data.reduce((s,v2) => s+v2*v2, 0) / N);
+
+  // Period estimation from zero crossings
+  let crossings = [];
+  for (let i = 1; i < N; i++) {
+    if (data[i-1] < mean && data[i] >= mean) crossings.push(i);
+  }
+  const period = crossings.length > 2 ? (crossings[crossings.length-1] - crossings[0]) / (crossings.length - 1) / N * tTotal : 0;
+  const freq_meas = period > 0 ? 1 / period : 0;
+
+  // Rise time (10% to 90% of max from min)
+  const low = min + (pk2pk * 0.1), high = min + (pk2pk * 0.9);
+  let t10 = -1, t90 = -1;
+  for (let i = 1; i < N; i++) {
+    if (data[i-1] < low && data[i] >= low && t10 < 0) t10 = i;
+    if (data[i-1] < high && data[i] >= high && t10 >= 0 && t90 < 0) { t90 = i; break; }
+  }
+  const rise_time = t10 >= 0 && t90 > t10 ? (t90 - t10) / N * tTotal : 0;
+  const bw_from_rt = rise_time > 0 ? 0.35 / rise_time : 0;
+
+  const meas = [
+    { val: pk2pk.toFixed(3) + ' V', lbl: 'PK-PK' },
+    { val: max.toFixed(3) + ' V', lbl: 'MAX' },
+    { val: min.toFixed(3) + ' V', lbl: 'MIN' },
+    { val: mean.toFixed(3) + ' V', lbl: 'MEAN' },
+    { val: rms.toFixed(3) + ' V', lbl: 'RMS' },
+    { val: freq_meas > 0 ? (freq_meas/1e3).toFixed(2)+' kHz' : '---', lbl: 'FREQ' },
+    { val: rise_time > 0 ? (rise_time*1e9).toFixed(1)+' ns' : '---', lbl: 'RISE' },
+  ];
+  document.getElementById('meas-row').innerHTML = meas.map(m =>
+    `<div class="meas"><div class="val">${m.val}</div><div class="lbl">${m.lbl}</div></div>`
+  ).join('');
+}
+
+function computeQuality(freq, amp, tTotal, vdiv) {
+  const bwlimitStr = document.getElementById('sel-bwlimit').value;
+  const probe = document.getElementById('sel-probe').value;
+  const coupling = document.getElementById('sel-coupling').value;
+  const gl = v('sl-gl');
+
+  const scopeBW = bwlimitStr === 'none' ? 500 : parseFloat(bwlimitStr);
+  const signalBW = freq / 1e6 * 5; // 5th harmonic
+  const bwRatio = scopeBW / (signalBW > 0 ? signalBW : 0.001);
+
+  const vdiv_ratio = amp / (vdiv * VDIVS) * 2;
+
+  const probeCap = probe.includes('1x') ? 100 : 10;
+  const loadZ = probeCap > 0 ? 1 / (2 * Math.PI * freq * probeCap * 1e-12) / 1e3 : 99999;
+
+  const glRing = gl > 5;
+  const acDCissue = coupling === 'ac' && Math.abs(v('sl-dc')) > 0.1;
+
+  const items = [
+    { param: 'Scope BW vs Signal', val: 'BW ratio: '+bwRatio.toFixed(1)+'×', issue: bwRatio < 5 ? 'BW <5× signal — waveform distorted' : 'Adequate', ok: bwRatio >= 5 },
+    { param: 'Vertical utilization', val: (vdiv_ratio*100).toFixed(0)+'% of screen', issue: vdiv_ratio < 0.3 ? 'Signal <3 divs — poor resolution' : vdiv_ratio > 0.95 ? 'Signal nearly off-screen' : 'Good', ok: vdiv_ratio >= 0.3 && vdiv_ratio <= 0.85 },
+    { param: 'Probe capacitance loading', val: probeCap+' pF', issue: probeCap > 20 && freq > 1e6 ? '1× probe loads high-Z node' : 'Acceptable', ok: !(probeCap > 20 && freq > 1e6) },
+    { param: 'Ground lead ringing', val: gl+' cm', issue: glRing ? gl+'cm lead: f_res≈'+Math.round(1/(2*Math.PI*Math.sqrt(gl*1e-11*1e-11)))+'MHz artifacts' : 'Short lead OK', ok: !glRing },
+    { param: 'AC coupling DC error', val: coupling === 'ac' ? 'AC coupled' : 'DC coupled', issue: acDCissue ? 'AC coupling hides '+v('sl-dc').toFixed(1)+'V DC offset' : 'No issue', ok: !acDCissue },
+    { param: 'Probe compensation', val: probe.includes('bad') ? 'Under-comp' : probe.includes('over') ? 'Over-comp' : 'Compensated', issue: probe.includes('bad') ? 'Rounded edges — check trimmer' : probe.includes('over') ? 'Overshoot artifacts' : 'OK', ok: !probe.includes('bad') && !probe.includes('over') },
+  ];
+
+  document.getElementById('quality-body').innerHTML = items.map(item => {
+    const cls = item.ok ? 'pass' : 'fail';
+    return `<tr><td style="padding:4px 8px;color:var(--muted)">${item.param}</td>` +
+      `<td style="padding:4px 8px">${item.val}</td>` +
+      `<td style="padding:4px 8px;font-size:0.78em">${item.issue}</td>` +
+      `<td style="padding:4px 8px"><span class="badge ${cls}">${cls.toUpperCase()}</span></td></tr>`;
+  }).join('');
+}
+
+window.addEventListener('resize', update);
+update();
+</script>
+</body>
+</html>

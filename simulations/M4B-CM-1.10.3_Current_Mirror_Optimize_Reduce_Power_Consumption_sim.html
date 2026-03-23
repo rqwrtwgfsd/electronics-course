@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4B-CM-1.10.3 — Optimize: Reduce Power</title>
+<style>
+  :root{--bg:#fff;--bg2:#f4f6f9;--text:#1a1a2e;--text2:#555;--accent:#0066cc;--green:#00994d;--border:#ccd;--card:#fff;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--bg2:#252530;--text:#e8e8f0;--text2:#aab;--accent:#0066cc;--green:#00994d;--border:#334;--card:#252530;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:15px;}
+  header{background:var(--accent);color:#fff;padding:12px 20px;}
+  .mid{font-size:12px;opacity:.85;font-family:monospace;}h1{font-size:17px;font-weight:600;}
+  .container{max-width:1100px;margin:0 auto;padding:20px;}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
+  .card h2{font-size:13px;font-weight:700;color:var(--accent);margin-bottom:14px;text-transform:uppercase;}
+  label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--text2);margin-bottom:10px;}
+  input[type=range]{width:100%;accent-color:var(--accent);}
+  .ro{background:var(--bg2);border-radius:7px;padding:8px 12px;margin-top:4px;font-size:13px;}
+  .ro span{font-size:16px;font-weight:700;color:var(--accent);font-family:monospace;}
+  .ro.g span{color:var(--green);}
+  canvas{width:100%;display:block;border-radius:8px;}
+  .insight{background:var(--bg2);border-left:4px solid var(--green);border-radius:0 8px 8px 0;padding:9px 14px;font-size:13px;line-height:1.6;color:var(--text2);margin-top:10px;}
+</style>
+</head>
+<body>
+<header>
+  <div class="mid">M4B-CM-1.10.3</div>
+  <h1>Current Mirror — Optimize: Reduce Power Consumption</h1>
+</header>
+<div class="container">
+  <div class="grid">
+    <div class="card">
+      <h2>Power-Performance Trade-Off</h2>
+      <label>I_D (μA): <b id="id_l">100</b> μA <input type="range" id="id" min="1" max="500" value="100" step="1"></label>
+      <label>V_DD (V): <b id="vdd_l">1.8</b> V <input type="range" id="vdd" min="0.6" max="3.3" value="1.8" step="0.05"></label>
+      <label>V_ov (mV): <b id="vov_l">200</b> mV <input type="range" id="vov" min="20" max="500" value="200" step="10"></label>
+      <label>C_gs (fF): <b id="cgs_l">100</b> fF <input type="range" id="cgs" min="10" max="2000" value="100" step="10"></label>
+      <label>Duty cycle (%): <b id="dc_l">100</b> % <input type="range" id="dc" min="1" max="100" value="100" step="1"></label>
+      <label>A_VT (mV·μm): <b id="avt_l">5.0</b> <input type="range" id="avt" min="1" max="10" value="5" step="0.1"></label>
+      <label>W×L (μm²): <b id="wl_l">20</b> μm² <input type="range" id="wl" min="1" max="400" value="20" step="1"></label>
+
+      <div class="ro">P_active (μW): <span id="pact_d">--</span></div>
+      <div class="ro g" style="margin-top:4px">P_avg at duty cycle (μW): <span id="pavg_d">--</span></div>
+      <div class="ro" style="margin-top:4px">g_m (mA/V): <span id="gm_d">--</span></div>
+      <div class="ro" style="margin-top:4px">f_T (MHz): <span id="ft_d">--</span></div>
+      <div class="ro" style="margin-top:4px">σ(ΔI/I) (%): <span id="mism_d">--</span></div>
+    </div>
+
+    <div class="card">
+      <h2>P vs I_D: Power-Performance Map</h2>
+      <canvas id="cv" height="280"></canvas>
+      <div class="insight">
+        Three constraints shown: speed (f_T > threshold, green), noise floor (orange), mismatch limit (blue). The shaded zone above all three is the feasible design space. Lower I_D = lower power but each constraint sets a floor.
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+  function compute(){
+    const ID=+document.getElementById('id').value*1e-6;
+    const VDD=+document.getElementById('vdd').value;
+    const vov=+document.getElementById('vov').value/1000;
+    const Cgs=+document.getElementById('cgs').value*1e-15;
+    const dc=+document.getElementById('dc').value/100;
+    const avt=+document.getElementById('avt').value;
+    const wl=+document.getElementById('wl').value;
+
+    document.getElementById('id_l').textContent=(ID*1e6).toFixed(0);
+    document.getElementById('vdd_l').textContent=VDD.toFixed(2);
+    document.getElementById('vov_l').textContent=(vov*1000).toFixed(0);
+    document.getElementById('cgs_l').textContent=(Cgs*1e15).toFixed(0);
+    document.getElementById('dc_l').textContent=(dc*100).toFixed(0);
+    document.getElementById('avt_l').textContent=avt.toFixed(1);
+    document.getElementById('wl_l').textContent=wl.toFixed(0);
+
+    const gm=2*ID/vov;
+    const fT=gm/(2*Math.PI*Cgs);
+    const Pact=VDD*ID*1e6;
+    const Pavg=Pact*dc;
+    const sigma_dvth=avt/Math.sqrt(wl); // mV
+    const sigma_diI=2*sigma_dvth/(vov*1000)*100;
+
+    document.getElementById('pact_d').textContent=Pact.toFixed(2);
+    document.getElementById('pavg_d').textContent=Pavg.toFixed(2);
+    document.getElementById('gm_d').textContent=(gm*1e3).toFixed(3);
+    document.getElementById('ft_d').textContent=(fT/1e6).toFixed(1);
+    document.getElementById('mism_d').textContent=sigma_diI.toFixed(3);
+
+    draw(VDD,vov,Cgs,avt,wl,ID);
+  }
+
+  function draw(VDD,vov,Cgs,avt,wl,ID_op){
+    const cv=document.getElementById('cv');
+    const W=cv.parentElement.clientWidth-36; cv.width=W; cv.height=280;
+    const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,W,280);
+    const pL=60,pR=16,pT=14,pB=36,pw=W-pL-pR,ph=280-pT-pB;
+
+    const IdMin=1e-6, IdMax=500e-6;
+    const PMin=0, PMax=VDD*500; // μW
+
+    ctx.strokeStyle='#8888aa'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(pL,pT); ctx.lineTo(pL,pT+ph); ctx.lineTo(pL+pw,pT+ph); ctx.stroke();
+    ctx.fillStyle='#8888aa'; ctx.font='10px system-ui';
+    ctx.fillText('P (μW)', 2, pT+ph/2);
+    ctx.fillText('I_D (μA)', pL+pw/2-14, 280-4);
+
+    for(let i=0;i<=4;i++){
+      const v=i/4*PMax; const y=pT+ph-(i/4)*ph;
+      ctx.fillStyle='#8888aa'; ctx.fillText(v.toFixed(0), 2, y+4);
+      ctx.strokeStyle='#8888aa22'; ctx.beginPath(); ctx.moveTo(pL,y); ctx.lineTo(pL+pw,y); ctx.stroke();
+    }
+    [1,10,50,100,200,500].forEach(i=>{
+      const x=pL+((i*1e-6-IdMin)/(IdMax-IdMin))*pw;
+      ctx.fillStyle='#8888aa'; ctx.fillText(i, x-8, pT+ph+14);
+    });
+
+    // P vs I_D (linear: P = VDD * I_D)
+    ctx.strokeStyle='#0066cc'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(pL, pT+ph);
+    ctx.lineTo(pL+pw, pT+ph-((VDD*500-PMin)/(PMax-PMin))*ph);
+    ctx.stroke();
+    ctx.fillStyle='#0066cc'; ctx.font='10px system-ui'; ctx.fillText('P = V_DD × I_D', pL+4, pT+12);
+
+    // Speed floor: f_T = gm/(2pi*Cgs) > fT_min (say 100MHz)
+    const fT_min=100e6;
+    const gm_min=fT_min*2*Math.PI*Cgs;
+    const ID_speed_floor=gm_min*vov/2;
+    if(ID_speed_floor<IdMax){
+      const xf=pL+((ID_speed_floor-IdMin)/(IdMax-IdMin))*pw;
+      ctx.strokeStyle='#00994d'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+      ctx.beginPath(); ctx.moveTo(xf,pT); ctx.lineTo(xf,pT+ph); ctx.stroke();
+      ctx.setLineDash([]); ctx.fillStyle='#00994d'; ctx.font='9px system-ui';
+      ctx.fillText('f_T=100MHz floor', xf+2, pT+24);
+    }
+
+    // Mismatch floor: sigma_diI < 1% needs ID*VOV^2 > const
+    const sigma_target=1.0; // 1%
+    // sigma = 2*avt/(vov*1000*sqrt(wl)) * 100 = sigma_target
+    // This is fixed for given avt, vov, wl. Mark as horizontal note
+    const sigma_dvth=avt/Math.sqrt(wl);
+    const sigma_diI=2*sigma_dvth/(vov*1000)*100;
+    const yMism=pT+ph*(0.2); // just a note line
+    ctx.strokeStyle='#cc220066'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(pL,yMism); ctx.lineTo(pL+pw,yMism); ctx.stroke();
+    ctx.setLineDash([]); ctx.fillStyle='#cc2200'; ctx.font='9px system-ui';
+    ctx.fillText('σ mismatch='+sigma_diI.toFixed(1)+'% (size & Vov fixed)', pL+4, yMism-3);
+
+    // Operating point
+    const xop=pL+((ID_op-IdMin)/(IdMax-IdMin))*pw;
+    const Pop=VDD*ID_op*1e6;
+    const yop=pT+ph-((Pop-PMin)/(PMax-PMin))*ph;
+    ctx.fillStyle='#ff8800'; ctx.beginPath(); ctx.arc(xop,yop,6,0,2*Math.PI); ctx.fill();
+  }
+
+  document.querySelectorAll('input[type=range]').forEach(e=>e.addEventListener('input',compute));
+  compute();
+  window.addEventListener('resize',compute);
+</script>
+</body>
+</html>

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>P2-DB-6.2.1 Check Input Signal</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:'Courier New',monospace;font-size:13px}
+h1{color:#0066cc;padding:12px 16px;border-bottom:1px solid #0066cc;font-size:15px}
+.container{display:flex;gap:12px;padding:12px}
+canvas{background:#0a0a1a;border:1px solid #333}
+.panel{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:12px;min-width:230px}
+.panel h2{color:#0066cc;font-size:12px;margin-bottom:8px;text-transform:uppercase}
+label{display:block;margin-top:8px;color:#aaa;font-size:11px}
+input[type=range]{width:100%;accent-color:#0066cc;margin-top:3px}
+.readout{color:#00ff88;font-size:12px;margin-top:3px}
+.warn{color:#ff6600;font-size:11px;margin-top:5px}
+.formula{color:#ffaa00;font-size:11px;margin-top:8px;line-height:1.6}
+.btn{display:block;width:100%;margin-top:5px;padding:5px;background:#1a1a3a;border:1px solid #0066cc;color:#0066cc;cursor:pointer;font-family:inherit;font-size:11px;border-radius:3px}
+.btn.active{background:#0066cc;color:#fff}
+</style>
+</head>
+<body>
+<h1>P2-DB-6.2.1 — Check Input: Loading and Probe Coupling</h1>
+<div class="container">
+<div>
+<canvas id="cv" width="580" height="380"></canvas>
+</div>
+<div class="panel">
+<h2>Signal Source</h2>
+<label>Source Voltage V_s (V)
+<input type="range" id="vs" min="1" max="10" step="0.5" value="5">
+<div class="readout" id="vs_v">V_s = 5.0 V</div>
+</label>
+<label>Source Impedance R_s (kΩ)
+<input type="range" id="rs" min="0.1" max="100" step="0.5" value="10">
+<div class="readout" id="rs_v">R_s = 10 kΩ</div>
+</label>
+<label>Load Impedance R_load (kΩ)
+<input type="range" id="rl" min="1" max="1000" step="1" value="100">
+<div class="readout" id="rl_v">R_load = 100 kΩ</div>
+</label>
+<h2 style="margin-top:10px">Probe Type</h2>
+<button class="btn active" id="btn_x1" onclick="setProbe('x1')">1× Probe (1 MΩ || 100 pF)</button>
+<button class="btn" id="btn_x10" onclick="setProbe('x10')">10× Probe (10 MΩ || 10 pF)</button>
+<button class="btn" id="btn_ideal" onclick="setProbe('ideal')">Ideal (∞ impedance)</button>
+<h2 style="margin-top:10px">Measurements</h2>
+<div class="readout" id="v_actual">V at load: —</div>
+<div class="readout" id="v_probe">V measured: —</div>
+<div class="readout" id="loading_err">Loading error: —</div>
+<div class="warn" id="warn_msg"></div>
+<div class="formula">V_load = V_s × R_load / (R_s + R_load)<br>Probe loads circuit = adds parallel R</div>
+</div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+let vs=5,rs=10,rl=100,probe='x1';
+const probeR={x1:1000,x10:10000,ideal:1e9};
+const probeLabel={x1:'1× (1MΩ)',x10:'10× (10MΩ)',ideal:'Ideal'};
+const W=580,H=380,PAD={l:60,r:20,t:30,b:40};
+const CW=W-PAD.l-PAD.r,CH=H-PAD.t-PAD.b;
+
+function setProbe(p){probe=p;['x1','x10','ideal'].forEach(k=>document.getElementById('btn_'+k).classList.toggle('active',k===p));draw();}
+['vs','rs','rl'].forEach(id=>{
+  document.getElementById(id).oninput=function(){
+    if(id==='vs'){vs=parseFloat(this.value);document.getElementById('vs_v').textContent='V_s = '+vs.toFixed(1)+' V';}
+    if(id==='rs'){rs=parseFloat(this.value);document.getElementById('rs_v').textContent='R_s = '+rs+' kΩ';}
+    if(id==='rl'){rl=parseFloat(this.value);document.getElementById('rl_v').textContent='R_load = '+rl+' kΩ';}
+    draw();
+  };
+});
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  const r_probe=probeR[probe];// kΩ
+  const r_effective=rl*r_probe/(rl+r_probe);
+  const v_load=vs*rl/(rs+rl);
+  const v_measured=vs*r_effective/(rs+r_effective);
+  const err=(v_measured-v_load)/v_load*100;
+  // Waveforms — show input and both outputs as bar chart style with step signals
+  const tmax=6;
+  function toPx(t,v){return[PAD.l+CW*(t/tmax),PAD.t+CH*(1-v/(vs*1.2))];}
+  // Grid
+  ctx.strokeStyle='#1a1a3a';ctx.lineWidth=1;
+  for(let i=0;i<=6;i++){const x=PAD.l+CW*(i/6);ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+CH);ctx.stroke();}
+  for(let i=0;i<=5;i++){const y=PAD.t+CH*(i/5);ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+CW,y);ctx.stroke();}
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(PAD.l,PAD.t);ctx.lineTo(PAD.l,PAD.t+CH);ctx.moveTo(PAD.l,PAD.t+CH);ctx.lineTo(PAD.l+CW,PAD.t+CH);ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px Courier New';ctx.textAlign='center';
+  ctx.fillText('Time →',PAD.l+CW/2,PAD.t+CH+14);
+  ctx.textAlign='right';
+  for(let i=0;i<=5;i++){const v=vs*1.2*(1-i/5);const y=PAD.t+CH*(i/5);ctx.fillText(v.toFixed(1)+'V',PAD.l-4,y+4);}
+  // Source voltage (step)
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2;
+  const[x0s,y0s]=toPx(0,0);const[x1s,y1s]=toPx(0.5,0);const[x2s,y2s]=toPx(0.5,vs);const[x3s,y3s]=toPx(tmax,vs);
+  ctx.beginPath();ctx.moveTo(x0s,y0s);ctx.lineTo(x1s,y1s);ctx.lineTo(x2s,y2s);ctx.lineTo(x3s,y3s);ctx.stroke();
+  ctx.fillStyle='#0066cc';ctx.font='11px Courier New';ctx.textAlign='left';ctx.fillText('V_source = '+vs+'V',PAD.l+CW*0.1,y2s-8);
+  // V_load (without probe)
+  const[x0l,y0l]=toPx(0,0);const[x1l,y1l]=toPx(0.5,0);const[x2l,y2l]=toPx(0.5,v_load);const[x3l,y3l]=toPx(tmax,v_load);
+  ctx.strokeStyle='#00ff88';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(x0l,y0l);ctx.lineTo(x1l,y1l);ctx.lineTo(x2l,y2l);ctx.lineTo(x3l,y3l);ctx.stroke();
+  ctx.fillStyle='#00ff88';ctx.font='11px Courier New';
+  ctx.fillText('V_load (no probe) = '+v_load.toFixed(3)+'V',PAD.l+CW*0.1,y2l+14);
+  // V_measured (with probe)
+  const[x0p,y0p]=toPx(0,0);const[x1p,y1p]=toPx(0.5,0);const[x2p,y2p]=toPx(0.5,v_measured);const[x3p,y3p]=toPx(tmax,v_measured);
+  ctx.strokeStyle=probe==='ideal'?'#00ff88':'#ff6600';ctx.lineWidth=2;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(x0p,y0p);ctx.lineTo(x1p,y1p);ctx.lineTo(x2p,y2p);ctx.lineTo(x3p,y3p);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#ff6600';
+  if(probe!=='ideal')ctx.fillText('V_measured ('+probeLabel[probe]+') = '+v_measured.toFixed(3)+'V',PAD.l+CW*0.1,y2p-10);
+  // Readouts
+  document.getElementById('v_actual').textContent='V at load: '+v_load.toFixed(3)+' V';
+  document.getElementById('v_probe').textContent='V measured: '+v_measured.toFixed(3)+' V';
+  document.getElementById('loading_err').textContent='Loading error: '+err.toFixed(1)+'%';
+  const w=document.getElementById('warn_msg');
+  if(Math.abs(err)>10){w.textContent='WARNING: Loading error >10%! Use 10× probe or buffer.';}
+  else if(Math.abs(err)>2){w.textContent='Moderate loading ('+err.toFixed(1)+'%). Consider 10× probe.';}
+  else{w.textContent='Acceptable loading error.';}
+  // Circuit diagram annotation
+  ctx.fillStyle='#444';ctx.font='11px Courier New';ctx.textAlign='center';
+  ctx.fillText('R_s='+rs+'kΩ → Node → R_load='+rl+'kΩ | R_probe='+r_probe+'kΩ (parallel)',PAD.l+CW/2,PAD.t+CH-12);
+}
+setProbe('x1');
+</script>
+</body>
+</html>

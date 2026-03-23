@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M3-D-1.7.3 — DC Level Shifting</title><style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--text2:#8b949e;--accent:#0066cc;--accent2:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922}
+@media(prefers-color-scheme:light){:root{--bg:#ffffff;--surface:#f6f8fa;--border:#d0d7de;--text:#24292f;--text2:#656d76;--accent:#0066cc;--accent2:#0969da;--green:#2da44e;--red:#cf222e;--yellow:#9a6700}}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;font-size:14px;padding:16px}
+h2{color:var(--accent2);font-size:16px;margin-bottom:12px}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px}
+canvas{width:100%;border-radius:6px;background:var(--bg);display:block}
+.controls{display:flex;flex-wrap:wrap;gap:12px;margin-top:12px}
+.ctrl{flex:1;min-width:180px}
+label{display:block;color:var(--text2);font-size:12px;margin-bottom:4px}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.readout{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.ro{background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:6px 10px;font-size:12px;font-family:monospace}
+.ro span{color:var(--accent2);font-weight:bold}
+.note{color:var(--text2);font-size:12px;margin-top:8px;line-height:1.5}
+</style></head>
+<body>
+<h2>M3-D-1.7.3 — DC Level Shifting</h2>
+<div class="panel">
+<canvas id="cv" height="260"></canvas>
+<div class="controls">
+
+  <div class="ctrl"><label>N diodes in series: <b id="lN">3</b></label>
+    <input type="range" id="N" min="1" max="10" step="1" value="3"></div>
+  <div class="ctrl"><label>Temperature (°C): <b id="lT">25</b></label>
+    <input type="range" id="T" min="-40" max="125" step="1" value="25"></div>
+  <div class="ctrl"><label>I_bias (mA): <b id="lI">1</b></label>
+    <input type="range" id="I" min="0.1" max="20" step="0.1" value="1"></div>
+
+</div>
+<div class="readout">
+  <div class="ro">V_F at T (V): <span id="r1">0</span></div>
+  <div class="ro">Total shift (V): <span id="r2">0</span></div>
+  <div class="ro">TC (mV/°C): <span id="r3">0</span></div>
+  <div class="ro">Drift −40 to 125°C (V): <span id="r4">0</span></div>
+</div>
+<p class="note">N diodes in series shift voltage by N × V_F. Shows temperature coefficient effect.</p>
+</div>
+<script>
+
+const isDark=()=>window.matchMedia('(prefers-color-scheme:dark)').matches;
+function gs(id){return parseFloat(document.getElementById(id).value);}
+function sv(id,val){document.getElementById(id).textContent=val;}
+function resize(cv,draw){cv.width=cv.offsetWidth*devicePixelRatio;cv.height=260*devicePixelRatio;cv.getContext('2d').scale(devicePixelRatio,devicePixelRatio);draw();}
+function drawAxes(ctx,W,H,pad,xl,yl,color){
+  ctx.strokeStyle=color;ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  ctx.fillStyle=color;ctx.font='11px system-ui';
+  ctx.fillText(yl,pad+4,pad+12);ctx.fillText(xl,W-pad-2,H-pad-4);
+}
+
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+function draw(){
+
+  const N=gs('N'),T=gs('T'),I=gs('I');
+  document.getElementById('lN').textContent=N.toFixed(0);
+  document.getElementById('lT').textContent=T.toFixed(0);
+  document.getElementById('lI').textContent=I.toFixed(1);
+  const vf25=0.7+0.026*Math.log(I/1e-3);
+  const vfT=vf25+(T-25)*(-0.002);
+  const vshift=N*vfT;
+  const TC=N*(-2);
+  sv('r1',vfT.toFixed(3));sv('r2',vshift.toFixed(3));sv('r3',TC.toFixed(0));
+  const drift=Math.abs(TC)*(125-(-40))/1000;
+  sv('r4',drift.toFixed(2));
+
+  const W=cv.offsetWidth,H=260,pad=40;
+  const bg=isDark()?'#0d1117':'#fff',fg=isDark()?'#8b949e':'#656d76';
+  ctx.clearRect(0,0,W,H);ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  drawAxes(ctx,W,H,pad,'T (°C) →','V_shift (V) ↑',fg);
+  const T_arr=[];const V_arr=[];
+  for(let tt=-40;tt<=125;tt+=5){{
+    const vf=vf25+(tt-25)*(-0.002);
+    T_arr.push(tt);V_arr.push(N*vf);
+  }}
+  const xsc=(W-2*pad)/165,ymin=Math.min(...V_arr)-0.5,ymax=Math.max(...V_arr)+0.5;
+  const ysc_l=(H-2*pad)/(ymax-ymin);
+  ctx.strokeStyle='#3fb950';ctx.lineWidth=2;ctx.beginPath();
+  T_arr.forEach((tt,i)=>{{
+    const x=pad+(tt+40)*xsc,y=H-pad-(V_arr[i]-ymin)*ysc_l;
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }});
+  ctx.stroke();
+  const xop=pad+(T+40)*xsc,yop=H-pad-(vshift-ymin)*ysc_l;
+  ctx.fillStyle='#f85149';ctx.beginPath();ctx.arc(xop,yop,5,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle=fg;ctx.font='11px system-ui';
+  ctx.fillText('-40°C',pad,H-pad+14);ctx.fillText('125°C',W-pad-40,H-pad+14);
+  ctx.fillStyle='#3fb950';ctx.fillText('N='+N+' diodes; V_shift='+vshift.toFixed(2)+'V at '+T+'°C',pad,pad+15);
+
+}
+document.querySelectorAll('input[type=range],select').forEach(e=>e.addEventListener('input',draw));
+window.addEventListener('resize',()=>resize(cv,draw));
+resize(cv,draw);
+</script>
+</body></html>

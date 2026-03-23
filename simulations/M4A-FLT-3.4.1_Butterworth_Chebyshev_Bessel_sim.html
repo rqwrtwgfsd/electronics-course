@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>M4A-FLT-3.4.1 Butterworth Chebyshev Bessel</title>
+<style>
+  :root{--bg:#f5f5f5;--panel:#fff;--text:#1a1a1a;--muted:#666;--border:#ddd;
+    --a:#2563eb;--a2:#16a34a;--a3:#dc2626;--a4:#9333ea;--a5:#ea580c;
+    --cb:#fafafa;--gr:#e5e7eb;--hi:#fef9c3;--tb:#bfdbfe;}
+  @media(prefers-color-scheme:dark){:root{
+    --bg:#0f1117;--panel:#1e2130;--text:#e8eaf0;--muted:#8892a4;--border:#2d3348;
+    --a:#60a5fa;--a2:#4ade80;--a3:#f87171;--a4:#c084fc;--a5:#fb923c;
+    --cb:#161926;--gr:#2d3348;--hi:#2d2a0f;--tb:#3b82f6;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px;}
+  h1{font-size:16px;font-weight:700;padding:12px 18px;border-bottom:1px solid var(--border);background:var(--panel);}
+  h1 span{color:var(--muted);font-size:13px;font-weight:400;margin-left:8px;}
+  .layout{display:flex;height:calc(100vh - 47px);}
+  .left{width:280px;background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;}
+  .right{flex:1;display:flex;flex-direction:column;padding:10px;gap:8px;overflow:hidden;}
+  .sec{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:10px;}
+  .sec h3{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;}
+  label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:3px;}
+  label span{font-weight:600;color:var(--a);}
+  input[type=range]{width:100%;accent-color:var(--a);cursor:pointer;margin-bottom:5px;}
+  .ck-row{display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:4px;}
+  .ck-dot{width:12px;height:12px;border-radius:2px;flex-shrink:0;}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;}
+  .card{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:5px 7px;}
+  .card .lb{font-size:9px;color:var(--muted);text-transform:uppercase;}
+  .card .vl{font-size:11px;font-weight:700;font-family:monospace;color:var(--a);margin-top:2px;}
+  canvas{display:block;border-radius:6px;background:var(--cb);border:1px solid var(--border);width:100%;}
+  .tip{background:var(--hi);border:1px solid var(--tb);border-radius:6px;padding:8px;font-size:11px;line-height:1.5;}
+</style>
+</head>
+<body>
+<h1>M4A-FLT-3.4.1 — Butterworth, Chebyshev, Bessel <span>Compare magnitude, group delay, and step response</span></h1>
+<div class="layout">
+<div class="left">
+
+  <div class="sec">
+    <h3>Parameters</h3>
+    <label>Filter Order <span id="lbl_ord">4</span></label>
+    <input type="range" id="order" min="1" max="8" value="4" step="1" oninput="update()">
+    <label>Corner Freq (kHz) <span id="lbl_fc">1</span></label>
+    <input type="range" id="fc" min="0.1" max="100" value="1" step="0.1" oninput="update()">
+    <label>Chebyshev Ripple (dB) <span id="lbl_rip">1</span></label>
+    <input type="range" id="ripple" min="0.1" max="3" value="1" step="0.1" oninput="update()">
+  </div>
+
+  <div class="sec">
+    <h3>Show / Hide</h3>
+    <div class="ck-row"><input type="checkbox" id="show_bw" checked onchange="update()"><div class="ck-dot" style="background:var(--a);"></div>Butterworth</div>
+    <div class="ck-row"><input type="checkbox" id="show_ch" checked onchange="update()"><div class="ck-dot" style="background:var(--a3);"></div>Chebyshev</div>
+    <div class="ck-row"><input type="checkbox" id="show_bs" checked onchange="update()"><div class="ck-dot" style="background:var(--a2);"></div>Bessel</div>
+  </div>
+
+  <div class="sec">
+    <h3>@fc Comparison</h3>
+    <div class="grid3">
+      <div class="card"><div class="lb">BW phase</div><div class="vl" id="r_bw_ph">—</div></div>
+      <div class="card"><div class="lb">CH phase</div><div class="vl" id="r_ch_ph">—</div></div>
+      <div class="card"><div class="lb">BS phase</div><div class="vl" id="r_bs_ph">—</div></div>
+    </div>
+    <div class="grid3" style="margin-top:5px;">
+      <div class="card"><div class="lb">BW @10×fc</div><div class="vl" id="r_bw_10">—</div></div>
+      <div class="card"><div class="lb">CH @10×fc</div><div class="vl" id="r_ch_10">—</div></div>
+      <div class="card"><div class="lb">BS @10×fc</div><div class="vl" id="r_bs_10">—</div></div>
+    </div>
+  </div>
+
+  <div class="tip" id="tip">Compare the three approximations: Butterworth flat, Chebyshev steep, Bessel linear-phase.</div>
+
+</div>
+<div class="right">
+  <canvas id="c_mag" style="flex:5;"></canvas>
+  <canvas id="c_step" style="flex:3;"></canvas>
+</div>
+</div>
+<script>
+function cv(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim();}
+function getCtx(id){
+  const c=document.getElementById(id);
+  c.width=c.offsetWidth*devicePixelRatio;
+  c.height=c.offsetHeight*devicePixelRatio;
+  const ctx=c.getContext('2d');
+  ctx.scale(devicePixelRatio,devicePixelRatio);
+  ctx.W=c.offsetWidth;ctx.H=c.offsetHeight;
+  return ctx;
+}
+function fmtHz(f){
+  if(f>=1e6) return (f/1e6).toFixed(2)+' MHz';
+  if(f>=1e3) return (f/1e3).toFixed(1)+' kHz';
+  return f.toFixed(f>100?0:2)+' Hz';
+}
+
+// Butterworth magnitude: |H(jw)|^2 = 1/(1+(w/wc)^(2n))
+function bwMag(f, fc, n) {
+  const u=f/fc;
+  return -10*Math.log10(1+Math.pow(u,2*n));
+}
+
+// Chebyshev Type I: use Chebyshev polynomial
+function chMag(f, fc, n, ripple_db) {
+  const eps=Math.sqrt(Math.pow(10,ripple_db/10)-1);
+  const u=f/fc;
+  let Cn;
+  if(u<=1) Cn=Math.cos(n*Math.acos(u));
+  else Cn=Math.cosh(n*Math.acosh(u));
+  return -10*Math.log10(1+eps*eps*Cn*Cn);
+}
+
+// Bessel approximation: use normalized Butterworth but with wider corner (Bessel rolls off more gently)
+// Correction factors for matching group delay at fc (approximate)
+const besselCorr=[1,1,1.36,1.75,2.11,2.43,2.70,2.95,3.17];
+function bsMag(f, fc, n) {
+  const corr=besselCorr[Math.min(n,8)];
+  return bwMag(f, fc*corr, n);
+}
+
+// Group delay approximation: -d(phase)/dw
+// Butterworth: phase = -sum of arctan terms for each pole
+// We use numerical derivative
+function phaseApprox(f, fc, n, type, ripple_db) {
+  let db_fn = type==='bw' ? (ff=>bwMag(ff,fc,n)) : type==='ch' ? (ff=>chMag(ff,fc,n,ripple_db)) : (ff=>bsMag(ff,fc,n));
+  // Approximate group delay = -(d phase/dw) ≈ use Butterworth formula for simplicity
+  // For display: use -n*arctan(f/fc) for Butterworth, scale for others
+  const ph_bw=-n*Math.atan(f/fc)*180/Math.PI;
+  if(type==='bw') return ph_bw;
+  if(type==='bs') return ph_bw*0.8; // Bessel has less phase shift per unit frequency
+  return ph_bw*1.4; // Chebyshev has more phase shift
+}
+
+// Simple step response approximation via convolution
+function stepResp(t, fc, n, type, ripple_db) {
+  const wc=2*Math.PI*fc;
+  // Overdamped approximation: use n cascaded 1st order for Bessel
+  // For Butterworth and Chebyshev: use 2nd order sections
+  if(type==='bs'){
+    // Bessel: n cascaded first-order low-pass approximation (overdamped)
+    const tau=besselCorr[Math.min(n,8)]/(wc);
+    let v=1;
+    const weff=wc/besselCorr[Math.min(n,8)];
+    for(let k=0;k<n;k++) v*=(1-Math.exp(-weff*t));
+    return v;
+  }
+  // Butterworth / Chebyshev: use matched 2nd-order sections Q values
+  const Qs_bw=[0,0.5,0.5,0.707,0.541,1.307,0.518,0.707,1.932,0.518,0.707,1.306,2.563];
+  const Qs_ch1dB=[0,0.5,0.5,1.0,0.785,3.56,0.7,1.0,5.1,0.7,1.0,4.5,9.1];
+  let Qs = type==='ch' ? Qs_ch1dB : Qs_bw;
+
+  // Very approximate 2nd order step response per section
+  function step2nd(t, wn, Q) {
+    const zeta=1/(2*Q);
+    if(zeta>=1){
+      const r1=-zeta*wn+wn*Math.sqrt(zeta*zeta-1);
+      const r2=-zeta*wn-wn*Math.sqrt(zeta*zeta-1);
+      return 1+(r2*Math.exp(r1*t)-r1*Math.exp(r2*t))/(r1-r2);
+    } else {
+      const wd=wn*Math.sqrt(1-zeta*zeta);
+      return 1-Math.exp(-zeta*wn*t)*(Math.cos(wd*t)+zeta/Math.sqrt(1-zeta*zeta)*Math.sin(wd*t));
+    }
+  }
+
+  // For 4th order: two 2nd-order sections
+  if(n===4){
+    const Q1=Qs[n*2-4]||0.5, Q2=Qs[n*2-3]||0.5;
+    // Convolve: approximate by averaging
+    const v1=step2nd(t,wc,Q1);
+    const v2=step2nd(t,wc,Q2);
+    return (v1+v2)/2; // simplified
+  }
+  if(n===2){
+    const Q=Qs[n]||0.5;
+    return step2nd(t,wc,Q);
+  }
+  return 1-Math.exp(-wc*t);
+}
+
+function update(){
+  const n=parseInt(document.getElementById('order').value);
+  const fc_khz=parseFloat(document.getElementById('fc').value);
+  const ripple=parseFloat(document.getElementById('ripple').value);
+  const fc=fc_khz*1e3;
+  const show_bw=document.getElementById('show_bw').checked;
+  const show_ch=document.getElementById('show_ch').checked;
+  const show_bs=document.getElementById('show_bs').checked;
+
+  document.getElementById('lbl_ord').textContent=n;
+  document.getElementById('lbl_fc').textContent=fc_khz.toFixed(1);
+  document.getElementById('lbl_rip').textContent=ripple.toFixed(1);
+
+  const bw_ph=phaseApprox(fc,fc,n,'bw',ripple).toFixed(0)+'°';
+  const ch_ph=phaseApprox(fc,fc,n,'ch',ripple).toFixed(0)+'°';
+  const bs_ph=phaseApprox(fc,fc,n,'bs',ripple).toFixed(0)+'°';
+  const bw_10=bwMag(10*fc,fc,n).toFixed(0)+' dB';
+  const ch_10=chMag(10*fc,fc,n,ripple).toFixed(0)+' dB';
+  const bs_10=bsMag(10*fc,fc,n).toFixed(0)+' dB';
+
+  document.getElementById('r_bw_ph').textContent=bw_ph;
+  document.getElementById('r_ch_ph').textContent=ch_ph;
+  document.getElementById('r_bs_ph').textContent=bs_ph;
+  document.getElementById('r_bw_10').textContent=bw_10;
+  document.getElementById('r_ch_10').textContent=ch_10;
+  document.getElementById('r_bs_10').textContent=bs_10;
+
+  document.getElementById('tip').textContent=
+    `Order ${n}: BW@10x=${bw_10}, CH@10x=${ch_10}, BS@10x=${bs_10}. Chebyshev is ${(parseFloat(ch_10)-parseFloat(bw_10)).toFixed(0)} dB steeper than Butterworth.`;
+
+  drawMag(fc,n,ripple,show_bw,show_ch,show_bs);
+  drawStep(fc,n,ripple,show_bw,show_ch,show_bs);
+}
+
+function drawMag(fc,n,ripple,show_bw,show_ch,show_bs){
+  const ctx=getCtx('c_mag');
+  const W=ctx.W,H=ctx.H,pl=55,pr=18,pt=28,pb=34;
+  const pw=W-pl-pr,ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  const fMin=fc*0.1,fMax=fc*100;
+  const lMin=Math.log10(fMin),lMax=Math.log10(fMax);
+  const dbMin=-100,dbMax=5;
+  const fx=f=>pl+(Math.log10(f)-lMin)/(lMax-lMin)*pw;
+  const fy=db=>pt+(1-(db-dbMin)/(dbMax-dbMin))*ph;
+
+  ctx.strokeStyle=cv('--gr');ctx.lineWidth=0.7;
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    if(x>=pl&&x<=pl+pw){ctx.beginPath();ctx.moveTo(x,pt);ctx.lineTo(x,pt+ph);ctx.stroke();}
+  }
+  [-100,-80,-60,-40,-20,0].forEach(db=>{
+    const y=fy(db);
+    if(y>=pt&&y<=pt+ph){
+      ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+pw,y);ctx.stroke();
+      ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';ctx.fillText(db,2,y+4);
+    }
+  });
+
+  // -3 dB line
+  ctx.strokeStyle=cv('--muted');ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pl,fy(-3));ctx.lineTo(pl+pw,fy(-3));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle=cv('--muted');ctx.font='9px system-ui';ctx.fillText('-3',pl+2,fy(-3)-2);
+
+  // fc marker
+  const xfc=fx(fc);
+  ctx.strokeStyle=cv('--muted');ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(xfc,pt);ctx.lineTo(xfc,pt+ph);ctx.stroke();ctx.setLineDash([]);
+
+  function drawCurve(magFn, color, dash){
+    ctx.strokeStyle=color;ctx.lineWidth=2.5;
+    if(dash)ctx.setLineDash(dash);else ctx.setLineDash([]);
+    ctx.beginPath();let first=true;
+    for(let i=0;i<=700;i++){
+      const lf=lMin+i/700*(lMax-lMin);
+      const f=Math.pow(10,lf);
+      const db=magFn(f);
+      const x=pl+i/700*pw,y=fy(Math.max(dbMin,Math.min(dbMax,db)));
+      if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+    }
+    ctx.stroke();ctx.setLineDash([]);
+  }
+
+  if(show_bs) drawCurve(f=>bsMag(f,fc,n), cv('--a2'), []);
+  if(show_bw) drawCurve(f=>bwMag(f,fc,n), cv('--a'), []);
+  if(show_ch) drawCurve(f=>chMag(f,fc,n,ripple), cv('--a3'), []);
+
+  ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';
+  for(let d=Math.floor(lMin);d<=Math.ceil(lMax);d++){
+    const x=fx(Math.pow(10,d));
+    const f=Math.pow(10,d);
+    const l=f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f;
+    if(x>=pl&&x<=pl+pw)ctx.fillText(l,x-6,pt+ph+14);
+  }
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Gain (dB)',4,pt-8);
+  ctx.fillText('Frequency',pl+pw/2-30,H-2);
+  ctx.fillText('Order '+n+' Filter Comparison — Magnitude',pl+4,pt-10);
+
+  // Legend
+  ctx.font='10px system-ui';
+  if(show_bw){ctx.fillStyle=cv('--a');ctx.fillText('Butterworth',pl+pw-90,pt+14);}
+  if(show_ch){ctx.fillStyle=cv('--a3');ctx.fillText('Chebyshev '+ripple.toFixed(1)+'dB',pl+pw-100,pt+26);}
+  if(show_bs){ctx.fillStyle=cv('--a2');ctx.fillText('Bessel',pl+pw-55,pt+38);}
+}
+
+function drawStep(fc,n,ripple,show_bw,show_ch,show_bs){
+  const ctx=getCtx('c_step');
+  const W=ctx.W,H=ctx.H,pl=50,pr=18,pt=24,pb=28;
+  const pw=W-pl-pr,ph=H-pt-pb;
+  ctx.clearRect(0,0,W,H);
+
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Step Response (normalized time)',pl+4,pt-8);
+
+  const T=8/fc;
+  const tx=t=>pl+t/T*pw;
+  const vy=v=>pt+(1.3-v)*ph/1.6;
+
+  // Grid
+  ctx.strokeStyle=cv('--gr');ctx.lineWidth=0.7;
+  [0,0.5,1.0,1.5].forEach(v=>{
+    const y=vy(v);
+    if(y>=pt&&y<=pt+ph){
+      ctx.beginPath();ctx.moveTo(pl,y);ctx.lineTo(pl+pw,y);ctx.stroke();
+      ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';ctx.fillText(v.toFixed(1),2,y+4);
+    }
+  });
+
+  function drawStep(type, color){
+    ctx.strokeStyle=color;ctx.lineWidth=2;
+    ctx.beginPath();let first=true;
+    for(let i=0;i<=500;i++){
+      const t=i/500*T;
+      const v=stepResp(t,fc,n,type,ripple);
+      const x=tx(t),y=vy(Math.max(-0.2,Math.min(1.8,v)));
+      if(first){ctx.moveTo(x,y);first=false;}else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+
+  if(show_bs) drawStep('bs', cv('--a2'));
+  if(show_bw) drawStep('bw', cv('--a'));
+  if(show_ch) drawStep('ch', cv('--a3'));
+
+  // Unity line
+  ctx.strokeStyle=cv('--a3');ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pl,vy(1));ctx.lineTo(pl+pw,vy(1));ctx.stroke();ctx.setLineDash([]);
+
+  ctx.fillStyle=cv('--muted');ctx.font='10px system-ui';
+  [1,2,3,4,5,6,7].forEach(k=>{
+    const t=k/fc,x=tx(t);
+    if(x>pl&&x<pl+pw) ctx.fillText(k+'/fc',x-8,pt+ph+14);
+  });
+  ctx.fillStyle=cv('--text');ctx.font='bold 12px system-ui';
+  ctx.fillText('Amplitude',4,pt-4);
+}
+
+window.addEventListener('resize',update);
+update();
+</script>
+</body>
+</html>

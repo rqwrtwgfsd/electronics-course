@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-C-1.3.1 — Time Constant τ = RC Simulator</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --surface: #f5f5f5;
+    --border: #cccccc;
+    --text: #1a1a1a;
+    --accent: #0066cc;
+    --accent2: #cc4400;
+    --accent3: #008844;
+    --muted: #666666;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a1a; --surface: #2a2a2a; --border: #444444; --text: #e8e8e8;
+      --accent: #4499ff; --accent2: #ff6633; --accent3: #44cc88; --muted: #999999;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); padding: 20px; max-width: 900px; margin: 0 auto; }
+  header { border-bottom: 2px solid var(--accent); padding-bottom: 12px; margin-bottom: 20px; }
+  .module-id { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+  h1 { font-size: 22px; margin: 4px 0; }
+  .subtitle { font-size: 14px; color: var(--muted); }
+  .layout { display: grid; grid-template-columns: 1fr 260px; gap: 20px; }
+  canvas { border: 1px solid var(--border); border-radius: 4px; display: block; background: var(--surface); width: 100%; }
+  .controls { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 16px; }
+  .ctrl-group { margin-bottom: 16px; }
+  .ctrl-label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: baseline; }
+  .ctrl-value { color: var(--accent); font-size: 14px; font-weight: 700; font-family: monospace; }
+  input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+  .milestone-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 14px; }
+  .milestone-table th { font-size: 11px; color: var(--muted); font-weight: 600; text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+  .milestone-table td { padding: 5px 6px; border-bottom: 1px solid var(--border); font-family: monospace; }
+  .milestone-table tr.highlight td { background: rgba(0,102,204,0.15); font-weight: 700; }
+  .tau-big { font-family: monospace; font-size: 28px; font-weight: 900; color: var(--accent3); text-align: center; padding: 12px 0 4px; }
+  .tau-label { font-size: 11px; color: var(--muted); text-align: center; margin-bottom: 12px; }
+  .readout-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 13px; border-top: 1px solid var(--border); padding-top: 10px; }
+  .readout-label { color: var(--muted); }
+  .readout-val { font-family: monospace; font-size: 14px; font-weight: 700; }
+  @media (max-width: 640px) { .layout { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">P2-C-1.3.1 | Analog Electronics</div>
+  <h1>Time Constant τ = RC — Definition &amp; Geometry</h1>
+  <div class="subtitle">τ emerges from the ODE: s = −1/RC → τ = RC. At t = τ, V = 63.2% of V<sub>s</sub></div>
+</header>
+
+<div class="layout">
+  <div>
+    <canvas id="cv" height="420"></canvas>
+  </div>
+  <div class="controls">
+    <div class="tau-big" id="tau-display">—</div>
+    <div class="tau-label">τ = R × C</div>
+
+    <div class="ctrl-group">
+      <div class="ctrl-label">Resistance R <span class="ctrl-value" id="r-display">—</span></div>
+      <input type="range" id="r-slider" min="0" max="100" value="40">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Capacitance C <span class="ctrl-value" id="c-display">—</span></div>
+      <input type="range" id="c-slider" min="0" max="100" value="50">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Supply V<sub>s</sub> <span class="ctrl-value" id="vs-display">5.0 V</span></div>
+      <input type="range" id="vs-slider" min="1" max="20" step="0.5" value="5">
+    </div>
+
+    <table class="milestone-table" id="ms-table">
+      <thead>
+        <tr><th>Time</th><th>% of V<sub>s</sub></th><th>V<sub>C</sub></th></tr>
+      </thead>
+      <tbody id="ms-tbody"></tbody>
+    </table>
+
+    <div class="readout-row">
+      <span class="readout-label">10→90% Rise Time</span>
+      <span class="readout-val" style="color:var(--accent2)" id="rd-rise">—</span>
+    </div>
+    <div style="display:flex; justify-content:space-between; align-items:center; font-size:13px; margin-top:4px;">
+      <span style="color:var(--muted)">t_r = 2.2 × τ</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+
+function sliderToR(v) { return Math.pow(10, v/100 * 5); }
+function sliderToC(v) { return 1e-9 * Math.pow(10, v/100 * 6); }
+
+function formatR(r) {
+  if (r >= 1e6) return (r/1e6).toPrecision(3) + ' MΩ';
+  if (r >= 1e3) return (r/1e3).toPrecision(3) + ' kΩ';
+  return r.toPrecision(3) + ' Ω';
+}
+function formatC(c) {
+  if (c >= 1e-3) return (c*1e3).toPrecision(3) + ' mF';
+  if (c >= 1e-6) return (c*1e6).toPrecision(3) + ' µF';
+  if (c >= 1e-9) return (c*1e9).toPrecision(3) + ' nF';
+  return (c*1e12).toPrecision(3) + ' pF';
+}
+function formatTau(t) {
+  if (t >= 1) return t.toPrecision(3) + ' s';
+  if (t >= 1e-3) return (t*1e3).toPrecision(3) + ' ms';
+  if (t >= 1e-6) return (t*1e6).toPrecision(3) + ' µs';
+  return (t*1e9).toPrecision(3) + ' ns';
+}
+function formatRise(t) {
+  if (t >= 1) return t.toFixed(3) + ' s';
+  if (t >= 1e-3) return (t*1e3).toFixed(3) + ' ms';
+  if (t >= 1e-6) return (t*1e6).toFixed(3) + ' µs';
+  return (t*1e9).toFixed(3) + ' ns';
+}
+
+function resizeCanvas() {
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width;
+  canvas.height = 420;
+}
+
+const MILESTONES = [1, 2, 3, 4, 5];
+const PCTS = MILESTONES.map(n => (1 - Math.exp(-n)) * 100);
+
+function updateTable(Vs, tau) {
+  const tbody = document.getElementById('ms-tbody');
+  tbody.innerHTML = '';
+  MILESTONES.forEach((n, idx) => {
+    const pct = PCTS[idx];
+    const vc = Vs * (1 - Math.exp(-n));
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${n}τ</td><td>${pct.toFixed(1)}%</td><td>${vc.toFixed(3)}V</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function draw() {
+  const R = sliderToR(+document.getElementById('r-slider').value);
+  const C = sliderToC(+document.getElementById('c-slider').value);
+  const Vs = +document.getElementById('vs-slider').value;
+  const tau = R * C;
+  const tRise = 2.2 * tau;
+
+  document.getElementById('r-display').textContent = formatR(R);
+  document.getElementById('c-display').textContent = formatC(C);
+  document.getElementById('vs-display').textContent = Vs.toFixed(1) + ' V';
+  document.getElementById('tau-display').textContent = formatTau(tau);
+  document.getElementById('rd-rise').textContent = formatRise(tRise);
+  updateTable(Vs, tau);
+
+  const W = canvas.width, H = canvas.height;
+  const PAD = { top: 30, right: 24, bottom: 50, left: 64 };
+  const pw = W - PAD.left - PAD.right;
+  const ph = H - PAD.top - PAD.bottom;
+  const tMax = 6 * tau;
+  const Vmax = Vs * 1.15;
+
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const gridColor = isDark ? '#333' : '#e0e0e0';
+  const textColor = isDark ? '#e8e8e8' : '#1a1a1a';
+  const mutedColor = isDark ? '#999' : '#666';
+  const accentV = isDark ? '#4499ff' : '#0066cc';
+  const accentG = isDark ? '#44cc88' : '#008844';
+  const accentO = isDark ? '#ff6633' : '#cc4400';
+
+  function tx(t) { return PAD.left + (t/tMax)*pw; }
+  function ty(v) { return PAD.top + ph - (v/Vmax)*ph; }
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = isDark ? '#2a2a2a' : '#f5f5f5';
+  ctx.fillRect(0,0,W,H);
+
+  // Grid lines at each τ (vertical)
+  const tauColors = ['#888888','#888888','#888888','#888888','#888888'];
+  ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+  MILESTONES.forEach((n, idx) => {
+    ctx.strokeStyle = gridColor;
+    const x = tx(n*tau);
+    ctx.beginPath(); ctx.moveTo(x,PAD.top); ctx.lineTo(x,PAD.top+ph); ctx.stroke();
+  });
+  // Horizontal grid at milestone percentages
+  MILESTONES.forEach(n => {
+    const pct = 1 - Math.exp(-n);
+    ctx.strokeStyle = gridColor;
+    const y = ty(Vs * pct);
+    ctx.beginPath(); ctx.moveTo(PAD.left,y); ctx.lineTo(PAD.left+pw,y); ctx.stroke();
+  });
+  ctx.setLineDash([]);
+
+  // Axes
+  ctx.strokeStyle = mutedColor; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(PAD.left,PAD.top); ctx.lineTo(PAD.left,PAD.top+ph); ctx.lineTo(PAD.left+pw,PAD.top+ph); ctx.stroke();
+
+  // Tick labels
+  ctx.fillStyle = mutedColor; ctx.font = '11px system-ui'; ctx.textAlign = 'center';
+  for (let n=0; n<=6; n++) ctx.fillText(n+'τ', tx(n*tau), PAD.top+ph+18);
+  ctx.fillText('Time', PAD.left+pw/2, PAD.top+ph+38);
+  ctx.textAlign = 'right';
+  MILESTONES.forEach(n => {
+    const pct = 1 - Math.exp(-n);
+    ctx.fillText((Vs*pct).toFixed(2)+'V', PAD.left-6, ty(Vs*pct)+4);
+  });
+  ctx.fillText('0V', PAD.left-6, ty(0)+4);
+
+  // Tangent line at t=0 (initial slope = Vs/tau, hits Vs at t=tau)
+  ctx.strokeStyle = accentO; ctx.lineWidth = 1.5; ctx.setLineDash([8,5]); ctx.globalAlpha = 0.7;
+  ctx.beginPath(); ctx.moveTo(tx(0), ty(0)); ctx.lineTo(tx(tau), ty(Vs)); ctx.stroke();
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+  // Tangent label
+  ctx.fillStyle = accentO; ctx.font = '11px system-ui'; ctx.textAlign = 'left';
+  ctx.fillText('Initial slope', tx(0)+6, ty(Vs*0.35));
+  ctx.fillText('→ reaches Vs at t=τ', tx(0)+6, ty(Vs*0.35)+14);
+
+  // V_s asymptote
+  ctx.strokeStyle = accentV; ctx.lineWidth = 1; ctx.setLineDash([6,3]); ctx.globalAlpha = 0.3;
+  ctx.beginPath(); ctx.moveTo(PAD.left, ty(Vs)); ctx.lineTo(PAD.left+pw, ty(Vs)); ctx.stroke();
+  ctx.setLineDash([]); ctx.globalAlpha = 1;
+  ctx.fillStyle = accentV; ctx.font='11px system-ui'; ctx.textAlign='right';
+  ctx.fillText('V_s = '+Vs.toFixed(1)+'V', PAD.left+pw, ty(Vs)-5);
+
+  // Main V_C(t) curve
+  ctx.strokeStyle = accentV; ctx.lineWidth = 3;
+  ctx.beginPath();
+  const N = 500;
+  for (let i=0; i<=N; i++) {
+    const t = (i/N)*tMax;
+    const v = Vs*(1-Math.exp(-t/tau));
+    if (i===0) ctx.moveTo(tx(t),ty(v)); else ctx.lineTo(tx(t),ty(v));
+  }
+  ctx.stroke();
+
+  // Milestone dots and dashed lines to axes
+  const mColors = ['#00aa44','#aa6600','#8844aa','#cc0044','#0088aa'];
+  MILESTONES.forEach((n, idx) => {
+    const pct = 1 - Math.exp(-n);
+    const vc = Vs * pct;
+    const x = tx(n*tau), y = ty(vc);
+    // dashed to x-axis
+    ctx.strokeStyle = mColors[idx]; ctx.lineWidth = 1; ctx.setLineDash([3,3]); ctx.globalAlpha = 0.6;
+    ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x,PAD.top+ph); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(PAD.left,y); ctx.lineTo(x,y); ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
+    // dot
+    ctx.fillStyle = mColors[idx];
+    ctx.beginPath(); ctx.arc(x,y,5,0,2*Math.PI); ctx.fill();
+    // label
+    if (idx === 0) { // highlight τ with extra annotation
+      ctx.fillStyle = accentG; ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'left';
+      ctx.fillText('63.2% at t=τ', x+7, y-8);
+    }
+  });
+
+  // τ vertical marker
+  ctx.strokeStyle = accentG; ctx.lineWidth = 2.5; ctx.setLineDash([8,5]);
+  ctx.beginPath(); ctx.moveTo(tx(tau), PAD.top); ctx.lineTo(tx(tau), PAD.top+ph); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = accentG; ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('τ', tx(tau), PAD.top+14);
+
+  // Title
+  ctx.fillStyle = textColor; ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('RC Charging — τ Geometry & Milestone Grid', PAD.left+pw/2, PAD.top-12);
+}
+
+window.addEventListener('resize', () => { resizeCanvas(); draw(); });
+['r-slider','c-slider','vs-slider'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+resizeCanvas(); draw();
+</script>
+</body>
+</html>

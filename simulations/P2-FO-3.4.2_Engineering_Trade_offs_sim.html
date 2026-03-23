@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-FO-3.4.2 — Engineering Trade-offs</title>
+<style>
+  :root { --accent: #0066cc; --bg: #1a1a1a; --panel: #242424; --border: #333; --text: #e0e0e0; --muted: #888; }
+  @media (prefers-color-scheme: light) { :root { --bg: #f4f4f4; --panel: #fff; --border: #ccc; --text: #1a1a1a; --muted: #555; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+  h1 { font-size: 1.1rem; color: var(--accent); padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .subtitle { font-size: 0.8rem; color: var(--muted); padding: 0 16px 8px; }
+  .layout { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; }
+  .controls { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px; min-width: 230px; flex: 0 0 230px; }
+  .ctrl-group { margin-bottom: 14px; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .val { font-weight: bold; color: var(--accent); }
+  .metric-bar { margin: 4px 0; }
+  .metric-label { font-size: 0.75rem; color: var(--muted); display: flex; justify-content: space-between; }
+  .bar-bg { background: var(--border); border-radius: 3px; height: 8px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width 0.15s; }
+  .readout { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 5px 7px; }
+  .card-label { font-size: 0.68rem; color: var(--muted); }
+  .card-val { font-size: 0.84rem; font-weight: bold; color: var(--accent); }
+  canvas { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: block; }
+  .canvas-wrap { flex: 1; min-width: 300px; }
+</style>
+</head>
+<body>
+<h1>P2-FO-3.4.2 — Engineering Trade-off Matrix</h1>
+<p class="subtitle">τ_min ≤ τ ≤ τ_max feasibility window &nbsp;|&nbsp; Speed, Noise, Power triangle</p>
+<div class="layout">
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>Time constant τ (µs): <span class="val" id="vTau">20.0</span></label>
+      <input type="range" id="sTau" min="1" max="200" step="1" value="20">
+    </div>
+    <div class="ctrl-group">
+      <label>τ_min requirement (µs): <span class="val" id="vTmin">5.0</span></label>
+      <input type="range" id="sTmin" min="1" max="100" step="1" value="5">
+    </div>
+    <div class="ctrl-group">
+      <label>τ_max requirement (µs): <span class="val" id="vTmax">50.0</span></label>
+      <input type="range" id="sTmax" min="10" max="500" step="5" value="50">
+    </div>
+    <div id="feasBanner" style="margin-top:8px;padding:6px 10px;border-radius:4px;font-size:0.82rem;font-weight:bold;"></div>
+    <div style="margin-top:12px;">
+      <div class="metric-bar"><div class="metric-label"><span>Speed</span><span id="mSpeed">-</span></div><div class="bar-bg"><div class="bar-fill" id="bSpeed" style="background:#0066cc;width:0%"></div></div></div>
+      <div class="metric-bar" style="margin-top:8px;"><div class="metric-label"><span>Low Noise</span><span id="mNoise">-</span></div><div class="bar-bg"><div class="bar-fill" id="bNoise" style="background:#ff8844;width:0%"></div></div></div>
+      <div class="metric-bar" style="margin-top:8px;"><div class="metric-label"><span>Low Power</span><span id="mPower">-</span></div><div class="bar-bg"><div class="bar-fill" id="bPower" style="background:#44aa44;width:0%"></div></div></div>
+    </div>
+    <div class="readout">
+      <div class="card"><div class="card-label">Bandwidth BW</div><div class="card-val" id="rBW">7.96 kHz</div></div>
+      <div class="card"><div class="card-label">Rise time t_r</div><div class="card-val" id="rTr">43.9 µs</div></div>
+      <div class="card"><div class="card-label">Noise BW</div><div class="card-val" id="rNBW">12.5 kHz</div></div>
+      <div class="card"><div class="card-label">Settling 1%</div><div class="card-val" id="rTs">92.1 µs</div></div>
+    </div>
+  </div>
+  <div class="canvas-wrap">
+    <canvas id="cv" width="540" height="420"></canvas>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function draw() {
+  const tau = parseFloat(document.getElementById('sTau').value);
+  const tmin = parseFloat(document.getElementById('sTmin').value);
+  const tmax = parseFloat(document.getElementById('sTmax').value);
+  document.getElementById('vTau').textContent = tau.toFixed(1);
+  document.getElementById('vTmin').textContent = tmin.toFixed(1);
+  document.getElementById('vTmax').textContent = tmax.toFixed(1);
+
+  const feasible = tau >= tmin && tau <= tmax;
+  const banner = document.getElementById('feasBanner');
+  banner.textContent = feasible ? 'FEASIBLE: τ within window' : 'INFEASIBLE: τ outside window';
+  banner.style.background = feasible ? '#1a3a1a' : '#3a1a1a';
+  banner.style.color = feasible ? '#44ff44' : '#ff4444';
+
+  const bw = 1/(2*Math.PI*tau*1e-6);
+  const tr = 2.197*tau;
+  const nbw = 1/(4*tau*1e-6);
+  const ts = 4.6*tau;
+  document.getElementById('rBW').textContent = bw>=1000?(bw/1000).toFixed(1)+' kHz':bw.toFixed(0)+' Hz';
+  document.getElementById('rTr').textContent = tr.toFixed(1)+' µs';
+  document.getElementById('rNBW').textContent = nbw>=1000?(nbw/1000).toFixed(1)+' kHz':nbw.toFixed(0)+' Hz';
+  document.getElementById('rTs').textContent = ts.toFixed(1)+' µs';
+
+  // Metrics (speed = high BW = small tau)
+  const tauRef = 100; // max tau for normalization
+  const speedPct = Math.max(0, Math.min(100, (1 - tau/tauRef)*100));
+  const noisePct = Math.max(0, Math.min(100, (tau/tauRef)*100));
+  const powerPct = Math.max(0, Math.min(100, (tau/tauRef)*100));
+  document.getElementById('bSpeed').style.width = speedPct+'%';
+  document.getElementById('bNoise').style.width = noisePct+'%';
+  document.getElementById('bPower').style.width = powerPct+'%';
+  document.getElementById('mSpeed').textContent = bw>=1000?(bw/1000).toFixed(1)+'kHz':bw.toFixed(0)+'Hz';
+  document.getElementById('mNoise').textContent = 'BW_n='+(nbw>=1000?(nbw/1000).toFixed(1)+'kHz':nbw.toFixed(0)+'Hz');
+  document.getElementById('mPower').textContent = 'I∝1/τ';
+
+  // Plot: trade-off curves vs tau
+  const W=cv.width,H=cv.height,padL=70,padR=20,padT=30,padB=50,plotW=W-padL-padR,plotH=H-padT-padB;
+  const isDark=window.matchMedia('(prefers-color-scheme: dark)').matches;
+  ctx.fillStyle=isDark?'#242424':'#fff';ctx.fillRect(0,0,W,H);
+  const gridC=isDark?'#2e2e2e':'#e8e8e8';
+  const mutC=isDark?'#888':'#555';
+
+  const tauMax=200,tauMin=1;
+  const tx=t=>padL+((t-tauMin)/(tauMax-tauMin))*plotW;
+  // Normalize all metrics to 0-1 over the range
+  const bwMax=1/(2*Math.PI*tauMin*1e-6);
+  const bwMin=1/(2*Math.PI*tauMax*1e-6);
+  const tyMetric=v=>padT+(1-v)*plotH;
+
+  ctx.strokeStyle=gridC;ctx.lineWidth=1;
+  for(let i=0;i<=5;i++){const x=padL+i*plotW/5;ctx.beginPath();ctx.moveTo(x,padT);ctx.lineTo(x,padT+plotH);ctx.stroke();}
+  for(let i=0;i<=5;i++){ctx.beginPath();ctx.moveTo(padL,padT+i*plotH/5);ctx.lineTo(padL+plotW,padT+i*plotH/5);ctx.stroke();}
+
+  // tmin/tmax shading
+  ctx.fillStyle=isDark?'rgba(0,102,204,0.12)':'rgba(0,102,204,0.08)';
+  ctx.fillRect(tx(tmin),padT,(tx(tmax)-tx(tmin)),plotH);
+
+  ctx.strokeStyle=mutC;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(padL,padT);ctx.lineTo(padL,padT+plotH);ctx.lineTo(padL+plotW,padT+plotH);ctx.stroke();
+
+  // Speed curve (BW, decreasing with tau)
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2;ctx.beginPath();
+  for(let i=0;i<=300;i++){
+    const t=tauMin+i/300*(tauMax-tauMin);
+    const bwN=Math.log(1/(2*Math.PI*t*1e-6))/Math.log(bwMax);
+    const v=Math.max(0,Math.min(1,(1-t/tauMax)));
+    if(i===0)ctx.moveTo(tx(t),tyMetric(v));else ctx.lineTo(tx(t),tyMetric(v));
+  }
+  ctx.stroke();
+
+  // Noise curve (low noise = high tau, increasing)
+  ctx.strokeStyle='#ff8844';ctx.lineWidth=2;ctx.beginPath();
+  for(let i=0;i<=300;i++){
+    const t=tauMin+i/300*(tauMax-tauMin);
+    const v=Math.max(0,Math.min(1,t/tauMax));
+    if(i===0)ctx.moveTo(tx(t),tyMetric(v));else ctx.lineTo(tx(t),tyMetric(v));
+  }
+  ctx.stroke();
+
+  // Current τ vertical
+  ctx.strokeStyle=feasible?'#44ff44':'#ff4444';ctx.lineWidth=1.5;
+  ctx.setLineDash([5,3]);ctx.beginPath();ctx.moveTo(tx(tau),padT);ctx.lineTo(tx(tau),padT+plotH);ctx.stroke();ctx.setLineDash([]);
+
+  // Labels
+  ctx.fillStyle='#0066cc';ctx.font='11px sans-serif';ctx.fillText('Speed (BW)',padL+6,padT+18);
+  ctx.fillStyle='#ff8844';ctx.fillText('Low Noise',padL+6,padT+32);
+  ctx.fillStyle=feasible?'#44ff44':'#ff4444';
+  ctx.fillText(`τ=${tau}µs`,tx(tau)+4,padT+20);
+
+  ctx.fillStyle=mutC;ctx.font='10px sans-serif';
+  for(let i=0;i<=5;i++)ctx.fillText((tauMin+i*(tauMax-tauMin)/5).toFixed(0),tx(tauMin+i*(tauMax-tauMin)/5)-10,padT+plotH+18);
+  ctx.fillText('τ (µs)',padL+plotW/2-15,padT+plotH+36);
+  ctx.fillText('0',padL-20,padT+plotH+4);ctx.fillText('1',padL-20,padT+4);
+  ctx.fillText('Normalized metric',2,padT+plotH/2);
+  ctx.fillStyle='#0066cc';ctx.fillStyle=isDark?'rgba(0,102,204,0.5)':'rgba(0,102,204,0.3)';
+  ctx.font='10px sans-serif';ctx.fillStyle='#7799cc';
+  ctx.fillText(`Feasible window [${tmin},${tmax}]µs`,tx((tmin+tmax)/2)-50,padT+plotH-8);
+}
+
+['sTau','sTmin','sTmax'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',draw);
+draw();
+</script>
+</body>
+</html>

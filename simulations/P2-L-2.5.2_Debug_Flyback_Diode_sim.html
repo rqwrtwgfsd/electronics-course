@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-L-2.5.2 — Debug: Flyback Diode Usage</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d1117; color: #e6edf3; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+h1 { color: #0066cc; font-size: 1.3em; margin-bottom: 4px; }
+.subtitle { color: #8b949e; font-size: 0.85em; margin-bottom: 20px; }
+.layout { display: flex; gap: 20px; flex-wrap: wrap; }
+.panel { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; }
+.controls { width: 280px; flex-shrink: 0; }
+.viz { flex: 1; min-width: 360px; }
+label { display: block; color: #8b949e; font-size: 0.8em; margin-bottom: 4px; margin-top: 12px; }
+input[type=range] { width: 100%; accent-color: #0066cc; }
+select { width: 100%; background: #21262d; color: #e6edf3; border: 1px solid #30363d; border-radius: 4px; padding: 5px; font-size: 0.85em; margin-top: 4px; }
+.val { color: #0066cc; font-weight: bold; }
+canvas { background: #0d1117; border-radius: 6px; display: block; }
+.readouts { margin-top: 14px; }
+.readout-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #21262d; font-size: 0.82em; }
+.readout-label { color: #8b949e; }
+.readout-val { color: #39d353; font-weight: bold; font-family: monospace; }
+.readout-val.warn { color: #f85149; }
+.eq { background: #21262d; border-left: 3px solid #0066cc; padding: 10px 12px; border-radius: 4px; margin-top: 14px; font-family: monospace; font-size: 0.82em; color: #a5d6ff; }
+@media (prefers-color-scheme: light) {
+  body { background: #f6f8fa; color: #24292f; }
+  .panel { background: #fff; border-color: #d0d7de; }
+  canvas { background: #f6f8fa; }
+  .eq { background: #eef2ff; }
+  select { background: #f6f8fa; color: #24292f; }
+}
+</style>
+</head>
+<body>
+<h1>P2-L-2.5.2 — Debug: Flyback Diode Usage</h1>
+<div class="subtitle">Flyback diode orientation · Schottky vs silicon reverse recovery · voltage undershoot with slow diode · energy dissipation</div>
+<div class="layout">
+  <div class="panel controls">
+    <label>Coil Inductance L (mH): <span class="val" id="lLbl">50 mH</span></label>
+    <input type="range" id="lSlider" min="1" max="500" value="50" step="1">
+    <label>Coil Resistance R (Ω): <span class="val" id="rLbl">100 Ω</span></label>
+    <input type="range" id="rSlider" min="10" max="1000" value="100" step="10">
+    <label>Drive Voltage V (V): <span class="val" id="vLbl">12 V</span></label>
+    <input type="range" id="vSlider" min="3" max="48" value="12" step="1">
+    <label>Diode Type:</label>
+    <select id="diodeSel">
+      <option value="none">No diode (unprotected)</option>
+      <option value="schottky" selected>Schottky (SS3P3, V_f=0.35V, t_rr=fast)</option>
+      <option value="silicon">Slow silicon (1N4007, V_f=0.7V, t_rr=30µs)</option>
+      <option value="wrong">Wrong orientation (diode reversed!)</option>
+    </select>
+    <div class="readouts">
+      <div class="readout-row"><span class="readout-label">τ = L/R</span><span class="readout-val" id="tau">—</span></div>
+      <div class="readout-row"><span class="readout-label">I_steady</span><span class="readout-val" id="isteady">—</span></div>
+      <div class="readout-row"><span class="readout-label">Diode V_f</span><span class="readout-val" id="vf">—</span></div>
+      <div class="readout-row"><span class="readout-label">V_clamp at switch node</span><span class="readout-val" id="vclamp">—</span></div>
+      <div class="readout-row"><span class="readout-label">Decay τ (with diode)</span><span class="readout-val" id="tau2">—</span></div>
+      <div class="readout-row"><span class="readout-label">Energy dissipated</span><span class="readout-val" id="ediss">—</span></div>
+    </div>
+    <div class="eq">V_clamp = V_supply + V_f<br>Decay τ = L/R (same)<br>Wrong orient: diode shorts V_s<br>Schottky: V_f=0.35V, faster</div>
+  </div>
+  <div class="panel viz">
+    <canvas id="cv" width="580" height="420"></canvas>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const W = 580, H = 420;
+
+function getP() {
+  const L = parseFloat(document.getElementById('lSlider').value) * 1e-3;
+  const R = parseFloat(document.getElementById('rSlider').value);
+  const V = parseFloat(document.getElementById('vSlider').value);
+  const diode = document.getElementById('diodeSel').value;
+  return { L, R, V, diode };
+}
+
+function fmtT(t) {
+  if (t >= 1e-3) return (t * 1000).toFixed(2) + ' ms';
+  if (t >= 1e-6) return (t * 1e6).toFixed(2) + ' µs';
+  return (t * 1e9).toFixed(1) + ' ns';
+}
+function fmtA(a) {
+  if (Math.abs(a) >= 1) return a.toFixed(4) + ' A';
+  return (a * 1000).toFixed(2) + ' mA';
+}
+function fmtE(e) {
+  if (e >= 1e-3) return (e * 1000).toFixed(3) + ' mJ';
+  return (e * 1e6).toFixed(2) + ' µJ';
+}
+
+function draw() {
+  const p = getP();
+  const tau = p.L / p.R;
+  const Isteady = p.V / p.R;
+  const E = 0.5 * p.L * Isteady * Isteady;
+
+  let Vf = 0, Vclamp = 0, diodeLabel = '', diodeColor = '#8b949e', tau2 = tau;
+  switch (p.diode) {
+    case 'none':   Vf = 0; Vclamp = 999; diodeLabel = 'No diode'; diodeColor = '#f85149'; break;
+    case 'schottky': Vf = 0.35; Vclamp = p.V + Vf; diodeLabel = 'Schottky (SS3P3)'; diodeColor = '#39d353'; break;
+    case 'silicon':  Vf = 0.7;  Vclamp = p.V + Vf; diodeLabel = 'Silicon (1N4007)'; diodeColor = '#e3b341'; break;
+    case 'wrong':  Vf = -999; Vclamp = -999; diodeLabel = 'REVERSED — shorts supply!'; diodeColor = '#f85149'; break;
+  }
+
+  document.getElementById('lLbl').textContent = (p.L * 1000).toFixed(0) + ' mH';
+  document.getElementById('rLbl').textContent = p.R.toFixed(0) + ' Ω';
+  document.getElementById('vLbl').textContent = p.V.toFixed(0) + ' V';
+  document.getElementById('tau').textContent = fmtT(tau);
+  document.getElementById('isteady').textContent = fmtA(Isteady);
+  document.getElementById('vf').textContent = p.diode === 'none' ? '—' : (Vf > 0 ? Vf.toFixed(2) + ' V' : 'SHORTED');
+  const vclampEl = document.getElementById('vclamp');
+  vclampEl.textContent = p.diode === 'none' ? 'V_spike unbounded' : (p.diode === 'wrong' ? 'SHORTED — 0 V' : Vclamp.toFixed(2) + ' V');
+  vclampEl.className = 'readout-val' + (p.diode === 'none' || p.diode === 'wrong' ? ' warn' : '');
+  document.getElementById('tau2').textContent = fmtT(tau);
+  document.getElementById('ediss').textContent = fmtE(E);
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Two-panel layout: top = switch node voltage, bottom = coil current
+  const pad = { l: 70, r: 20, t: 35, b: 35 };
+  const pw = W - pad.l - pad.r;
+  const midY = H / 2 - 10;
+  const phTop = midY - pad.t - 8;
+  const phBot = H - midY - 20 - pad.b;
+
+  const tSwitch = 2 * tau;
+  const tEnd = 6 * tau;
+
+  // === TOP: Switch node voltage ===
+  const Vmax_plot = p.diode === 'none' ? Math.max(p.V * 8, 60) : Math.max(p.V * 2.5, 30);
+  const Vmin_plot = p.diode === 'wrong' ? -p.V * 1.5 : -2;
+
+  function tx(t) { return pad.l + (t / tEnd) * pw; }
+  function ty_top(v) { return pad.t + phTop - ((v - Vmin_plot) / (Vmax_plot - Vmin_plot)) * phTop; }
+  function ty_bot(i) { return midY + 20 + phBot - (i / (Isteady * 1.3)) * phBot; }
+
+  // Grid top
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  const Vstep = (Vmax_plot - Vmin_plot) / 4;
+  for (let g = 0; g <= 4; g++) {
+    const Vv = Vmin_plot + Vstep * g;
+    const yi = ty_top(Vv);
+    ctx.beginPath(); ctx.moveTo(pad.l, yi); ctx.lineTo(pad.l + pw, yi); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(Vv.toFixed(0) + ' V', pad.l - 4, yi + 4);
+  }
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t + phTop); ctx.lineTo(pad.l + pw, pad.t + phTop); ctx.stroke();
+
+  // Zero volt line top
+  ctx.strokeStyle = '#444c56'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad.l, ty_top(0)); ctx.lineTo(pad.l + pw, ty_top(0)); ctx.stroke();
+
+  // V_supply line
+  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.moveTo(pad.l, ty_top(p.V)); ctx.lineTo(pad.l + pw, ty_top(p.V)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#0066cc'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('V_supply', pad.l + 4, ty_top(p.V) - 4);
+
+  // Draw switch node voltage waveform
+  ctx.lineWidth = 2.5;
+  if (p.diode === 'none') {
+    // Big spike
+    ctx.strokeStyle = '#f85149';
+    ctx.beginPath();
+    ctx.moveTo(pad.l, ty_top(p.V));
+    ctx.lineTo(tx(tSwitch), ty_top(p.V));
+    const spikeAmp = Math.min(p.V * 6, Vmax_plot * 0.9);
+    ctx.lineTo(tx(tSwitch + tau * 0.05), ty_top(p.V + spikeAmp * 0.5));
+    ctx.lineTo(tx(tSwitch + tau * 0.1), ty_top(p.V + spikeAmp));
+    ctx.lineTo(tx(tSwitch + tau * 0.3), ty_top(p.V * 0.5));
+    ctx.lineTo(tx(tSwitch + tau * 0.6), ty_top(0));
+    ctx.lineTo(tx(tEnd), ty_top(0));
+    ctx.stroke();
+    ctx.fillStyle = '#f85149'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('UNBOUNDED SPIKE — MOSFET destroyed!', tx(tSwitch + tau * 0.15), ty_top(p.V + spikeAmp) - 6);
+  } else if (p.diode === 'wrong') {
+    // Diode reversed: pulls switch node below ground, shorts supply
+    ctx.strokeStyle = '#f85149';
+    ctx.beginPath();
+    ctx.moveTo(pad.l, ty_top(p.V));
+    ctx.lineTo(tx(tSwitch), ty_top(p.V));
+    ctx.lineTo(tx(tSwitch + tau * 0.05), ty_top(-p.V * 1.2));
+    ctx.lineTo(tx(tSwitch + tau * 0.3), ty_top(-p.V * 1.2));
+    ctx.lineTo(tx(tEnd), ty_top(0));
+    ctx.stroke();
+    ctx.fillStyle = '#f85149'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('REVERSED: shorts V_supply — gate driver destroyed!', pad.l + 4, ty_top(-p.V * 0.5) - 8);
+  } else {
+    // Clamped
+    ctx.strokeStyle = diodeColor;
+    const clampV = p.V + Vf;
+    ctx.beginPath();
+    ctx.moveTo(pad.l, ty_top(p.V));
+    ctx.lineTo(tx(tSwitch), ty_top(p.V));
+    ctx.lineTo(tx(tSwitch + tau * 0.03), ty_top(clampV));
+    // Slow silicon diode: slight ringing before clamp
+    if (p.diode === 'silicon') {
+      ctx.lineTo(tx(tSwitch + tau * 0.05), ty_top(clampV + 2));
+      ctx.lineTo(tx(tSwitch + tau * 0.08), ty_top(clampV));
+    }
+    ctx.lineTo(tx(tSwitch + tau * 0.6), ty_top(clampV));
+    ctx.lineTo(tx(tSwitch + tau * 1.5), ty_top(p.V * 0.3));
+    ctx.lineTo(tx(tSwitch + tau * 2.5), ty_top(0));
+    ctx.lineTo(tx(tEnd), ty_top(0));
+    ctx.stroke();
+    ctx.fillStyle = diodeColor; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('V_clamp = ' + clampV.toFixed(2) + ' V (' + (Vf * 1000).toFixed(0) + 'mV above V_supply)', tx(tSwitch + tau * 0.1), ty_top(clampV) - 6);
+  }
+
+  // Switch event line
+  ctx.strokeStyle = '#e3b341'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+  ctx.beginPath(); ctx.moveTo(tx(tSwitch), pad.t); ctx.lineTo(tx(tSwitch), pad.t + phTop); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#e3b341'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('SWITCH OFF', tx(tSwitch), pad.t + 14);
+
+  ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Switch Node Voltage', W / 2, 18);
+
+  // === BOTTOM: Coil current ===
+  ctx.strokeStyle = '#21262d'; ctx.lineWidth = 1;
+  for (let g = 0; g <= 4; g++) {
+    const Iv = Isteady * 1.3 * g / 4;
+    const yi = ty_bot(Iv);
+    ctx.beginPath(); ctx.moveTo(pad.l, yi); ctx.lineTo(pad.l + pw, yi); ctx.stroke();
+    ctx.fillStyle = '#8b949e'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(fmtA(Iv), pad.l - 4, yi + 4);
+  }
+  ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pad.l, midY + 20); ctx.lineTo(pad.l, midY + 20 + phBot); ctx.lineTo(pad.l + pw, midY + 20 + phBot); ctx.stroke();
+
+  // Coil current: rise then decay
+  ctx.strokeStyle = '#0066cc'; ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let px = 0; px <= pw; px++) {
+    const t = (px / pw) * tEnd;
+    let I;
+    if (t <= tSwitch) {
+      I = Isteady * (1 - Math.exp(-t / tau));
+    } else {
+      I = Isteady * Math.exp(-(t - tSwitch) / tau);
+    }
+    if (I < 0) I = 0;
+    if (px === 0) ctx.moveTo(pad.l, ty_bot(I));
+    else ctx.lineTo(pad.l + px, ty_bot(I));
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = '#0066cc'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('Coil current I(t)', pad.l + pw - 4, ty_bot(Isteady * 0.7));
+  ctx.fillStyle = '#e6edf3'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Coil Current — ' + diodeLabel, W / 2, midY + 16);
+  ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Time', pad.l + pw / 2, H - 8);
+}
+
+['lSlider', 'rSlider', 'vSlider'].forEach(id =>
+  document.getElementById(id).addEventListener('input', draw));
+document.getElementById('diodeSel').addEventListener('change', draw);
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2-FO-3.5.1 — NGSpice Transient Analysis</title>
+<style>
+  :root { --accent: #0066cc; --bg: #1a1a1a; --panel: #242424; --border: #333; --text: #e0e0e0; --muted: #888; }
+  @media (prefers-color-scheme: light) { :root { --bg: #f4f4f4; --panel: #fff; --border: #ccc; --text: #1a1a1a; --muted: #555; } }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; }
+  h1 { font-size: 1.1rem; color: var(--accent); padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .subtitle { font-size: 0.8rem; color: var(--muted); padding: 0 16px 8px; }
+  .layout { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; }
+  .controls { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 14px; min-width: 240px; flex: 0 0 240px; }
+  .ctrl-group { margin-bottom: 14px; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .val { font-weight: bold; color: var(--accent); }
+  pre { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 10px; font-size: 0.72rem; line-height: 1.7; overflow-x: auto; margin-top: 10px; color: var(--text); }
+  .kw { color: #0066cc; font-weight: bold; }
+  .cm { color: #888; font-style: italic; }
+  .val2 { color: #ff8844; }
+  canvas { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; display: block; }
+  .canvas-wrap { flex: 1; min-width: 300px; }
+  .readout { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 10px; }
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 5px 7px; }
+  .card-label { font-size: 0.68rem; color: var(--muted); }
+  .card-val { font-size: 0.84rem; font-weight: bold; color: var(--accent); }
+</style>
+</head>
+<body>
+<h1>P2-FO-3.5.1 — NGSpice .tran Analysis</h1>
+<p class="subtitle">tstep ≤ τ/100 &nbsp;|&nbsp; tstop ≥ 5τ &nbsp;|&nbsp; .measure WHEN syntax</p>
+<div class="layout">
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>Resistance R (kΩ): <span class="val" id="vR">10.0</span></label>
+      <input type="range" id="sR" min="1" max="100" step="1" value="10">
+    </div>
+    <div class="ctrl-group">
+      <label>Capacitance C (nF): <span class="val" id="vC">10</span></label>
+      <input type="range" id="sC" min="1" max="100" step="1" value="10">
+    </div>
+    <div class="readout">
+      <div class="card"><div class="card-label">τ = RC</div><div class="card-val" id="rTau">100 µs</div></div>
+      <div class="card"><div class="card-label">tstep ≤ τ/100</div><div class="card-val" id="rTstep">1 µs</div></div>
+      <div class="card"><div class="card-label">tstop ≥ 5τ</div><div class="card-val" id="rTstop">500 µs</div></div>
+      <div class="card"><div class="card-label">Rise time t_r</div><div class="card-val" id="rTr">220 µs</div></div>
+    </div>
+    <pre id="netlist"></pre>
+  </div>
+  <div class="canvas-wrap">
+    <canvas id="cv" width="540" height="420"></canvas>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function toEng(v, unit) {
+  if (v >= 1e-3 && v < 1) return (v*1000).toFixed(0)+'m'+unit;
+  if (v >= 1e-6 && v < 1e-3) return (v*1e6).toFixed(0)+'µ'+unit;
+  if (v >= 1e-9 && v < 1e-6) return (v*1e9).toFixed(0)+'n'+unit;
+  return v.toExponential(2)+unit;
+}
+
+function draw() {
+  const R = parseFloat(document.getElementById('sR').value) * 1e3;
+  const C = parseFloat(document.getElementById('sC').value) * 1e-9;
+  document.getElementById('vR').textContent = (R/1e3).toFixed(1);
+  document.getElementById('vC').textContent = (C*1e9).toFixed(0);
+
+  const tau = R * C;
+  const tstep = tau / 100;
+  const tstop = 6 * tau;
+  const tr = 2.197 * tau;
+
+  document.getElementById('rTau').textContent = toEng(tau, 's');
+  document.getElementById('rTstep').textContent = toEng(tstep, 's');
+  document.getElementById('rTstop').textContent = toEng(tstop, 's');
+  document.getElementById('rTr').textContent = toEng(tr, 's');
+
+  const Rs = toEng(R, '').replace('µ','u');
+  const Cs = toEng(C, '').replace('µ','u');
+  const tstepS = toEng(tstep,'').replace('µ','u');
+  const tstopS = toEng(tstop,'').replace('µ','u');
+  const t10 = toEng(-Math.log(1-0.1)*tau,'').replace('µ','u');
+  const t90 = toEng(-Math.log(1-0.9)*tau,'').replace('µ','u');
+
+  document.getElementById('netlist').innerHTML =
+`<span class="cm">* RC Step Response — NGSpice</span>
+<span class="cm">* τ = RC = ${toEng(tau,'s')}</span>
+<span class="kw">.param</span>  R=<span class="val2">${Rs}</span>  C=<span class="val2">${Cs}</span>
+
+Vstep IN 0 PULSE(0 1 0 1n 1n 10m 20m)
+R1    IN N1  <span class="val2">{R}</span>
+C1    N1  0  <span class="val2">{C}</span>  IC=0
+
+<span class="kw">.tran</span>  <span class="val2">${tstepS}</span>  <span class="val2">${tstopS}</span>  0  UIC
+
+<span class="kw">.measure</span> TRAN t10  WHEN V(N1)=0.1  RISE=1
+<span class="kw">.measure</span> TRAN t90  WHEN V(N1)=0.9  RISE=1
+<span class="kw">.measure</span> TRAN tr   PARAM <span class="val2">{t90-t10}</span>
+<span class="kw">.measure</span> TRAN tau  WHEN V(N1)=0.6321 RISE=1
+
+<span class="kw">.control</span>
+run
+<span class="kw">echo</span> "t_r = " &amp;tr
+<span class="kw">echo</span> "tau = " &amp;tau
+<span class="kw">plot</span> v(n1)
+<span class="kw">.endc</span>
+<span class="kw">.end</span>`;
+
+  // Draw the waveform
+  const W=cv.width,H=cv.height,padL=65,padR=20,padT=30,padB=50,plotW=W-padL-padR,plotH=H-padT-padB;
+  const tMax=tstop;
+  const isDark=window.matchMedia('(prefers-color-scheme: dark)').matches;
+  ctx.fillStyle=isDark?'#242424':'#fff';ctx.fillRect(0,0,W,H);
+  const gridC=isDark?'#2e2e2e':'#e8e8e8';
+  const mutC=isDark?'#888':'#555';
+
+  const tx=t=>padL+(t/tMax)*plotW;
+  const ty=y=>padT+(1-y/1.1)*plotH;
+
+  ctx.strokeStyle=gridC;ctx.lineWidth=1;
+  for(let i=0;i<=6;i++){ctx.beginPath();ctx.moveTo(tx(i*tMax/6),padT);ctx.lineTo(tx(i*tMax/6),padT+plotH);ctx.stroke();}
+  for(let i=0;i<=5;i++){ctx.beginPath();ctx.moveTo(padL,padT+i*plotH/5);ctx.lineTo(padL+plotW,padT+i*plotH/5);ctx.stroke();}
+  ctx.strokeStyle=mutC;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(padL,padT);ctx.lineTo(padL,padT+plotH);ctx.lineTo(padL+plotW,padT+plotH);ctx.stroke();
+
+  const t10t = -Math.log(1-0.1)*tau;
+  const t90t = -Math.log(1-0.9)*tau;
+  const tauT = tau;
+
+  // 10/90 markers
+  [[t10t,0.1,'#44aa44'],[t90t,0.9,'#ee4444']].forEach(([t,y,col])=>{
+    ctx.setLineDash([3,3]);ctx.strokeStyle=col;ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(padL,ty(y));ctx.lineTo(tx(t),ty(y));ctx.stroke();
+    ctx.beginPath();ctx.moveTo(tx(t),ty(y));ctx.lineTo(tx(t),padT+plotH);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=col;ctx.beginPath();ctx.arc(tx(t),ty(y),4,0,Math.PI*2);ctx.fill();
+  });
+
+  // tau marker
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#ff8844';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(tx(tauT),padT);ctx.lineTo(tx(tauT),padT+plotH);ctx.stroke();ctx.setLineDash([]);
+
+  // y(∞) dashed
+  ctx.setLineDash([5,4]);ctx.strokeStyle='#0066cc';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,ty(1));ctx.lineTo(padL+plotW,ty(1));ctx.stroke();ctx.setLineDash([]);
+
+  // Curve
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2.5;ctx.beginPath();
+  for(let i=0;i<=500;i++){const t=i/500*tMax;const y=1-Math.exp(-t/tau);if(i===0)ctx.moveTo(tx(t),ty(y));else ctx.lineTo(tx(t),ty(y));}
+  ctx.stroke();
+
+  // Annotations
+  ctx.fillStyle='#ff8844';ctx.font='10px monospace';
+  ctx.fillText(`tstep=${toEng(tstep,'s')}`,padL+4,padT+16);
+  ctx.fillText(`tstop=${toEng(tstop,'s')}`,padL+4,padT+28);
+  ctx.fillStyle='#0066cc';ctx.fillText('y(∞)',padL+plotW-30,ty(1)-6);
+
+  ctx.fillStyle=mutC;ctx.font='10px sans-serif';
+  for(let i=0;i<=6;i++)ctx.fillText(toEng(i*tMax/6,'s'),tx(i*tMax/6)-15,padT+plotH+18);
+  ctx.fillText('t',padL+plotW/2-5,padT+plotH+36);
+  for(let i=0;i<=5;i++)ctx.fillText((i*1.1/5).toFixed(2),4,ty(i*1.1/5)+4);
+}
+
+['sR','sC'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',draw);
+draw();
+</script>
+</body>
+</html>
