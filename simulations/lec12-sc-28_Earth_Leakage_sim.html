@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scenario 28 — Earth Leakage ELCB Trip</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto;}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px;}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;}
+  h1{font-size:18px;margin:4px 0;}
+  .layout{display:grid;grid-template-columns:1fr 280px;gap:16px;}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%;}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px;}
+  .ctrl-group{margin-bottom:12px;}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;display:flex;justify-content:space-between;}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace;}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;}
+  .result-box{background:rgba(0,102,204,0.08);border:1px solid rgba(0,102,204,0.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.5;}
+  @media(max-width:600px){.layout{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 12 | Scenario 28</div>
+  <h1>Earth Leakage — Y-Capacitors and ELCB Trip</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Y-cap per machine (nF) <span class="ctrl-value" id="p1-val">4.7</span></div>
+      <input type="range" id="p1" min="1" max="100" value="47">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Number of Machines <span class="ctrl-value" id="p2-val">1</span></div>
+      <input type="range" id="p2" min="1" max="20" value="1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">ELCB Threshold (mA) <span class="ctrl-value" id="p3-val">30</span></div>
+      <input type="range" id="p3" min="10" max="300" value="30">
+    </div>
+    <div class="result-box" id="result">Adjust to see ELCB trip condition</div>
+  </div>
+</div>
+<script>
+const canvas=document.getElementById('cv');
+const ctx=canvas.getContext('2d');
+function isDark(){return window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches;}
+function draw(){
+  const Cy=+document.getElementById('p1').value*1e-9; // F per machine
+  const n=+document.getElementById('p2').value;
+  const I_trip=+document.getElementById('p3').value*1e-3; // A
+  document.getElementById('p1-val').textContent=(Cy*1e9).toFixed(1)+' nF';
+  document.getElementById('p2-val').textContent=n;
+  document.getElementById('p3-val').textContent=Math.round(I_trip*1000)+' mA';
+
+  const V=230, f=50;
+  const C_total=Cy*n;
+  const I_leak=V*2*Math.PI*f*C_total; // RMS leakage current
+
+  canvas.width=canvas.parentElement.getBoundingClientRect().width||600;
+  canvas.height=380;
+  const W=canvas.width,H=canvas.height;
+  const dark=isDark();
+  const bg=dark?'#2a2a2a':'#f5f5f5';
+  const fg=dark?'#e8e8e8':'#1a1a1a';
+  const ac=dark?'#4499ff':'#0066cc';
+  const gr=dark?'#444':'#ddd';
+  const red='#e53935',grn='#43a047',orange='#ff9800';
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=fg;ctx.font='bold 13px system-ui';ctx.textAlign='center';
+  ctx.fillText('Earth Leakage Current vs Number of Machines',W/2,22);
+
+  const mx=70,my=40,mw=W-90,mh=H-110;
+  const maxMachines=20;
+  const maxI=I_trip*3;
+
+  const toX=n=>mx+mw*(n-1)/(maxMachines-1);
+  const toY=i=>my+mh*(1-i/maxI);
+
+  // Grid
+  ctx.strokeStyle=gr;ctx.lineWidth=1;
+  [0,0.25,0.5,0.75,1].forEach(f=>{
+    const i=f*maxI;
+    const y=toY(i);
+    ctx.beginPath();ctx.moveTo(mx,y);ctx.lineTo(mx+mw,y);ctx.stroke();
+    ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='right';
+    ctx.fillText((i*1000).toFixed(0)+'mA',mx-3,y+4);
+  });
+  [1,5,10,15,20].forEach(n=>{
+    const x=toX(n);
+    ctx.beginPath();ctx.moveTo(x,my);ctx.lineTo(x,my+mh);ctx.stroke();
+    ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='center';
+    ctx.fillText(n,x,my+mh+14);
+  });
+
+  // ELCB trip line
+  ctx.strokeStyle=red;ctx.lineWidth=1.5;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(mx,toY(I_trip));ctx.lineTo(mx+mw,toY(I_trip));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=red;ctx.font='10px system-ui';ctx.textAlign='left';
+  ctx.fillText('ELCB trip = '+(I_trip*1000).toFixed(0)+'mA',mx+4,toY(I_trip)-3);
+
+  // Leakage curve
+  ctx.strokeStyle=ac;ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let n=1;n<=20;n++){
+    const I=V*2*Math.PI*50*Cy*n;
+    const x=toX(n);
+    const y=toY(Math.min(maxI,I));
+    n===1?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Current machine marker
+  const I_current=I_leak;
+  const x_current=toX(n);
+  const y_current=toY(Math.min(maxI,I_current));
+  ctx.fillStyle=I_current>I_trip?red:grn;
+  ctx.beginPath();ctx.arc(x_current,y_current,6,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle=fg;ctx.font='bold 11px system-ui';ctx.textAlign='center';
+  ctx.fillText('You are here',x_current,y_current-12);
+
+  ctx.strokeStyle=fg;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx,my+mh);ctx.lineTo(mx+mw,my+mh);ctx.stroke();
+  ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='center';
+  ctx.fillText('Number of Machines',mx+mw/2,my+mh+28);
+
+  // Max safe number
+  const n_max=Math.floor(I_trip/(V*2*Math.PI*50*Cy));
+  document.getElementById('result').innerHTML=
+    `<b>${n} machines × ${(Cy*1e9).toFixed(1)}nF Y-cap = ${(C_total*1e9).toFixed(1)}nF total</b><br>`+
+    `Leakage current: ${(I_leak*1000).toFixed(1)}mA<br>`+
+    `ELCB threshold: ${(I_trip*1000).toFixed(0)}mA<br>`+
+    `Max safe machines: ${n_max}<br>`+
+    (I_leak>I_trip?`<span style="color:red">⚠ ELCB WILL TRIP — reduce Y-cap to ${Math.floor(I_trip/(n*V*2*Math.PI*50)*1e10)/10}nF or use isolation transformer</span>`:
+     `<span style="color:green">✓ Below trip threshold</span>`);
+}
+['p1','p2','p3'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>draw());
+draw();
+</script>
+</body>
+</html>

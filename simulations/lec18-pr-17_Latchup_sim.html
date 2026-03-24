@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec18 Pr17 — CMOS Latchup</title>
+<style>
+  :root{--bg:#f8f8f8;--fg:#222;--accent:#4a90d9;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a2e;--fg:#e0e0e0;--accent:#7ab4f5;}}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:Arial,sans-serif;padding:10px;}
+  h3{margin:6px 0;color:var(--accent);}
+  canvas{border:1px solid #555;border-radius:4px;display:block;width:100%;}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;font-size:13px;}
+  input[type=range]{width:130px;accent-color:var(--accent);}
+  .vals{background:#0002;border-radius:4px;padding:8px;font-size:13px;margin:6px 0;}
+  .vals span{color:var(--accent);font-weight:bold;}
+  .warn{color:#e05;font-weight:bold;}
+</style>
+</head>
+<body>
+<h3>Problem 17 — CMOS Latchup: Input Spike vs Protection</h3>
+<div class="controls">
+  <label>L_trace (nH): <input type="range" id="Ltrace" min="1" max="200" value="50" step="1"> <b id="LtraceV">50</b></label>
+  <label>dI/dt (A/ns): <input type="range" id="didt" min="0.01" max="2" value="0.5" step="0.01"> <b id="didtV">0.50</b></label>
+  <label>R_series (Ω): <input type="range" id="Rs" min="0" max="1000" value="0" step="10"> <b id="RsV">0</b></label>
+  <label>V_GND (V): <input type="range" id="Vgnd" min="0" max="5" value="0" step="0.1"> <b id="VgndV">0.0</b></label>
+</div>
+<canvas id="cv"></canvas>
+<div class="vals" id="info"></div>
+<script>
+const cv=document.getElementById('cv');const ctx=cv.getContext('2d');
+function resizeCanvas(){const w=cv.parentElement.getBoundingClientRect().width||480;cv.width=Math.round(w);cv.height=Math.round(w*0.52);}
+function draw(){
+  resizeCanvas();
+  const W=cv.width,H=cv.height;
+  const Ltrace=+document.getElementById('Ltrace').value*1e-9;
+  const didt=+document.getElementById('didt').value*1e9;
+  const Rs=+document.getElementById('Rs').value;
+  const Vgnd=+document.getElementById('Vgnd').value;
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  ctx.fillStyle=isDark?'#1a1a2e':'#f8f8f8';ctx.fillRect(0,0,W,H);
+  // Compute spike
+  const Vspike_no_R=Ltrace*didt; // inductive spike
+  const Imax_spike=Vspike_no_R/(Rs>0?Rs:0.001);
+  const Vspike_with_R=Rs>0?Math.min(Vspike_no_R, Vspike_no_R*0.3):Vspike_no_R;
+  const V_at_pin=-Vspike_with_R-Vgnd;
+  const LATCHUP_THRESH=-0.6;
+  const triggered=V_at_pin<LATCHUP_THRESH;
+  // Draw the waveform
+  const padL=50,padR=20,padT=35,padB=50;
+  const gW=W-padL-padR,gH=H-padT-padB;
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,padT);ctx.lineTo(padL,padT+gH);ctx.lineTo(padL+gW,padT+gH);ctx.stroke();
+  // Time axis: 0 to 100ns
+  const tmax=100e-9;
+  function xp(t){return padL+(t/tmax)*gW;}
+  const Vmin=-Math.max(Vspike_no_R+2,5),Vmax=5;
+  const Vscale=Math.max(Math.abs(Vmin),Vmax);
+  function yp(v){return padT+gH/2-(v/Vscale)*gH/2;}
+  const Vmid=padT+gH/2;
+  ctx.strokeStyle='#3334';ctx.lineWidth=0.5;
+  for(let t=0;t<=tmax;t+=20e-9){ctx.beginPath();ctx.moveTo(xp(t),padT);ctx.lineTo(xp(t),padT+gH);ctx.stroke();}
+  for(let v=-Vscale;v<=Vscale;v+=Vscale/4){ctx.beginPath();ctx.moveTo(padL,yp(v));ctx.lineTo(padL+gW,yp(v));ctx.stroke();}
+  const fg=isDark?'#aaa':'#555';ctx.fillStyle=fg;ctx.font='10px Arial';
+  for(let t=0;t<=tmax;t+=20e-9)ctx.fillText((t*1e9).toFixed(0)+'ns',xp(t)-8,padT+gH+13);
+  for(let v=-Vscale;v<=Vscale;v+=Vscale/4)ctx.fillText(v.toFixed(1)+'V',padL-30,yp(v)+4);
+  // GND reference
+  ctx.strokeStyle='#888';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(padL,yp(0));ctx.lineTo(padL+gW,yp(0));ctx.stroke();ctx.setLineDash([]);
+  // Inductive spike (no protection)
+  const t_spike=1e-9; // spike starts at 20ns
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2.5;ctx.beginPath();let first=true;
+  for(let t=0;t<=tmax;t+=tmax/500){
+    let v=0;
+    const t0=20e-9;
+    if(t>=t0){
+      const dt=t-t0;
+      const tau=2e-9;
+      v=-(Vspike_no_R)*(Math.exp(-dt/(tau*3))-Math.exp(-dt/tau))*2.5;
+    }
+    if(first){ctx.moveTo(xp(t),yp(v));first=false;}else ctx.lineTo(xp(t),yp(v));
+  }ctx.stroke();
+  ctx.fillStyle='#e53935';ctx.font='10px Arial';ctx.fillText('V_pin (no protection): peak=−'+Vspike_no_R.toFixed(1)+'V',padL+gW*0.05,yp(-Vspike_no_R*0.8)-8);
+  // With R_series protection
+  if(Rs>0){
+    const factor=0.3+0.7*Math.exp(-Rs/100);
+    ctx.strokeStyle='#43a047';ctx.lineWidth=2.5;ctx.beginPath();first=true;
+    for(let t=0;t<=tmax;t+=tmax/500){
+      let v=0;const t0=20e-9;
+      if(t>=t0){const dt=t-t0;const tau=2e-9;v=-(Vspike_no_R*factor)*(Math.exp(-dt/(tau*3))-Math.exp(-dt/tau))*2.5;}
+      if(first){ctx.moveTo(xp(t),yp(v));first=false;}else ctx.lineTo(xp(t),yp(v));
+    }ctx.stroke();
+    ctx.fillStyle='#43a047';ctx.font='10px Arial';ctx.fillText('V_pin (R='+Rs+'Ω): peak=−'+(Vspike_no_R*factor).toFixed(1)+'V',padL+gW*0.05,yp(-Vspike_no_R*factor*0.8)+14);
+  }
+  // Latchup threshold
+  ctx.strokeStyle='#ff9800';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(padL,yp(LATCHUP_THRESH));ctx.lineTo(padL+gW,yp(LATCHUP_THRESH));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#ff9800';ctx.font='10px Arial';ctx.fillText('Latchup threshold: −0.6V',padL+4,yp(LATCHUP_THRESH)-4);
+  ctx.fillStyle=isDark?'#e0e0e0':'#222';ctx.font='bold 11px Arial';ctx.fillText('CMOS Input: Inductive Spike vs Latchup Threshold',padL+2,padT-8);
+  document.getElementById('info').innerHTML=
+    `V_spike = L×dI/dt = ${(Ltrace*1e9).toFixed(0)}nH × ${(didt/1e9).toFixed(2)}A/ns = `+
+    `<span class="${triggered?'warn':''}">${Vspike_no_R.toFixed(1)}V</span> (below GND) | `+
+    (Rs>0?`With R=${Rs}Ω: spike=${(Vspike_no_R*0.3).toFixed(1)}V | `:'No protection | ')+
+    (Vspike_no_R>0.6?'<span class="warn">⚠ LATCHUP TRIGGERED! Add series R + BAT54 clamp</span>':'<span style="color:#43a047">✓ Safe</span>');
+}
+['Ltrace','didt','Rs','Vgnd'].forEach(id=>{
+  const el=document.getElementById(id);const vl=document.getElementById(id+'V');
+  el.addEventListener('input',()=>{vl.textContent=id==='didt'||id==='Vgnd'?parseFloat(el.value).toFixed(2):el.value;draw();});
+});
+window.addEventListener('resize',draw);resizeCanvas();draw();
+</script>
+</body></html>

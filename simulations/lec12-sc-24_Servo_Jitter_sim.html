@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scenario 24 — Servo Jitter Local Decoupling</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto;}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px;}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;}
+  h1{font-size:18px;margin:4px 0;}
+  .layout{display:grid;grid-template-columns:1fr 280px;gap:16px;}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%;}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px;}
+  .ctrl-group{margin-bottom:12px;}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;display:flex;justify-content:space-between;}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace;}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;}
+  .result-box{background:rgba(0,102,204,0.08);border:1px solid rgba(0,102,204,0.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.5;}
+  @media(max-width:600px){.layout{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 12 | Scenario 24</div>
+  <h1>Servo Jitter — Local Decoupling Capacitors</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Number of Servos <span class="ctrl-value" id="p1-val">4</span></div>
+      <input type="range" id="p1" min="1" max="8" value="4">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Local Cap (µF) <span class="ctrl-value" id="p2-val">0</span></div>
+      <input type="range" id="p2" min="0" max="2000" value="0">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Regulator R_th (Ω) <span class="ctrl-value" id="p3-val">0.5</span></div>
+      <input type="range" id="p3" min="1" max="50" value="5">
+    </div>
+    <div class="result-box" id="result">Adjust parameters</div>
+  </div>
+</div>
+<script>
+const canvas=document.getElementById('cv');
+const ctx=canvas.getContext('2d');
+function isDark(){return window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches;}
+function draw(){
+  const n=+document.getElementById('p1').value;
+  const Clocal=+document.getElementById('p2').value*1e-6;
+  const Rth=+document.getElementById('p3').value/10;
+  document.getElementById('p1-val').textContent=n;
+  document.getElementById('p2-val').textContent=Math.round(Clocal*1e6)+' µF';
+  document.getElementById('p3-val').textContent=Rth.toFixed(2)+' Ω';
+
+  const I_per_servo=0.5; // A burst per servo
+  const VCC=5;
+  const V_sag_no_cap=Rth*I_per_servo*n;
+  const C_total=Clocal*n;
+  // With cap: sag reduced proportional to energy stored
+  const V_sag_with_cap=C_total>0?V_sag_no_cap*Math.exp(-C_total*VCC/(I_per_servo*n*0.005)):V_sag_no_cap;
+  const V_min=VCC-Math.min(V_sag_with_cap,V_sag_no_cap);
+
+  canvas.width=canvas.parentElement.getBoundingClientRect().width||600;
+  canvas.height=380;
+  const W=canvas.width,H=canvas.height;
+  const dark=isDark();
+  const bg=dark?'#2a2a2a':'#f5f5f5';
+  const fg=dark?'#e8e8e8':'#1a1a1a';
+  const ac=dark?'#4499ff':'#0066cc';
+  const gr=dark?'#444':'#ddd';
+  const red='#e53935',grn='#43a047',orange='#ff9800';
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=fg;ctx.font='bold 13px system-ui';ctx.textAlign='center';
+  ctx.fillText('5V Rail — '+n+' Servos Simultaneous Current Burst',W/2,22);
+
+  const mx=60,my=40,mw=W-80,mh=H-100;
+  const totalT=100; // ms
+  const toX=t=>mx+mw*t/totalT;
+  const Vmin_scale=3,Vmax_scale=5.5;
+  const toY=v=>my+mh*(1-(v-Vmin_scale)/(Vmax_scale-Vmin_scale));
+
+  ctx.strokeStyle=gr;ctx.lineWidth=1;
+  [3,3.5,4,4.5,5].forEach(v=>{
+    const y=toY(v);
+    ctx.beginPath();ctx.moveTo(mx,y);ctx.lineTo(mx+mw,y);ctx.stroke();
+    ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='right';
+    ctx.fillText(v.toFixed(1)+'V',mx-3,y+4);
+  });
+
+  // Servo hold voltage min (typically 4.0V)
+  const V_servo_min=4.0;
+  ctx.strokeStyle=orange;ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(mx,toY(V_servo_min));ctx.lineTo(mx+mw,toY(V_servo_min));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=orange;ctx.font='10px system-ui';ctx.textAlign='left';
+  ctx.fillText('Servo min (4.0V)',mx+4,toY(V_servo_min)-3);
+
+  // Draw voltage traces for both cases
+  const drawTrace=(sag,color,lw)=>{
+    ctx.strokeStyle=color;ctx.lineWidth=lw;
+    ctx.beginPath();
+    for(let i=0;i<=500;i++){
+      const t=i/500*totalT;
+      let v;
+      if(t<10) v=VCC;
+      else if(t<15) {
+        // Burst event
+        v=VCC-sag*(1-Math.exp(-(t-10)/2));
+      } else {
+        v=VCC-sag*Math.exp(-(t-15)/10);
+      }
+      v=Math.max(Vmin_scale,Math.min(Vmax_scale,v));
+      i===0?ctx.moveTo(toX(t),toY(v)):ctx.lineTo(toX(t),toY(v));
+    }
+    ctx.stroke();
+  };
+
+  drawTrace(V_sag_no_cap, red, 1.5);
+  if(Clocal>0) drawTrace(V_sag_with_cap, grn, 2.5);
+
+  ctx.strokeStyle=fg;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx,my+mh);ctx.lineTo(mx+mw,my+mh);ctx.stroke();
+
+  ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='center';
+  [0,25,50,75,100].forEach(t=>ctx.fillText(t+'ms',toX(t),my+mh+14));
+
+  ctx.font='10px system-ui';ctx.textAlign='left';
+  ctx.fillStyle=red;ctx.fillRect(mx,my+mh+28,12,2);
+  ctx.fillStyle=fg;ctx.fillText('No local cap',mx+16,my+mh+33);
+  if(Clocal>0){
+    ctx.fillStyle=grn;ctx.fillRect(mx+120,my+mh+28,12,2);
+    ctx.fillStyle=fg;ctx.fillText('With '+Math.round(Clocal*1e6)+'µF/servo',mx+136,my+mh+33);
+  }
+
+  const ok=(Clocal>0?V_sag_with_cap:V_sag_no_cap)<(VCC-V_servo_min);
+  document.getElementById('result').innerHTML=
+    `<b>${n} servos × ${I_per_servo}A = ${n*I_per_servo}A burst</b><br>`+
+    `R_th = ${Rth.toFixed(2)}Ω → sag = ${(V_sag_no_cap).toFixed(2)}V<br>`+
+    (Clocal>0?`With ${Math.round(Clocal*1e6)}µF/servo: sag = ${V_sag_with_cap.toFixed(3)}V<br>`:'')+
+    `V_rail min = ${(VCC-Math.min(V_sag_with_cap,V_sag_no_cap)).toFixed(2)}V<br>`+
+    (ok?'<span style="color:green">✓ Rail stable — no jitter</span>':
+     '<span style="color:red">⚠ Rail droops below 4V — servos jitter! Add 1000µF per servo</span>');
+}
+['p1','p2','p3'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>draw());
+draw();
+</script>
+</body>
+</html>

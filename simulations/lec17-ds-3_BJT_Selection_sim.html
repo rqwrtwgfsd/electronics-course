@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Sim: BJT Selection - VBE Temperature</title>
+<style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:Arial,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:12px;}canvas{display:block;border:1px solid #444;border-radius:6px;background:#0d0d1a;}.controls{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0;}.ctrl{display:flex;flex-direction:column;gap:3px;font-size:12px;}label{color:#aaa;}input[type=range]{width:140px;}.vals{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#ccc;margin:6px 0;}.val-item{background:#222;border-radius:4px;padding:4px 8px;}h3{font-size:13px;color:#90caf9;margin-bottom:6px;}@media(prefers-color-scheme:light){body{background:#f5f5f5;color:#111;}canvas{background:#fff;border-color:#ccc;}.val-item{background:#eee;color:#222;}label{color:#555;}h3{color:#005a9c;}}</style>
+</head>
+<body>
+<h3>Lecture 17 DS-3: BJT VBE Temperature Sensor and Current Mirror Accuracy</h3>
+<p style="font-size:11px;color:#aaa;margin-bottom:8px;">V_BE decreases at -2mV/degC. BJT current mirror vs MOSFET current source accuracy over temperature.</p>
+<canvas id="cv"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>IC bias (uA)</label><input type="range" id="IC" min="1" max="1000" value="10" step="1"><span id="ICV">10</span></div>
+  <div class="ctrl"><label>Beta (hFE)</label><input type="range" id="beta" min="50" max="500" value="200" step="10"><span id="betaV">200</span></div>
+  <div class="ctrl"><label>Temp range (degC max)</label><input type="range" id="Tmax" min="50" max="150" value="85" step="5"><span id="TmaxV">85</span></div>
+</div>
+<div class="vals">
+  <div class="val-item">VBE at 25C: <strong id="vbe25">-</strong></div>
+  <div class="val-item">VBE at Tmax: <strong id="vbeTmax">-</strong></div>
+  <div class="val-item">Mirror error (BJT): <strong id="mirr_bjt">-</strong></div>
+  <div class="val-item">Mirror error (MOSFET): <strong id="mirr_mos">-</strong></div>
+</div>
+<script>
+var cv=document.getElementById("cv");
+var ctx=cv.getContext("2d");
+function resizeCanvas(){var w=cv.parentElement.getBoundingClientRect().width;cv.width=Math.min(w-24,700);cv.height=Math.round(cv.width*0.48);}
+function get(id){return parseFloat(document.getElementById(id).value);}
+function draw(){
+  var W=cv.width,H=cv.height;
+  var IC=get("IC")*1e-6,beta=get("beta"),Tmax=get("Tmax");
+  document.getElementById("ICV").textContent=get("IC");
+  document.getElementById("betaV").textContent=get("beta");
+  document.getElementById("TmaxV").textContent=get("Tmax");
+  var VT25=0.02585;
+  var VBE25=VT25*Math.log(IC/1e-15+1);
+  var VBE_Tmax=VBE25-0.002*(Tmax-25);
+  document.getElementById("vbe25").textContent=VBE25.toFixed(3)+"V";
+  document.getElementById("vbeTmax").textContent=VBE_Tmax.toFixed(3)+"V";
+  // BJT mirror error: Wilson mirror, error ~ IC/beta^2
+  var mirr_bjt_err=1/(beta*beta)*100;
+  // MOSFET Vth mismatch ~ 20mV, (VGS-Vth)~200mV, error = 2*20/200 = 20%
+  var mirr_mos_err=2*20/200*100;
+  document.getElementById("mirr_bjt").textContent=mirr_bjt_err.toFixed(3)+"%";
+  document.getElementById("mirr_mos").textContent=mirr_mos_err.toFixed(0)+"% (typical)";
+  ctx.clearRect(0,0,W,H);
+  var pad={l:60,r:20,t:28,b:40};
+  var pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  var T_min=-40,T_maxP=Tmax+10;
+  function tx(T){return pad.l+(T-T_min)/(T_maxP-T_min)*pw;}
+  var VBE_max=0.75,VBE_min=0.3;
+  function vy(V){return H-pad.b-(V-VBE_min)/(VBE_max-VBE_min)*ph;}
+  ctx.strokeStyle="#1e2a3a";ctx.lineWidth=0.5;
+  [0.4,0.5,0.6,0.7].forEach(function(v){
+    ctx.beginPath();ctx.moveTo(pad.l,vy(v));ctx.lineTo(W-pad.r,vy(v));ctx.stroke();
+    ctx.fillStyle="#555";ctx.font="10px Arial";ctx.fillText(v.toFixed(1)+"V",2,vy(v)+4);
+  });
+  [-40,-20,0,25,50,75,100,125].forEach(function(T){
+    if(T>=T_min&&T<=T_maxP){
+      ctx.beginPath();ctx.moveTo(tx(T),pad.t);ctx.lineTo(tx(T),H-pad.b);ctx.stroke();
+      ctx.fillStyle="#555";ctx.font="10px Arial";ctx.fillText(T,tx(T)-8,H-pad.b+14);
+    }
+  });
+  var N=300;
+  ctx.beginPath();ctx.strokeStyle="#55aaff";ctx.lineWidth=2.5;
+  for(var i=0;i<=N;i++){
+    var T=T_min+(T_maxP-T_min)*i/N;
+    var VBE=VBE25-0.002*(T-25);
+    if(i===0)ctx.moveTo(tx(T),vy(VBE));else ctx.lineTo(tx(T),vy(VBE));
+  }
+  ctx.stroke();
+  ctx.strokeStyle="#55aaff";ctx.lineWidth=0.8;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(tx(25),pad.t);ctx.lineTo(tx(25),H-pad.b);ctx.stroke();
+  ctx.fillStyle="#55aaff";ctx.font="9px Arial";ctx.fillText("25C VBE="+VBE25.toFixed(3)+"V",tx(25)+2,vy(VBE25)-4);
+  ctx.beginPath();ctx.moveTo(tx(Tmax),pad.t);ctx.lineTo(tx(Tmax),H-pad.b);ctx.stroke();
+  ctx.fillStyle="#ff9955";ctx.font="9px Arial";ctx.fillText(Tmax+"C VBE="+VBE_Tmax.toFixed(3)+"V",tx(Tmax)+2,vy(VBE_Tmax)-4);
+  ctx.setLineDash([]);
+  ctx.strokeStyle="#666";ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,H-pad.b);ctx.lineTo(W-pad.r,H-pad.b);ctx.stroke();
+  ctx.fillStyle="#aaa";ctx.font="10px Arial";ctx.fillText("Temperature (degC)",W/2-40,H-5);
+  ctx.fillStyle="#90caf9";ctx.font="bold 11px Arial";
+  ctx.fillText("IC="+get("IC")+"uA  beta="+beta+"  Slope=-2mV/degC",pad.l+5,pad.t-8);
+  ctx.fillStyle="#55ff88";ctx.font="10px Arial";
+  ctx.fillText("BJT Wilson mirror error: "+mirr_bjt_err.toFixed(3)+"%  (MOSFET: "+mirr_mos_err.toFixed(0)+"x worse)",pad.l+5,pad.t+16);
+}
+["IC","beta","Tmax"].forEach(function(id){document.getElementById(id).addEventListener("input",draw);});
+window.addEventListener("resize",function(){resizeCanvas();draw();});
+resizeCanvas();draw();
+</script></body></html>

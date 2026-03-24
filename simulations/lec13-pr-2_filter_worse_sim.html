@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 13 Pr 2 — RC Filter with Source Impedance</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  header { border-bottom:2px solid var(--accent); padding-bottom:10px; margin-bottom:16px; }
+  h1 { font-size:18px; margin:4px 0; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  .ctrl-label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; margin-bottom:4px; display:flex; justify-content:space-between; }
+  .ctrl-value { color:var(--accent); font-size:13px; font-weight:700; font-family:monospace; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .result-box { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.25); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.7; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header><h1>Lec 13 Pr 2 — RC Filter Bode Plot (With Source Impedance)</h1></header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Source Rs <span class="ctrl-value" id="vRs">10 kΩ</span></div>
+      <input type="range" id="rs" min="0" max="50000" step="1000" value="10000">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Filter R <span class="ctrl-value" id="vRf">1 kΩ</span></div>
+      <input type="range" id="rf" min="100" max="20000" step="100" value="1000">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Capacitor C <span class="ctrl-value" id="vCf">100 nF</span></div>
+      <input type="range" id="cf" min="1" max="1000" step="1" value="100">
+    </div>
+    <div class="result-box" id="result">Adjust to see filter response</div>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function draw(){
+  cv.width = cv.parentElement.getBoundingClientRect().width || 620;
+  cv.height = 380;
+  const W=cv.width, H=cv.height;
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()||'#fff';
+  ctx.fillRect(0,0,W,H);
+
+  const Rs = +document.getElementById('rs').value;
+  const Rf = +document.getElementById('rf').value;
+  const Cf = +document.getElementById('cf').value * 1e-9;
+
+  document.getElementById('vRs').textContent = Rs>=1000?(Rs/1000).toFixed(0)+' kΩ':Rs+' Ω';
+  document.getElementById('vRf').textContent = Rf>=1000?(Rf/1000).toFixed(1)+' kΩ':Rf+' Ω';
+  document.getElementById('vCf').textContent = (+document.getElementById('cf').value)+' nF';
+
+  const Rtotal = Rs + Rf;
+  const fc = 1/(2*Math.PI*Rtotal*Cf);
+  const fc_naive = 1/(2*Math.PI*Rf*Cf);
+
+  // Bode plot
+  const pad={l:55,r:20,t:30,b:45};
+  const pw = W-pad.l-pad.r, ph = H-pad.t-pad.b;
+
+  // Frequency axis: 10Hz to 10MHz
+  const fMin=10, fMax=1e7;
+  const logFmin=Math.log10(fMin), logFmax=Math.log10(fMax);
+
+  function freqToX(f){ return pad.l + (Math.log10(f)-logFmin)/(logFmax-logFmin)*pw; }
+  function dbToY(db){ const maxDb=0, minDb=-60; return pad.t + (maxDb-db)/(maxDb-minDb)*ph; }
+
+  // Grid
+  ctx.strokeStyle='rgba(128,128,128,0.2)'; ctx.lineWidth=1;
+  for(let decade=1; decade<=7; decade++){
+    const x=freqToX(Math.pow(10,decade));
+    ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,pad.t+ph); ctx.stroke();
+  }
+  for(let db=0; db>=-60; db-=20){
+    const y=dbToY(db);
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+pw,y); ctx.stroke();
+  }
+
+  // Axes labels
+  ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--muted').trim()||'#666';
+  ctx.font='10px system-ui'; ctx.textAlign='center';
+  ['10Hz','100Hz','1kHz','10kHz','100kHz','1MHz','10MHz'].forEach((lbl,i)=>{
+    const x=freqToX(Math.pow(10,i+1));
+    ctx.fillText(lbl, x, pad.t+ph+14);
+  });
+  ctx.textAlign='right';
+  for(let db=0; db>=-60; db-=20){
+    ctx.fillText(db+'dB', pad.l-4, dbToY(db)+4);
+  }
+  ctx.save(); ctx.translate(13,pad.t+ph/2); ctx.rotate(-Math.PI/2);
+  ctx.textAlign='center'; ctx.fillText('Attenuation (dB)', 0, 0); ctx.restore();
+
+  // Transfer function: H(jω) = Zc/(Rs+Rf+Zc) where Zc=1/jωC
+  // |H| = 1/sqrt(1+(ω*Rtotal*C)²)
+  function H(f){
+    const w = 2*Math.PI*f;
+    return 1/Math.sqrt(1 + Math.pow(w*Rtotal*Cf,2));
+  }
+
+  // "Naive" filter (ignoring Rs)
+  function Hnaive(f){
+    const w=2*Math.PI*f;
+    return 1/Math.sqrt(1+Math.pow(w*Rf*Cf,2));
+  }
+
+  // Draw naive (orange dashed)
+  ctx.setLineDash([6,4]); ctx.strokeStyle='#fb8c00'; ctx.lineWidth=2;
+  ctx.beginPath();
+  let first=true;
+  for(let ix=0; ix<=pw; ix++){
+    const f=Math.pow(10, logFmin+(ix/pw)*(logFmax-logFmin));
+    const db=20*Math.log10(Hnaive(f));
+    const x=pad.l+ix, y=dbToY(Math.max(db,-62));
+    if(first){ctx.moveTo(x,y); first=false;} else ctx.lineTo(x,y);
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+
+  // Draw actual (blue solid)
+  ctx.strokeStyle='#0066cc'; ctx.lineWidth=2.5;
+  ctx.beginPath(); first=true;
+  for(let ix=0; ix<=pw; ix++){
+    const f=Math.pow(10, logFmin+(ix/pw)*(logFmax-logFmin));
+    const db=20*Math.log10(H(f));
+    const x=pad.l+ix, y=dbToY(Math.max(db,-62));
+    if(first){ctx.moveTo(x,y); first=false;} else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Mark cutoff frequencies
+  function markFc(f, color, label){
+    const x=freqToX(f);
+    if(x<pad.l||x>pad.l+pw) return;
+    ctx.strokeStyle=color; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,pad.t+ph); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=color; ctx.font='10px system-ui'; ctx.textAlign='center';
+    ctx.fillText(label, x, pad.t+10);
+  }
+  if(fc_naive < fMax) markFc(fc_naive, '#fb8c00', 'fc_naive='+fmtFreq(fc_naive));
+  if(fc < fMax)       markFc(fc, '#0066cc', 'fc_actual='+fmtFreq(fc));
+
+  // Legend
+  ctx.font='11px system-ui'; ctx.textAlign='left';
+  ctx.fillStyle='#fb8c00'; ctx.fillText('-- Naive (Rs ignored)', pad.l+8, pad.t+16);
+  ctx.fillStyle='#0066cc'; ctx.fillText('— Actual (Rs included)', pad.l+8, pad.t+30);
+
+  // Evaluate at 1kHz and 50kHz
+  const H1k  = 20*Math.log10(H(1000));
+  const H50k = 20*Math.log10(H(50000));
+
+  document.getElementById('result').innerHTML =
+    `<b>Actual cutoff:</b> ${fmtFreq(fc)}<br>` +
+    `<b>Naive cutoff (Rs ignored):</b> ${fmtFreq(fc_naive)}<br>` +
+    `<b>At 1 kHz:</b> ${H1k.toFixed(1)} dB<br>` +
+    `<b>At 50 kHz:</b> ${H50k.toFixed(1)} dB<br>` +
+    (Rs>Rf ? `<span style="color:#e53935">⚠ Rs dominates — cutoff shifted low!</span>` : '');
+}
+
+function fmtFreq(f){
+  if(f<1000) return f.toFixed(0)+'Hz';
+  if(f<1e6)  return (f/1000).toFixed(1)+'kHz';
+  return (f/1e6).toFixed(2)+'MHz';
+}
+
+['rs','rf','cf'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',draw);
+draw();
+</script>
+</body>
+</html>

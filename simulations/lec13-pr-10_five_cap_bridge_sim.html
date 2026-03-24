@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 13 Pr 10 — Five-Capacitor Bridge Network</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  header { border-bottom:2px solid var(--accent); padding-bottom:10px; margin-bottom:16px; }
+  h1 { font-size:18px; margin:4px 0; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  .ctrl-label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; margin-bottom:4px; display:flex; justify-content:space-between; }
+  .ctrl-value { color:var(--accent); font-size:13px; font-weight:700; font-family:monospace; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .result-box { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.25); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.7; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header><h1>Lec 13 Pr 10 — Five-Cap Bridge: Node Voltages vs Time</h1></header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">R1=R2 (kΩ) <span class="ctrl-value" id="vR">1 kΩ</span></div>
+      <input type="range" id="rr" min="0.1" max="20" step="0.1" value="1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">C (µF) each <span class="ctrl-value" id="vC">10 µF</span></div>
+      <input type="range" id="cc" min="1" max="100" step="1" value="10">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">C5 (bridge) <span class="ctrl-value" id="vC5">10 µF</span></div>
+      <input type="range" id="c5" min="0" max="100" step="1" value="10">
+    </div>
+    <div class="result-box" id="result">Explore symmetry principle</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+
+function draw(){
+  cv.width=cv.parentElement.getBoundingClientRect().width||620;
+  cv.height=380;
+  const W=cv.width, H=cv.height;
+  ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()||'#fff';
+  ctx.fillRect(0,0,W,H);
+
+  const R=+document.getElementById('rr').value*1e3;
+  const C=+document.getElementById('cc').value*1e-6;
+  const C5=+document.getElementById('c5').value*1e-6;
+
+  document.getElementById('vR').textContent=(+document.getElementById('rr').value).toFixed(1)+' kΩ';
+  document.getElementById('vC').textContent=(+document.getElementById('cc').value)+' µF';
+  document.getElementById('vC5').textContent=(+document.getElementById('c5').value)+' µF';
+
+  const Vs=10;
+  // Symmetric circuit: V_A(t)=V_B(t)=V_C(t)=V_D(t)
+  // Equivalent: R1+R2=2R in series with C_series = C1||C2 series C3||C4 = 2C series 2C = C
+  const Req = 2*R;
+  const Ceq = C; // series combination
+  const tau = Req*Ceq;
+  // C5 carries zero current (by symmetry, V_C=V_D always)
+
+  const tMax = 5*tau;
+  const pad={l:55,r:20,t:30,b:40};
+  const pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
+
+  function tToX(t){ return pad.l+pw*t/tMax; }
+  function vToY(v){ return pad.t+ph*(1-v/12); }
+
+  // Grid
+  ctx.strokeStyle='rgba(128,128,128,0.15)'; ctx.lineWidth=1;
+  for(let v2=0;v2<=10;v2+=2){
+    const y=vToY(v2);
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+pw,y); ctx.stroke();
+  }
+
+  // Labels
+  ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--muted').trim()||'#666';
+  ctx.font='10px system-ui'; ctx.textAlign='right';
+  for(let v2=0;v2<=10;v2+=2) ctx.fillText(v2+'V', pad.l-4, vToY(v2)+4);
+  ctx.textAlign='center';
+  for(let i=0;i<=5;i++) ctx.fillText(i+'τ', tToX(i*tau), pad.t+ph+14);
+  ctx.save(); ctx.translate(13,pad.t+ph/2); ctx.rotate(-Math.PI/2);
+  ctx.textAlign='center'; ctx.fillText('Node voltage (V)',0,0); ctx.restore();
+
+  // V_A(t) -- rises from 0 to 5V with tau_combined
+  // At t=0+ all caps short so VABCD=Vs/2=5V
+  // No -- wait: the node voltages go 0→5V as caps charge.
+  // Actually: VA(t)= Vs/2*(1-exp(-t/tau))... let's compute properly.
+  // V_A(t) = V_A_inf*(1-exp(-t/tau)) where V_A_inf=5V (voltage divider with open caps)
+  const VA_inf = Vs*R/(2*R); // =5V
+  const VC_inf = VA_inf; // by symmetry (no current through C5)
+
+  // All node curves are identical (VA=VB=VC=VD by symmetry)
+  const colors=['#0066cc','#e53935','#fb8c00','#8e24aa','rgba(0,150,0,0.7)'];
+  const labels=['V_A','V_B','V_C','V_D'];
+
+  labels.forEach((lbl,i)=>{
+    ctx.beginPath(); ctx.strokeStyle=colors[i]; ctx.lineWidth=i===0?2.5:1.5;
+    if(i>0){ctx.setLineDash([6,3]);}
+    for(let ix=0;ix<=pw;ix++){
+      const t=ix/pw*tMax;
+      const v=VA_inf*(1-Math.exp(-t/tau));
+      const x=pad.l+ix, y=vToY(v);
+      ix===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+  });
+
+  // V_CD = 0 line
+  const y0=vToY(0);
+  ctx.strokeStyle='rgba(0,180,0,0.7)'; ctx.lineWidth=2; ctx.setLineDash([4,2]);
+  ctx.beginPath(); ctx.moveTo(pad.l,y0); ctx.lineTo(pad.l+pw,y0); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='rgba(0,150,0,0.9)'; ctx.font='9px system-ui'; ctx.textAlign='left';
+  ctx.fillText('V_CD = 0 (always — C5 unused)', pad.l+6, y0-5);
+
+  // Asymptote
+  const yinf=vToY(VA_inf);
+  ctx.strokeStyle='rgba(0,102,204,0.3)'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(pad.l,yinf); ctx.lineTo(pad.l+pw,yinf); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#0066cc'; ctx.font='9px system-ui'; ctx.textAlign='right';
+  ctx.fillText(VA_inf.toFixed(1)+'V (all nodes)', pad.l+pw-4, yinf-4);
+
+  // Legend
+  ctx.font='10px system-ui'; ctx.textAlign='left';
+  labels.forEach((l,i)=>{
+    ctx.fillStyle=colors[i]; ctx.fillText(l+' (identical)', pad.l+8, pad.t+16+(i*12));
+  });
+
+  document.getElementById('result').innerHTML =
+    `<b>Equivalent τ:</b> ${(tau*1000).toFixed(2)} ms<br>` +
+    `<b>V(∞) all nodes:</b> ${VA_inf.toFixed(1)} V<br>` +
+    `<b>V_CD:</b> 0 V throughout<br>` +
+    `<b>C5 current:</b> 0 (by symmetry — removable)<br>` +
+    (C5===0?`<span style="color:green">C5=0 shown: circuit unchanged ✓</span>`:
+             `<span>C5=${(C5*1e6).toFixed(0)}µF has no effect</span>`);
+}
+
+['rr','cc','c5'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',draw);
+draw();
+</script>
+</body>
+</html>

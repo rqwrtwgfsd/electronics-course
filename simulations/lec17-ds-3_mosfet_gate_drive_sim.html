@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 17 DS 3 — MOSFET Gate Drive &amp; Q_g Power</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  header { border-bottom:2px solid var(--accent); padding-bottom:10px; margin-bottom:16px; }
+  h1 { font-size:18px; margin:4px 0; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  .ctrl-label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; margin-bottom:4px; display:flex; justify-content:space-between; }
+  .ctrl-value { color:var(--accent); font-size:13px; font-weight:700; font-family:monospace; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .result-box { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.25); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.7; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header><h1>Lec 17 DS 3 — MOSFET Gate Charge vs Switching Power &amp; FOM</h1></header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Q_g (nC) <span class="ctrl-value" id="vQg">50 nC</span></div>
+      <input type="range" id="qg" min="1" max="500" step="1" value="50">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">R_DS_on (mΩ) <span class="ctrl-value" id="vRds">30 mΩ</span></div>
+      <input type="range" id="rds" min="1" max="300" step="1" value="30">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Switching Freq <span class="ctrl-value" id="vFsw">100 kHz</span></div>
+      <input type="range" id="fsw" min="10000" max="2000000" step="10000" value="100000">
+    </div>
+    <div class="result-box" id="result">Adjust to see trade-offs</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+
+function draw(){
+  cv.width=cv.parentElement.getBoundingClientRect().width||620;
+  cv.height=380;
+  const W=cv.width, H=cv.height;
+  ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()||'#fff';
+  ctx.fillRect(0,0,W,H);
+
+  const Qg=+document.getElementById('qg').value*1e-9;
+  const Rds=+document.getElementById('rds').value*1e-3;
+  const fsw=+document.getElementById('fsw').value;
+  const VGS=10, IL=10; // fixed at 10V gate, 10A load
+
+  document.getElementById('vQg').textContent=(Qg*1e9).toFixed(0)+' nC';
+  document.getElementById('vRds').textContent=(Rds*1000).toFixed(0)+' mΩ';
+  document.getElementById('vFsw').textContent=fsw>=1e6?(fsw/1e6).toFixed(1)+'MHz':(fsw/1000).toFixed(0)+' kHz';
+
+  const P_gate = Qg*VGS*fsw;
+  const P_cond = IL*IL*Rds;
+  const FOM    = Rds*Qg; // Ω·C = Ω·As → better lower
+
+  // Draw pie / bar showing breakdown
+  const pad={l:30,r:30,t:40,b:40};
+  const pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
+
+  // Bar chart: P_gate and P_cond vs fsw
+  const fArr=[];
+  for(let i=0;i<=20;i++) fArr.push(10000+i*(2000000-10000)/20);
+
+  const pMax=Math.max(...fArr.map(f=>Qg*VGS*f+IL*IL*Rds), 1)*1.15;
+  function fToX(f){ return pad.l+pw*(f-10000)/(2000000-10000); }
+  function pToY(p){ return pad.t+ph*(1-p/pMax); }
+
+  // Grid
+  ctx.strokeStyle='rgba(128,128,128,0.15)'; ctx.lineWidth=1;
+  for(let i=0;i<=4;i++){
+    const f=10000+(2000000-10000)*i/4;
+    const x=fToX(f);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+  }
+  for(let p=0;p<pMax;p+=pMax/5){
+    const y=pToY(p);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+  }
+
+  // Labels
+  ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--muted').trim()||'#666';
+  ctx.font='10px system-ui'; ctx.textAlign='right';
+  for(let i=0;i<=5;i++){
+    const p=pMax*i/5;
+    ctx.fillText(p.toFixed(1)+'W', pad.l-4, pToY(p)+4);
+  }
+  ctx.textAlign='center';
+  ['10kHz','510kHz','1010kHz','1510kHz','2010kHz'].forEach((l,i)=>{
+    const f=10000+(2000000-10000)*i/4;
+    ctx.fillText(f>=1e6?(f/1e6).toFixed(1)+'M':(f/1000).toFixed(0)+'k', fToX(f), pad.t+ph+14);
+  });
+  ctx.save();ctx.translate(13,pad.t+ph/2);ctx.rotate(-Math.PI/2);
+  ctx.textAlign='center';ctx.fillText('Power Loss (W)',0,0);ctx.restore();
+
+  // Stacked area: cond (blue), gate (orange)
+  ctx.beginPath(); ctx.fillStyle='rgba(0,102,204,0.3)';
+  ctx.moveTo(pad.l, pToY(P_cond));
+  fArr.forEach(f=>{ ctx.lineTo(fToX(f), pToY(P_cond)); });
+  ctx.lineTo(fToX(fArr[fArr.length-1]), pad.t+ph);
+  ctx.lineTo(pad.l, pad.t+ph); ctx.closePath(); ctx.fill();
+
+  ctx.beginPath(); ctx.fillStyle='rgba(251,140,0,0.35)';
+  ctx.moveTo(pad.l, pToY(P_cond));
+  fArr.forEach(f=>{
+    const ptotal=P_cond+Qg*VGS*f;
+    ctx.lineTo(fToX(f), pToY(Math.min(ptotal,pMax)));
+  });
+  const last=fArr[fArr.length-1];
+  ctx.lineTo(fToX(last), pToY(P_cond));
+  ctx.closePath(); ctx.fill();
+
+  // Total loss line
+  ctx.beginPath(); ctx.strokeStyle='#e53935'; ctx.lineWidth=2;
+  let first=true;
+  fArr.forEach(f=>{
+    const p=P_cond+Qg*VGS*f;
+    const x=fToX(f), y=pToY(Math.min(p,pMax));
+    first?ctx.moveTo(x,y):ctx.lineTo(x,y); first=false;
+  });
+  ctx.stroke();
+
+  // Mark current fsw
+  const xf=fToX(fsw), ytotal=pToY(Math.min(P_cond+P_gate,pMax));
+  ctx.strokeStyle='#fb8c00'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(xf,pad.t); ctx.lineTo(xf,pad.t+ph); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#e53935'; ctx.beginPath(); ctx.arc(xf,ytotal,5,0,2*Math.PI); ctx.fill();
+
+  // Legend
+  ctx.font='10px system-ui'; ctx.textAlign='left';
+  ctx.fillStyle='rgba(0,102,204,0.8)'; ctx.fillText('Conduction loss (I²×R_DS_on)', pad.l+8, pad.t+16);
+  ctx.fillStyle='rgba(251,140,0,0.9)'; ctx.fillText('Gate switching loss (Q_g×V_GS×f)', pad.l+8, pad.t+28);
+  ctx.fillStyle='#e53935'; ctx.fillText('Total loss', pad.l+8, pad.t+40);
+
+  const FOM_nOC=(FOM*1e9*1e3);
+  document.getElementById('result').innerHTML =
+    `<b>P_conduction:</b> ${P_cond.toFixed(3)} W<br>` +
+    `<b>P_gate:</b> ${P_gate.toFixed(3)} W<br>` +
+    `<b>P_total:</b> ${(P_cond+P_gate).toFixed(3)} W<br>` +
+    `<b>FOM = R_DS × Q_g:</b> ${FOM_nOC.toFixed(2)} mΩ·nC<br>` +
+    `<span style="color:#888;font-size:11px">Lower FOM = better MOSFET technology</span>`;
+}
+
+['qg','rds','fsw'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',draw);
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scenario 29 — Asymmetric Clipping DC Offset</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto;}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px;}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;}
+  h1{font-size:18px;margin:4px 0;}
+  .layout{display:grid;grid-template-columns:1fr 280px;gap:16px;}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%;}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px;}
+  .ctrl-group{margin-bottom:12px;}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;display:flex;justify-content:space-between;}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace;}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;}
+  .result-box{background:rgba(0,102,204,0.08);border:1px solid rgba(0,102,204,0.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.5;}
+  @media(max-width:600px){.layout{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 12 | Scenario 29</div>
+  <h1>Asymmetric Clipping — DC Offset &amp; Coupling Capacitor</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">DC Offset (V) <span class="ctrl-value" id="p1-val">0</span></div>
+      <input type="range" id="p1" min="-5" max="5" value="0">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Input Amplitude (V) <span class="ctrl-value" id="p2-val">8</span></div>
+      <input type="range" id="p2" min="1" max="15" value="8">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Coupling Cap <span class="ctrl-value" id="p3-val">No</span></div>
+      <input type="range" id="p3" min="0" max="1" step="1" value="0">
+    </div>
+    <div class="result-box" id="result">Adjust offset to see asymmetric clipping</div>
+  </div>
+</div>
+<script>
+const canvas=document.getElementById('cv');
+const ctx=canvas.getContext('2d');
+function isDark(){return window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches;}
+function draw(){
+  const Voffset=+document.getElementById('p1').value;
+  const Vin=+document.getElementById('p2').value;
+  const cap=+document.getElementById('p3').value;
+  document.getElementById('p1-val').textContent=Voffset.toFixed(0)+' V';
+  document.getElementById('p2-val').textContent=Vin+' V';
+  document.getElementById('p3-val').textContent=cap?'Yes (blocking)':'No';
+
+  const Vclip_pos=12, Vclip_neg=-14; // supply rails
+  const Voffset_effective=cap?0:Voffset;
+
+  canvas.width=canvas.parentElement.getBoundingClientRect().width||600;
+  canvas.height=380;
+  const W=canvas.width,H=canvas.height;
+  const dark=isDark();
+  const bg=dark?'#2a2a2a':'#f5f5f5';
+  const fg=dark?'#e8e8e8':'#1a1a1a';
+  const ac=dark?'#4499ff':'#0066cc';
+  const gr=dark?'#444':'#ddd';
+  const red='#e53935',grn='#43a047',orange='#ff9800';
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=fg;ctx.font='bold 13px system-ui';ctx.textAlign='center';
+  ctx.fillText('Power Amplifier Output — DC Offset Effect',W/2,22);
+
+  const mx=60,my=40,mw=W-80,mh=H-100;
+  const totalT=2; // 2 cycles at 1kHz
+  const Vscale_pos=16,Vscale_neg=-16;
+  const Vscale=Vscale_pos-Vscale_neg;
+  const toX=t=>mx+mw*t/totalT;
+  const toY=v=>my+mh*(1-(v-Vscale_neg)/Vscale);
+
+  ctx.strokeStyle=gr;ctx.lineWidth=1;
+  [-14,-10,-5,0,5,10,12].forEach(v=>{
+    const y=toY(v);
+    ctx.beginPath();ctx.moveTo(mx,y);ctx.lineTo(mx+mw,y);ctx.stroke();
+    ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='right';
+    ctx.fillText(v+'V',mx-3,y+4);
+  });
+
+  // Clip lines
+  [Vclip_pos,Vclip_neg].forEach((v,i)=>{
+    ctx.strokeStyle=red;ctx.lineWidth=1.5;ctx.setLineDash([4,4]);
+    ctx.beginPath();ctx.moveTo(mx,toY(v));ctx.lineTo(mx+mw,toY(v));ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=red;ctx.font='10px system-ui';ctx.textAlign='left';
+    ctx.fillText(i===0?'+Rail ('+Vclip_pos+'V)':'-Rail ('+Vclip_neg+'V)',mx+4,toY(v)+(i===0?-3:12));
+  });
+
+  // Draw output waveform
+  const drawWave=(offset,color,lw)=>{
+    ctx.strokeStyle=color;ctx.lineWidth=lw;
+    ctx.beginPath();
+    for(let i=0;i<=500;i++){
+      const t=i/500*totalT;
+      const vsin=Vin*Math.sin(2*Math.PI*t);
+      const v=Math.max(Vclip_neg,Math.min(Vclip_pos,vsin+offset));
+      i===0?ctx.moveTo(toX(t),toY(v)):ctx.lineTo(toX(t),toY(v));
+    }
+    ctx.stroke();
+  };
+
+  if(!cap){
+    // Show ideal (no offset) faintly
+    ctx.globalAlpha=0.25;
+    drawWave(0,grn,1.5);
+    ctx.globalAlpha=1;
+    // Show with offset
+    drawWave(Voffset_effective,red,2.5);
+  } else {
+    // Cap removes DC — show clean output
+    drawWave(0,grn,2.5);
+  }
+
+  ctx.strokeStyle=fg;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx,my+mh);ctx.lineTo(mx+mw,my+mh);ctx.stroke();
+
+  // Time axis
+  ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='center';
+  [0,0.5,1,1.5,2].forEach(t=>ctx.fillText((t*1000).toFixed(0)+'µs',toX(t),my+mh+14));
+
+  const clip_pos=Voffset_effective+Vin;
+  const clip_neg=Voffset_effective-Vin;
+  const asym=cap?false:(clip_pos>Vclip_pos||clip_neg<Vclip_neg);
+  document.getElementById('result').innerHTML=
+    `<b>Output offset: ${Voffset_effective.toFixed(0)}V</b><br>`+
+    `Signal peak: +${(Voffset_effective+Vin).toFixed(0)}V / ${(Voffset_effective-Vin).toFixed(0)}V<br>`+
+    `Positive headroom: ${(Vclip_pos-Voffset_effective).toFixed(0)}V<br>`+
+    `Negative headroom: ${(Voffset_effective-Vclip_neg).toFixed(0)}V<br>`+
+    (cap?'<span style="color:green">✓ Coupling cap blocks DC — symmetric clipping</span>':
+     asym?`<span style="color:red">⚠ Asymmetric clipping! Add coupling capacitor to block ${Voffset.toFixed(0)}V DC offset</span>`:
+     '<span style="color:green">✓ No clipping at this amplitude</span>');
+}
+['p1','p2','p3'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>draw());
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAN Bus Common-Mode Rejection</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}
+  h1{font-size:18px;margin:4px 0}
+  .layout{display:grid;grid-template-columns:1fr 260px;gap:16px}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}
+  .ctrl-group{margin-bottom:12px}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}
+  .result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}
+  @media(max-width:600px){.layout{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 12 | Scenario 18</div>
+  <h1>CAN Bus: Differential Signal vs Common-Mode Noise</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">CM Noise (V) <span class="ctrl-value" id="lbl-n">2.0 V</span></div>
+      <input type="range" id="sl-n" min="0" max="10" value="2" step="0.1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">CM Choke (µH) <span class="ctrl-value" id="lbl-l">100 µH</span></div>
+      <input type="range" id="sl-l" min="0" max="1000" value="100" step="10">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Noise Frequency (kHz) <span class="ctrl-value" id="lbl-f">500 kHz</span></div>
+      <input type="range" id="sl-f" min="10" max="2000" value="500" step="10">
+    </div>
+    <div class="result-box" id="result">Adjust to reject common-mode noise</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slN=document.getElementById('sl-n'),slL=document.getElementById('sl-l'),slF=document.getElementById('sl-f');
+const lblN=document.getElementById('lbl-n'),lblL=document.getElementById('lbl-l'),lblF=document.getElementById('lbl-f');
+const result=document.getElementById('result');
+
+function draw(){
+  const W=cv.width,H=cv.height;
+  const Vnoise=parseFloat(slN.value);
+  const Lchoke=parseFloat(slL.value)*1e-6;
+  const fnoise=parseFloat(slF.value)*1e3;
+  lblN.textContent=Vnoise.toFixed(1)+' V';
+  lblL.textContent=slL.value+' µH';
+  lblF.textContent=slF.value+' kHz';
+  ctx.clearRect(0,0,W,H);
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  const tTotal=4/125e3; // 4 CAN bit periods at 125kbps
+  const VH=3.5,VL=1.5,Vmid=2.5; // CAN voltage levels
+  const vMin=-1,vMax=6;
+  function yPx(v){return pad+plotH*(1-(v-vMin)/(vMax-vMin))}
+  // CM choke attenuation at noise freq
+  const Zcm=2*Math.PI*fnoise*Lchoke;
+  const Rterm=60; // 60Ω half-termination
+  const cmAtten=Rterm/(Rterm+Zcm);
+  const VnoiseFiltered=Vnoise*Math.min(1,cmAtten);
+  // CAN bit pattern: dominant (0), recessive (1)
+  const bits=[1,0,1,1,0];
+  function canH(t){const i=Math.floor(t*bits.length/tTotal);const b=(i<bits.length?bits[i]:1);return b===0?VH:Vmid+0.1}
+  function canL(t){const i=Math.floor(t*bits.length/tTotal);const b=(i<bits.length?bits[i]:1);return b===0?VL:Vmid-0.1}
+  // Grid
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  [-1,0,1,2,2.5,3,4,5,6].filter(v=>v>=vMin&&v<=vMax).forEach(v=>{ctx.beginPath();ctx.moveTo(pad,yPx(v));ctx.lineTo(W-pad,yPx(v));ctx.stroke()});
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  // CAN_H with noise (no choke)
+  ctx.strokeStyle='#e53935';ctx.lineWidth=1.5;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    const v=canH(t)+Vnoise*Math.sin(2*Math.PI*fnoise*t);
+    px===0?ctx.moveTo(pad+px,yPx(Math.max(vMin,Math.min(vMax,v)))):ctx.lineTo(pad+px,yPx(Math.max(vMin,Math.min(vMax,v))));
+  }ctx.stroke();
+  // CAN_L with noise (no choke)
+  ctx.strokeStyle='#e57373';ctx.lineWidth=1;ctx.setLineDash([3,2]);ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    const v=canL(t)+Vnoise*Math.sin(2*Math.PI*fnoise*t);
+    px===0?ctx.moveTo(pad+px,yPx(Math.max(vMin,Math.min(vMax,v)))):ctx.lineTo(pad+px,yPx(Math.max(vMin,Math.min(vMax,v))));
+  }ctx.stroke();ctx.setLineDash([]);
+  // Differential voltage (CAN_H - CAN_L) — noise cancels!
+  ctx.strokeStyle='#2e7d32';ctx.lineWidth=2.5;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    const vdiff=(canH(t)-canL(t)); // noise cancels in differential
+    const vplot=Vmid+vdiff/2;
+    px===0?ctx.moveTo(pad+px,yPx(Math.max(vMin,Math.min(vMax,vplot)))):ctx.lineTo(pad+px,yPx(Math.max(vMin,Math.min(vMax,vplot))));
+  }ctx.stroke();
+  // Labels
+  ctx.fillStyle='#888';ctx.textAlign='right';ctx.font='10px system-ui';
+  [0,1,2,2.5,3,4,5].filter(v=>v>=vMin&&v<=vMax).forEach(v=>ctx.fillText(v.toFixed(1)+'V',pad-4,yPx(v)+3));
+  ctx.textAlign='left';ctx.font='11px system-ui';
+  ctx.fillStyle='#e53935';ctx.fillText('CAN_H + '+Vnoise.toFixed(1)+'V CM noise',pad+8,pad+16);
+  ctx.fillStyle='#e57373';ctx.fillText('CAN_L + '+Vnoise.toFixed(1)+'V CM noise (dashed)',pad+8,pad+28);
+  ctx.fillStyle='#2e7d32';ctx.fillText('Differential (H-L) — noise CANCELLED',pad+8,pad+42);
+  const cmAttenDB=20*Math.log10(cmAtten+0.001);
+  result.innerHTML='<b>Differential mode:</b> Signal preserved ✅<br>CM noise: <b>'+Vnoise.toFixed(1)+'V completely rejected</b><br>CM choke Z at '+slF.value+'kHz: <b>'+Zcm.toFixed(0)+'Ω</b><br>Choke CM atten: <b>'+cmAttenDB.toFixed(0)+'dB</b><br><b>Key: CAN is differential — CM noise appears equally on BOTH wires and subtracts to zero</b>';
+}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slN,slL,slF].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});
+resizeCanvas();draw();
+</script>
+</body>
+</html>

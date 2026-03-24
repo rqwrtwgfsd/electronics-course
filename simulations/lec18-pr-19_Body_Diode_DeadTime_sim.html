@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 18 Pr 19 — Body Diode Dead Time and Reverse Recovery</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  h1 { font-size:18px; margin-bottom:12px; border-bottom:2px solid var(--accent); padding-bottom:8px; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; display:flex; justify-content:space-between; margin-bottom:4px; }
+  .val { color:var(--accent); font-family:monospace; font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .info { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.2); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.6; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<h1>Pr 19 — Synchronous Buck: Body Diode Conduction and t_rr Loss</h1>
+<div class="layout">
+  <canvas id="cv" height="380"></canvas>
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>Dead time (ns) <span class="val" id="v-dt">100</span></label>
+      <input type="range" id="dtval" min="10" max="1000" value="100" step="10">
+    </div>
+    <div class="ctrl-group">
+      <label>t_rr body diode (ns) <span class="val" id="v-trr">150</span></label>
+      <input type="range" id="trrval" min="0" max="500" value="150" step="10">
+    </div>
+    <div class="ctrl-group">
+      <label>f_sw (kHz) <span class="val" id="v-fsw">500</span></label>
+      <input type="range" id="fswval" min="50" max="2000" value="500" step="50">
+    </div>
+    <div class="info" id="info">Trade-off: dead time loss vs t_rr spike.</div>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function resizeCanvas() {
+  cv.width = cv.parentElement.getBoundingClientRect().width || 600;
+  cv.height = 380;
+}
+
+function draw() {
+  resizeCanvas();
+  const W = cv.width, H = cv.height;
+  const dark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const bg = dark ? '#1a1a1a' : '#fff';
+  const fg = dark ? '#e8e8e8' : '#1a1a1a';
+  const gridC = dark ? '#333' : '#eee';
+
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  const dt_ns = +document.getElementById('dtval').value;
+  const trr_ns = +document.getElementById('trrval').value;
+  const fsw_kHz = +document.getElementById('fswval').value;
+
+  document.getElementById('v-dt').textContent = dt_ns + ' ns';
+  document.getElementById('v-trr').textContent = trr_ns + ' ns';
+  document.getElementById('v-fsw').textContent = fsw_kHz + ' kHz';
+
+  // Power losses
+  const Iload = 2; // A
+  const Vin = 48; // V
+  const Vf_body = 0.7; // V body diode
+  const Vf_schottky = 0.3; // V Schottky
+
+  const fsw = fsw_kHz * 1e3;
+  const dt = dt_ns * 1e-9;
+  const trr = trr_ns * 1e-9;
+
+  // Dead time conduction loss: P_dt = Vf * I * dt * 2 * fsw (both edges)
+  const P_body = Vf_body * Iload * 2 * dt * fsw;
+  const P_schottky = Vf_schottky * Iload * 2 * dt * fsw;
+
+  // Reverse recovery loss: P_rr = ½ * Vin * I_rr_peak * t_rr * fsw
+  // I_rr_peak ≈ Iload if dt < trr
+  const I_rr = dt < trr ? Iload : 0; // rr spike occurs only if dt < trr
+  const P_rr = 0.5 * Vin * I_rr * trr * fsw;
+
+  const pad = { l: 65, r: 20, t: 40, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  // Show V_sw waveform during dead time
+  const T = 1e9 / fsw_kHz; // period in ns
+  const t_show = Math.min(T * 1.5, 3000); // show 1.5 periods max
+
+  const yMin = -2, yMax = 55;
+  ctx.strokeStyle = gridC; ctx.lineWidth = 1;
+  [-1, 0, 12, 24, 48].forEach(v => {
+    if (v >= yMin && v <= yMax) {
+      const y = pad.t + ph * (1 - (v - yMin) / (yMax - yMin));
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+pw, y); ctx.stroke();
+      ctx.fillStyle = fg; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+      ctx.fillText(v + 'V', pad.l-4, y+4);
+    }
+  });
+  for (let t = 0; t <= t_show; t += t_show/5) {
+    const x = pad.l + pw * t / t_show;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t+ph); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(t.toFixed(0) + 'ns', x, pad.t+ph+18);
+  }
+
+  ctx.fillStyle = fg; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Time (ns)', pad.l + pw / 2, H - 6);
+  ctx.save(); ctx.translate(14, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('V_SW (V)', 0, 0); ctx.restore();
+
+  // Draw simplified V_SW waveform: HIGH=48V, dead time=−0.7V (body diode), LOW=0V
+  const duty = 0.5;
+  const t_on = T * duty;
+  const t_off = T * (1 - duty);
+
+  ctx.beginPath(); ctx.strokeStyle = '#1565c0'; ctx.lineWidth = 2.5;
+  const drawVSW = () => {
+    let t = 0, phase = 'HIGH';
+    let phase_start = 0;
+    ctx.moveTo(pad.l, pad.t + ph * (1 - (48 - yMin) / (yMax - yMin)));
+    while (t < t_show) {
+      if (phase === 'HIGH') {
+        const end = Math.min(t + t_on, t_show);
+        const x1 = pad.l + pw * t / t_show, x2 = pad.l + pw * end / t_show;
+        const y = pad.t + ph * (1 - (48 - yMin) / (yMax - yMin));
+        ctx.lineTo(x2, y);
+        t = end; phase = 'DEAD1';
+      } else if (phase === 'DEAD1') {
+        const end = Math.min(t + dt_ns, t_show);
+        const x1 = pad.l + pw * t / t_show, x2 = pad.l + pw * end / t_show;
+        const y = pad.t + ph * (1 - (-0.7 - yMin) / (yMax - yMin));
+        ctx.lineTo(x1, y); ctx.lineTo(x2, y);
+        t = end; phase = 'LOW';
+      } else if (phase === 'LOW') {
+        const end = Math.min(t + t_off - 2*dt_ns, t_show);
+        const x2 = pad.l + pw * end / t_show;
+        const y = pad.t + ph * (1 - (0 - yMin) / (yMax - yMin));
+        ctx.lineTo(x2, y);
+        t = end; phase = 'DEAD2';
+      } else if (phase === 'DEAD2') {
+        const end = Math.min(t + dt_ns, t_show);
+        const x1 = pad.l + pw * t / t_show, x2 = pad.l + pw * end / t_show;
+        const y = pad.t + ph * (1 - (-0.7 - yMin) / (yMax - yMin));
+        ctx.lineTo(x1, y); ctx.lineTo(x2, y);
+        t = end; phase = 'HIGH';
+      }
+    }
+  };
+  drawVSW();
+  ctx.stroke();
+
+  // Reverse recovery spike
+  if (dt_ns < trr_ns) {
+    const spike_x = pad.l + pw * (dt_ns / t_show + 0.01);
+    const spike_y = pad.t + ph * (1 - (50 - yMin) / (yMax - yMin));
+    ctx.beginPath();
+    ctx.strokeStyle = '#e53935'; ctx.lineWidth = 2;
+    ctx.moveTo(spike_x, pad.t + ph * (1 - (0 - yMin) / (yMax - yMin)));
+    ctx.lineTo(spike_x, spike_y);
+    ctx.stroke();
+    ctx.fillStyle = '#e53935'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText('t_rr spike!', spike_x + 4, spike_y + 10);
+  }
+
+  ctx.fillStyle = fg; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(`Buck V_SW — Dead time=${dt_ns}ns, t_rr=${trr_ns}ns`, pad.l, pad.t-10);
+
+  const rr_ok = dt_ns >= trr_ns;
+  document.getElementById('info').innerHTML =
+    `<b>Power losses (I=${Iload}A, V=${Vin}V, f=${fsw_kHz}kHz):</b><br>` +
+    `Body diode: ${P_body.toFixed(3)} W<br>` +
+    `Schottky bypass: ${P_schottky.toFixed(3)} W<br>` +
+    `t_rr spike: ${P_rr.toFixed(3)} W<br>` +
+    `${rr_ok ? '✓ dt ≥ t_rr: no reverse recovery spike' : '⚠ dt < t_rr: reverse recovery spike!'}` +
+    `<br><b>GaN: zero t_rr → no spike, min dead time</b>`;
+}
+
+['dtval','trrval','fswval'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+window.addEventListener('resize', draw);
+draw();
+</script>
+</body>
+</html>

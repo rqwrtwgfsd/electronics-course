@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Sim: Five-Capacitor Bridge</title>
+<style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:Arial,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:12px;}canvas{display:block;border:1px solid #444;border-radius:6px;background:#0d0d1a;}.controls{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0;}.ctrl{display:flex;flex-direction:column;gap:3px;font-size:12px;}label{color:#aaa;}input[type=range]{width:140px;}.vals{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#ccc;margin:6px 0;}.val-item{background:#222;border-radius:4px;padding:4px 8px;}h3{font-size:13px;color:#90caf9;margin-bottom:6px;}@media(prefers-color-scheme:light){body{background:#f5f5f5;color:#111;}canvas{background:#fff;border-color:#ccc;}.val-item{background:#eee;color:#222;}label{color:#555;}h3{color:#005a9c;}}</style>
+</head>
+<body>
+<h3>Problem 10 - Five-Capacitor Bridge: Node Voltages vs Time</h3>
+<p style="font-size:11px;color:#aaa;margin-bottom:8px;">Symmetry forces V_C=V_D always. C5 carries zero current. All four nodes charge identically to Vs/2.</p>
+<canvas id="cv"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>C1=C2=C3=C4 (uF)</label><input type="range" id="C" min="1" max="100" value="10" step="1"><span id="CV">10</span></div>
+  <div class="ctrl"><label>R1=R2 (kOhm)</label><input type="range" id="R" min="0.1" max="20" value="1" step="0.1"><span id="RV">1.0</span></div>
+  <div class="ctrl"><label>V_supply (V)</label><input type="range" id="Vs" min="1" max="20" value="10" step="0.5"><span id="VsV">10.0</span></div>
+  <div class="ctrl"><label>Time span (x tau)</label><input type="range" id="span" min="1" max="8" value="5" step="0.5"><span id="spanV">5.0</span></div>
+</div>
+<div class="vals">
+  <div class="val-item">C_eq (series): <strong id="Ceq">-</strong></div>
+  <div class="val-item">tau = 2R x Ceq: <strong id="tau">-</strong></div>
+  <div class="val-item">V_CD: <strong id="vcd">0V always (symmetry)</strong></div>
+</div>
+<script>
+var cv=document.getElementById("cv");
+var ctx=cv.getContext("2d");
+function resizeCanvas(){var w=cv.parentElement.getBoundingClientRect().width;cv.width=Math.min(w-24,700);cv.height=Math.round(cv.width*0.45);}
+function get(id){return parseFloat(document.getElementById(id).value);}
+function draw(){
+  var W=cv.width,H=cv.height;
+  var C=get("C")*1e-6,R=get("R")*1e3,Vs=get("Vs"),sp=get("span");
+  document.getElementById("CV").textContent=get("C");
+  document.getElementById("RV").textContent=get("R").toFixed(1);
+  document.getElementById("VsV").textContent=get("Vs").toFixed(1);
+  document.getElementById("spanV").textContent=get("span").toFixed(1);
+  var Ceq=C;
+  var tau=2*R*Ceq;
+  var tau_str=tau>=1?tau.toFixed(2)+"s":tau>=0.001?(tau*1000).toFixed(1)+"ms":(tau*1e6).toFixed(0)+"us";
+  document.getElementById("Ceq").textContent=(Ceq*1e6).toFixed(1)+"uF";
+  document.getElementById("tau").textContent=tau_str;
+  ctx.clearRect(0,0,W,H);
+  var pad={l:52,r:20,t:28,b:38};
+  var pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  var t_end=sp*tau;
+  var V_fin=Vs/2;
+  function tx(t){return pad.l+t/t_end*pw;}
+  function vy(v){return H-pad.b-v/Vs*ph;}
+  ctx.strokeStyle="#1e2a3a";ctx.lineWidth=0.5;
+  [0.25,0.5,0.75,1.0].forEach(function(frac){
+    ctx.beginPath();ctx.moveTo(pad.l,vy(frac*Vs));ctx.lineTo(W-pad.r,vy(frac*Vs));ctx.stroke();
+    ctx.fillStyle="#555";ctx.font="10px Arial";ctx.fillText((frac*Vs).toFixed(1)+"V",2,vy(frac*Vs)+4);
+  });
+  var N=400;
+  var colors=["#55aaff","#ff9955","#55ffaa"];
+  var labels=["V_A(t)","V_B(t)","V_C=V_D(t)"];
+  for(var idx=0;idx<3;idx++){
+    ctx.beginPath();ctx.strokeStyle=colors[idx];ctx.lineWidth=idx===2?1.5:2;
+    if(idx===2){ctx.setLineDash([5,3]);}
+    for(var i=0;i<=N;i++){
+      var t=t_end*i/N;
+      var v=V_fin*(1-Math.exp(-t/tau));
+      if(i===0)ctx.moveTo(tx(t),vy(v));else ctx.lineTo(tx(t),vy(v));
+    }
+    ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle=colors[idx];ctx.font="10px Arial";
+    ctx.fillText(labels[idx],W-pad.r-65,vy(V_fin)-(idx*13)-4);
+  }
+  ctx.strokeStyle="#ff5555";ctx.lineWidth=1;ctx.setLineDash([3,2]);
+  ctx.beginPath();ctx.moveTo(pad.l,vy(0));ctx.lineTo(W-pad.r,vy(0));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle="#ff7777";ctx.font="9px Arial";ctx.fillText("V_CD = 0 always (C5 irrelevant)",pad.l+4,vy(0)-4);
+  for(var k=1;k<=Math.floor(sp);k++){
+    var x=tx(k*tau);
+    ctx.strokeStyle="#334";ctx.lineWidth=0.5;ctx.setLineDash([2,3]);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,H-pad.b);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle="#555";ctx.font="9px Arial";ctx.fillText(k+"t",x-8,H-pad.b+13);
+  }
+  ctx.strokeStyle="#666";ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,H-pad.b);ctx.lineTo(W-pad.r,H-pad.b);ctx.stroke();
+  ctx.fillStyle="#aaa";ctx.font="10px Arial";ctx.fillText("Time",W/2-10,H-5);
+  ctx.fillStyle="#90caf9";ctx.font="bold 11px Arial";
+  ctx.fillText("C="+get("C")+"uF  R="+get("R")+"kO  tau="+tau_str+"  Vs="+Vs+"V",pad.l+5,pad.t-8);
+  ctx.fillStyle="rgba(80,200,100,0.08)";ctx.fillRect(pad.l+pw*0.55,pad.t+5,pw*0.42,ph*0.35);
+  ctx.fillStyle="#55ff88";ctx.font="10px Arial";
+  ctx.fillText("All nodes identical by symmetry",pad.l+pw*0.56,pad.t+20);
+  ctx.fillText("C5 voltage = 0V always",pad.l+pw*0.56,pad.t+33);
+  ctx.fillText("tau = 2R x C_eq = "+tau_str,pad.l+pw*0.56,pad.t+46);
+}
+["C","R","Vs","span"].forEach(function(id){document.getElementById(id).addEventListener("input",draw);});
+window.addEventListener("resize",function(){resizeCanvas();draw();});
+resizeCanvas();draw();
+</script></body></html>

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec18 Pr5 — Miller Shoot-Through</title>
+<style>
+  :root{--bg:#f8f8f8;--fg:#222;--accent:#4a90d9;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a2e;--fg:#e0e0e0;--accent:#7ab4f5;}}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:Arial,sans-serif;padding:10px;}
+  h3{margin:6px 0;color:var(--accent);}
+  canvas{border:1px solid #555;border-radius:4px;display:block;width:100%;}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;font-size:13px;}
+  input[type=range]{width:130px;accent-color:var(--accent);}
+  .vals{background:#0002;border-radius:4px;padding:8px;font-size:13px;margin:6px 0;}
+  .vals span{color:var(--accent);font-weight:bold;}
+  .warn{color:#e05;font-weight:bold;}
+</style>
+</head>
+<body>
+<h3>Problem 5 — Miller Shoot-Through: V_GS Spike vs Parameters</h3>
+<div class="controls">
+  <label>C_GD (pF): <input type="range" id="Cgd" min="1" max="200" value="30" step="1"> <b id="CgdV">30</b></label>
+  <label>dV/dt (V/ns): <input type="range" id="dvdt" min="1" max="50" value="20" step="1"> <b id="dvdtV">20</b></label>
+  <label>R_GS (Ω): <input type="range" id="Rgs" min="10" max="10000" value="10000" step="10"> <b id="RgsV">10000</b></label>
+  <label>V_th (V): <input type="range" id="Vth" min="1" max="6" value="3" step="0.1"> <b id="VthV">3.0</b></label>
+</div>
+<canvas id="cv"></canvas>
+<div class="vals" id="info"></div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+function resizeCanvas(){const w=cv.parentElement.getBoundingClientRect().width||480;cv.width=Math.round(w);cv.height=Math.round(w*0.52);}
+function draw(){
+  resizeCanvas();
+  const W=cv.width,H=cv.height;
+  const Cgd=+document.getElementById('Cgd').value*1e-12;
+  const dvdt=+document.getElementById('dvdt').value*1e9;
+  const Rgs=+document.getElementById('Rgs').value;
+  const Vth=+document.getElementById('Vth').value;
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  ctx.fillStyle=isDark?'#1a1a2e':'#f8f8f8';ctx.fillRect(0,0,W,H);
+  const padL=65,padR=20,padT=35,padB=50;
+  const gW=W-padL-padR,gH=H-padT-padB;
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,padT);ctx.lineTo(padL,padT+gH);ctx.lineTo(padL+gW,padT+gH);ctx.stroke();
+  // Sweep R_GS from 1 to 100k and show spike
+  const Rmin=1,Rmax=100000;
+  function xp(r){return padL+(Math.log10(r)-0)/(5)*gW;}
+  const Vspike_max=20;
+  function yp(v){return padT+gH-(v/Vspike_max)*gH;}
+  ctx.strokeStyle='#3334';ctx.lineWidth=0.5;
+  [1,10,100,1000,10000,100000].forEach(r=>{ctx.beginPath();ctx.moveTo(xp(r),padT);ctx.lineTo(xp(r),padT+gH);ctx.stroke();});
+  for(let v=0;v<=Vspike_max;v+=2){ctx.beginPath();ctx.moveTo(padL,yp(v));ctx.lineTo(padL+gW,yp(v));ctx.stroke();}
+  const fg=isDark?'#aaa':'#555';ctx.fillStyle=fg;ctx.font='10px Arial';
+  ['1','10','100','1k','10k','100k'].forEach((s,i)=>{ctx.fillText(s,xp([1,10,100,1000,10000,100000][i])-8,padT+gH+13);});
+  for(let v=0;v<=Vspike_max;v+=4)ctx.fillText(v+'V',padL-28,yp(v)+4);
+  ctx.fillStyle=isDark?'#ccc':'#333';ctx.font='11px Arial';
+  ctx.fillText('R_GS (Ω)',padL+gW/2-25,H-5);
+  ctx.save();ctx.translate(12,padT+gH/2);ctx.rotate(-Math.PI/2);ctx.fillText('V_GS spike (V)',0,0);ctx.restore();
+  // Curve: V_spike = Cgd * dvdt * R_GS
+  ctx.strokeStyle='#4a90d9';ctx.lineWidth=2.5;
+  ctx.beginPath();let first=true;
+  for(let r=1;r<=Rmax;r*=1.05){
+    const spike=Cgd*dvdt*r;
+    const clamped=Math.min(Vspike_max,spike);
+    if(first){ctx.moveTo(xp(r),yp(clamped));first=false;}
+    else ctx.lineTo(xp(r),yp(clamped));
+  }ctx.stroke();
+  // Vth line
+  ctx.strokeStyle='#e53935';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(padL,yp(Vth));ctx.lineTo(padL+gW,yp(Vth));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#e53935';ctx.font='11px Arial';ctx.fillText('V_th = '+Vth.toFixed(1)+'V',padL+4,yp(Vth)-4);
+  // Current operating point
+  const spike_cur=Cgd*dvdt*Rgs;
+  if(Rgs>=1&&Rgs<=Rmax){
+    const sy=Math.min(Vspike_max,spike_cur);
+    ctx.beginPath();ctx.arc(xp(Rgs),yp(sy),7,0,2*Math.PI);
+    ctx.fillStyle=spike_cur>Vth?'#e53935':'#43a047';ctx.fill();
+  }
+  ctx.fillStyle=isDark?'#e0e0e0':'#222';ctx.font='bold 11px Arial';
+  ctx.fillText('V_GS Spike = C_GD × dV/dt × R_GS',padL+2,padT-8);
+  const safe=spike_cur<=Vth;
+  document.getElementById('info').innerHTML=
+    `V_spike = C_GD×dV/dt×R_GS = ${(Cgd*1e12).toFixed(0)}pF × ${(dvdt/1e9).toFixed(0)}V/ns × ${Rgs}Ω = `+
+    `<span class="${safe?'':'warn'}">${spike_cur.toFixed(2)} V</span> | V_th = ${Vth.toFixed(1)} V | `+
+    (safe?'<span style="color:#43a047">✓ No shoot-through</span>':'<span class="warn">⚠ SHOOT-THROUGH! Reduce R_GS or slow dV/dt</span>');
+}
+['Cgd','dvdt','Rgs','Vth'].forEach(id=>{
+  const el=document.getElementById(id);const vl=document.getElementById(id+'V');
+  el.addEventListener('input',()=>{vl.textContent=id==='Vth'?parseFloat(el.value).toFixed(1):el.value;draw();});
+});
+window.addEventListener('resize',draw);resizeCanvas();draw();
+</script>
+</body></html>

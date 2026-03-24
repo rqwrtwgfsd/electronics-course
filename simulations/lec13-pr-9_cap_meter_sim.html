@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 13 Pr 9 — RC Capacitance Meter</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  header { border-bottom:2px solid var(--accent); padding-bottom:10px; margin-bottom:16px; }
+  h1 { font-size:18px; margin:4px 0; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  .ctrl-label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; margin-bottom:4px; display:flex; justify-content:space-between; }
+  .ctrl-value { color:var(--accent); font-size:13px; font-weight:700; font-family:monospace; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .result-box { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.25); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.7; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header><h1>Lec 13 Pr 9 — RC Capacitance Measurement Simulator</h1></header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">C_x (true value) <span class="ctrl-value" id="vCx">10 µF</span></div>
+      <input type="range" id="cx" min="0.1" max="100" step="0.1" value="10">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">R (kΩ) <span class="ctrl-value" id="vR">10 kΩ</span></div>
+      <input type="range" id="rr" min="1" max="1000" step="1" value="10">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Initial charge V₀ <span class="ctrl-value" id="vV0">0 V</span></div>
+      <input type="range" id="v0" min="0" max="4" step="0.1" value="0">
+    </div>
+    <div class="result-box" id="result">Adjust to simulate measurement</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+
+function draw(){
+  cv.width=cv.parentElement.getBoundingClientRect().width||620;
+  cv.height=380;
+  const W=cv.width, H=cv.height;
+  ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()||'#fff';
+  ctx.fillRect(0,0,W,H);
+
+  const Cx=+document.getElementById('cx').value*1e-6;
+  const R=+document.getElementById('rr').value*1e3;
+  const V0=+document.getElementById('v0').value;
+  const Vs=5;
+
+  document.getElementById('vCx').textContent=(+document.getElementById('cx').value).toFixed(1)+' µF';
+  document.getElementById('vR').textContent=(+document.getElementById('rr').value)+' kΩ';
+  document.getElementById('vV0').textContent=V0.toFixed(1)+' V';
+
+  const tau=R*Cx;
+  const Vthresh=Vs*0.632;
+
+  // Time to reach threshold from V0
+  // V(t)=Vs+(V0-Vs)*exp(-t/tau) = Vthresh
+  // => exp(-t/tau)=(Vthresh-Vs)/(V0-Vs)
+  // => t=-tau*ln((Vthresh-Vs)/(V0-Vs))
+  let t_measured=null, C_measured=null, error_pct=null;
+  if(V0<Vthresh){
+    const ratio=(Vthresh-Vs)/(V0-Vs);
+    if(ratio>0 && ratio<1){
+      t_measured=-tau*Math.log(ratio);
+      C_measured=t_measured/R;
+      error_pct=Math.abs(C_measured-Cx)/Cx*100;
+    }
+  }
+
+  const tMax=5*tau;
+  const pad={l:55,r:20,t:30,b:40};
+  const pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
+
+  function tToX(t){ return pad.l+pw*t/tMax; }
+  function vToY(v){ return pad.t+ph*(1-v/6); }
+
+  // Grid
+  ctx.strokeStyle='rgba(128,128,128,0.15)'; ctx.lineWidth=1;
+  for(let v2=0;v2<=5;v2++){
+    const y=vToY(v2);
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+pw,y); ctx.stroke();
+  }
+
+  // Labels
+  ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--muted').trim()||'#666';
+  ctx.font='10px system-ui'; ctx.textAlign='right';
+  for(let v2=0;v2<=5;v2++) ctx.fillText(v2+'V', pad.l-4, vToY(v2)+4);
+  ctx.textAlign='center';
+  for(let i=0;i<=5;i++) ctx.fillText((i*tau*1000).toFixed(1)+'ms', tToX(i*tau), pad.t+ph+14);
+  ctx.save(); ctx.translate(13,pad.t+ph/2); ctx.rotate(-Math.PI/2);
+  ctx.textAlign='center'; ctx.fillText('V_C (V)',0,0); ctx.restore();
+
+  // Threshold line
+  ctx.strokeStyle='rgba(229,57,53,0.5)'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(pad.l,vToY(Vthresh)); ctx.lineTo(pad.l+pw,vToY(Vthresh)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#e53935'; ctx.font='9px system-ui'; ctx.textAlign='right';
+  ctx.fillText('63.2% = '+Vthresh.toFixed(2)+'V', pad.l+pw-4, vToY(Vthresh)-4);
+
+  // Actual charging curve
+  ctx.beginPath(); ctx.strokeStyle='#0066cc'; ctx.lineWidth=2.5;
+  for(let ix=0;ix<=pw;ix++){
+    const t=ix/pw*tMax;
+    const v=Vs+(V0-Vs)*Math.exp(-t/tau);
+    const x=pad.l+ix, y=vToY(Math.max(0,Math.min(6,v)));
+    ix===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // "Correct" curve (V0=0) in green dashed
+  ctx.setLineDash([5,3]); ctx.strokeStyle='rgba(0,150,0,0.6)'; ctx.lineWidth=1.5;
+  ctx.beginPath();
+  for(let ix=0;ix<=pw;ix++){
+    const t=ix/pw*tMax;
+    const v=Vs*(1-Math.exp(-t/tau));
+    const x=pad.l+ix, y=vToY(v);
+    ix===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='rgba(0,130,0,0.8)'; ctx.font='9px system-ui'; ctx.textAlign='left';
+  ctx.fillText('Ideal (V₀=0)', pad.l+4, vToY(Vs*(1-Math.exp(-1)))-8);
+
+  // Mark t_tau on ideal
+  const x_tau=tToX(tau);
+  ctx.strokeStyle='rgba(128,128,128,0.5)'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(x_tau,pad.t); ctx.lineTo(x_tau,pad.t+ph); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#fb8c00'; ctx.font='10px system-ui'; ctx.textAlign='center';
+  ctx.fillText('τ', x_tau, pad.t+10);
+
+  // Mark measured time
+  if(t_measured && t_measured<=tMax){
+    const xm=tToX(t_measured);
+    ctx.strokeStyle='#8e24aa'; ctx.lineWidth=2; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(xm,pad.t); ctx.lineTo(xm,pad.t+ph); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#8e24aa'; ctx.font='10px system-ui'; ctx.textAlign='center';
+    ctx.fillText('t_meas', xm, pad.t+ph+28);
+  }
+
+  document.getElementById('result').innerHTML =
+    `<b>τ = RC:</b> ${(tau*1000).toFixed(2)} ms<br>` +
+    `<b>True C_x:</b> ${(Cx*1e6).toFixed(2)} µF<br>` +
+    (t_measured?
+      `<b>Measured t:</b> ${(t_measured*1000).toFixed(3)} ms<br>` +
+      `<b>Calculated C:</b> ${(C_measured*1e6).toFixed(3)} µF<br>` +
+      `<b>Error:</b> ${error_pct.toFixed(2)}% ${V0>0.5?'← due to non-zero V₀!':''}` :
+      `<span style="color:#e53935">Threshold not crossed (V₀ too high)</span>`);
+}
+
+['cx','rr','v0'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',draw);
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec18 Pr7 — BJT Current Mirror</title>
+<style>
+  :root{--bg:#f8f8f8;--fg:#222;--accent:#4a90d9;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a2e;--fg:#e0e0e0;--accent:#7ab4f5;}}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:Arial,sans-serif;padding:10px;}
+  h3{margin:6px 0;color:var(--accent);}
+  canvas{border:1px solid #555;border-radius:4px;display:block;width:100%;}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;font-size:13px;}
+  input[type=range]{width:130px;accent-color:var(--accent);}
+  .vals{background:#0002;border-radius:4px;padding:8px;font-size:13px;margin:6px 0;}
+  .vals span{color:var(--accent);font-weight:bold;}
+</style>
+</head>
+<body>
+<h3>Problem 7 — BJT Current Mirror: Simple vs Wilson</h3>
+<div class="controls">
+  <label>β: <input type="range" id="beta" min="10" max="500" value="100" step="5"> <b id="betaV">100</b></label>
+  <label>I_ref (mA): <input type="range" id="Iref" min="0.1" max="5" value="1" step="0.1"> <b id="IrefV">1.0</b></label>
+  <label>V_CE2 (V): <input type="range" id="VCE2" min="0.3" max="10" value="3" step="0.1"> <b id="VCE2V">3.0</b></label>
+  <label>V_A (V): <input type="range" id="VA" min="20" max="200" value="100" step="5"> <b id="VAV">100</b></label>
+</div>
+<canvas id="cv"></canvas>
+<div class="vals" id="info"></div>
+<script>
+const cv=document.getElementById('cv');const ctx=cv.getContext('2d');
+function resizeCanvas(){const w=cv.parentElement.getBoundingClientRect().width||480;cv.width=Math.round(w);cv.height=Math.round(w*0.52);}
+function draw(){
+  resizeCanvas();
+  const W=cv.width,H=cv.height;
+  const beta=+document.getElementById('beta').value;
+  const Iref=+document.getElementById('Iref').value*1e-3;
+  const VCE2=+document.getElementById('VCE2').value;
+  const VA=+document.getElementById('VA').value;
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  ctx.fillStyle=isDark?'#1a1a2e':'#f8f8f8';ctx.fillRect(0,0,W,H);
+  const padL=65,padR=20,padT=40,padB=50;
+  const gW=W-padL-padR,gH=H-padT-padB;
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,padT);ctx.lineTo(padL,padT+gH);ctx.lineTo(padL+gW,padT+gH);ctx.stroke();
+  // Sweep beta and show error
+  const betaArr=[],errSimple=[],errWilson=[];
+  for(let b=5;b<=500;b+=5){
+    const err_s=2/b*100; // simple mirror %
+    const err_w=2/(b*b)*100; // wilson %
+    betaArr.push(b);errSimple.push(err_s);errWilson.push(err_w);
+  }
+  function xp(b){return padL+(Math.log10(b)-Math.log10(5))/(Math.log10(500)-Math.log10(5))*gW;}
+  const errmax=50;
+  function yp(e){return padT+gH-(Math.min(e,errmax)/errmax)*gH;}
+  ctx.strokeStyle='#3334';ctx.lineWidth=0.5;
+  [5,10,50,100,500].forEach(b=>{ctx.beginPath();ctx.moveTo(xp(b),padT);ctx.lineTo(xp(b),padT+gH);ctx.stroke();});
+  for(let e=0;e<=50;e+=10){ctx.beginPath();ctx.moveTo(padL,yp(e));ctx.lineTo(padL+gW,yp(e));ctx.stroke();}
+  const fg=isDark?'#aaa':'#555';ctx.fillStyle=fg;ctx.font='10px Arial';
+  ['5','10','50','100','500'].forEach((s,i)=>{ctx.fillText(s,xp([5,10,50,100,500][i])-8,padT+gH+13);});
+  for(let e=0;e<=50;e+=10)ctx.fillText(e+'%',padL-32,yp(e)+4);
+  ctx.fillStyle=isDark?'#ccc':'#333';ctx.font='11px Arial';
+  ctx.fillText('β',padL+gW/2-5,H-5);
+  ctx.save();ctx.translate(12,padT+gH/2);ctx.rotate(-Math.PI/2);ctx.fillText('Mirror Error (%)',0,0);ctx.restore();
+  // Simple mirror
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2.5;ctx.beginPath();let first=true;
+  betaArr.forEach((b,i)=>{const e=errSimple[i];if(first){ctx.moveTo(xp(b),yp(e));first=false;}else ctx.lineTo(xp(b),yp(e));});ctx.stroke();
+  ctx.fillStyle='#e53935';ctx.font='11px Arial';ctx.fillText('Simple: 2/β',xp(20),yp(2/20*100)+12);
+  // Wilson mirror
+  ctx.strokeStyle='#4a90d9';ctx.lineWidth=2.5;ctx.beginPath();first=true;
+  betaArr.forEach((b,i)=>{const e=errWilson[i];if(first){ctx.moveTo(xp(b),yp(e));first=false;}else ctx.lineTo(xp(b),yp(e));});ctx.stroke();
+  ctx.fillStyle='#4a90d9';ctx.font='11px Arial';ctx.fillText('Wilson: 2/β²',xp(50),yp(2/(50*50)*100)-8);
+  // 1% spec line
+  ctx.strokeStyle='#ff9800';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(padL,yp(1));ctx.lineTo(padL+gW,yp(1));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#ff9800';ctx.font='10px Arial';ctx.fillText('1% spec',padL+4,yp(1)-4);
+  // Beta marker
+  const e_s=2/beta*100, e_w=2/(beta*beta)*100;
+  ctx.beginPath();ctx.arc(xp(beta),yp(Math.min(e_s,errmax)),6,0,2*Math.PI);ctx.fillStyle='#e53935';ctx.fill();
+  ctx.beginPath();ctx.arc(xp(beta),yp(Math.min(e_w,errmax)),6,0,2*Math.PI);ctx.fillStyle='#4a90d9';ctx.fill();
+  // Early effect addition
+  const VCE1=0.65;
+  const early_err=Math.abs((VCE2-VCE1)/VA)*100;
+  ctx.fillStyle=isDark?'#e0e0e0':'#222';ctx.font='bold 11px Arial';ctx.fillText('Current Mirror Error vs β',padL+2,padT-18);
+  document.getElementById('info').innerHTML=
+    `β=<span>${beta}</span> | Simple error=<span>${e_s.toFixed(2)}%</span> | Wilson error=<span>${e_w.toFixed(4)}%</span><br>`+
+    `Early effect error (V_CE2=${VCE2}V, V_A=${VA}V): <span>${early_err.toFixed(2)}%</span> | `+
+    `Total simple: <span>${(e_s+early_err).toFixed(2)}%</span> | Total Wilson: <span>${(e_w+early_err/50).toFixed(3)}%</span>`;
+}
+['beta','Iref','VCE2','VA'].forEach(id=>{
+  const el=document.getElementById(id);const vl=document.getElementById(id+'V');
+  el.addEventListener('input',()=>{vl.textContent=id==='Iref'||id==='VCE2'?parseFloat(el.value).toFixed(1):el.value;draw();});
+});
+window.addEventListener('resize',draw);resizeCanvas();draw();
+</script>
+</body></html>

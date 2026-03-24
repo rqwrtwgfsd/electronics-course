@@ -1,0 +1,16 @@
+*.txt
+*.py
+*.pdf
+*.png
+*.cir
+*.jsonl
+*.output
+PROCESSING_QUEUE.md
+SESSION_HANDOFF.md
+SIMULATION_ASSETS.md
+ROADMAP.md
+m3d_module.html
+m4bcm_module.html
+insert_m3d.py
+insert_m4bcm.py
+add_missing_iframes.py

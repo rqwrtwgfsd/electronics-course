@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scenario 19 — Buck Converter Output Ripple</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto;}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px;}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;}
+  h1{font-size:18px;margin:4px 0;}
+  .layout{display:grid;grid-template-columns:1fr 280px;gap:16px;}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%;}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px;}
+  .ctrl-group{margin-bottom:12px;}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;display:flex;justify-content:space-between;}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace;}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;}
+  .result-box{background:rgba(0,102,204,0.08);border:1px solid rgba(0,102,204,0.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.5;}
+  @media(max-width:600px){.layout{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 12 | Scenario 19</div>
+  <h1>Buck Converter Ripple — Post-Filter LC Stage</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Post-Filter L (µH) <span class="ctrl-value" id="p1-val">4.7</span></div>
+      <input type="range" id="p1" min="0" max="50" value="4">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Post-Filter C (µF) <span class="ctrl-value" id="p2-val">10</span></div>
+      <input type="range" id="p2" min="0" max="100" value="10">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Cap Type <span class="ctrl-value" id="p3-val">Ceramic</span></div>
+      <input type="range" id="p3" min="0" max="1" step="1" value="0">
+    </div>
+    <div class="result-box" id="result">Adjust post-filter values</div>
+  </div>
+</div>
+<script>
+const canvas=document.getElementById('cv');
+const ctx=canvas.getContext('2d');
+function isDark(){return window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches;}
+function draw(){
+  const L=+document.getElementById('p1').value*1e-6;
+  const C=+document.getElementById('p2').value*1e-6;
+  const electrolytic=+document.getElementById('p3').value;
+  document.getElementById('p1-val').textContent=(L*1e6).toFixed(1)+' µH';
+  document.getElementById('p2-val').textContent=(C*1e6).toFixed(0)+' µF';
+  document.getElementById('p3-val').textContent=electrolytic?'Electrolytic (ESR!)':'Ceramic (low ESR)';
+
+  const fsw=400e3;
+  const V_ripple_in=0.05; // 50mV input ripple
+  const ESR=electrolytic?0.5:0.005;
+  const I_ripple=V_ripple_in/1; // rough
+  const V_esr=I_ripple*ESR;
+
+  let V_out_ripple;
+  if(L===0||C===0){
+    V_out_ripple=V_ripple_in;
+  } else {
+    const f0=1/(2*Math.PI*Math.sqrt(L*C));
+    const atten=Math.pow(f0/fsw,2);
+    const V_filtered=V_ripple_in*atten;
+    V_out_ripple=Math.sqrt(V_filtered*V_filtered+V_esr*V_esr);
+  }
+
+  canvas.width=canvas.parentElement.getBoundingClientRect().width||600;
+  canvas.height=380;
+  const W=canvas.width,H=canvas.height;
+  const dark=isDark();
+  const bg=dark?'#2a2a2a':'#f5f5f5';
+  const fg=dark?'#e8e8e8':'#1a1a1a';
+  const ac=dark?'#4499ff':'#0066cc';
+  const gr=dark?'#444':'#ddd';
+  const red='#e53935',grn='#43a047',orange='#ff9800';
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=fg;ctx.font='bold 13px system-ui';ctx.textAlign='center';
+  ctx.fillText('Buck Converter Output — Before and After Post-Filter',W/2,22);
+
+  const mx=60,my=40,mw=W-80,mh=(H-110)/2;
+  const fsw_khz=fsw/1000;
+  const T_sw=1/fsw*1e6*6; // show 6 cycles, µs
+  const row1Y=my,row2Y=my+mh+25;
+  const VDC=5;
+
+  const toX=t=>mx+mw*t/T_sw;
+  const Vscale_in=0.15,Vscale_out=V_out_ripple*3+0.002;
+
+  ctx.fillStyle=fg;ctx.font='11px system-ui';ctx.textAlign='left';
+  ctx.fillText('Before post-filter (±'+Math.round(V_ripple_in*500)+'mV ripple)',mx+4,row1Y+14);
+  ctx.fillText('After post-filter (±'+Math.round(V_out_ripple*500)+'mV ripple)',mx+4,row2Y+14);
+
+  [row1Y,row1Y+mh,row2Y,row2Y+mh].forEach(y=>{
+    ctx.strokeStyle=gr;ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(mx,y);ctx.lineTo(mx+mw,y);ctx.stroke();
+  });
+
+  const drawWave=(rowY,rowH,amp,color)=>{
+    ctx.strokeStyle=color;ctx.lineWidth=2;
+    ctx.beginPath();
+    const N=500;
+    for(let i=0;i<=N;i++){
+      const t=i/N*T_sw;
+      const v=amp*Math.sin(2*Math.PI*fsw*t*1e-6);
+      const norm=(v+amp/1.5)/(amp*2);
+      const y=rowY+rowH*(1-norm);
+      i===0?ctx.moveTo(toX(t),y):ctx.lineTo(toX(t),y);
+    }
+    ctx.stroke();
+  };
+
+  drawWave(row1Y,mh,V_ripple_in,red);
+  drawWave(row2Y,mh,V_out_ripple,V_out_ripple<0.005?grn:V_out_ripple<0.02?ac:orange);
+
+  // Spec line on output
+  const V_spec=0.005;
+  const ySpec=row2Y+mh*(1-(V_spec+V_out_ripple*0.1)/(V_out_ripple*2+0.001));
+  ctx.strokeStyle=grn;ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(mx,row2Y+mh*0.25);ctx.lineTo(mx+mw,row2Y+mh*0.25);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=grn;ctx.font='10px system-ui';ctx.textAlign='left';
+  ctx.fillText('Spec: <5mV',mx+4,row2Y+mh*0.25-3);
+
+  ctx.strokeStyle=fg;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx,row1Y);ctx.lineTo(mx,row1Y+mh);ctx.lineTo(mx+mw,row1Y+mh);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(mx,row2Y);ctx.lineTo(mx,row2Y+mh);ctx.lineTo(mx+mw,row2Y+mh);ctx.stroke();
+
+  const f0=L>0&&C>0?1/(2*Math.PI*Math.sqrt(L*C)):0;
+  const dB=L>0&&C>0?20*Math.log10(Math.pow(f0/fsw,2)):0;
+  document.getElementById('result').innerHTML=
+    `<b>Switching freq: ${fsw_khz}kHz</b><br>`+
+    `Input ripple: ${(V_ripple_in*1000).toFixed(0)}mV<br>`+
+    (L>0&&C>0?`Filter f₀: ${(f0/1000).toFixed(0)}kHz, attenuation: ${dB.toFixed(0)}dB<br>`:'No post-filter active<br>')+
+    `ESR contribution: ${(V_esr*1000).toFixed(1)}mV (${electrolytic?'electrolytic':'ceramic'})<br>`+
+    `<b>Output ripple: ${(V_out_ripple*1000).toFixed(2)}mV</b><br>`+
+    (V_out_ripple<0.005?'<span style="color:green">✓ Meets < 5mV spec</span>':
+     '<span style="color:red">⚠ Exceeds spec — increase L or C, use ceramic cap</span>');
+}
+['p1','p2','p3'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>draw());
+draw();
+</script>
+</body>
+</html>

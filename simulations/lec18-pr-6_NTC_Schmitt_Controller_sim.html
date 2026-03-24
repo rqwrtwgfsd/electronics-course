@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 18 Pr 6 — NTC Schmitt Trigger Temperature Controller</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  h1 { font-size:18px; margin-bottom:12px; border-bottom:2px solid var(--accent); padding-bottom:8px; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; display:flex; justify-content:space-between; margin-bottom:4px; }
+  .val { color:var(--accent); font-family:monospace; font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .info { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.2); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.6; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<h1>Pr 6 — Analog Temperature Controller: NTC + Schmitt Trigger</h1>
+<div class="layout">
+  <canvas id="cv" height="380"></canvas>
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>Setpoint (°C) <span class="val" id="v-set">25</span></label>
+      <input type="range" id="setpoint" min="10" max="90" value="25" step="1">
+    </div>
+    <div class="ctrl-group">
+      <label>Hysteresis (°C) <span class="val" id="v-hys">2</span></label>
+      <input type="range" id="hys" min="0.5" max="10" value="2" step="0.5">
+    </div>
+    <div class="ctrl-group">
+      <label>Current Temp (°C) <span class="val" id="v-temp">22</span></label>
+      <input type="range" id="temp" min="0" max="100" value="22" step="1">
+    </div>
+    <div class="info" id="info">Adjust to simulate heater control.</div>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function resizeCanvas() {
+  cv.width = cv.parentElement.getBoundingClientRect().width || 600;
+  cv.height = 380;
+}
+
+// NTC: R(T) = R25 * exp(beta*(1/T - 1/T25)), beta=3977
+function ntcR(T_C) {
+  const T = T_C + 273.15, T25 = 298.15, beta = 3977, R25 = 10000;
+  return R25 * Math.exp(beta * (1/T - 1/T25));
+}
+
+// V_sense from divider: 12V → R_fixed=10k → NTC → GND
+function vSense(T_C) {
+  const Rntc = ntcR(T_C);
+  return 12 * Rntc / (10000 + Rntc);
+}
+
+let heaterOn = false;
+
+function draw() {
+  resizeCanvas();
+  const W = cv.width, H = cv.height;
+  const dark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const bg = dark ? '#1a1a1a' : '#ffffff';
+  const fg = dark ? '#e8e8e8' : '#1a1a1a';
+  const gridC = dark ? '#333' : '#eee';
+
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const setpoint = +document.getElementById('setpoint').value;
+  const hys = +document.getElementById('hys').value;
+  const Tcur = +document.getElementById('temp').value;
+
+  document.getElementById('v-set').textContent = setpoint + ' °C';
+  document.getElementById('v-hys').textContent = hys + ' °C';
+  document.getElementById('v-temp').textContent = Tcur + ' °C';
+
+  // Determine heater state with hysteresis
+  const V_on = vSense(setpoint); // below this → heater on
+  const V_off = vSense(setpoint + hys); // above this → heater off
+  const Vcur = vSense(Tcur);
+  if (Vcur > V_on) heaterOn = true;   // temp below setpoint
+  if (Vcur < V_off) heaterOn = false; // temp above setpoint+hys
+
+  const pad = { l: 60, r: 20, t: 40, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  // Plot V_sense vs Temperature 0-100°C
+  const tArr = [], vArr = [];
+  for (let t = 0; t <= 100; t++) {
+    tArr.push(t);
+    vArr.push(vSense(t));
+  }
+
+  const xMin = 0, xMax = 100, yMin = 0, yMax = 12;
+
+  ctx.strokeStyle = gridC; ctx.lineWidth = 1;
+  for (let v = 0; v <= 12; v += 2) {
+    const y = pad.t + ph * (1 - v / 12);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '11px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(v + ' V', pad.l - 4, y + 4);
+  }
+  for (let t = 0; t <= 100; t += 20) {
+    const x = pad.l + pw * t / 100;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '11px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(t + '°C', x, pad.t + ph + 18);
+  }
+
+  ctx.fillStyle = fg; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Temperature (°C)', pad.l + pw / 2, H - 6);
+  ctx.save(); ctx.translate(14, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('V_sense (V)', 0, 0); ctx.restore();
+
+  // Hysteresis band
+  const y_on = pad.t + ph * (1 - V_on / 12);
+  const y_off = pad.t + ph * (1 - V_off / 12);
+  ctx.fillStyle = heaterOn ? 'rgba(229,57,53,0.12)' : 'rgba(67,160,71,0.12)';
+  ctx.fillRect(pad.l, Math.min(y_on, y_off), pw, Math.abs(y_on - y_off));
+
+  // NTC curve
+  ctx.beginPath();
+  ctx.strokeStyle = '#1565c0';
+  ctx.lineWidth = 2.5;
+  tArr.forEach((t, i) => {
+    const x = pad.l + pw * t / 100;
+    const y = pad.t + ph * (1 - vArr[i] / 12);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Trip lines
+  const drawHLine = (V, color, lbl) => {
+    const y = pad.t + ph * (1 - V / 12);
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = color; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText(lbl, pad.l + pw - 2, y - 3);
+  };
+  drawHLine(V_on, '#e53935', `V_ON = ${V_on.toFixed(2)}V (${setpoint}°C)`);
+  drawHLine(V_off, '#43a047', `V_OFF = ${V_off.toFixed(2)}V (${setpoint+hys}°C)`);
+
+  // Current temp marker
+  const curX = pad.l + pw * Tcur / 100;
+  const curY = pad.t + ph * (1 - Vcur / 12);
+  ctx.beginPath();
+  ctx.arc(curX, curY, 7, 0, Math.PI * 2);
+  ctx.fillStyle = heaterOn ? '#e53935' : '#43a047';
+  ctx.fill();
+
+  ctx.fillStyle = fg; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('NTC V_sense vs Temperature (12V supply, R_fixed=10kΩ)', pad.l, pad.t - 10);
+
+  document.getElementById('info').innerHTML =
+    `<b>Current temp: ${Tcur}°C</b><br>` +
+    `V_sense = ${Vcur.toFixed(3)} V<br>` +
+    `NTC R = ${(ntcR(Tcur)/1000).toFixed(2)} kΩ<br>` +
+    `Heater ON threshold: ${setpoint}°C<br>` +
+    `Heater OFF threshold: ${setpoint + hys}°C<br>` +
+    `<b>Heater: ${heaterOn ? '🔴 ON (heating)' : '🟢 OFF'}</b>`;
+}
+
+['setpoint','hys','temp'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+window.addEventListener('resize', draw);
+draw();
+</script>
+</body>
+</html>

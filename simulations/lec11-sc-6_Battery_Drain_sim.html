@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scenario 6 — Battery Drain Optimization</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  header { border-bottom:2px solid var(--accent); padding-bottom:10px; margin-bottom:16px; }
+  .module-id { font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:1px; }
+  h1 { font-size:18px; margin:4px 0; }
+  .layout { display:grid; grid-template-columns:1fr 280px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; background:var(--surface); width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  .ctrl-label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px; display:flex; justify-content:space-between; }
+  .ctrl-value { color:var(--accent); font-size:13px; font-weight:700; font-family:monospace; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .result-box { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.25); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.5; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 11 | Scenario 6</div>
+  <h1>Battery Drain — Quiescent Current Optimization</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Pull-up R (kΩ) <span class="ctrl-value" id="p1-val">1</span></div>
+      <input type="range" id="p1" min="1" max="100" value="1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">LED Always On? <span class="ctrl-value" id="p2-val">Yes</span></div>
+      <input type="range" id="p2" min="0" max="1" step="1" value="1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Battery (mAh) <span class="ctrl-value" id="p3-val">2000</span></div>
+      <input type="range" id="p3" min="100" max="5000" value="2000">
+    </div>
+    <div class="result-box" id="result">Adjust parameters</div>
+  </div>
+</div>
+<script>
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+function isDark() { return window.matchMedia && window.matchMedia('(prefers-color-scheme:dark)').matches; }
+
+function draw() {
+  const Rpullup = +document.getElementById('p1').value; // kΩ
+  const ledOn = +document.getElementById('p2').value;
+  const batCap = +document.getElementById('p3').value; // mAh
+  document.getElementById('p1-val').textContent = Rpullup + ' kΩ';
+  document.getElementById('p2-val').textContent = ledOn ? 'Yes' : 'No (switched)';
+  document.getElementById('p3-val').textContent = batCap + ' mAh';
+
+  const VCC = 3.3;
+  const I_pullups = (VCC / (Rpullup * 1000)) * 1000 * 4; // mA, assume 4 pull-ups
+  const I_led = ledOn ? (VCC / 330) * 1000 : 0; // mA
+  const I_mcu_sleep = 0.01; // mA (10µA sleep)
+  const I_total = I_pullups + I_led + I_mcu_sleep;
+  const runtime_h = batCap / I_total;
+
+  // Optimal
+  const I_opt_pullups = (VCC / (100000)) * 1000 * 4; // 100kΩ
+  const I_opt_led = 0; // switched off
+  const I_opt_total = I_opt_pullups + I_opt_led + I_mcu_sleep;
+  const runtime_opt_h = batCap / I_opt_total;
+
+  canvas.width = canvas.parentElement.getBoundingClientRect().width || 600;
+  canvas.height = 380;
+  const W = canvas.width, H = canvas.height;
+  const dark = isDark();
+  const bg = dark ? '#2a2a2a' : '#f5f5f5';
+  const fg = dark ? '#e8e8e8' : '#1a1a1a';
+  const ac = dark ? '#4499ff' : '#0066cc';
+  const gr = dark ? '#444' : '#ddd';
+  const red = '#e53935';
+  const grn = '#43a047';
+  const orange = '#ff9800';
+  const yellow = '#fdd835';
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  ctx.fillStyle = fg; ctx.font = 'bold 13px system-ui'; ctx.textAlign = 'center';
+  ctx.fillText('Battery Runtime vs. Quiescent Current Sources', W/2, 22);
+
+  // Bar chart of current breakdown
+  const mx=60, my=40, mw=W-80, mh=H-130;
+  const components = [
+    { label: 'Pull-ups', I: I_pullups, color: red },
+    { label: 'LED', I: I_led, color: orange },
+    { label: 'MCU sleep', I: I_mcu_sleep, color: grn },
+  ];
+  const maxI = Math.max(I_total, 5);
+  const barW = mw/(components.length+1);
+  const toY = v => my + mh*(1 - v/maxI);
+
+  // Grid
+  ctx.strokeStyle=gr; ctx.lineWidth=1;
+  [0,0.25,0.5,0.75,1].forEach(frac=>{
+    const y=my+mh*(1-frac);
+    ctx.beginPath(); ctx.moveTo(mx,y); ctx.lineTo(mx+mw,y); ctx.stroke();
+    ctx.fillStyle=fg; ctx.font='10px system-ui'; ctx.textAlign='right';
+    ctx.fillText((frac*maxI).toFixed(1)+'mA',mx-3,y+4);
+  });
+
+  // Bars
+  components.forEach((c,i)=>{
+    const x = mx + barW*(i+0.5);
+    const barH = mh*(c.I/maxI);
+    ctx.fillStyle=c.color;
+    ctx.fillRect(x, my+mh-barH, barW*0.7, barH);
+    ctx.fillStyle=fg; ctx.font='10px system-ui'; ctx.textAlign='center';
+    ctx.fillText(c.label, x+barW*0.35, my+mh+14);
+    ctx.fillText(c.I.toFixed(2)+'mA', x+barW*0.35, my+mh-barH-4);
+  });
+
+  // Total bar
+  const xtot = mx + barW*3.5;
+  const barH = mh*(I_total/maxI);
+  ctx.fillStyle=ac;
+  ctx.fillRect(xtot, my+mh-barH, barW*0.7, barH);
+  ctx.fillStyle=fg; ctx.font='bold 10px system-ui'; ctx.textAlign='center';
+  ctx.fillText('TOTAL', xtot+barW*0.35, my+mh+14);
+  ctx.fillText(I_total.toFixed(2)+'mA', xtot+barW*0.35, my+mh-barH-4);
+
+  ctx.strokeStyle=fg; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(mx,my); ctx.lineTo(mx,my+mh); ctx.lineTo(mx+mw,my+mh); ctx.stroke();
+
+  // Battery gauge
+  const gaugeX=mx, gaugeY=my+mh+30, gaugeW=mw, gaugeH=20;
+  const fill=Math.min(1, runtime_h/runtime_opt_h);
+  ctx.fillStyle=gr; ctx.fillRect(gaugeX,gaugeY,gaugeW,gaugeH);
+  ctx.fillStyle=fill>0.5?grn:fill>0.2?orange:red;
+  ctx.fillRect(gaugeX,gaugeY,gaugeW*fill,gaugeH);
+  ctx.strokeStyle=fg; ctx.lineWidth=1; ctx.strokeRect(gaugeX,gaugeY,gaugeW,gaugeH);
+  ctx.fillStyle=fg; ctx.font='bold 11px system-ui'; ctx.textAlign='center';
+  ctx.fillText(`Runtime: ${runtime_h<24?runtime_h.toFixed(1)+'h':Math.round(runtime_h/24)+'d'} (optimal: ${runtime_opt_h<24?runtime_opt_h.toFixed(1)+'h':Math.round(runtime_opt_h/24)+'d'})`, gaugeX+gaugeW/2, gaugeY+14);
+
+  const good = runtime_h > 24*30; // 1 month
+  document.getElementById('result').innerHTML =
+    `<b>Total quiescent current: ${I_total.toFixed(2)} mA</b><br>` +
+    `Pull-ups (${Rpullup}kΩ×4): ${I_pullups.toFixed(2)} mA<br>` +
+    `LED: ${I_led.toFixed(2)} mA<br>` +
+    `MCU sleep: ${I_mcu_sleep} mA<br>` +
+    `<b>Battery life: ${runtime_h<24?(runtime_h.toFixed(1)+' hours'):(Math.round(runtime_h/24)+' days')}</b><br>` +
+    (good ? '<span style="color:green">✓ Good battery life</span>' : `<span style="color:red">⚠ Increase R to 100kΩ → ${Math.round(runtime_opt_h/24)} days</span>`);
+}
+
+['p1','p2','p3'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>draw());
+draw();
+</script>
+</body>
+</html>

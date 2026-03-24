@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Power Supply Hum — LC Filter</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}
+  h1{font-size:18px;margin:4px 0}
+  .layout{display:grid;grid-template-columns:1fr 260px;gap:16px}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}
+  .ctrl-group{margin-bottom:12px}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}
+  .result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}
+  @media(max-width:600px){.layout{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 11 | Scenario 4</div>
+  <h1>Power Supply Hum: LC Filter Ripple Rejection</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Inductor L (mH) <span class="ctrl-value" id="lbl-l">100 mH</span></div>
+      <input type="range" id="sl-l" min="1" max="500" value="100" step="1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Capacitor C (µF) <span class="ctrl-value" id="lbl-c">1000 µF</span></div>
+      <input type="range" id="sl-c" min="10" max="5000" value="1000" step="10">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Ripple Freq (Hz) <span class="ctrl-value" id="lbl-f">100 Hz</span></div>
+      <input type="range" id="sl-f" min="50" max="500" value="100" step="10">
+    </div>
+    <div class="result-box" id="result">Adjust to see filter performance</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slL=document.getElementById('sl-l'),slC=document.getElementById('sl-c'),slF=document.getElementById('sl-f');
+const lblL=document.getElementById('lbl-l'),lblC=document.getElementById('lbl-c'),lblF=document.getElementById('lbl-f');
+const result=document.getElementById('result');
+
+function draw(){
+  const W=cv.width,H=cv.height;
+  const L=parseFloat(slL.value)*1e-3;
+  const C=parseFloat(slC.value)*1e-6;
+  const fn=parseFloat(slF.value);
+  lblL.textContent=slL.value+' mH';
+  lblC.textContent=slC.value+' µF';
+  lblF.textContent=fn+' Hz';
+  ctx.clearRect(0,0,W,H);
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  // Draw two sine waves: input ripple and output ripple
+  const VDC=12,rippleAmp=1.0; // 1V ripple on 12V
+  const tTotal=3/fn; // show 3 cycles of ripple
+  // LC filter attenuation
+  const f0=1/(2*Math.PI*Math.sqrt(L*C));
+  const ratio=fn/f0;
+  let atten;
+  if(ratio<1)atten=1;
+  else atten=1/(ratio*ratio-1+0.01); // simplified 2nd order
+  atten=Math.min(1,atten);
+  const outAmp=rippleAmp*atten;
+  function yPx(v,pad,plotH,vMin,vMax){return pad+plotH*(1-(v-vMin)/(vMax-vMin))}
+  const vMin=VDC-1.5,vMax=VDC+1.5;
+  // grid
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  for(let v=vMin;v<=vMax;v+=0.5){const yp=yPx(v,pad,plotH,vMin,vMax);ctx.beginPath();ctx.moveTo(pad,yp);ctx.lineTo(W-pad,yp);ctx.stroke()}
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  // Input ripple
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    const v=VDC+rippleAmp*Math.sin(2*Math.PI*fn*t);
+    const yp=yPx(v,pad,plotH,vMin,vMax);
+    px===0?ctx.moveTo(pad+px,yp):ctx.lineTo(pad+px,yp);
+  }ctx.stroke();
+  // Output ripple
+  ctx.strokeStyle='#2e7d32';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    const v=VDC+outAmp*Math.sin(2*Math.PI*fn*t);
+    const yp=yPx(v,pad,plotH,vMin,vMax);
+    px===0?ctx.moveTo(pad+px,yp):ctx.lineTo(pad+px,yp);
+  }ctx.stroke();
+  // DC line
+  ctx.setLineDash([6,3]);ctx.strokeStyle='#888';ctx.lineWidth=1;
+  const ydcpx=yPx(VDC,pad,plotH,vMin,vMax);
+  ctx.beginPath();ctx.moveTo(pad,ydcpx);ctx.lineTo(W-pad,ydcpx);ctx.stroke();
+  ctx.setLineDash([]);
+  // Labels
+  ctx.fillStyle='#888';ctx.font='10px system-ui';ctx.textAlign='right';
+  for(let v=vMin;v<=vMax;v+=0.5)ctx.fillText(v.toFixed(1)+'V',pad-4,yPx(v,pad,plotH,vMin,vMax)+3);
+  ctx.fillStyle='#e53935';ctx.textAlign='left';ctx.font='11px system-ui';
+  ctx.fillText('Input: ±'+rippleAmp.toFixed(2)+'V ripple',pad+8,pad+16);
+  ctx.fillStyle='#2e7d32';
+  ctx.fillText('Output: ±'+outAmp.toFixed(3)+'V ripple',pad+8,pad+30);
+  const dbAtten=20*Math.log10(atten);
+  const pct=((1-atten)*100).toFixed(1);
+  result.innerHTML='<b>LC corner f₀ = '+f0.toFixed(1)+'Hz</b><br>Ripple frequency: <b>'+fn+'Hz</b><br>Filter attenuation: <b>'+dbAtten.toFixed(1)+' dB</b><br>Ripple reduced: <b>'+pct+'%</b><br>Output ripple: <b>±'+outAmp.toFixed(3)+'V</b><br><b>Rule:</b> f₀ must be well below ripple frequency';
+}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slL,slC,slF].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});
+resizeCanvas();draw();
+</script>
+</body>
+</html>

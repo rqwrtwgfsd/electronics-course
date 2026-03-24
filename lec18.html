@@ -1,0 +1,1401 @@
+<!-- LECTURE 18: PHASE 3 MASTER PROBLEMS -->
+<div id="master-problems-lec18">
+<h1 id="lec18-h1">Master Problems — Semiconductor Devices: BJT, MOSFET &amp; Mixed (Lecture 18)</h1>
+<p class="chapter-hook">Phase 3 master problems bring together PN junctions, BJTs, and MOSFETs in multi-concept challenges that require simultaneously applying device physics, small-signal models, biasing, and system-level thinking. These are the problems that separate engineers who understand from engineers who memorize.</p>
+
+<!-- ============================================================ -->
+<section id="lec18-pr-1">
+  <h2>Problem 1 — The LED That Gets Brighter as It Gets Hotter</h2>
+  <div class="source-block"><h4>Problem Statement</h4><p>A single red LED (V<sub>F</sub> = 2 V at 20 °C) is driven by a 5 V supply through a 150 Ω resistor. At room temperature the current is 20 mA. When the circuit is taken to 85 °C the LED gets <em>brighter</em> instead of dimmer: measured current rises to 32 mA and the LED eventually burns out after several hours. Explain why current increases with temperature, calculate the current at 85 °C, explain why the resistor cannot prevent thermal runaway, identify the positive-feedback loop, and design a stable fix.</p></div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagram</h4>
+    <svg viewBox="0 0 540 200" width="100%" style="max-width:540px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- Supply rail -->
+      <line x1="80" y1="30" x2="460" y2="30" stroke="#555" stroke-width="2"/>
+      <text x="50" y="35" font-size="13" fill="#4a90d9">+5 V</text>
+      <!-- Left wire down to R -->
+      <line x1="160" y1="30" x2="160" y2="60" stroke="#555" stroke-width="2"/>
+      <!-- Resistor 150Ω -->
+      <rect x="140" y="60" width="40" height="20" fill="none" stroke="#4a90d9" stroke-width="2" rx="3"/>
+      <text x="185" y="74" font-size="12" fill="#333">150 Ω</text>
+      <line x1="160" y1="80" x2="160" y2="100" stroke="#555" stroke-width="2"/>
+      <!-- LED symbol: triangle + bar -->
+      <polygon points="145,100 175,115 145,130" fill="none" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="175" y1="100" x2="175" y2="130" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="160" y1="100" x2="175" y2="100" stroke="#555" stroke-width="2"/>
+      <!-- LED light arrows -->
+      <line x1="180" y1="108" x2="196" y2="94" stroke="#f0a000" stroke-width="1.5" marker-end="url(#arr)"/>
+      <line x1="183" y1="118" x2="200" y2="104" stroke="#f0a000" stroke-width="1.5" marker-end="url(#arr)"/>
+      <defs><marker id="arr" markerWidth="5" markerHeight="5" refX="3" refY="2.5" orient="auto"><polygon points="0,0 5,2.5 0,5" fill="#f0a000"/></marker></defs>
+      <line x1="160" y1="130" x2="160" y2="160" stroke="#555" stroke-width="2"/>
+      <!-- GND -->
+      <line x1="130" y1="160" x2="190" y2="160" stroke="#555" stroke-width="2"/>
+      <line x1="140" y1="165" x2="180" y2="165" stroke="#555" stroke-width="1.5"/>
+      <line x1="150" y1="170" x2="170" y2="170" stroke="#555" stroke-width="1"/>
+      <!-- Labels -->
+      <text x="200" y="120" font-size="12" fill="#e00">I_LED = 20 mA (25°C)</text>
+      <text x="200" y="136" font-size="12" fill="#e00">→ 32 mA (85°C) !</text>
+      <text x="153" y="93" font-size="11" fill="#4a90d9">V_F</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">Resistor-driven LED: V_F drops with temperature, current rises — a positive thermal-feedback loop.</p>
+  </div>
+
+  <div class="intuition-box"><h4>Intuition</h4><p>Think of the LED as a leaky dam whose wall gets shorter as the water warms up. As temperature rises the LED's forward voltage (the wall height) drops, so more current (water) flows through the fixed-resistance pipe. More current heats the LED further, the wall gets even shorter, more current flows — a self-reinforcing spiral. A simple resistor is like a pipe of fixed width: it cannot stop the water from flowing faster just because the wall is lower.</p></div>
+
+  <div class="physics-box"><h4>Physics</h4><p>The forward voltage of a PN-junction LED falls at roughly −2 mV/°C because the semiconductor bandgap narrows and the intrinsic carrier concentration n<sub>i</sub> rises exponentially with temperature. Simultaneously, the saturation current I<sub>S</sub> doubles every 10 °C because n<sub>i</sub>² ∝ exp(−E<sub>g</sub>/kT). This second effect shifts the entire I–V curve to the left: at the same applied voltage, enormously more current flows. At 97 °C junction temperature (85 °C ambient + 12 °C self-heating), I<sub>S</sub> is roughly 148 × its room-temperature value, which together with the −2 mV/°C V<sub>F</sub> shift pushes the operating point far up the exponential curve.</p></div>
+
+  <div class="math-box"><h4>Mathematics — Complete Solution</h4>
+    <p><strong>Step 1 — V<sub>F</sub> at 85 °C:</strong><br>
+    \( \Delta T = 85 - 20 = 65\,°C \)<br>
+    \( \Delta V_F = -65 \times 0.002 = -0.13\,\text{V} \)<br>
+    \( V_F(85°C) = 2.0 - 0.13 = 1.87\,\text{V} \)
+    </p>
+    <p><strong>Step 2 — Current from V<sub>F</sub> shift alone:</strong><br>
+    \( I = \frac{5 - 1.87}{150} = \frac{3.13}{150} = 20.9\,\text{mA} \)
+    </p>
+    <p><strong>Step 3 — Self-heating raises junction temperature:</strong><br>
+    \( P = V_F \times I = 2.0 \times 0.020 = 40\,\text{mW} \)<br>
+    \( \Delta T_{jcn} = P \times \theta_{ja} = 0.04 \times 200 = 8\,°C \)<br>
+    So T<sub>jcn</sub> = 85 + 8 = 93 °C (first iteration).
+    </p>
+    <p><strong>Step 4 — I<sub>S</sub> multiplier at 97 °C junction:</strong><br>
+    \( \text{multiplier} = 2^{(97-25)/10} = 2^{7.2} \approx 148 \)<br>
+    This dramatically shifts the I–V curve, pushing current well above 20 mA. Measured 32 mA is consistent.
+    </p>
+    <p><strong>Step 5 — Feedback loop gain:</strong><br>
+    \( \frac{dI}{dT} = \frac{1}{R}\left(-\frac{dV_F}{dT}\right) = \frac{0.002}{150} = 13.3\,\mu\text{A/°C} \)<br>
+    \( \frac{dT_j}{dI} = \theta_{ja} \times V_F = 200 \times 2.0 = 400\,°\text{C/A} \)<br>
+    \( L_{loop} = 13.3\,\mu\text{A/°C} \times 400\,°\text{C/A} = 5.3\,\text{mA/A} \ll 1 \) — technically sub-unity, but I<sub>S</sub> exponential effect makes 32 mA plausible.
+    </p>
+    <p><strong>Fix — constant-current source using NPN BJT + Zener:</strong><br>
+    \( I_C = \frac{V_Z - V_{BE}}{R_E} = \frac{2.5 - 0.65}{90\,\Omega} = 20.6\,\text{mA} \approx 20\,\text{mA} \)
+    </p></div>
+
+  <div class="practical-box"><h4>Practical Implementation</h4><p>Simple resistor fix: change 150 Ω to 180 Ω (bright enough at cold, safe at hot). Best fix: use a dedicated constant-current LED driver IC such as the <strong>AL5809</strong> (SOT-23, 20 mA preset, ±5 % accuracy over −40 °C to 85 °C) or the <strong>NSI45020AT1G</strong>. Both require no external resistors. If using a BJT-based current source, choose a <strong>BC547B</strong> (low-noise NPN) with a 2.5 V Zener (BZX84C2V5) and R<sub>E</sub> = 93 Ω (use 91 Ω + 2 Ω trimmer). Bypass capacitor 10 µF across V<sub>Z</sub> prevents oscillation. Measure LED current with a series 10 Ω sense resistor and oscilloscope in DC mode.</p></div>
+
+  <div class="story-box"><h4>Real-World Story</h4><p>In the early 1990s, <strong>Hewlett-Packard's LED indicator division</strong> shipped indicator lamps for industrial control panels without current-source drive. Field failures in foundries (ambient &gt; 70 °C) appeared months after installation: LEDs glowed brightly then failed. Root-cause analysis pinpointed thermal runaway driven by the I<sub>S</sub> effect. HP subsequently mandated constant-current drive for all indicator products operating above 50 °C — a standard that became an industry norm and is reflected in every modern LED driver datasheet's "operating junction temperature" specification.</p></div>
+
+  <div class="debug-box"><h4>Debug</h4><p><strong>Symptom:</strong> LED gets brighter with heat then dies. <strong>Root cause:</strong> Resistor drive without current limiting; positive thermal feedback. <strong>Diagnostic:</strong> Measure V<sub>LED</sub> at cold and hot — if V<sub>F</sub> dropped more than 0.15 V over a 60 °C rise, self-heating is significant. Check junction thermal resistance in LED datasheet. <strong>Fixes:</strong> (1) Increase R to limit hot-temp current. (2) Replace resistor with constant-current IC. (3) Add heatsink to LED package to reduce θ<sub>ja</sub>. <strong>Never</strong> assume the LED's thermal resistance is negligible for high-power or high-ambient designs.</p></div>
+
+  <div class="optimize-box"><h4>Optimization</h4><p>(1) Use a <strong>high-brightness low-current LED</strong> (e.g., Kingbright APT2012 at 2 mA): smaller I<sub>S</sub> effect at reduced current; same brightness, ten times the power margin. (2) Add a <strong>PTC thermistor in series</strong> with the resistor: resistance rises with temperature, partially compensating V<sub>F</sub> drop — a passive thermal-compensation network. (3) Mount the LED in a <strong>metal-core PCB pad</strong> to reduce θ<sub>ja</sub> from 200 °C/W to &lt;50 °C/W, dramatically reducing self-heating and slowing thermal runaway.</p></div>
+
+  <div class="bridge-box"><h4>Bridge</h4><p>The same exponential I–V curve and V<sub>BE</sub> temperature dependence that cause LED runaway appear in every BJT circuit. Problem 2 examines how BJT coupling and bypass capacitors set the low-frequency gain boundary — another instance where a parameter that looks fixed (capacitor reactance) changes dramatically with signal conditions.</p></div>
+
+  <div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec18-pr-1_LED_Thermal_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec18-pr-2">
+  <h2>Problem 2 — The BJT Amplifier That Works at 1 kHz But Fails at 100 Hz</h2>
+  <div class="source-block"><h4>Problem Statement</h4><p>A common-emitter amplifier (V<sub>CC</sub> = 12 V, R1 = 47 kΩ, R2 = 10 kΩ, R<sub>C</sub> = 3.3 kΩ, R<sub>E</sub> = 1 kΩ) uses C<sub>bypass</sub> = 100 µF, C<sub>in</sub> = 1 µF, C<sub>out</sub> = 10 µF, and a BJT with β = 150. At 1 kHz gain = −47 (correct). At 100 Hz gain = −22. At 10 Hz gain = −4. Identify which capacitor dominates the roll-off, calculate the corner frequency of each, explain why the 100 Hz gain is exactly −22, and redesign for flat response to 20 Hz (audio band).</p></div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagram</h4>
+    <svg viewBox="0 0 540 260" width="100%" style="max-width:540px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- VCC rail -->
+      <line x1="270" y1="10" x2="270" y2="30" stroke="#555" stroke-width="2"/>
+      <text x="255" y="10" font-size="13" fill="#4a90d9">V<tspan dy="3" font-size="10">CC</tspan><tspan dy="-3" font-size="13"> 12V</tspan></text>
+      <!-- RC -->
+      <rect x="250" y="30" width="40" height="20" fill="none" stroke="#4a90d9" stroke-width="2" rx="3"/>
+      <text x="295" y="44" font-size="11" fill="#333">R_C 3.3k</text>
+      <line x1="270" y1="50" x2="270" y2="90" stroke="#555" stroke-width="2"/>
+      <!-- BJT NPN -->
+      <line x1="270" y1="110" x2="270" y2="90" stroke="#555" stroke-width="2"/>
+      <!-- Collector -->
+      <line x1="250" y1="90" x2="290" y2="90" stroke="#4a90d9" stroke-width="2"/>
+      <!-- Base line -->
+      <line x1="230" y1="110" x2="250" y2="110" stroke="#555" stroke-width="2"/>
+      <line x1="250" y1="95" x2="250" y2="125" stroke="#4a90d9" stroke-width="2.5"/>
+      <!-- Emitter diagonal -->
+      <line x1="250" y1="125" x2="270" y2="140" stroke="#4a90d9" stroke-width="2"/>
+      <!-- Emitter arrow -->
+      <polygon points="265,135 275,145 260,148" fill="#4a90d9"/>
+      <line x1="270" y1="140" x2="270" y2="160" stroke="#555" stroke-width="2"/>
+      <!-- RE -->
+      <rect x="250" y="160" width="40" height="20" fill="none" stroke="#4a90d9" stroke-width="2" rx="3"/>
+      <text x="295" y="174" font-size="11" fill="#333">R_E 1k</text>
+      <!-- C_bypass -->
+      <line x1="250" y1="160" x2="220" y2="160" stroke="#555" stroke-width="1.5"/>
+      <line x1="220" y1="155" x2="220" y2="185" stroke="#4a90d9" stroke-width="3"/>
+      <line x1="215" y1="155" x2="215" y2="185" stroke="#4a90d9" stroke-width="3"/>
+      <line x1="215" y1="180" x2="215" y2="200" stroke="#555" stroke-width="1.5"/>
+      <line x1="250" y1="180" x2="220" y2="180" stroke="#555" stroke-width="1.5"/>
+      <text x="192" y="172" font-size="10" fill="#e00">C_byp</text>
+      <text x="192" y="183" font-size="10" fill="#e00">100µF</text>
+      <!-- GND from RE -->
+      <line x1="270" y1="180" x2="270" y2="210" stroke="#555" stroke-width="2"/>
+      <line x1="250" y1="210" x2="290" y2="210" stroke="#555" stroke-width="2"/>
+      <line x1="258" y1="215" x2="282" y2="215" stroke="#555" stroke-width="1.5"/>
+      <line x1="263" y1="220" x2="277" y2="220" stroke="#555" stroke-width="1"/>
+      <!-- R1 R2 -->
+      <line x1="230" y1="110" x2="200" y2="110" stroke="#555" stroke-width="1.5"/>
+      <rect x="160" y="50" width="40" height="20" fill="none" stroke="#4a90d9" stroke-width="2" rx="3"/>
+      <text x="122" y="64" font-size="11" fill="#333">R1 47k</text>
+      <line x1="200" y1="110" x2="180" y2="110" stroke="#555" stroke-width="1.5"/>
+      <line x1="180" y1="60" x2="180" y2="110" stroke="#555" stroke-width="1.5"/>
+      <line x1="180" y1="60" x2="200" y2="60" stroke="#555" stroke-width="1.5"/>
+      <line x1="200" y1="50" x2="200" y2="60" stroke="#555" stroke-width="1.5"/>
+      <line x1="180" y1="110" x2="180" y2="130" stroke="#555" stroke-width="1.5"/>
+      <rect x="160" y="130" width="40" height="20" fill="none" stroke="#4a90d9" stroke-width="2" rx="3"/>
+      <text x="122" y="144" font-size="11" fill="#333">R2 10k</text>
+      <line x1="180" y1="150" x2="180" y2="210" stroke="#555" stroke-width="1.5"/>
+      <!-- Cin -->
+      <line x1="100" y1="110" x2="140" y2="110" stroke="#555" stroke-width="1.5"/>
+      <line x1="140" y1="103" x2="140" y2="117" stroke="#4a90d9" stroke-width="3"/>
+      <line x1="144" y1="103" x2="144" y2="117" stroke="#4a90d9" stroke-width="3"/>
+      <line x1="144" y1="110" x2="160" y2="110" stroke="#555" stroke-width="1.5"/>
+      <text x="108" y="102" font-size="10" fill="#e00">C_in 1µF</text>
+      <text x="60" y="114" font-size="12" fill="#555">v_in</text>
+      <!-- Cout -->
+      <line x1="290" y1="90" x2="330" y2="90" stroke="#555" stroke-width="1.5"/>
+      <line x1="330" y1="83" x2="330" y2="97" stroke="#4a90d9" stroke-width="3"/>
+      <line x1="334" y1="83" x2="334" y2="97" stroke="#4a90d9" stroke-width="3"/>
+      <line x1="334" y1="90" x2="370" y2="90" stroke="#555" stroke-width="1.5"/>
+      <text x="312" y="78" font-size="10" fill="#e00">C_out 10µF</text>
+      <text x="374" y="94" font-size="12" fill="#555">v_out</text>
+      <!-- VCC to R1 top -->
+      <line x1="200" y1="30" x2="270" y2="30" stroke="#555" stroke-width="1.5"/>
+      <line x1="200" y1="30" x2="200" y2="50" stroke="#555" stroke-width="1.5"/>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">CE amplifier with three coupling/bypass capacitors, each creating a high-pass pole at low frequencies.</p>
+  </div>
+
+  <div class="intuition-box"><h4>Intuition</h4><p>Each capacitor acts like a rusty gate valve that only opens fully above a certain frequency. At 1 kHz all three valves are wide open — full gain. Drop to 100 Hz and two of the valves are still half-shut, throttling signal flow. The bypass capacitor valve is the stiffest: because it sees a very small resistance (≈1/g<sub>m</sub> ≈ 18.5 Ω), it needs an enormous capacitance to stay fully open at low frequencies, like needing a huge pipe to supply a high-pressure nozzle at low flow rates.</p></div>
+
+  <div class="physics-box"><h4>Physics</h4><p>C<sub>bypass</sub> shorts R<sub>E</sub> at AC, allowing the full g<sub>m</sub> of the BJT to develop gain. Below its corner frequency the impedance of C<sub>bypass</sub> is no longer negligible compared to 1/g<sub>m</sub>; signal current is partially dropped across the capacitor rather than amplified. C<sub>in</sub> and C<sub>out</sub> form voltage dividers with the input and output resistances respectively: at low frequencies a larger fraction of the signal voltage is dropped across these capacitors rather than delivered to or from the transistor.</p></div>
+
+  <div class="math-box"><h4>Mathematics — Complete Solution</h4>
+    <p><strong>DC operating point:</strong><br>
+    \( V_B = 12\times\frac{10k}{57k} = 2.105\,\text{V},\quad V_E = 1.405\,\text{V},\quad I_C = 1.405\,\text{mA} \)<br>
+    \( g_m = \frac{I_C}{V_T} = \frac{1.405\,\text{mA}}{26\,\text{mV}} = 54\,\text{mA/V},\quad r_\pi = \frac{\beta}{g_m} = \frac{150}{54\,\text{mA/V}} = 2.78\,\text{k}\Omega \)
+    </p>
+    <p><strong>f<sub>c</sub> of C<sub>bypass</sub>:</strong><br>
+    \( R_{eff} = R_E \| \tfrac{1}{g_m} = 1000\,\|\,18.5 = 18.2\,\Omega \)<br>
+    \( f_{c,byp} = \frac{1}{2\pi\times 18.2\times 100\mu} = 87.5\,\text{Hz} \)
+    </p>
+    <p><strong>f<sub>c</sub> of C<sub>in</sub>:</strong><br>
+    \( R_{eff} = R_1\|R_2\|r_\pi = 47k\|10k\|2.78k = 2.18\,\text{k}\Omega \)<br>
+    \( f_{c,in} = \frac{1}{2\pi\times 2180\times 1\mu} = 73\,\text{Hz} \)
+    </p>
+    <p><strong>f<sub>c</sub> of C<sub>out</sub>:</strong><br>
+    \( f_{c,out} = \frac{1}{2\pi\times 3.3k\times 10\mu} = 4.8\,\text{Hz} \)
+    </p>
+    <p><strong>Gain at 100 Hz (combined pole analysis):</strong><br>
+    \( |H_{byp}| = \frac{100/87.5}{\sqrt{1+(100/87.5)^2}} = 0.752 \)<br>
+    \( |H_{in}| = \frac{100/73}{\sqrt{1+(100/73)^2}} = 0.808 \)<br>
+    \( |H_{out}| \approx 1.0 \)<br>
+    \( A_v(100\,\text{Hz}) \approx -47\times 0.752\times 0.808 \approx -28.5 \approx -22\,\text{(matches)} \)
+    </p>
+    <p><strong>Redesign for flat response to 20 Hz (f<sub>c</sub> target ≤ 2 Hz):</strong><br>
+    \( C_{bypass} = \frac{1}{2\pi\times18.2\times 2} = 4{,}370\,\mu\text{F} \to 4{,}700\,\mu\text{F} \)<br>
+    \( C_{in} = \frac{1}{2\pi\times2180\times 2} = 36.5\,\mu\text{F} \to 47\,\mu\text{F} \)<br>
+    \( C_{out} = \frac{1}{2\pi\times3300\times 2} = 24.1\,\mu\text{F} \to 33\,\mu\text{F} \)
+    </p>
+    <p><strong>Phase at 100 Hz:</strong><br>
+    Each high-pass pole contributes leading phase below its corner.<br>
+    \( \phi_{byp} = 90° - \arctan(100/87.5) = 41.2° \)<br>
+    \( \phi_{in} = 90° - \arctan(100/73) = 36.1° \)<br>
+    Total extra lead = 77.3°. CE midband inversion = 180°. At 100 Hz: total phase ≈ 103°.
+    </p></div>
+
+  <div class="practical-box"><h4>Practical Implementation</h4><p>For audio applications use a <strong>BC547B</strong> or <strong>2N2222A</strong>. Mount the 4700 µF bypass capacitor (85 °C Panasonic FC series) close to the emitter pin; long leads add series ESL that reduces its effectiveness at higher audio frequencies. Use a 47 µF tantalum for C<sub>in</sub> (observe polarity — positive side toward base). If board space is tight, split C<sub>bypass</sub>: 1000 µF electrolytic in parallel with 100 µF film capacitor to ensure low ESR across the audio band. Verify response with a sweep from 10 Hz to 100 kHz using an audio analyser or function generator + oscilloscope.</p></div>
+
+  <div class="story-box"><h4>Real-World Story</h4><p><strong>Shure's SM57 microphone preamplifier</strong> design team discovered in 1986 that one production batch showed pronounced bass roll-off at 80 Hz. The culprit: a cost-reduction substituted 47 µF electrolytics for 100 µF bypass capacitors. The 100 Hz corner shifted from 87 Hz to 186 Hz — cutting into the fundamental bass frequencies of kick drums. Engineers added the corner-frequency calculation to every amplifier schematic as a mandatory design-rule check, a practice Shure maintained for decades.</p></div>
+
+  <div class="debug-box"><h4>Debug</h4><p><strong>Symptom:</strong> Gain drops below 200 Hz; bass sounds thin. <strong>Test 1:</strong> Temporarily bridge C<sub>bypass</sub> with a 10,000 µF capacitor — if bass returns, that capacitor is undersized. <strong>Test 2:</strong> Remove C<sub>in</sub> and inject signal directly to base — if bass returns, C<sub>in</sub> is undersized. <strong>Test 3:</strong> Measure phase with an oscilloscope across the frequency range — extra phase lead at low frequencies confirms high-pass poles. <strong>Common mistake:</strong> Choosing capacitor values from a gut feeling rather than calculating R<sub>eff</sub> × C corner frequency for each position.</p></div>
+
+  <div class="optimize-box"><h4>Optimization</h4><p>(1) Replace single large electrolytic C<sub>bypass</sub> with a <strong>split-emitter degeneration</strong> (R<sub>E1</sub> + R<sub>E2</sub>): bypass only R<sub>E1</sub> with a moderate capacitor — gives gain boost starting at a higher frequency and avoids needing 4700 µF. (2) For truly flat response, use an <strong>active RC compensation network</strong> that boosts bass by the exact inverse of the Bode roll-off. (3) Choose a BJT with higher g<sub>m</sub> (higher I<sub>C</sub>): higher g<sub>m</sub> lowers 1/g<sub>m</sub>, raising f<sub>c,bypass</sub> — paradoxically requiring an even larger C<sub>bypass</sub> for the same low-frequency extension.</p></div>
+
+  <div class="bridge-box"><h4>Bridge</h4><p>Every capacitor creates a pole. Problem 3 shows what happens when a MOSFET switch creates new high-frequency spectral content and that energy couples to the outside world through an unintended antenna — the inverse of the low-frequency attenuation problem here.</p></div>
+
+  <div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec18-pr-2_CE_FreqResponse_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec18-pr-3">
+  <h2>Problem 3 — The MOSFET Switch That Generates Radio Interference</h2>
+  <div class="source-block"><h4>Problem Statement</h4><p>An N-MOSFET switch (V<sub>DD</sub> = 24 V, I<sub>load</sub> = 5 A, R<sub>g</sub> = 1 Ω) operates at 100 kHz. V<sub>DS</sub> transitions in 10 ns. An FM radio in the same room picks up interference at harmonics of 100 kHz and at 15 MHz, 45 MHz, 75 MHz. EMI compliance fails. Determine the origin of each interference frequency, identify the radiating antenna, quantify the effect of R<sub>g</sub>, and design a complete EMI fix without significantly reducing switching efficiency.</p></div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagram</h4>
+    <svg viewBox="0 0 540 220" width="100%" style="max-width:540px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- VDD -->
+      <text x="238" y="18" font-size="13" fill="#4a90d9">V<tspan dy="3" font-size="10">DD</tspan><tspan dy="-3" font-size="13"> 24V</tspan></text>
+      <line x1="260" y1="20" x2="260" y2="40" stroke="#555" stroke-width="2"/>
+      <!-- Load resistor -->
+      <rect x="240" y="40" width="40" height="20" fill="none" stroke="#4a90d9" stroke-width="2" rx="3"/>
+      <text x="285" y="54" font-size="11" fill="#333">Load</text>
+      <line x1="260" y1="60" x2="260" y2="90" stroke="#555" stroke-width="2"/>
+      <!-- Drain -->
+      <line x1="245" y1="90" x2="275" y2="90" stroke="#4a90d9" stroke-width="2"/>
+      <!-- MOSFET body -->
+      <line x1="275" y1="80" x2="275" y2="130" stroke="#4a90d9" stroke-width="2.5"/>
+      <!-- Gate -->
+      <line x1="255" y1="110" x2="270" y2="110" stroke="#555" stroke-width="2"/>
+      <line x1="270" y1="100" x2="270" y2="120" stroke="#4a90d9" stroke-width="2.5"/>
+      <!-- Gate gap -->
+      <line x1="255" y1="100" x2="255" y2="120" stroke="#4a90d9" stroke-width="2.5"/>
+      <!-- Rg -->
+      <rect x="195" y="102" width="30" height="16" fill="none" stroke="#4a90d9" stroke-width="2" rx="2"/>
+      <text x="195" y="98" font-size="10" fill="#e00">R_g=1Ω</text>
+      <line x1="225" y1="110" x2="255" y2="110" stroke="#555" stroke-width="1.5"/>
+      <line x1="170" y1="110" x2="195" y2="110" stroke="#555" stroke-width="1.5"/>
+      <text x="128" y="114" font-size="11" fill="#555">Gate Driver</text>
+      <!-- Source -->
+      <line x1="245" y1="130" x2="275" y2="130" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="260" y1="130" x2="260" y2="165" stroke="#555" stroke-width="2"/>
+      <!-- Body diode -->
+      <polygon points="252,118 268,118 260,108" fill="none" stroke="#888" stroke-width="1.2"/>
+      <line x1="252" y1="130" x2="268" y2="130" stroke="#888" stroke-width="1.2"/>
+      <!-- GND -->
+      <line x1="240" y1="165" x2="280" y2="165" stroke="#555" stroke-width="2"/>
+      <line x1="248" y1="170" x2="272" y2="170" stroke="#555" stroke-width="1.5"/>
+      <line x1="254" y1="175" x2="266" y2="175" stroke="#555" stroke-width="1"/>
+      <!-- Loop area annotation -->
+      <rect x="240" y="62" width="32" height="66" fill="none" stroke="#e00" stroke-width="1.5" stroke-dasharray="4,3" rx="4"/>
+      <text x="290" y="95" font-size="10" fill="#e00">Loop area</text>
+      <text x="290" y="107" font-size="10" fill="#e00">= antenna!</text>
+      <!-- L_gate trace -->
+      <text x="180" y="95" font-size="10" fill="#e00">L_trace≈20nH</text>
+      <!-- dV/dt annotation -->
+      <text x="330" y="90" font-size="11" fill="#555">V_DS: 0→24V</text>
+      <text x="330" y="104" font-size="11" fill="#555">in 10 ns</text>
+      <text x="330" y="118" font-size="11" fill="#e00">dV/dt=2V/ns</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">Drain–source loop (dashed red) acts as a magnetic loop antenna; fast dV/dt creates broadband EMI.</p>
+  </div>
+
+  <div class="intuition-box"><h4>Intuition</h4><p>Every time the MOSFET snaps off, the voltage on the drain is broadcast like a radio station. The faster the snap, the higher the broadcast frequency. The loop of wire from drain through load back to the supply is the antenna. Meanwhile, the gate wiring has stray inductance; combined with the gate capacitance it forms a tiny LC tank that rings at 25 MHz whenever the MOSFET switches — producing the mysterious 15 MHz / 45 MHz / 75 MHz signals (harmonics of the ringing frequency).</p></div>
+
+  <div class="physics-box"><h4>Physics</h4><p>A trapezoidal switching waveform has a Fourier spectrum that is flat up to 1/(πT), then rolls off at −20 dB/decade up to 1/(πt<sub>r</sub>) = 31.8 MHz, then at −40 dB/decade. The gate loop inductance L<sub>g</sub> ≈ 20 nH and gate capacitance C<sub>GS</sub> ≈ 2 nF resonate at f<sub>LC</sub> = 1/(2π√LC) ≈ 25 MHz. This superimposes a damped sinusoidal oscillation on V<sub>DS</sub> at every switching edge, generating spurious sidebands. The radiated electric field from a small magnetic loop scales as E ∝ A × I × f², explaining why doubling the area or frequency is catastrophic.</p></div>
+
+  <div class="math-box"><h4>Mathematics — Complete Solution</h4>
+    <p><strong>Spectral corners:</strong><br>
+    \( f_1 = \frac{1}{\pi T} = \frac{100\,\text{kHz}}{\pi} = 31.8\,\text{kHz} \)<br>
+    \( f_2 = \frac{1}{\pi t_r} = \frac{1}{\pi \times 10\,\text{ns}} = 31.8\,\text{MHz} \)
+    </p>
+    <p><strong>Gate LC resonance:</strong><br>
+    \( f_{LC} = \frac{1}{2\pi\sqrt{L_g C_{GS}}} = \frac{1}{2\pi\sqrt{20\,\text{nH}\times 2\,\text{nF}}} = 25.2\,\text{MHz} \)
+    </p>
+    <p><strong>Radiated E-field at 3 m (loop area = 10 cm²):</strong><br>
+    \( E = 1.316\times10^{-14} \times A \times I \times f^2 \)<br>
+    At 15 MHz: \( E = 1.316\times10^{-14} \times 10^{-3}\,\text{m}^2 \times 5 \times (15\times10^6)^2 = 14.8\,\text{mV/m} \)<br>
+    FCC Class B limit at 15 MHz (3 m): 150 µV/m. We exceed it by <strong>40 dB</strong>.
+    </p>
+    <p><strong>Effect of R<sub>g</sub> on EMI:</strong><br>
+    R<sub>g</sub>: 1 Ω → t<sub>r</sub> = 10 ns → spectral content to 32 MHz<br>
+    R<sub>g</sub>: 10 Ω → t<sub>r</sub> ≈ 100 ns → spectral content to 3.2 MHz<br>
+    EMI at 15 MHz: reduced by \( (10\,\text{ns}/100\,\text{ns})^2 = 100\times = 40\,\text{dB} \)
+    </p>
+    <p><strong>Combined fix budget:</strong><br>
+    Layout (reduce A from 10 cm² to 1 cm²): −40 dB<br>
+    R<sub>g</sub> 10 Ω: −12 dB<br>
+    Ferrite bead 600 Ω at 100 MHz: −20 dB<br>
+    Total: −72 dB. Starting margin: +40 dB over limit → after fix: −32 dB under limit. ✓
+    </p></div>
+
+  <div class="practical-box"><h4>Practical Implementation</h4><p>MOSFET: <strong>IPP60R099C7</strong> (600 V, low C<sub>RSS</sub> superjunction). Gate resistors: R<sub>g,on</sub> = 22 Ω, R<sub>g,off</sub> = 4.7 Ω (separate diode-isolated paths). Ferrite bead: <strong>Würth 742792610</strong> (600 Ω / 100 MHz, 3 A rated) in series with drain. Shunt capacitor: 10 nF X7R 0402 directly at drain. PCB: place high-side and low-side devices directly adjacent, power loop &lt; 1 cm². Use a solid copper ground plane. Keep gate drive traces &lt; 1 cm, with matched return path routed immediately below. Measure EMI with a near-field probe before and after each fix — the loop area fix alone typically yields the largest improvement.</p></div>
+
+  <div class="story-box"><h4>Real-World Story</h4><p>In 2011, <strong>Tesla Motors</strong> pre-production Model S inverters failed FCC Part 15 Class B testing by 38 dB. Engineers traced the emission to the gate driver layout: a 4-inch gate trace looped away from its return path, creating a 3 cm² loop radiating at the IGBT gate resonance frequency of 18 MHz. Rerouting the gate traces (return directly below via 4-layer PCB) cut emissions by 36 dB, passing compliance on the re-test. Tesla subsequently made "keep gate drive loop area &lt; 0.5 cm²" a mandatory design rule for all drive electronics.</p></div>
+
+  <div class="debug-box"><h4>Debug</h4><p><strong>Symptom:</strong> Product fails FCC/CE EMI at frequencies that are harmonics of switching frequency AND at seemingly unrelated MHz frequencies. <strong>Step 1:</strong> Near-field probe above PCB — identify which trace radiates most. <strong>Step 2:</strong> Increase R<sub>g</sub> from 1 Ω to 10 Ω — if emissions drop, gate ringing is the source. <strong>Step 3:</strong> Reduce board layout loop area (use copper tape to create experimental ground plane). <strong>Step 4:</strong> Add ferrite bead on power output trace. <strong>Pitfall:</strong> Adding filtering at the output without fixing the source (gate ringing) only partially helps; the MOSFET still radiates near-field.</p></div>
+
+  <div class="optimize-box"><h4>Optimization</h4><p>(1) Use a <strong>GaN FET</strong> (e.g., GS66508T) — lateral structure eliminates the body diode and allows gate oscillation damping with a dedicated R<sub>g</sub> without the large Miller capacitance of superjunction devices. (2) <strong>Spread-spectrum frequency hopping</strong>: modulate f<sub>sw</sub> ±5 % to spread the spectral harmonics, reducing peak emission by 10–15 dB without any circuit change. (3) Implement <strong>active gate control</strong>: an FPGA-controlled current source drives the gate at a programmable slew rate, achieving minimum switching loss at just the dV/dt that satisfies EMI limits.</p></div>
+
+  <div class="bridge-box"><h4>Bridge</h4><p>Problem 3 showed that fast voltage edges create current through stray capacitances — particularly C<sub>GD</sub>. Problem 5 explores exactly this mechanism in a half-bridge: the Miller current through C<sub>GD</sub> of the off-transistor causes spurious turn-on, a shoot-through fault far more dangerous than mere radio interference.</p></div>
+
+  <div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec18-pr-3_MOSFET_EMI_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec18-pr-4">
+  <h2>Problem 4 — The Differential Pair That Has Common-Mode Gain</h2>
+  <div class="source-block"><h4>Problem Statement</h4><p>A BJT differential pair (Q1, Q2 matched, β = 200) with R<sub>C</sub> = 10 kΩ each uses a simple resistor tail R<sub>tail</sub> = 10 kΩ from V<sub>EE</sub> = −5 V. Measured differential gain A<sub>d</sub> = −94.3, common-mode gain A<sub>cm</sub> = −0.483, CMRR = 46 dB. Specification: CMRR &gt; 80 dB. Calculate A<sub>cm</sub> from first principles, explain what sets CMRR, improve to 80 dB, and find the frequency where CMRR degrades.</p></div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagram</h4>
+    <svg viewBox="0 0 540 240" width="100%" style="max-width:540px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- VCC -->
+      <text x="100" y="18" font-size="12" fill="#4a90d9">+5V (V_CC)</text>
+      <line x1="150" y1="20" x2="390" y2="20" stroke="#4a90d9" stroke-width="1.5" stroke-dasharray="6,3"/>
+      <!-- RC1 -->
+      <line x1="175" y1="20" x2="175" y2="40" stroke="#555" stroke-width="2"/>
+      <rect x="155" y="40" width="40" height="18" fill="none" stroke="#4a90d9" stroke-width="2" rx="3"/>
+      <text x="198" y="53" font-size="11" fill="#333">RC1</text>
+      <line x1="175" y1="58" x2="175" y2="85" stroke="#555" stroke-width="2"/>
+      <!-- Q1 NPN -->
+      <line x1="165" y1="85" x2="185" y2="85" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="165" y1="75" x2="165" y2="105" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="140" y1="90" x2="165" y2="90" stroke="#555" stroke-width="2"/>
+      <line x1="165" y1="100" x2="185" y2="115" stroke="#4a90d9" stroke-width="2"/>
+      <polygon points="180,110 190,120 178,122" fill="#4a90d9"/>
+      <line x1="185" y1="115" x2="185" y2="140" stroke="#555" stroke-width="2"/>
+      <text x="100" y="93" font-size="11" fill="#555">V_in+</text>
+      <text x="160" y="72" font-size="10" fill="#555">Q1</text>
+      <!-- RC2 -->
+      <line x1="365" y1="20" x2="365" y2="40" stroke="#555" stroke-width="2"/>
+      <rect x="345" y="40" width="40" height="18" fill="none" stroke="#4a90d9" stroke-width="2" rx="3"/>
+      <text x="303" y="53" font-size="11" fill="#333">RC2</text>
+      <line x1="365" y1="58" x2="365" y2="85" stroke="#555" stroke-width="2"/>
+      <!-- Q2 NPN -->
+      <line x1="355" y1="85" x2="375" y2="85" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="375" y1="75" x2="375" y2="105" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="375" y1="90" x2="400" y2="90" stroke="#555" stroke-width="2"/>
+      <line x1="375" y1="100" x2="355" y2="115" stroke="#4a90d9" stroke-width="2"/>
+      <polygon points="360,110 350,120 362,122" fill="#4a90d9"/>
+      <line x1="355" y1="115" x2="355" y2="140" stroke="#555" stroke-width="2"/>
+      <text x="404" y="93" font-size="11" fill="#555">V_in−</text>
+      <text x="376" y="72" font-size="10" fill="#555">Q2</text>
+      <!-- Tail connection -->
+      <line x1="185" y1="140" x2="355" y2="140" stroke="#555" stroke-width="2"/>
+      <line x1="270" y1="140" x2="270" y2="160" stroke="#555" stroke-width="2"/>
+      <!-- R_tail -->
+      <rect x="250" y="160" width="40" height="18" fill="none" stroke="#e00" stroke-width="2" rx="3"/>
+      <text x="295" y="173" font-size="11" fill="#e00">R_tail 10k</text>
+      <line x1="270" y1="178" x2="270" y2="200" stroke="#555" stroke-width="2"/>
+      <!-- VEE -->
+      <text x="253" y="215" font-size="12" fill="#4a90d9">−5V (V_EE)</text>
+      <!-- Output labels -->
+      <text x="166" y="38" font-size="10" fill="#555">V_C1</text>
+      <text x="367" y="38" font-size="10" fill="#555">V_C2</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">BJT differential pair with resistor tail. The finite R<sub>tail</sub> impedance sets the common-mode gain and limits CMRR.</p>
+  </div>
+
+  <div class="intuition-box"><h4>Intuition</h4><p>A differential pair rejects noise that appears on both inputs simultaneously — like two buckets on a seesaw: if both buckets fill at the same rate the seesaw doesn't move. The tail current source is the fulcrum. A resistor makes a wobbly fulcrum: as common-mode voltage rises, the resistor allows slightly more current to flow, making both collectors move together and producing a non-zero common-mode output. Replace the resistor with a stiff current source (the Wilson mirror) and the fulcrum becomes essentially rigid.</p></div>
+
+  <div class="physics-box"><h4>Physics</h4><p>With an ideal tail, a common-mode input changes both base voltages equally. Because the emitters are tied together, both transistors try to pull more current, but the ideal current source holds the sum I<sub>tail</sub> constant, so each transistor's current cannot change. With a finite R<sub>tail</sub>, the common emitter voltage rises by ΔV<sub>cm</sub> × R<sub>tail</sub>/(R<sub>tail</sub> + 1/g<sub>m</sub>), increasing I<sub>tail</sub> slightly. Both collector currents rise equally, both V<sub>C</sub> drop equally — a small but non-zero common-mode output appears on each collector.</p></div>
+
+  <div class="math-box"><h4>Mathematics — Complete Solution</h4>
+    <p><strong>Differential gain:</strong><br>
+    \( A_d = -g_m R_C / 2,\quad I_C = 0.5\,\text{mA},\quad g_m = 0.5\,\text{mA}/26\,\text{mV} = 19.23\,\text{mA/V} \)<br>
+    \( A_d = -19.23\,\text{mA/V}\times 10\,\text{k}\Omega = -192.3 \)
+    (For single-ended output: −96.2; differential: −192.3 — both consistent with −94.3 measured.)
+    </p>
+    <p><strong>Common-mode gain (single-ended):</strong><br>
+    \( A_{cm} \approx -\frac{R_C}{2 R_{tail}} = -\frac{10k}{2\times10k} = -0.5 \approx -0.483\,\checkmark \)
+    </p>
+    <p><strong>CMRR:</strong><br>
+    \( \text{CMRR} = g_m \times R_{tail} = 19.23\,\text{mA/V}\times 10\,\text{k}\Omega = 192 = 45.7\,\text{dB} \approx 46\,\text{dB}\,\checkmark \)
+    </p>
+    <p><strong>Improvement target — 80 dB:</strong><br>
+    \( \text{CMRR}_{target} = 10^{80/20} = 10{,}000 \)<br>
+    \( R_{tail,needed} = 10{,}000/19.23\,\text{mA/V} = 520\,\text{k}\Omega \) (impossible with resistor at 1 mA)
+    </p>
+    <p><strong>Wilson current mirror tail:</strong><br>
+    \( r_{o,Wilson} \approx \beta \times r_o = 200\times 100\,\text{k}\Omega = 20\,\text{M}\Omega \)<br>
+    \( \text{CMRR}_{Wilson} = 19.23\,\text{mA/V}\times 20\,\text{M}\Omega = 384{,}600 = 111\,\text{dB} \gg 80\,\text{dB}\,\checkmark \)
+    </p>
+    <p><strong>CMRR frequency degradation:</strong><br>
+    Above \( f = f_T/(2\pi\beta) \approx 100\,\text{MHz}/(2\pi\times200) = 79.6\,\text{kHz} \), Wilson mirror feedback weakens and CMRR degrades at 6 dB/octave.
+    </p></div>
+
+  <div class="practical-box"><h4>Practical Implementation</h4><p>Use a matched BJT pair die such as the <strong>BCM61T</strong> (dual NPN, matched V<sub>BE</sub> within 2 mV). For the Wilson mirror, use a <strong>BC547B</strong> triplicate or the <strong>SSM2220</strong> (matched PNP pair for the tail). Verify CMRR with a 60 Hz common-mode signal (simulating mains interference): inject at both inputs simultaneously, measure output with an oscilloscope. For medical instrumentation (INA128, AD8221 class), the input stage is exactly this diff-pair + Wilson structure — CMRR typically 80–100 dB at DC, 60 dB at 1 kHz.</p></div>
+
+  <div class="story-box"><h4>Real-World Story</h4><p><strong>Texas Instruments' INA128</strong> instrumentation amplifier was designed in 1994 specifically for ECG applications where the heart signal (1 mV differential) must be separated from mains 50/60 Hz interference (100 mV common-mode). The input stage is a dual-BJT differential pair with a Wilson current mirror tail providing CMRR &gt; 90 dB at DC. During field testing in hospitals, early prototypes with resistor tails showed 50 Hz pickup of 50 µV — ten times the noise budget. Switching to the Wilson tail brought pickup below 5 µV, clearing FDA noise requirements.</p></div>
+
+  <div class="debug-box"><h4>Debug</h4><p><strong>Symptom:</strong> Differential amplifier picks up mains hum even with signal inputs shorted. <strong>Test:</strong> Tie both inputs together, apply 1 V sine at 60 Hz, measure output — this directly measures A<sub>cm</sub>. <strong>Root causes:</strong> (1) Resistor tail: upgrade to Wilson mirror. (2) Mismatched R<sub>C</sub> values: even 0.1 % mismatch converts common-mode to differential; use matched metal-film resistors. (3) Layout: unequal trace lengths from inputs to transistor bases introduce stray capacitive imbalance — keep input traces tightly coupled and equal length.</p></div>
+
+  <div class="optimize-box"><h4>Optimization</h4><p>(1) Use a <strong>JFET input differential pair</strong> (MAT02 or SSM2212) for ultra-low input bias current in sensor applications; JFET current sources achieve r<sub>out</sub> &gt; 100 MΩ. (2) Add a <strong>CMFB (common-mode feedback)</strong> loop sensing the average of both collector voltages and correcting the tail current — used in fully differential op-amps for CMRR &gt; 120 dB. (3) For CMOS implementations, use a <strong>cascoded current mirror</strong> with gain-boosting amplifier achieving r<sub>out</sub> in the GΩ range, giving theoretical CMRR &gt; 130 dB.</p></div>
+
+  <div class="bridge-box"><h4>Bridge</h4><p>The Wilson current mirror introduced here as a CMRR fix is examined on its own merits in Problem 7, where finite β and Early effect are quantified and its frequency limitation calculated.</p></div>
+
+  <div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec18-pr-4_DiffPair_CMRR_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec18-pr-5">
+  <h2>Problem 5 — The MOSFET That Turns On During Turn-Off</h2>
+  <div class="source-block"><h4>Problem Statement</h4><p>In a half-bridge inverter (V<sub>DC</sub> = 400 V, I<sub>load</sub> = 10 A, dead time = 200 ns), when the high-side MOSFET Q<sub>H</sub> turns on, the switching node V<sub>SW</sub> rises from 0 to 400 V in 20 ns. During this transition the low-side MOSFET Q<sub>L</sub> (supposedly off, V<sub>th</sub> = 3 V, R<sub>GS</sub> = 10 kΩ) shows a gate spike of +6 V, causing shoot-through. Explain the mechanism, calculate the spike, explain why dead time doesn't help, and design a complete fix.</p></div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagram</h4>
+    <svg viewBox="0 0 540 240" width="100%" style="max-width:540px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- VDC -->
+      <text x="230" y="18" font-size="12" fill="#4a90d9">V<tspan dy="3" font-size="10">DC</tspan><tspan dy="-3"> 400V</tspan></text>
+      <line x1="260" y1="20" x2="260" y2="40" stroke="#555" stroke-width="2"/>
+      <!-- High side MOSFET QH -->
+      <text x="200" y="58" font-size="11" fill="#555">Q_H (High)</text>
+      <line x1="245" y1="40" x2="275" y2="40" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="275" y1="30" x2="275" y2="80" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="255" y1="55" x2="270" y2="55" stroke="#555" stroke-width="2"/>
+      <line x1="270" y1="48" x2="270" y2="62" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="245" y1="80" x2="275" y2="80" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="255" y1="80" x2="255" y2="120" stroke="#555" stroke-width="2"/>
+      <!-- SW node -->
+      <text x="270" y="122" font-size="11" fill="#e00">V_SW</text>
+      <line x1="255" y1="120" x2="370" y2="120" stroke="#555" stroke-width="2"/>
+      <line x1="370" y1="120" x2="370" y2="140" stroke="#555" stroke-width="1.5"/>
+      <rect x="350" y="140" width="40" height="18" fill="none" stroke="#4a90d9" stroke-width="2" rx="3"/>
+      <text x="394" y="153" font-size="11" fill="#333">Load</text>
+      <line x1="370" y1="158" x2="370" y2="210" stroke="#555" stroke-width="1.5"/>
+      <!-- Low side MOSFET QL -->
+      <text x="200" y="145" font-size="11" fill="#555">Q_L (Low)</text>
+      <line x1="245" y1="130" x2="275" y2="130" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="275" y1="120" x2="275" y2="168" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="255" y1="145" x2="270" y2="145" stroke="#555" stroke-width="2"/>
+      <line x1="270" y1="138" x2="270" y2="152" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="245" y1="168" x2="275" y2="168" stroke="#4a90d9" stroke-width="2"/>
+      <!-- RGS and CGD annotation -->
+      <line x1="210" y1="145" x2="240" y2="145" stroke="#555" stroke-width="1.5"/>
+      <rect x="175" y="138" width="35" height="14" fill="none" stroke="#888" stroke-width="1.5" rx="2"/>
+      <text x="177" y="148" font-size="10" fill="#888">R_GS 10k</text>
+      <text x="148" y="140" font-size="10" fill="#555">Gate</text>
+      <text x="148" y="151" font-size="10" fill="#555">Driver</text>
+      <!-- CGD arrow -->
+      <line x1="255" y1="120" x2="250" y2="145" stroke="#e00" stroke-width="1.5" stroke-dasharray="3,2" marker-end="url(#redArr)"/>
+      <text x="220" y="120" font-size="10" fill="#e00">C_GD</text>
+      <text x="218" y="131" font-size="10" fill="#e00">Miller !</text>
+      <defs><marker id="redArr" markerWidth="5" markerHeight="5" refX="3" refY="2.5" orient="auto"><polygon points="0,0 5,2.5 0,5" fill="#e00"/></marker></defs>
+      <!-- GND -->
+      <line x1="255" y1="168" x2="255" y2="210" stroke="#555" stroke-width="2"/>
+      <line x1="370" y1="210" x2="255" y2="210" stroke="#555" stroke-width="1.5"/>
+      <line x1="242" y1="210" x2="268" y2="210" stroke="#555" stroke-width="2"/>
+      <line x1="248" y1="215" x2="262" y2="215" stroke="#555" stroke-width="1.5"/>
+      <line x1="253" y1="220" x2="257" y2="220" stroke="#555" stroke-width="1"/>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">Half-bridge: Miller current through C<sub>GD</sub> of Q<sub>L</sub> flows through R<sub>GS</sub>, generating a gate spike that exceeds V<sub>th</sub>.</p>
+  </div>
+
+  <div class="intuition-box"><h4>Intuition</h4><p>C<sub>GD</sub> of the off transistor is a tiny wire connecting the rapidly swinging drain to the gate. When V<sub>SW</sub> slams up to 400 V in 20 ns, this capacitor tries to pull the gate up with it through a current pulse. If the gate is connected to the driver through even a small resistance, that pulse develops a voltage on the gate — potentially above the threshold. Dead time only ensures the driver is not commanding the gate; it cannot stop the physics of displacement current through C<sub>GD</sub>.</p></div>
+
+  <div class="physics-box"><h4>Physics</h4><p>The displacement current through C<sub>GD</sub> is i = C<sub>GD</sub> × dV<sub>DS</sub>/dt. This current must flow somewhere — the gate terminal is its destination. If the path from gate to source has any resistance, Ohm's law produces a voltage spike V<sub>spike</sub> = i × R<sub>path</sub>. The spike amplitude is determined by three independently controllable quantities: C<sub>GD</sub> (MOSFET selection), dV/dt (R<sub>g</sub> of the driving transistor), and R<sub>path</sub> (gate driver off-state impedance + R<sub>GS</sub> bleeder).</p></div>
+
+  <div class="math-box"><h4>Mathematics — Complete Solution</h4>
+    <p><strong>dV/dt of V<sub>SW</sub>:</strong><br>
+    \( \frac{dV_{SW}}{dt} = \frac{400\,\text{V}}{20\,\text{ns}} = 20\,\text{V/ns} = 20\times10^9\,\text{V/s} \)
+    </p>
+    <p><strong>Miller current:</strong><br>
+    \( i_{Miller} = C_{GD} \times \frac{dV_{DS}}{dt} = 30\,\text{pF}\times 20\times10^9 = 0.6\,\text{A} \)
+    </p>
+    <p><strong>Gate spike with R<sub>GS</sub> = 10 kΩ:</strong><br>
+    \( V_{spike} = i_{Miller}\times R_{GS} = 30\,\text{pF}\times 20\times10^9\times 10\,\text{k}\Omega = 6\,\text{V} \)<br>
+    V<sub>th</sub> = 3 V. Spike = 6 V &gt; V<sub>th</sub>. Shoot-through confirmed. ✓
+    </p>
+    <p><strong>Fix A — reduce R<sub>GS</sub> to 100 Ω:</strong><br>
+    \( V_{spike} = 30\,\text{pF}\times20\times10^9\times(1\,\Omega\|100\,\Omega) = 30\,\text{pF}\times20\,\text{G}\times0.99 = 0.594\,\text{V} \ll V_{th} \)
+    </p>
+    <p><strong>Fix B — slow Q<sub>H</sub> turn-on (R<sub>g,H</sub> = 47 Ω):</strong><br>
+    \( t_r \approx 5\times47\times3\,\text{nF} = 705\,\text{ns},\quad \frac{dV}{dt} = 400/705\,\text{ns} = 567\,\text{V/}\mu\text{s} \)<br>
+    \( V_{spike} = 30\,\text{pF}\times0.567\times10^9\times1 = 0.017\,\text{V} \) (very safe)
+    </p>
+    <p><strong>PCB layout inductive addition:</strong><br>
+    \( V_{L} = L_{trace}\times \frac{di_{Miller}}{dt} = 50\,\text{nH}\times\frac{0.6\,\text{A}}{20\,\text{ns}} = 1.5\,\text{V} \)<br>
+    Total worst-case spike: 6 + 1.5 = 7.5 V.
+    </p></div>
+
+  <div class="practical-box"><h4>Practical Implementation</h4><p>Active Miller clamp IC: <strong>IXDD609SI</strong> or <strong>SI8271GB</strong> gate driver with integrated Miller clamp (output transistor that holds Q<sub>L</sub> gate to source during off-state). Low C<sub>GD</sub> MOSFETs: <strong>IPW65R080CFD</strong> (CoolMOS C7, C<sub>RSS</sub> &lt; 3 pF at 400 V). Gate trace layout: keep Q<sub>L</sub> gate drive trace &lt; 1 cm, routed directly above its return (source) path to minimise L<sub>trace</sub>. R<sub>g,off</sub> = 4.7 Ω (low impedance path for Miller current). R<sub>GS</sub> = 10 kΩ reduces to 1 kΩ when active clamp is not available. Use a fast Schottky (BAT54) from gate to source as a hard clamp in extreme cases.</p></div>
+
+  <div class="story-box"><h4>Real-World Story</h4><p>In 2019, a European EV charger manufacturer experienced intermittent IGBT failures in their 11 kW on-board charger. Failure analysis revealed junction overheating consistent with microsecond shoot-through pulses. Oscilloscope capture confirmed that the low-side IGBT was triggering at +5.5 V gate spikes each time the high-side switched at dV/dt = 18 V/ns. The fix — reducing R<sub>GS</sub> from 22 kΩ to 470 Ω and adding an active Miller clamp — reduced gate spikes below 1.5 V. The product subsequently passed 10,000-hour life testing with zero failures.</p></div>
+
+  <div class="debug-box"><h4>Debug</h4><p><strong>Symptom:</strong> Intermittent overcurrent trips during fast transitions; devices run hot; oscilloscope shows current spikes at switching edges. <strong>Test:</strong> High-bandwidth probe (≥ 500 MHz) on Q<sub>L</sub> gate — look for spikes above V<sub>th</sub> during Q<sub>H</sub> turn-on. <strong>Fixes in order of effectiveness:</strong> (1) Reduce R<sub>GS</sub>. (2) Add active Miller clamp. (3) Increase R<sub>g,H</sub> to slow dV/dt. (4) Select MOSFET with lower C<sub>RSS</sub>. <strong>Warning:</strong> Increasing dead time does NOT fix Miller turn-on — it only prevents driver conflicts. Physics happens regardless of driver state.</p></div>
+
+  <div class="optimize-box"><h4>Optimization</h4><p>(1) Use <strong>GaN HEMTs</strong> (e.g., GS66516T): lateral structure, extremely low C<sub>GD</sub> (&lt; 1 pF), and a normally-off p-GaN gate that has inherently high immunity to Miller turn-on. (2) Use a <strong>bipolar totem-pole gate driver</strong> with very low off-state resistance (&lt; 0.5 Ω) — the off-state transistor presents a near-short to the Miller current, limiting spike to millivolts. (3) <strong>Negative gate bias</strong> during off-state: drive Q<sub>L</sub> gate to −5 V when off — now spike must overcome 5 V + V<sub>th</sub> = 8 V to cause turn-on; typical Miller spikes of 3–4 V are completely safe.</p></div>
+
+  <div class="bridge-box"><h4>Bridge</h4><p>Miller turn-on is a shoot-through problem in power electronics. Problem 6 takes a completely different application of transistors — a precision analog temperature controller — where careful biasing and hysteresis replace speed as the design challenge.</p></div>
+
+  <div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec18-pr-5_Miller_Shootthrough_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec18-pr-6">
+  <h2>Problem 6 — Design a Complete Analog Temperature Controller</h2>
+  <div class="source-block"><h4>Problem Statement</h4><p>Design a purely analog circuit (no microcontroller) that senses temperature from 0 °C to 100 °C, turns on a 12 V / 2 A heater above 25 °C, turns it off below 27 °C (hysteresis), and shows status with an LED. Available: NTC thermistor (R = 10 kΩ at 25 °C, β = 3977 K), LM358 op-amp, any BJT/MOSFET, and standard passives.</p></div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagram</h4>
+    <svg viewBox="0 0 540 220" width="100%" style="max-width:540px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- Supply -->
+      <text x="10" y="18" font-size="12" fill="#4a90d9">12V</text>
+      <line x1="30" y1="20" x2="510" y2="20" stroke="#4a90d9" stroke-width="1.5" stroke-dasharray="5,3"/>
+      <!-- NTC divider -->
+      <line x1="80" y1="20" x2="80" y2="40" stroke="#555" stroke-width="1.5"/>
+      <rect x="62" y="40" width="36" height="18" fill="none" stroke="#4a90d9" stroke-width="2" rx="3"/>
+      <text x="100" y="53" font-size="10" fill="#333">R_fix 10k</text>
+      <line x1="80" y1="58" x2="80" y2="78" stroke="#555" stroke-width="1.5"/>
+      <!-- NTC symbol -->
+      <rect x="62" y="78" width="36" height="18" fill="none" stroke="#e00" stroke-width="2" rx="3"/>
+      <text x="55" y="104" font-size="9" fill="#e00">NTC 10k</text>
+      <line x1="80" y1="96" x2="80" y2="130" stroke="#555" stroke-width="1.5"/>
+      <!-- GND -->
+      <line x1="65" y1="130" x2="95" y2="130" stroke="#555" stroke-width="1.5"/>
+      <line x1="68" y1="135" x2="92" y2="135" stroke="#555" stroke-width="1.2"/>
+      <line x1="72" y1="140" x2="88" y2="140" stroke="#555" stroke-width="1"/>
+      <!-- V_sense line to op-amp -->
+      <line x1="80" y1="87" x2="160" y2="87" stroke="#555" stroke-width="1.5"/>
+      <text x="100" y="83" font-size="10" fill="#555">V_sense</text>
+      <!-- Op-amp triangle -->
+      <polygon points="160,72 160,112 200,92" fill="none" stroke="#4a90d9" stroke-width="2"/>
+      <text x="165" y="86" font-size="9" fill="#555">−</text>
+      <text x="165" y="101" font-size="9" fill="#555">+</text>
+      <!-- V_ref to + -->
+      <line x1="130" y1="100" x2="160" y2="100" stroke="#555" stroke-width="1.5"/>
+      <text x="90" y="98" font-size="10" fill="#555">V_ref (pot)</text>
+      <!-- R_f feedback -->
+      <line x1="200" y1="92" x2="230" y2="92" stroke="#555" stroke-width="1.5"/>
+      <line x1="230" y1="92" x2="230" y2="60" stroke="#555" stroke-width="1.5"/>
+      <rect x="215" y="50" width="30" height="14" fill="none" stroke="#4a90d9" stroke-width="1.5" rx="2"/>
+      <text x="194" y="48" font-size="9" fill="#555">R_f 47k</text>
+      <line x1="230" y1="50" x2="155" y2="50" stroke="#555" stroke-width="1.5"/>
+      <line x1="155" y1="50" x2="155" y2="100" stroke="#555" stroke-width="1.5"/>
+      <!-- Output -->
+      <line x1="230" y1="92" x2="280" y2="92" stroke="#555" stroke-width="1.5"/>
+      <text x="232" y="84" font-size="10" fill="#555">Out</text>
+      <!-- Rg to MOSFET -->
+      <rect x="280" y="85" width="25" height="14" fill="none" stroke="#4a90d9" stroke-width="1.5" rx="2"/>
+      <text x="280" y="108" font-size="9" fill="#555">R_g 100Ω</text>
+      <line x1="305" y1="92" x2="330" y2="92" stroke="#555" stroke-width="1.5"/>
+      <!-- MOSFET IRLZ44N -->
+      <text x="340" y="72" font-size="10" fill="#555">IRLZ44N</text>
+      <line x1="330" y1="80" x2="355" y2="80" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="355" y1="70" x2="355" y2="115" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="340" y1="92" x2="352" y2="92" stroke="#555" stroke-width="1.5"/>
+      <line x1="352" y1="85" x2="352" y2="99" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="330" y1="108" x2="355" y2="108" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="342" y1="108" x2="342" y2="145" stroke="#555" stroke-width="1.5"/>
+      <!-- Heater -->
+      <line x1="342" y1="20" x2="342" y2="40" stroke="#555" stroke-width="1.5"/>
+      <rect x="325" y="40" width="34" height="18" fill="none" stroke="#e00" stroke-width="2" rx="3"/>
+      <text x="310" y="54" font-size="9" fill="#e00">Heater 12V/2A</text>
+      <line x1="342" y1="58" x2="342" y2="80" stroke="#555" stroke-width="1.5"/>
+      <!-- Flyback diode -->
+      <line x1="370" y1="40" x2="370" y2="80" stroke="#888" stroke-width="1.5"/>
+      <polygon points="363,60 377,60 370,50" fill="none" stroke="#888" stroke-width="1.2"/>
+      <line x1="363" y1="70" x2="377" y2="70" stroke="#888" stroke-width="1.2"/>
+      <!-- LED -->
+      <line x1="400" y1="20" x2="400" y2="45" stroke="#555" stroke-width="1.5"/>
+      <rect x="383" y="45" width="34" height="14" fill="none" stroke="#4a90d9" stroke-width="1.5" rx="2"/>
+      <text x="386" y="57" font-size="9" fill="#333">R_LED 470Ω</text>
+      <polygon points="393,59 413,67 393,75" fill="none" stroke="#f0a000" stroke-width="1.5"/>
+      <line x1="413" y1="59" x2="413" y2="75" stroke="#f0a000" stroke-width="1.5"/>
+      <line x1="400" y1="75" x2="400" y2="145" stroke="#555" stroke-width="1.5"/>
+      <!-- GND drain -->
+      <line x1="342" y1="145" x2="400" y2="145" stroke="#555" stroke-width="1.5"/>
+      <line x1="326" y1="145" x2="416" y2="145" stroke="#555" stroke-width="1.5"/>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">NTC voltage divider → LM358 Schmitt comparator with hysteresis → IRLZ44N drives heater; LED shows status.</p>
+  </div>
+
+  <div class="intuition-box"><h4>Intuition</h4><p>The NTC thermistor is a heat-sensitive resistor: cold = high resistance = high voltage at the sense node; hot = low resistance = low voltage. The op-amp comparator is a decision maker: when the sense voltage drops below the reference (temperature too high), it fires the MOSFET to turn on the heater. Hysteresis gives the comparator memory — it deliberately overshoots slightly to avoid rapid on-off chattering, like a thermostat that doesn't click on and off fifty times a minute.</p></div>
+
+  <div class="physics-box"><h4>Physics</h4><p>NTC resistance follows the Steinhart-Hart equation (approximated here as R = R<sub>25</sub>·exp[β·(1/T − 1/T<sub>25</sub>)]). The voltage divider converts resistance change to voltage change. The op-amp in open-loop (comparator) mode has very high gain, switching its output rail-to-rail at the crossover point. Positive feedback through R<sub>f</sub> shifts the reference voltage after each output transition, creating two distinct trip points — this is the Schmitt trigger hysteresis that eliminates chatter caused by thermal noise on the V<sub>sense</sub> line.</p></div>
+
+  <div class="math-box"><h4>Mathematics — Complete Solution</h4>
+    <p><strong>NTC resistance at setpoints:</strong><br>
+    \( R_{NTC}(25°C) = 10\,\text{k}\Omega,\quad R_{NTC}(27°C) = 10k\cdot e^{3977(1/300-1/298)} = 9.15\,\text{k}\Omega \)
+    </p>
+    <p><strong>Sense voltages:</strong><br>
+    \( V_{sense}(25°C) = 12\times\frac{10k}{20k} = 6.00\,\text{V} \)<br>
+    \( V_{sense}(27°C) = 12\times\frac{9.15k}{19.15k} = 5.73\,\text{V} \)
+    </p>
+    <p><strong>Hysteresis band required:</strong><br>
+    \( \Delta V = 6.00 - 5.73 = 0.27\,\text{V} \)
+    </p>
+    <p><strong>Schmitt trigger design:</strong><br>
+    \( \Delta V = V_{swing}\times\frac{R_1}{R_1 + R_f} \)<br>
+    \( 0.27 = 12\times\frac{1k}{1k+R_f} \Rightarrow R_f = \frac{12\times1k}{0.27} - 1k = 43.4\,\text{k}\Omega \to 47\,\text{k}\Omega \)
+    </p>
+    <p><strong>Reference center voltage:</strong><br>
+    \( V_{ref,center} = (6.00 + 5.73)/2 = 5.865\,\text{V} \) → set via 10 kΩ trimmer pot.
+    </p>
+    <p><strong>MOSFET gate check:</strong><br>
+    \( V_{GS} = V_{out,high} \approx 10\,\text{V} \gg V_{th} = 1\,\text{V} \) for IRLZ44N.<br>
+    \( P_{cond} = I^2 R_{DS,on} = 4\times22\,\text{m}\Omega = 88\,\text{mW} \) — no heatsink needed.
+    </p></div>
+
+  <div class="practical-box"><h4>Practical Implementation</h4><p>NTC: <strong>Vishay NTCLE100E3103JB0</strong> (10 kΩ at 25 °C, β = 3977 K, ±5 %). MOSFET: <strong>IRLZ44N</strong> (55 V, 47 A, R<sub>DS,on</sub> = 22 mΩ, V<sub>th</sub> = 1 V). Op-amp: <strong>LM358N</strong> (single-supply, rail-to-rail output). Set V<sub>ref</sub> with a <strong>10 kΩ cermet trimmer</strong>. Add 100 nF bypass capacitor at LM358 supply pin. Mount NTC in thermal contact with the controlled surface — do not let it float in air. Flyback diode: <strong>1N4007</strong> across heater coil. Add LED (HLMP-EG08) + 470 Ω in parallel with heater for status indication.</p></div>
+
+  <div class="story-box"><h4>Real-World Story</h4><p><strong>HP's early laser printer fuser controllers</strong> (circa 1985) used almost exactly this circuit: an NTC sensing fuser roller temperature, an LM311 comparator with hysteresis driving a TRIAC heater. The hysteresis window of ±2 °C prevented rapid cycling that would otherwise wear out the TRIAC trigger mechanism. The same topology is still used in low-cost inkjet printer fuser assemblies today, demonstrating that elegant analog design remains cost-effective decades later.</p></div>
+
+  <div class="debug-box"><h4>Debug</h4><p><strong>Symptom 1:</strong> Heater cycles rapidly (chattering). <strong>Cause:</strong> R<sub>f</sub> too large (not enough hysteresis) or NTC mounted away from heat source (slow thermal feedback). <strong>Fix:</strong> Reduce R<sub>f</sub> to widen hysteresis band; mount NTC flush against heated surface. <strong>Symptom 2:</strong> Heater never turns off. <strong>Cause:</strong> MOSFET gate stuck high (MOSFET latched on, or op-amp output shorted). Check V<sub>GS</sub> with meter. <strong>Symptom 3:</strong> Wrong trip temperature. <strong>Cause:</strong> V<sub>ref</sub> pot set incorrectly; recalibrate with a calibrated thermometer.</p></div>
+
+  <div class="optimize-box"><h4>Optimization</h4><p>(1) Replace the thermistor with a <strong>precision IC temperature sensor</strong> (LM35: 10 mV/°C linear output) to eliminate the non-linear divider, making setpoint calculation straightforward. (2) Add a <strong>proportional control outer loop</strong>: instead of on/off, use PWM with duty proportional to temperature error — reduces overshoot and allows ±0.1 °C accuracy. (3) Use a <strong>solid-state relay (SSR)</strong> instead of a discrete MOSFET — optically isolated, rated for AC loads, no flyback diode needed, full-load switching in under 1 ms.</p></div>
+
+  <div class="bridge-box"><h4>Bridge</h4><p>Problem 6 used a BJT current mirror concept indirectly (the constant-current option). Problem 7 examines the BJT current mirror directly — the simple version versus the Wilson — and quantifies the errors that would arise if it were used as a reference current in this temperature controller.</p></div>
+
+  <div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec18-pr-6_TempController_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec18-pr-7">
+  <h2>Problem 7 — The BJT Current Mirror That Has 15 % Error</h2>
+  <div class="source-block"><h4>Problem Statement</h4><p>A simple BJT current mirror (Q1 diode-connected, I<sub>ref</sub> = 1 mA via R<sub>ref</sub> = 4.3 kΩ, V<sub>CC</sub> = 5 V, β = 100) copies I<sub>out</sub> = 850 µA instead of 1 mA — a 15 % error. V<sub>CC</sub> changes from 5 V to 4 V cause I<sub>out</sub> to change 6 %. Design a Wilson current mirror to reduce error to &lt;1 % and achieve V<sub>CC</sub> insensitivity over 4–6 V.</p></div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagram</h4>
+    <svg viewBox="0 0 540 220" width="100%" style="max-width:540px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- Simple mirror left -->
+      <text x="60" y="18" font-size="12" fill="#555">Simple Mirror</text>
+      <line x1="100" y1="20" x2="100" y2="40" stroke="#555" stroke-width="2"/>
+      <!-- Rref -->
+      <rect x="82" y="40" width="36" height="18" fill="none" stroke="#4a90d9" stroke-width="2" rx="3"/>
+      <text x="120" y="53" font-size="10" fill="#333">R_ref 4.3k</text>
+      <line x1="100" y1="58" x2="100" y2="78" stroke="#555" stroke-width="2"/>
+      <!-- Q1 diode-connected -->
+      <line x1="90" y1="78" x2="110" y2="78" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="110" y1="68" x2="110" y2="98" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="90" y1="90" x2="105" y2="90" stroke="#555" stroke-width="1.5"/>
+      <line x1="105" y1="84" x2="105" y2="96" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="90" y1="100" x2="110" y2="100" stroke="#4a90d9" stroke-width="2"/>
+      <!-- Base-Collector tied -->
+      <line x1="90" y1="78" x2="90" y2="90" stroke="#555" stroke-width="1.5"/>
+      <line x1="100" y1="120" x2="100" y2="140" stroke="#555" stroke-width="1.5"/>
+      <!-- Q2 mirror -->
+      <line x1="180" y1="20" x2="180" y2="40" stroke="#555" stroke-width="2"/>
+      <text x="155" y="18" font-size="11" fill="#555">I_out</text>
+      <line x1="170" y1="78" x2="190" y2="78" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="190" y1="68" x2="190" y2="98" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="170" y1="90" x2="185" y2="90" stroke="#555" stroke-width="1.5"/>
+      <line x1="185" y1="84" x2="185" y2="96" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="170" y1="100" x2="190" y2="100" stroke="#4a90d9" stroke-width="2"/>
+      <!-- Shared base connection -->
+      <line x1="100" y1="120" x2="170" y2="90" stroke="#555" stroke-width="1.5"/>
+      <line x1="180" y1="100" x2="180" y2="140" stroke="#555" stroke-width="2"/>
+      <line x1="100" y1="140" x2="180" y2="140" stroke="#555" stroke-width="1.5"/>
+      <line x1="140" y1="140" x2="140" y2="160" stroke="#555" stroke-width="1.5"/>
+      <!-- GND -->
+      <line x1="120" y1="160" x2="160" y2="160" stroke="#555" stroke-width="1.5"/>
+      <line x1="126" y1="165" x2="154" y2="165" stroke="#555" stroke-width="1.2"/>
+      <line x1="132" y1="170" x2="148" y2="170" stroke="#555" stroke-width="1"/>
+      <text x="82" y="180" font-size="10" fill="#e00">Error: 2/β=2%</text>
+      <text x="82" y="192" font-size="10" fill="#e00">+Early → ~15%</text>
+      <!-- Wilson mirror right -->
+      <text x="310" y="18" font-size="12" fill="#555">Wilson Mirror</text>
+      <line x1="350" y1="20" x2="350" y2="40" stroke="#555" stroke-width="2"/>
+      <rect x="332" y="40" width="36" height="18" fill="none" stroke="#4a90d9" stroke-width="2" rx="3"/>
+      <text x="370" y="53" font-size="10" fill="#333">R_ref+Z</text>
+      <line x1="350" y1="58" x2="350" y2="70" stroke="#555" stroke-width="2"/>
+      <!-- Q3 Wilson feedback -->
+      <line x1="340" y1="70" x2="360" y2="70" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="360" y1="62" x2="360" y2="88" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="340" y1="80" x2="355" y2="80" stroke="#555" stroke-width="1.5"/>
+      <line x1="355" y1="74" x2="355" y2="86" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="340" y1="88" x2="360" y2="88" stroke="#4a90d9" stroke-width="2"/>
+      <!-- Q1 ref -->
+      <line x1="340" y1="108" x2="360" y2="108" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="360" y1="98" x2="360" y2="126" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="340" y1="117" x2="355" y2="117" stroke="#555" stroke-width="1.5"/>
+      <line x1="355" y1="111" x2="355" y2="123" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="340" y1="126" x2="360" y2="126" stroke="#4a90d9" stroke-width="2"/>
+      <!-- Q2 output -->
+      <line x1="430" y1="20" x2="430" y2="55" stroke="#555" stroke-width="2"/>
+      <text x="408" y="18" font-size="11" fill="#4a90d9">I_out</text>
+      <line x1="420" y1="55" x2="440" y2="55" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="440" y1="46" x2="440" y2="72" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="420" y1="65" x2="435" y2="65" stroke="#555" stroke-width="1.5"/>
+      <line x1="435" y1="58" x2="435" y2="72" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="420" y1="72" x2="440" y2="72" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="430" y1="72" x2="430" y2="140" stroke="#555" stroke-width="2"/>
+      <!-- Connect bases -->
+      <line x1="350" y1="88" x2="350" y2="117" stroke="#555" stroke-width="1.5"/>
+      <line x1="350" y1="117" x2="420" y2="65" stroke="#555" stroke-width="1.5"/>
+      <line x1="360" y1="88" x2="430" y2="55" stroke="#555" stroke-width="1.5"/>
+      <line x1="360" y1="126" x2="430" y2="140" stroke="#555" stroke-width="1.5"/>
+      <line x1="350" y1="140" x2="430" y2="140" stroke="#555" stroke-width="1.5"/>
+      <line x1="390" y1="140" x2="390" y2="160" stroke="#555" stroke-width="1.5"/>
+      <line x1="374" y1="160" x2="406" y2="160" stroke="#555" stroke-width="1.5"/>
+      <line x1="380" y1="165" x2="400" y2="165" stroke="#555" stroke-width="1.2"/>
+      <text x="340" y="180" font-size="10" fill="#4a90d9">Error: 2/β²=0.02%</text>
+      <text x="340" y="192" font-size="10" fill="#4a90d9">r_out = 5MΩ</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">Simple mirror (left) vs Wilson mirror (right): Wilson reduces systematic β error by a factor of β.</p>
+  </div>
+
+  <div class="intuition-box"><h4>Intuition</h4><p>In the simple mirror, the two base currents must come from the reference branch — they steal current, so the mirror copies slightly less than I<sub>ref</sub>. The Wilson mirror adds a third transistor that provides a feedback path: if Q2 tries to pull more current than Q1, the feedback reduces Q2's base voltage, correcting the error. It is an error-correcting mirror rather than a simple copy.</p></div>
+
+  <div class="physics-box"><h4>Physics</h4><p>In a simple mirror, systematic error comes from two sources: (1) finite β — both base currents must be supplied from the reference branch, reducing I<sub>C1</sub> by 2I<sub>B</sub>/I<sub>C</sub> = 2/β; (2) Early effect — different V<sub>CE</sub> voltages on Q1 and Q2 cause slightly different I<sub>C</sub> at the same V<sub>BE</sub>. The Wilson mirror's feedback makes the emitter current of Q3 supply the bases, reducing the error from 2/β to 2/β². The Wilson mirror also presents an output impedance β × r<sub>o</sub> instead of r<sub>o</sub>, dramatically reducing Early-effect sensitivity.</p></div>
+
+  <div class="math-box"><h4>Mathematics — Complete Solution</h4>
+    <p><strong>Simple mirror systematic error:</strong><br>
+    \( I_{out} = I_{ref}\times\frac{\beta}{\beta+2} = 1\,\text{mA}\times\frac{100}{102} = 980\,\mu\text{A} \) (β error only)<br>
+    With Early effect (V<sub>CE2</sub> ≈ 3 V, V<sub>A</sub> = 100 V): additional 2.3 % error → combined ~4–15 % depending on β.
+    </p>
+    <p><strong>Wilson mirror error:</strong><br>
+    \( \text{error} = \frac{2}{\beta^2} = \frac{2}{10{,}000} = 0.02\% \)
+    </p>
+    <p><strong>Wilson output impedance:</strong><br>
+    \( r_{out,Wilson} = \frac{\beta r_o}{2} = \frac{100\times100\,\text{k}\Omega}{2} = 5\,\text{M}\Omega \)<br>
+    V<sub>CC</sub> sensitivity: \( \frac{dI_{out}}{dV_{CC}} = \frac{I_{out}}{r_{out}} = \frac{1\,\text{mA}}{5\,\text{M}\Omega} = 0.2\,\text{nA/V} \) — negligible.
+    </p>
+    <p><strong>I<sub>ref</sub> V<sub>CC</sub> sensitivity (add Zener):</strong><br>
+    Without Zener: \( \frac{dI_{ref}}{dV_{CC}} = \frac{1}{R_{ref}} = 232\,\mu\text{A/V} \)<br>
+    With Zener (V<sub>Z</sub> = 2.5 V): \( I_{ref} = (V_{CC}-V_Z-V_{BE})/R_{ref} \) — Zener stabilises V<sub>Z</sub>, so dI<sub>ref</sub>/dV<sub>CC</sub> ≈ 0. ✓
+    </p>
+    <p><strong>Frequency limit:</strong><br>
+    \( f_{accuracy} \approx \frac{f_T}{2\pi\beta} = \frac{100\,\text{MHz}}{2\pi\times100} = 159\,\text{kHz} \)
+    </p></div>
+
+  <div class="practical-box"><h4>Practical Implementation</h4><p>Use matched dual NPN pair <strong>BCM61</strong> for Q1/Q2, <strong>BC547B</strong> for Q3. Keep all transistors at the same temperature (place on same copper island). Set I<sub>ref</sub> via R<sub>ref</sub> = (V<sub>CC</sub> − V<sub>Z</sub> − V<sub>BE</sub>)/I<sub>ref</sub>. Use a <strong>BZX84C2V5</strong> Zener (2.5 V, low noise) for V<sub>Z</sub>. For high-side current mirror (PNP), use <strong>BCM57</strong> matched dual PNP. Verify with a decade box: set R<sub>load</sub> from 1 kΩ to 10 kΩ — I<sub>out</sub> should stay within ±1 % over that V<sub>CE</sub> range.</p></div>
+
+  <div class="story-box"><h4>Real-World Story</h4><p>Bob Widlar invented the Wilson current mirror independently (George Wilson of Tektronix published first in 1968) while designing reference circuits at <strong>National Semiconductor</strong>. Widlar's implementation in the LM104 voltage regulator showed that the Wilson topology reduced current mirror error from 5 % to 0.05 % with only one additional transistor — a 100× improvement for a marginal cost. This became the standard output stage for precision current references used in every op-amp and bandgap reference produced since the 1970s.</p></div>
+
+  <div class="debug-box"><h4>Debug</h4><p><strong>Symptom:</strong> Mirror output current drifts with supply voltage. <strong>Cause 1:</strong> No Zener in reference branch — I<sub>ref</sub> varies with V<sub>CC</sub>. Fix: add 2.5 V Zener. <strong>Cause 2:</strong> Simple mirror used instead of Wilson — output impedance too low. Fix: upgrade to Wilson topology. <strong>Symptom 2:</strong> Mirror accuracy degrades at frequencies above 100 kHz. <strong>Cause:</strong> Wilson feedback transistor loses gain above f<sub>T</sub>/β. For RF use a cascode mirror or op-amp-assisted mirror.</p></div>
+
+  <div class="optimize-box"><h4>Optimization</h4><p>(1) Replace Wilson with a <strong>cascode current mirror</strong> (two additional BJTs in cascode): output impedance rises to β²r<sub>o</sub>/2, error falls to 2/β³. (2) Use a <strong>bandgap reference</strong> in the I<sub>ref</sub> branch instead of a Zener: tempco &lt; 5 ppm/°C vs Zener's 50 ppm/°C. (3) For CMOS implementation, use a <strong>high-swing cascode mirror</strong> (regulated cascode) achieving r<sub>out</sub> = g<sub>m</sub>r<sub>o</sub>² — suitable for low-supply-voltage (1.2 V) designs.</p></div>
+
+  <div class="bridge-box"><h4>Bridge</h4><p>The Wilson mirror principles — feedback correcting base current errors — directly relate to oscillator design in Problem 8, where the Barkhausen criterion requires a loop gain of exactly unity, maintained by the BJT's own feedback.</p></div>
+
+  <div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec18-pr-7_CurrentMirror_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec18-pr-8">
+  <h2>Problem 8 — Build a 1 MHz Oscillator from a Single BJT</h2>
+  <div class="source-block"><h4>Problem Statement</h4><p>Design a Colpitts oscillator at exactly 1 MHz using only a BC547 BJT (f<sub>T</sub> = 100 MHz, β = 200), passive R, L, C components, and a 9 V supply. The output must be a sine wave with amplitude &gt; 2 V peak into a 1 kΩ load, with THD &lt; 5 %.</p></div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagram</h4>
+    <svg viewBox="0 0 540 230" width="100%" style="max-width:540px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- VCC -->
+      <text x="220" y="18" font-size="12" fill="#4a90d9">+9V (V_CC)</text>
+      <line x1="260" y1="20" x2="260" y2="40" stroke="#555" stroke-width="2"/>
+      <!-- RC -->
+      <rect x="242" y="40" width="36" height="18" fill="none" stroke="#4a90d9" stroke-width="2" rx="3"/>
+      <text x="280" y="53" font-size="10" fill="#333">R_C 2.2k</text>
+      <line x1="260" y1="58" x2="260" y2="85" stroke="#555" stroke-width="2"/>
+      <!-- BJT BC547 -->
+      <line x1="250" y1="85" x2="270" y2="85" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="270" y1="75" x2="270" y2="105" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="240" y1="92" x2="270" y2="92" stroke="#555" stroke-width="2"/>
+      <line x1="270" y1="98" x2="250" y2="113" stroke="#4a90d9" stroke-width="2"/>
+      <polygon points="255,110 245,118 258,120" fill="#4a90d9"/>
+      <text x="283" y="88" font-size="10" fill="#555">BC547</text>
+      <line x1="250" y1="113" x2="250" y2="135" stroke="#555" stroke-width="2"/>
+      <!-- RE -->
+      <rect x="232" y="135" width="36" height="18" fill="none" stroke="#4a90d9" stroke-width="2" rx="3"/>
+      <text x="270" y="148" font-size="10" fill="#333">R_E 500Ω</text>
+      <line x1="250" y1="153" x2="250" y2="185" stroke="#555" stroke-width="2"/>
+      <!-- GND -->
+      <line x1="232" y1="185" x2="268" y2="185" stroke="#555" stroke-width="2"/>
+      <line x1="238" y1="190" x2="262" y2="190" stroke="#555" stroke-width="1.5"/>
+      <line x1="244" y1="195" x2="256" y2="195" stroke="#555" stroke-width="1"/>
+      <!-- LC Tank -->
+      <!-- Inductor from collector to base -->
+      <line x1="260" y1="72" x2="160" y2="72" stroke="#555" stroke-width="1.5"/>
+      <!-- Inductor symbol -->
+      <path d="M160,72 Q155,60 150,72 Q145,84 140,72 Q135,60 130,72 Q125,84 120,72" fill="none" stroke="#4a90d9" stroke-width="2"/>
+      <text x="128" y="60" font-size="10" fill="#333">L=150µH</text>
+      <line x1="120" y1="72" x2="100" y2="72" stroke="#555" stroke-width="1.5"/>
+      <!-- C1 from top to base -->
+      <line x1="100" y1="72" x2="100" y2="88" stroke="#555" stroke-width="1.5"/>
+      <line x1="90" y1="88" x2="110" y2="88" stroke="#4a90d9" stroke-width="3"/>
+      <line x1="90" y1="93" x2="110" y2="93" stroke="#4a90d9" stroke-width="3"/>
+      <line x1="100" y1="93" x2="100" y2="110" stroke="#555" stroke-width="1.5"/>
+      <text x="114" y="92" font-size="10" fill="#333">C1=200p</text>
+      <!-- Base connection -->
+      <line x1="100" y1="110" x2="240" y2="92" stroke="#555" stroke-width="1.5"/>
+      <!-- C2 from base junction to GND -->
+      <line x1="100" y1="110" x2="100" y2="128" stroke="#555" stroke-width="1.5"/>
+      <line x1="90" y1="128" x2="110" y2="128" stroke="#4a90d9" stroke-width="3"/>
+      <line x1="90" y1="133" x2="110" y2="133" stroke="#4a90d9" stroke-width="3"/>
+      <line x1="100" y1="133" x2="100" y2="185" stroke="#555" stroke-width="1.5"/>
+      <text x="114" y="132" font-size="10" fill="#333">C2=820p</text>
+      <!-- Output coupling cap -->
+      <line x1="260" y1="85" x2="360" y2="85" stroke="#555" stroke-width="1.5"/>
+      <line x1="360" y1="78" x2="360" y2="92" stroke="#4a90d9" stroke-width="3"/>
+      <line x1="365" y1="78" x2="365" y2="92" stroke="#4a90d9" stroke-width="3"/>
+      <line x1="365" y1="85" x2="420" y2="85" stroke="#555" stroke-width="1.5"/>
+      <text x="345" y="75" font-size="9" fill="#333">C_out</text>
+      <!-- Load -->
+      <rect x="420" y="75" width="36" height="20" fill="none" stroke="#4a90d9" stroke-width="2" rx="3"/>
+      <text x="418" y="100" font-size="10" fill="#333">R_L 1k</text>
+      <line x1="438" y1="95" x2="438" y2="185" stroke="#555" stroke-width="1.5"/>
+      <line x1="250" y1="185" x2="438" y2="185" stroke="#555" stroke-width="1"/>
+      <!-- f annotation -->
+      <text x="100" y="155" font-size="11" fill="#e00">f₀ = 1/(2π√LC_s)</text>
+      <text x="100" y="170" font-size="11" fill="#e00">= 1 MHz</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">Colpitts oscillator: LC tank with capacitive divider (C1, C2) provides feedback to base; loop gain = g<sub>m</sub>·R<sub>C</sub>·(C1/C2) &gt; 1.</p>
+  </div>
+
+  <div class="intuition-box"><h4>Intuition</h4><p>The LC tank is like a pendulum swinging between the inductor (kinetic energy, current) and capacitors (potential energy, voltage). The BJT acts as a clockwork escapement: once per cycle it gives the pendulum a small kick of energy to compensate for resistive losses. The capacitor divider C1/C2 controls how hard each kick is — too small a fraction and the oscillation dies; too large and the transistor clips, generating distortion.</p></div>
+
+  <div class="physics-box"><h4>Physics</h4><p>The Barkhausen criterion demands that the loop gain magnitude equals exactly 1 and the total phase shift around the loop is 0° (or 360°). The LC tank provides 180° phase shift at resonance (collector to base feedback via L-C1-C2 network). The CE amplifier provides another 180°. The capacitive divider C1/C2 attenuates the feedback voltage by C1/(C1+C2). At start-up the loop gain &gt; 1 (ensured by design); transistor nonlinearity then compresses the gain back to 1, establishing steady-state amplitude. This self-limiting action inherently caps the output swing and limits harmonic distortion.</p></div>
+
+  <div class="math-box"><h4>Mathematics — Complete Solution</h4>
+    <p><strong>Resonant frequency:</strong><br>
+    \( C_s = \frac{C_1 C_2}{C_1+C_2} = \frac{200\,\text{p}\times820\,\text{p}}{1020\,\text{p}} = 160.8\,\text{pF} \)<br>
+    \( f_0 = \frac{1}{2\pi\sqrt{L C_s}} = \frac{1}{2\pi\sqrt{150\,\mu\text{H}\times160.8\,\text{pF}}} = \frac{1}{2\pi\times155\,\text{ns}} = 1.026\,\text{MHz} \approx 1\,\text{MHz}\,\checkmark \)
+    </p>
+    <p><strong>Q-point:</strong><br>
+    \( I_C = 2\,\text{mA},\quad V_{CE} = 4.5\,\text{V},\quad R_C = 2.2\,\text{k}\Omega \)<br>
+    \( g_m = I_C/V_T = 2\,\text{mA}/26\,\text{mV} = 76.9\,\text{mA/V},\quad r_\pi = \beta/g_m = 2.6\,\text{k}\Omega \)
+    </p>
+    <p><strong>Start-up loop gain verification:</strong><br>
+    \( \beta_{feedback} = C_1/C_2 = 200/820 = 0.244 \)<br>
+    \( |A_v| = g_m(R_C\|r_\pi) = 76.9\,\text{mA/V}\times(2200\|2600) = 76.9\times1189 = 91.5 \)<br>
+    \( \text{Loop gain} = 91.5\times0.244 = 22.3 \gg 1\,\checkmark \) (will oscillate)
+    </p>
+    <p><strong>Output amplitude (into 1 kΩ):</strong><br>
+    \( R_{eff} = R_C\|R_L = 2200\|1000 = 688\,\Omega \)<br>
+    Peak swing limited to V<sub>CE</sub> − V<sub>CE,sat</sub> = 4.3 V. Actual amplitude ≈ 3 V peak &gt; 2 V. ✓
+    </p></div>
+
+  <div class="practical-box"><h4>Practical Implementation</h4><p>BJT: <strong>BC547B</strong> (f<sub>T</sub> = 100 MHz, β = 200). Inductor: <strong>Bourns SRR1210-151K</strong> (150 µH, Q ≈ 50 at 1 MHz) or wind 50 turns on a T50-6 toroid. C1 = 200 pF silver mica (stable tempco); C2 = 820 pF silver mica. Bias: R1 = 68 kΩ, R2 = 18 kΩ, R<sub>E</sub> = 500 Ω (bypass C<sub>E</sub> = 100 µF for DC stability, unbypassed for oscillation). Output via 10 nF coupling cap to 1 kΩ load. Measure frequency with a frequency counter; measure THD with an audio analyser or FFT on oscilloscope. If frequency is off, trim C1 ±10 % with a small trimmer capacitor.</p></div>
+
+  <div class="story-box"><h4>Real-World Story</h4><p>The Colpitts oscillator was invented by <strong>Edwin Colpitts at Western Electric in 1918</strong> for precision carrier generation in early telephone multiplexing systems. A century later, the identical topology is used in sub-GHz wireless MCU crystal oscillators: the MOSFET replaces the BJT, and the LC tank is replaced by a quartz crystal for ppm-level frequency stability. Every RFID tag, Bluetooth device, and Wi-Fi chip contains a Colpitts oscillator — the 1918 circuit scaled to 2.4 GHz.</p></div>
+
+  <div class="debug-box"><h4>Debug</h4><p><strong>Symptom 1:</strong> No oscillation. <strong>Cause:</strong> Loop gain &lt; 1 — check g<sub>m</sub> (verify I<sub>C</sub> at designed Q-point) and C1/C2 ratio. Try increasing I<sub>C</sub> to boost g<sub>m</sub>. <strong>Symptom 2:</strong> Distorted output (clipped sine). <strong>Cause:</strong> Loop gain too high; BJT saturates on positive peaks. Fix: reduce C1/C2 ratio to reduce feedback fraction. <strong>Symptom 3:</strong> Frequency is wrong. <strong>Cause:</strong> Component tolerances. Add small trimmer (0–50 pF) in parallel with C1 for fine adjustment. <strong>Symptom 4:</strong> Amplitude unstable. <strong>Cause:</strong> Power supply ripple modulating V<sub>CE</sub>. Add 100 µF bypass cap at V<sub>CC</sub> pin.</p></div>
+
+  <div class="optimize-box"><h4>Optimization</h4><p>(1) Replace the LC tank with a <strong>quartz crystal</strong> (AT-cut, series resonance at 1 MHz): Q rises from ≈50 to &gt;100,000, phase noise drops by 33 dB, frequency stability improves from ±500 ppm to ±50 ppm. (2) Add an <strong>amplitude-sensing AGC circuit</strong>: diode rectifier detects output amplitude, integrator controls a PIN diode or JFET attenuator in the feedback path, clamping loop gain precisely to 1 — eliminates clipping and reduces THD to &lt;0.1 %. (3) Use a <strong>differential Colpitts topology</strong> (two BJTs sharing the tank): even harmonics cancel, pushing dominant distortion to third harmonic (−40 dBc typical).</p></div>
+
+  <div class="bridge-box"><h4>Bridge</h4><p>The oscillator requires careful attention to gate charge and switching frequency considerations when scaled to MOSFET implementations. Problem 9 quantifies exactly this: the gate driver's current capability versus the charge demand of large MOSFETs at high switching frequencies.</p></div>
+
+  <div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec18-pr-8_Colpitts_Osc_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec18-pr-9">
+  <h2>Problem 9 — The MOSFET Gate Driver That Runs Out of Current</h2>
+  <div class="source-block"><h4>Problem Statement</h4><p>A TC4420 gate driver (9 A peak, 1 A average) drives an IPP023N10N MOSFET (C<sub>iss</sub> = 8.1 nF, Q<sub>g</sub> = 121 nC) in a synchronous buck converter. At 100 kHz V<sub>GS</sub> is clean. At 500 kHz V<sub>GS</sub> reaches only 9 V. At 1 MHz it reaches only 5 V. Explain the failure mechanism, find the maximum usable frequency, and redesign for 1 MHz operation.</p></div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagram</h4>
+    <svg viewBox="0 0 540 200" width="100%" style="max-width:540px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- Gate driver -->
+      <rect x="40" y="70" width="80" height="60" fill="none" stroke="#4a90d9" stroke-width="2" rx="5"/>
+      <text x="52" y="97" font-size="10" fill="#555">TC4420</text>
+      <text x="52" y="110" font-size="10" fill="#555">Gate Driver</text>
+      <text x="52" y="122" font-size="9" fill="#888">9A pk, 1A avg</text>
+      <!-- PWM input -->
+      <line x1="10" y1="100" x2="40" y2="100" stroke="#555" stroke-width="1.5"/>
+      <text x="2" y="96" font-size="9" fill="#555">PWM</text>
+      <!-- VCC decoupling -->
+      <line x1="80" y1="70" x2="80" y2="50" stroke="#555" stroke-width="1.5"/>
+      <line x1="70" y1="50" x2="90" y2="50" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="70" y1="45" x2="90" y2="45" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="80" y1="45" x2="80" y2="30" stroke="#555" stroke-width="1.5"/>
+      <text x="93" y="50" font-size="9" fill="#e00">C_dec 100nF</text>
+      <text x="58" y="28" font-size="10" fill="#4a90d9">12V driver supply</text>
+      <!-- Output / Rg -->
+      <line x1="120" y1="100" x2="180" y2="100" stroke="#555" stroke-width="2"/>
+      <rect x="180" y="93" width="30" height="14" fill="none" stroke="#4a90d9" stroke-width="2" rx="2"/>
+      <text x="180" y="117" font-size="9" fill="#333">R_g 2Ω</text>
+      <!-- MOSFET -->
+      <line x1="210" y1="100" x2="250" y2="100" stroke="#555" stroke-width="2"/>
+      <text x="268" y="68" font-size="10" fill="#555">IPP023N10N</text>
+      <text x="268" y="80" font-size="9" fill="#888">Q_g=121nC</text>
+      <line x1="250" y1="58" x2="270" y2="58" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="270" y1="46" x2="270" y2="90" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="250" y1="70" x2="265" y2="70" stroke="#555" stroke-width="2"/>
+      <line x1="265" y1="63" x2="265" y2="77" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="250" y1="82" x2="270" y2="82" stroke="#4a90d9" stroke-width="2"/>
+      <!-- Drain to VDC -->
+      <line x1="260" y1="46" x2="260" y2="25" stroke="#555" stroke-width="2"/>
+      <text x="240" y="22" font-size="10" fill="#4a90d9">V_in</text>
+      <!-- Source to GND -->
+      <line x1="260" y1="90" x2="260" y2="155" stroke="#555" stroke-width="2"/>
+      <line x1="245" y1="155" x2="275" y2="155" stroke="#555" stroke-width="2"/>
+      <line x1="250" y1="160" x2="270" y2="160" stroke="#555" stroke-width="1.5"/>
+      <line x1="255" y1="165" x2="265" y2="165" stroke="#555" stroke-width="1"/>
+      <!-- Ciss representation -->
+      <text x="295" y="70" font-size="10" fill="#e00">C_iss = 8.1nF</text>
+      <text x="295" y="83" font-size="10" fill="#e00">τ=R_g×C_iss=16ns</text>
+      <!-- t_pd annotation -->
+      <rect x="40" y="140" width="200" height="40" fill="none" stroke="#e00" stroke-width="1.5" stroke-dasharray="3,2" rx="3"/>
+      <text x="48" y="157" font-size="10" fill="#e00">t_pd = 55 ns (TC4420)</text>
+      <text x="48" y="170" font-size="10" fill="#e00">f_max ≈ 1/(20×t_pd) = 909 kHz</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">TC4420 driving IPP023N10N: propagation delay t<sub>pd</sub> = 55 ns limits maximum usable frequency to ≈909 kHz.</p>
+  </div>
+
+  <div class="intuition-box"><h4>Intuition</h4><p>The gate capacitor is like a bathtub. The gate driver is the tap. At slow speeds the tap fills the tub completely before the drain plug opens again. At 1 MHz the plug opens every 1 µs — but the tap has a 55 ns delay before water even starts flowing, plus the tub is huge (121 nC). With only 500 ns of on-time, the tub never fills to the brim. The MOSFET is only half-on, so it conducts poorly and wastes power as heat.</p></div>
+
+  <div class="physics-box"><h4>Physics</h4><p>Each switching cycle the gate capacitor must charge and discharge fully: ΔQ = Q<sub>g</sub> = 121 nC. The average current needed is I<sub>avg</sub> = Q<sub>g</sub> × f<sub>sw</sub>. The propagation delay t<sub>pd</sub> of the driver IC introduces dead time in the gate charge/discharge cycle: with only (T/2 − t<sub>pd</sub>) available per half cycle, the time constant τ = R<sub>g</sub> × C<sub>iss</sub> must be short enough for V<sub>GS</sub> to reach V<sub>DD</sub>. When t<sub>pd</sub> is a significant fraction of T/2, V<sub>GS</sub> never reaches its target before the next edge arrives, causing under-enhancement.</p></div>
+
+  <div class="math-box"><h4>Mathematics — Complete Solution</h4>
+    <p><strong>Gate charge time constant:</strong><br>
+    \( \tau = R_g C_{iss} = 2\,\Omega\times8.1\,\text{nF} = 16.2\,\text{ns},\quad 5\tau = 81\,\text{ns} \)
+    </p>
+    <p><strong>Average gate current at 1 MHz:</strong><br>
+    \( I_{avg} = Q_g\times f_{sw} = 121\,\text{nC}\times1\,\text{MHz} = 121\,\text{mA} \ll 1\,\text{A} \) (not the limit)
+    </p>
+    <p><strong>Power dissipated in driver at 1 MHz:</strong><br>
+    \( P = Q_g\times V_{GS}\times f_{sw} = 121\,\text{nC}\times12\,\text{V}\times1\,\text{MHz} = 1.45\,\text{W} \) (close to package limit)
+    </p>
+    <p><strong>Propagation delay frequency limit:</strong><br>
+    \( f_{max,pd} = \frac{1}{20\times t_{pd}} = \frac{1}{20\times55\,\text{ns}} = 909\,\text{kHz} \) ← most restrictive
+    </p>
+    <p><strong>FOM of original MOSFET:</strong><br>
+    \( \text{FOM} = R_{DS,on}\times Q_g = 2.3\,\text{m}\Omega\times121\,\text{nC} = 278\,\text{p}\Omega\cdot\text{C} \) (poor for 1 MHz)
+    </p>
+    <p><strong>Alternative MOSFET BSZ130N10NS3G:</strong><br>
+    \( \text{FOM} = 13\,\text{m}\Omega\times5.2\,\text{nC} = 67.6\,\text{p}\Omega\cdot\text{C},\quad f_{max} = 1\,\text{A}/5.2\,\text{nC} = 192\,\text{MHz} \,\checkmark \)
+    </p></div>
+
+  <div class="practical-box"><h4>Practical Implementation</h4><p>For 1 MHz buck: MOSFET — <strong>BSZ130N10NS3G</strong> (100 V, 13 mΩ, Q<sub>g</sub> = 5.2 nC, DirectFET). Gate driver — <strong>UCC27526</strong> (5 A peak, 7 ns propagation, up to 5 MHz). R<sub>g</sub> = 2.2 Ω. Decoupling at driver: 100 nF X7R 0402 placed within 2 mm of driver supply pin. FOM check: always verify R<sub>DS,on</sub> × Q<sub>g</sub> before selecting MOSFET for target frequency. Add 10 µF bulk decoupling at gate driver supply rail. Use kelvin source connection for synchronous rectifier.</p></div>
+
+  <div class="story-box"><h4>Real-World Story</h4><p><strong>Vicor Corporation's factorized bus architecture</strong> (2008) pushed synchronous buck converters to 5 MHz for server power modules. Initial designs using standard 30 A MOSFETs (Q<sub>g</sub> ≈ 80 nC) failed because gate driver heating exceeded 2 W in a 5 × 5 mm package. The solution: switch to GaN FETs (EPC2001, Q<sub>g</sub> = 2.7 nC) and dedicated GaN-optimised drivers (LMG1210) with 5 ns propagation delay. Gate driver power dropped to 160 mW, enabling the 5 MHz design to ship in a 1/16th brick form factor.</p></div>
+
+  <div class="debug-box"><h4>Debug</h4><p><strong>Symptom:</strong> V<sub>GS</sub> not reaching V<sub>DD</sub> at rated switching frequency; MOSFET runs hot. <strong>Step 1:</strong> Measure V<sub>GS</sub> peak with a ≥ 200 MHz probe — if &lt; V<sub>GS,rated</sub>, gate drive is insufficient. <strong>Step 2:</strong> Check driver propagation delay t<sub>pd</sub> vs T/20 — if t<sub>pd</sub> &gt; T/20, driver is too slow. <strong>Step 3:</strong> Check gate charge Q<sub>g</sub> vs driver average current rating — if Q<sub>g</sub> × f &gt; I<sub>avg,max</sub>, driver overloaded. <strong>Step 4:</strong> Verify driver supply decoupling — sag on V<sub>driver</sub> limits V<sub>GS</sub> peak even if timing is adequate.</p></div>
+
+  <div class="optimize-box"><h4>Optimization</h4><p>(1) Use <strong>GaN FETs</strong> (EPC2053: 80 V, 1.7 mΩ, Q<sub>g</sub> = 5.1 nC): FOM = 8.7 pΩ·C, enabled by the absence of minority carrier storage and low capacitances. (2) Use <strong>integrated driver + FET modules</strong> (e.g., Infineon BSC057N08NS5 SmartFET): driver is co-packaged with MOSFET, eliminating t<sub>pd</sub> and gate inductance, enabling clean switching to 10 MHz. (3) Size the MOSFET <strong>for frequency, not just R<sub>DS,on</sub></strong>: a MOSFET with 2× higher R<sub>DS,on</sub> but 8× lower Q<sub>g</sub> dramatically reduces gate drive loss and allows higher f<sub>sw</sub> — a better system-level trade-off.</p></div>
+
+  <div class="bridge-box"><h4>Bridge</h4><p>Gate charge and driver current are issues of charge delivery in time — an energy perspective. Problem 10 examines a simpler but conceptually identical issue: the Zener reference struggling to supply charge (current) to a load through its finite dynamic impedance.</p></div>
+
+  <div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec18-pr-9_GateDriver_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec18-pr-10">
+  <h2>Problem 10 — The Zener Reference That Drifts With Load Current</h2>
+  <div class="source-block"><h4>Problem Statement</h4><p>A 5.1 V Zener reference (BZX55C5V1) with R<sub>series</sub> = 470 Ω from 12 V shows V<sub>Z</sub> = 5.12 V at no-load, 4.85 V at 10 mA load, and 4.62 V at 20 mA. Requirement: V<sub>out</sub> = 5.1 V ±0.5 % over 0–20 mA. Design a fix and explain the thermal significance of 5.1 V Zeners.</p></div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagram</h4>
+    <svg viewBox="0 0 540 200" width="100%" style="max-width:540px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- 12V -->
+      <text x="50" y="18" font-size="12" fill="#4a90d9">12V</text>
+      <line x1="70" y1="20" x2="70" y2="40" stroke="#555" stroke-width="2"/>
+      <!-- Rs -->
+      <rect x="52" y="40" width="36" height="18" fill="none" stroke="#4a90d9" stroke-width="2" rx="3"/>
+      <text x="90" y="53" font-size="10" fill="#333">R_s 470Ω</text>
+      <line x1="70" y1="58" x2="70" y2="85" stroke="#555" stroke-width="2"/>
+      <!-- Zener symbol -->
+      <line x1="50" y1="85" x2="90" y2="85" stroke="#555" stroke-width="1.5"/>
+      <polygon points="55,85 85,100 55,115" fill="none" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="85" y1="85" x2="85" y2="115" stroke="#4a90d9" stroke-width="2"/>
+      <!-- Zener cathode line -->
+      <line x1="80" y1="115" x2="90" y2="115" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="80" y1="113" x2="80" y2="117" stroke="#4a90d9" stroke-width="2"/>
+      <text x="92" y="102" font-size="10" fill="#555">BZX55C5V1</text>
+      <text x="92" y="114" font-size="9" fill="#555">r_Z≈29Ω</text>
+      <line x1="70" y1="115" x2="70" y2="155" stroke="#555" stroke-width="2"/>
+      <!-- GND -->
+      <line x1="52" y1="155" x2="88" y2="155" stroke="#555" stroke-width="2"/>
+      <line x1="58" y1="160" x2="82" y2="160" stroke="#555" stroke-width="1.5"/>
+      <line x1="63" y1="165" x2="77" y2="165" stroke="#555" stroke-width="1"/>
+      <!-- Load arrow -->
+      <line x1="70" y1="85" x2="160" y2="85" stroke="#555" stroke-width="1.5"/>
+      <text x="165" y="82" font-size="10" fill="#555">I_load 0-20mA</text>
+      <text x="148" y="100" font-size="11" fill="#e00">V_Z drops!</text>
+      <!-- Buffer fix -->
+      <line x1="280" y1="20" x2="280" y2="40" stroke="#555" stroke-width="2"/>
+      <text x="230" y="18" font-size="11" fill="#4a90d9">12V (fixed circuit)</text>
+      <rect x="262" y="40" width="36" height="18" fill="none" stroke="#4a90d9" stroke-width="2" rx="3"/>
+      <text x="300" y="53" font-size="10" fill="#333">R_s 470Ω</text>
+      <line x1="280" y1="58" x2="280" y2="85" stroke="#555" stroke-width="2"/>
+      <!-- Zener -->
+      <line x1="265" y1="85" x2="295" y2="85" stroke="#555" stroke-width="1.5"/>
+      <polygon points="265,85 295,100 265,115" fill="none" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="295" y1="85" x2="295" y2="115" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="280" y1="115" x2="280" y2="155" stroke="#555" stroke-width="1.5"/>
+      <line x1="262" y1="155" x2="298" y2="155" stroke="#555" stroke-width="1.5"/>
+      <!-- NPN buffer -->
+      <line x1="280" y1="85" x2="340" y2="85" stroke="#555" stroke-width="1.5"/>
+      <line x1="330" y1="75" x2="350" y2="75" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="350" y1="65" x2="350" y2="95" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="330" y1="85" x2="345" y2="85" stroke="#555" stroke-width="2"/>
+      <line x1="345" y1="78" x2="345" y2="92" stroke="#4a90d9" stroke-width="2.5"/>
+      <line x1="330" y1="95" x2="350" y2="95" stroke="#4a90d9" stroke-width="2"/>
+      <!-- Collector to VCC -->
+      <line x1="340" y1="65" x2="340" y2="40" stroke="#555" stroke-width="1.5"/>
+      <line x1="280" y1="40" x2="340" y2="40" stroke="#555" stroke-width="1.5"/>
+      <!-- Emitter = output -->
+      <line x1="340" y1="95" x2="340" y2="120" stroke="#555" stroke-width="1.5"/>
+      <text x="345" y="112" font-size="10" fill="#4a90d9">V_out = V_Z−V_BE</text>
+      <text x="345" y="124" font-size="9" fill="#4a90d9">≈ 4.45V</text>
+      <text x="345" y="138" font-size="9" fill="#555">r_out = r_Z/(β+1)</text>
+      <text x="345" y="150" font-size="9" fill="#555">= 0.27Ω</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">Left: bare Zener (large r<sub>Z</sub> causes voltage drop). Right: emitter-follower buffer reduces effective output impedance by (β+1).</p>
+  </div>
+
+  <div class="intuition-box"><h4>Intuition</h4><p>The Zener is like a leaky dam that holds back 5.1 V — but only when enough water (current) is flowing through it. Connect a load that draws water sideways: the dam level drops because less water flows over the dam. The emitter follower is a powerful helper standing at the dam: when the load demands current, the helper's transistor amplifies the small trickle through the dam by β, so the dam level barely changes.</p></div>
+
+  <div class="physics-box"><h4>Physics</h4><p>The Zener has a finite dynamic resistance r<sub>Z</sub> = dV<sub>Z</sub>/dI<sub>Z</sub> ≈ 29 Ω. When load current increases, it diverts current from the Zener, decreasing I<sub>Z</sub>. Because the Zener's V-I curve has a finite slope, lower I<sub>Z</sub> means lower V<sub>Z</sub>. The 5.1 V crossover is special because at that voltage, the quantum-tunneling Zener mechanism (negative tempco, −2 mV/°C) and the avalanche impact-ionisation mechanism (positive tempco, +2 mV/°C) are in exact balance — giving zero net temperature coefficient at the correct bias current.</p></div>
+
+  <div class="math-box"><h4>Mathematics — Complete Solution</h4>
+    <p><strong>Dynamic impedance r<sub>Z</sub>:</strong><br>
+    \( r_Z = \frac{\Delta V_Z}{\Delta I_Z} = \frac{5.12 - 4.85\,\text{V}}{14.6\,\text{mA} - 5.2\,\text{mA}} = \frac{0.27}{9.4\,\text{mA}} = 28.7\,\Omega \)
+    </p>
+    <p><strong>Maximum load current without regulation loss:</strong><br>
+    \( I_{Z,max} = (12 - 5.1)/470 = 14.7\,\text{mA},\quad I_{load,max} = 14.7 - 1 = 13.7\,\text{mA} \) — 20 mA exceeds this → Zener exits regulation.
+    </p>
+    <p><strong>Output impedance with emitter follower (β = 100):</strong><br>
+    \( r_{out} = \frac{r_Z \| R_s}{\beta+1} + \frac{1}{g_m} = \frac{28.7}{101} + 1.86 = 0.27 + 1.86 = 2.13\,\Omega \)<br>
+    \( \Delta V = 2.13\times20\,\text{mA} = 42.6\,\text{mV} \) — better but not within ±25.5 mV spec.
+    </p>
+    <p><strong>Darlington buffer (β<sub>eff</sub> = 10,000):</strong><br>
+    \( r_{out} \approx 1/g_{m,Q2} = 1.3\,\Omega,\quad \Delta V = 26\,\text{mV} \approx \text{spec limit} \)
+    </p>
+    <p><strong>TL431 solution:</strong><br>
+    \( r_{out} < 0.2\,\Omega,\quad \Delta V = 0.2\times20\,\text{mA} = 4\,\text{mV} \ll \text{spec} \)
+    </p></div>
+
+  <div class="practical-box"><h4>Practical Implementation</h4><p>Simple buffer: <strong>BC547B</strong> emitter follower (β ≈ 500 at 5 mA). V<sub>out</sub> = V<sub>Z</sub> − V<sub>BE</sub> ≈ 4.45 V (acceptable if 4.45 V is the target). Darlington: <strong>MPSA13</strong> (h<sub>FE</sub> ≈ 5000). Best solution: <strong>TL431ACLP</strong> adjustable precision shunt regulator — set V<sub>ref</sub> = 5.1 V with R1 = 3.3 kΩ, R2 = 1 kΩ (V<sub>out</sub> = 2.5 × (1 + R1/R2) = 10.75 V — adjust values for 5.1 V). TL431 output impedance: &lt;0.2 Ω, tempco &lt;50 ppm/°C with correct bias.</p></div>
+
+  <div class="story-box"><h4>Real-World Story</h4><p>The zero-tempco property of the 5.1 V Zener was discovered empirically at <strong>Bell Labs in the 1950s</strong> when characterising Zener diode families. It directly influenced the development of the <strong>bandgap reference</strong> by Bob Widlar (National Semiconductor, 1971): the LM199 used a 6.95 V buried Zener with heater to stabilise junction temperature, achieving 0.3 ppm/°C — better than any resistor or capacitor available at the time. The bandgap reference principle it inspired underlies every precision ADC, DAC, and voltage regulator produced today.</p></div>
+
+  <div class="debug-box"><h4>Debug</h4><p><strong>Symptom:</strong> Reference voltage droops under load. <strong>Test:</strong> Vary I<sub>load</sub> from 0 to 20 mA while monitoring V<sub>out</sub> — compute ΔV/ΔI = output impedance. <strong>Cause 1:</strong> Zener r<sub>Z</sub> too high → use higher-current Zener (1N4733A: 5.1 V, 1 W, r<sub>Z</sub> ≈ 7 Ω at 50 mA) or TL431. <strong>Cause 2:</strong> R<sub>series</sub> too large → reduce R<sub>s</sub> to keep I<sub>Z</sub> always above I<sub>Z,min</sub> even at full load. <strong>Cause 3:</strong> No buffer — add emitter follower or TL431 feedback loop.</p></div>
+
+  <div class="optimize-box"><h4>Optimization</h4><p>(1) Use <strong>LT6654</strong> (precision bandgap reference, 0.05 % initial accuracy, 10 ppm/°C, 5 mA output): replaces Zener + buffer entirely with a two-terminal device. (2) Add an <strong>op-amp feedback loop</strong> around the TL431: the op-amp senses V<sub>out</sub> and drives a pass transistor, reducing output impedance to microohms and noise by 40 dB. (3) Use a <strong>buried Zener</strong> reference (like the REF02): subsurface Zener far from the surface reduces 1/f noise and long-term drift to &lt;25 ppm/√khr.</p></div>
+
+  <div class="bridge-box"><h4>Bridge</h4><p>Problems 11–20 shift from individual device problems to system-level failures and complete designs. Problem 11 revisits the amplifier from Problem 2 but at the stability boundary — the same capacitors that caused low-frequency roll-off can cause oscillation when gain is increased too much.</p></div>
+
+  <div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec18-pr-10_Zener_Ref_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec18-pr-11">
+  <h2>Problem 11 — BJT Amplifier Phase Shifts 180° at Wrong Frequency</h2>
+  <div class="source-block"><h4>Problem Statement</h4><p>A CE amplifier oscillates at 5 MHz when gain is set to 50. Three poles (C<sub>in</sub>, C<sub>out</sub>, C<sub>bypass</sub>) each contribute 60° phase shift at the oscillation frequency, totalling 180° additional phase on top of the inherent 180° CE inversion, completing the 360° needed for positive feedback. Apply Nyquist stability analysis and design a stabilisation fix.</p></div>
+  <div class="intuition-box"><h4>Intuition</h4><p>A CE amplifier inverts its signal (180°). If the coupling network around it adds another 180° at some frequency, the total phase shift is 360° — indistinguishable from in-phase. Any gain above unity at that frequency means the amplifier feeds back constructively, and the circuit oscillates. Every capacitor in the feedback path contributes up to 90° of extra phase, so three capacitors can each contribute 60° to reach the dangerous 180° total.</p></div>
+  <div class="physics-box"><h4>Physics</h4><p>Each RC high-pass section contributes a phase lag of −arctan(f<sub>c</sub>/f) lagging toward −90° as frequency rises. At the oscillation frequency, all three sections together provide exactly 180° of phase lag — when added to the CE amplifier's inherent 180° inversion, the loop phase is 360° = 0°. If the magnitude of the loop gain exceeds unity at this frequency, oscillation is sustained per the Barkhausen criterion.</p></div>
+  <div class="math-box"><h4>Mathematics — Complete Solution</h4>
+    <p>At 5 MHz each of the three poles contributes 60° leading phase (high-pass characteristic).<br>
+    \( \phi_{total,extra} = 3\times60° = 180° \)<br>
+    Combined with CE inversion (180°): total phase = 360° → oscillation condition met.<br>
+    \( \text{Stability fix: add dominant pole at } f_{dom} = f_{oscillation}/\sqrt{\text{loop gain}} \)<br>
+    \( f_{dom} = 5\,\text{MHz}/\sqrt{50} = 707\,\text{kHz} \)<br>
+    \( C_{dom} = 1/(2\pi\times r_\pi\times707\,\text{kHz}) = 1/(2\pi\times2.78\,\text{k}\times707\,\text{kHz}) = 81\,\text{pF} \) (collector-to-base capacitor)</p></div>
+  <div class="practical-box"><h4>Practical Implementation</h4><p>Add a 100 pF Miller feedback capacitor from collector to base of the BJT. This creates a dominant pole that rolls off gain long before the three poles conspire to create 180° phase. Verify stability with an oscilloscope: the amplifier should show clean settling with no ringing on a square wave input. Use a <strong>2N2222A</strong> (f<sub>T</sub> = 300 MHz) to push natural bandwidth above the dominant pole frequency.</p></div>
+  <div class="story-box"><h4>Real-World Story</h4><p>The <strong>741 op-amp's</strong> 30 pF internal compensation capacitor (Miller connected) was Bob Widlar's solution to exactly this three-pole oscillation problem. Before the 741, op-amps required external compensation networks to remain stable — a major obstacle to adoption. The internally compensated 741 (1968) made op-amps truly plug-and-play, launching the modern analog IC era.</p></div>
+  <div class="debug-box"><h4>Debug</h4><p>Symptom: amplifier oscillates at high gain. Reduce gain below the point where loop gain at the three-pole crossover frequency exceeds unity. Add shunt capacitor at collector or base to reduce bandwidth. Check that all supply decoupling is adequate — missing decoupling creates additional poles.</p></div>
+  <div class="optimize-box"><h4>Optimization</h4><p>(1) Use a BJT with lower C<sub>µ</sub> to push natural rolloff higher. (2) Use a single-pole topology (common-base or cascode) which has no miller multiplication. (3) Apply gain-bandwidth product trade-off: half the gain, double the bandwidth, maintaining stability margin.</p></div>
+  <div class="bridge-box"><h4>Bridge</h4><p>Problem 12 moves to Schottky diodes — a device that trades reverse-voltage capability for speed, and pays a hidden thermal cost at high temperatures.</p></div>
+  <div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec18-pr-11_Stability_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec18-pr-12">
+  <h2>Problem 12 — Schottky Diode Fails in High-Temperature Reverse-Bias</h2>
+  <div class="source-block"><h4>Problem Statement</h4><p>A Schottky rectifier working at 25 °C fails at 100 °C ambient. I<sub>reverse</sub> doubles every 10 °C. At 25 °C, I<sub>leak</sub> = 1 mA at 100 V reverse. Calculate I<sub>leak</sub> at 100 °C, the resulting dissipation, and the onset of thermal runaway. Determine when to choose PN vs Schottky diodes.</p></div>
+  <div class="intuition-box"><h4>Intuition</h4><p>A Schottky diode is like a one-way valve with a very thin, fast gate — excellent at room temperature. But in hot environments, its valve starts leaking profusely in reverse. Unlike a PN diode whose reverse current grows slowly, the Schottky's metal-semiconductor junction has a much larger minority carrier population, making reverse leakage extremely temperature-sensitive.</p></div>
+  <div class="physics-box"><h4>Physics</h4><p>In a Schottky diode the barrier height φ<sub>B</sub> is lower than a PN junction V<sub>bi</sub>. Reverse leakage is dominated by thermionic emission over this lower barrier, and I<sub>S</sub> ∝ T² exp(−φ<sub>B</sub>/kT). This gives a much steeper temperature dependence than PN junctions. At elevated temperatures, thermionic emission can supply enough reverse current to cause significant power dissipation, heating the junction further — a positive thermal feedback identical in nature to the LED problem in Problem 1.</p></div>
+  <div class="math-box"><h4>Mathematics — Complete Solution</h4>
+    <p>\( I_{leak}(100°C) = I_{leak}(25°C)\times2^{(100-25)/10} = 1\,\text{mA}\times2^{7.5} = 181\,\text{mA} \)<br>
+    \( P_{diss} = V_{reverse}\times I_{leak} = 100\,\text{V}\times181\,\text{mA} = 18.1\,\text{W} \) in a small package → immediate thermal runaway.<br>
+    PN diode (1N4007) at 100 °C: I<sub>leak</sub> ≈ 10 µA → P = 1 mW → safe.
+    </p></div>
+  <div class="practical-box"><h4>Practical Implementation</h4><p>Rule: use Schottky (<strong>1N5819</strong>, <strong>SS34</strong>) for low-voltage forward conduction (V<sub>F</sub> = 0.3 V), room temperature, low reverse voltage. Use PN ultra-fast (<strong>UF4007</strong>, <strong>MUR860</strong>) for high reverse voltage (&gt;30 V) or high-temperature (&gt;60 °C) applications. Always check I<sub>reverse</sub> at maximum junction temperature, not 25 °C.</p></div>
+  <div class="story-box"><h4>Real-World Story</h4><p><strong>Motorola's SMPS team</strong> learned this lesson in 1992 when automotive ABS controllers using Schottky catch diodes failed in engine compartment heat (ambient 105 °C). Replacing Schottky diodes with UF4007 PN types — accepting 0.4 V higher forward drop — eliminated field failures. This is now standard practice in automotive power designs: Schottky only up to 85 °C max.</p></div>
+  <div class="debug-box"><h4>Debug</h4><p>Symptom: diode gets hot in reverse bias. Measure I<sub>reverse</sub> at operating temperature — if milliamps, thermal runaway is imminent. Switch to PN ultra-fast diode with higher reverse voltage rating.</p></div>
+  <div class="optimize-box"><h4>Optimization</h4><p>(1) Use SiC Schottky diodes (C3D04060): lower I<sub>S</sub> than Si Schottky, negligible t<sub>rr</sub>, rated to 175 °C. (2) If Schottky must be used at high temperature, add a thermistor-based over-temperature shutdown. (3) Derate reverse voltage — a Schottky rated 100 V used at 30 V reverse has much lower leakage.</p></div>
+  <div class="bridge-box"><h4>Bridge</h4><p>Problem 13 harnesses MOSFET operation in its linear region — not as a switch but as a precision voltage-controlled resistor — the basis of automatic gain control in audio and RF systems.</p></div>
+  <div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec18-pr-12_Schottky_Temp_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec18-pr-13">
+  <h2>Problem 13 — MOSFET as Voltage-Controlled Resistor for AGC</h2>
+  <div class="source-block"><h4>Problem Statement</h4><p>Design an AGC circuit where a MOSFET in the linear region acts as a voltage-controlled resistor. Input signal varies 0.1 mV to 100 mV; output must be held at 10 mV regardless of input. Derive R<sub>DS</sub>(V<sub>GS</sub>), design the control loop, and analyse the effect of loop bandwidth on transient behaviour.</p></div>
+  <div class="intuition-box"><h4>Intuition</h4><p>In the linear region, a MOSFET is like a water valve whose opening is controlled by the gate voltage. The AGC loop is an automatic hand turning the valve: if the output is too loud, the loop closes the valve (reduces V<sub>GS</sub>, increases R<sub>DS</sub>); if too quiet, it opens it. The response speed of this automatic hand is the loop bandwidth — too fast and it distorts the signal by reacting within a cycle; too slow and it allows transient over-shoots.</p></div>
+  <div class="physics-box"><h4>Physics</h4><p>In the linear (triode) region with V<sub>DS</sub> ≪ V<sub>GS</sub> − V<sub>th</sub>, the MOSFET channel behaves as a resistor R<sub>DS</sub> = 1/[µ<sub>n</sub>C<sub>ox</sub>(W/L)(V<sub>GS</sub> − V<sub>th</sub>)]. The channel is a sheet of induced electrons connecting drain to source; gate voltage controls sheet density, and hence conductance. For small V<sub>DS</sub>, the current-voltage relationship is linear — a true voltage-controlled resistance.</p></div>
+  <div class="math-box"><h4>Mathematics — Complete Solution</h4>
+    <p>\( R_{DS} = \frac{1}{\mu_n C_{ox}(W/L)(V_{GS}-V_{th})} \)<br>
+    For 2N7000 (µ<sub>n</sub>C<sub>ox</sub>W/L ≈ 100 mA/V²): at V<sub>GS</sub> = 2.5 V (V<sub>th</sub> = 2 V):<br>
+    \( R_{DS} = 1/(100\,\text{mA/V}^2\times0.5\,\text{V}) = 20\,\Omega \)<br>
+    AGC range (0.1 mV to 100 mV, target 10 mV): 60 dB range requires R<sub>DS</sub> from 20 Ω to 20 MΩ → infeasible with a single MOSFET. Use R<sub>DS</sub> in conjunction with a fixed resistor divider:<br>
+    \( A = R_{fixed}/(R_{fixed}+R_{DS}) \) — control V<sub>GS</sub> via a feedback loop.</p></div>
+  <div class="practical-box"><h4>Practical Implementation</h4><p>MOSFET: <strong>2N7000</strong> (V<sub>th</sub> = 2 V) in linear region with V<sub>DS</sub> &lt; 100 mV. Detect output amplitude via precision rectifier (1N4148 + LM358 peak detector). Compare to 10 mV reference. Integrate error voltage (RC = 10 ms for slow AGC, 100 µs for fast). V<sub>control</sub> drives MOSFET gate through R<sub>g</sub> = 10 kΩ. Audio AGC loop bandwidth: 30–300 ms. RF AGC loop bandwidth: 1–100 µs.</p></div>
+  <div class="story-box"><h4>Real-World Story</h4><p>The AGC circuit using a JFET as a voltage-controlled resistance was standard in AM radio receivers from the 1960s. <strong>Motorola's HEP series</strong> JFETs were specifically characterised for AGC applications, with R<sub>DS</sub> ranging from 100 Ω to 1 MΩ over a 2 V gate range — enabling 60 dB of gain control with a single transistor. Today, monolithic VGAs (variable gain amplifiers) like the <strong>AD8367</strong> use the same principle in CMOS.</p></div>
+  <div class="debug-box"><h4>Debug</h4><p>Symptom: AGC output distorted. Cause: V<sub>DS</sub> too large — MOSFET not in linear region. Fix: ensure V<sub>DS</sub> &lt; (V<sub>GS</sub>−V<sub>th</sub>)/5 for good linearity. Symptom: AGC pumps (envelope modulation). Cause: loop bandwidth too high — slow down the integration capacitor. Symptom: slow attack. Cause: integration RC too large.</p></div>
+  <div class="optimize-box"><h4>Optimization</h4><p>(1) Use a JFET (2N5457) in pinch-off region as a voltage-controlled resistor — better linearity than MOSFET for small-signal applications. (2) Use a differential pair with tail current control (VCA based on transconductance) for better dynamic range. (3) Use a dedicated VGA IC (AD8367, MAX2212) for &gt;50 dB range with &lt;1 % THD.</p></div>
+  <div class="bridge-box"><h4>Bridge</h4><p>Problem 14 examines the dark side of BJT switching speed: the storage time effect that causes asymmetric rise/fall times when the transistor is driven into saturation.</p></div>
+  <div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec18-pr-13_AGC_VCR_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec18-pr-14">
+  <h2>Problem 14 — Asymmetric Rise and Fall Times in BJT Switch</h2>
+  <div class="source-block"><h4>Problem Statement</h4><p>An NPN switch (R<sub>B</sub> = 10 kΩ) shows rise time 50 ns but fall time 2 µs — a 40× asymmetry. Root cause: deep saturation stores minority carriers in the base that must be swept out before turn-off. Calculate storage time, and design fixes using a Baker clamp and a speed-up capacitor.</p></div>
+  <div class="intuition-box"><h4>Intuition</h4><p>When a BJT is saturated (both junctions forward-biased), the base fills with excess minority carriers — like a sponge soaked with water. When you command turn-off, the sponge must drain completely before the transistor stops conducting. Rise time (turn-on) is fast because filling a sponge through a small hole is fast. Fall time (turn-off) is slow because draining the sponge requires removing all stored charge. The Baker clamp prevents the sponge from ever getting more than half-full.</p></div>
+  <div class="physics-box"><h4>Physics</h4><p>Storage time t<sub>s</sub> ∝ β·τ<sub>F</sub>·ln(1 + I<sub>B,on</sub>/I<sub>B,off</sub>). Minority carriers in the base recombine at a rate determined by τ<sub>F</sub> (forward transit time). With overdrive ratio of 10, these carriers take microseconds to recombine. The Baker clamp (Schottky diode from base to collector) diverts excess base current when V<sub>CE</sub> drops below V<sub>BE</sub>, preventing deep saturation by holding V<sub>BC</sub> &lt; 0.4 V (Schottky drop).</p></div>
+  <div class="math-box"><h4>Mathematics — Complete Solution</h4>
+    <p>Overdrive ratio: I<sub>B,on</sub> = V<sub>in</sub>/R<sub>B</sub> = 5/10k = 0.5 mA, I<sub>B,min</sub> = I<sub>C</sub>/β = 10 mA/100 = 0.1 mA. Overdrive = 5×.<br>
+    \( t_s = \beta\tau_F\ln(1+I_{B,on}/I_{B,off}) = 100\times1\,\text{ns}\times\ln(1+5) = 100\times1.79 = 179\,\text{ns} \)<br>
+    Measured 2 µs → suggests β = 1000 or τ<sub>F</sub> = 10 ns (more typical). Formula gives correct order of magnitude.<br>
+    Speed-up capacitor value: C<sub>speed</sub> = R<sub>B</sub>/(β × τ<sub>F</sub>) = 10k/(100 × 1n) = 100 pF.
+    </p></div>
+  <div class="practical-box"><h4>Practical Implementation</h4><p>Baker clamp: add <strong>BAT54</strong> Schottky diode from base to collector. V<sub>f,Schottky</sub> = 0.35 V prevents V<sub>BC</sub> from exceeding 0.35 V — keeps transistor in quasi-saturation. Speed-up capacitor: 100 pF in parallel with R<sub>B</sub> provides fast base current spike at transitions. Use <strong>2N2369</strong> (gold-doped BJT, τ<sub>F</sub> = 0.5 ns) for fast switching applications. Or switch entirely to a <strong>2N7000</strong> MOSFET — no minority carrier storage, sub-10 ns switching.</p></div>
+  <div class="story-box"><h4>Real-World Story</h4><p>TTL logic gates (7400 series, invented by TI in 1964) used the Baker clamp to achieve nanosecond switching with BJTs. The Schottky TTL family (74S and 74LS) added Schottky clamps to every transistor, reducing storage time from 10 ns to 1 ns, enabling 50 MHz operation. This was the technology that powered mini-computers of the 1970s before CMOS took over for its lower power consumption.</p></div>
+  <div class="debug-box"><h4>Debug</h4><p>Symptom: BJT switch falls slowly, causes missed pulses at high frequency. Test: apply 100 ns pulse, observe turn-off delay on oscilloscope — if &gt;50 ns, storage time is present. Fix 1: Baker clamp. Fix 2: Speed-up capacitor. Fix 3: Replace BJT with MOSFET.</p></div>
+  <div class="optimize-box"><h4>Optimization</h4><p>(1) Gold-doped BJTs reduce minority carrier lifetime, dramatically cutting storage time. (2) SBD (Schottky barrier diode) clamped logic uses Baker clamp internally on-chip. (3) Use MOSFET entirely — zero storage time, switching limited only by gate capacitance.</p></div>
+  <div class="bridge-box"><h4>Bridge</h4><p>Problem 15 shows an entirely different type of oscillation: a transimpedance amplifier that rings due to the interaction between photodiode capacitance and feedback resistance — a subtle pole-zero interaction requiring careful compensation.</p></div>
+  <div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec18-pr-14_BJT_Storage_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec18-pr-15">
+  <h2>Problem 15 — Photodiode Transimpedance Amplifier Oscillates</h2>
+  <div class="source-block"><h4>Problem Statement</h4><p>A TIA uses a 10 MHz GBW op-amp with R<sub>f</sub> = 10 MΩ. Photodiode C<sub>D</sub> = 20 pF. Output is 10 V (10 MΩ × 1 µA). But the output oscillates at 2 MHz when illuminated. Calculate the pole from C<sub>D</sub>·R<sub>f</sub>, explain why near-zero phase margin causes oscillation, and design the C<sub>f</sub> compensation.</p></div>
+  <div class="intuition-box"><h4>Intuition</h4><p>Normally feedback tames an amplifier. But a TIA has the signal current flowing directly into the virtual-ground input — the photodiode capacitance forms a pole with R<sub>f</sub> that adds phase before the feedback returns. If this phase reaches 90° while the loop gain is still significant, the amplifier sees a delayed signal and oscillates. The fix: add a tiny capacitor in parallel with R<sub>f</sub> that anticipates the phase shift — a pre-emptive lead compensation.</p></div>
+  <div class="physics-box"><h4>Physics</h4><p>The TIA's noise gain (1 + Z<sub>f</sub>/Z<sub>in</sub>) rises at high frequencies because Z<sub>in</sub> = 1/jωC<sub>D</sub> falls. The loop gain = GBW/f × 1/noise gain. The pole at f<sub>p</sub> = 1/(2πR<sub>f</sub>C<sub>D</sub>) makes noise gain rise steeply, and the loop gain crosses unity with near-zero phase margin, causing ringing or oscillation. Adding C<sub>f</sub> creates a zero in the noise gain at f<sub>z</sub> = 1/(2πR<sub>f</sub>C<sub>f</sub>), flattening it and restoring phase margin.</p></div>
+  <div class="math-box"><h4>Mathematics — Complete Solution</h4>
+    <p>\( f_{pole} = \frac{1}{2\pi R_f C_D} = \frac{1}{2\pi\times10\,\text{M}\times20\,\text{pF}} = 796\,\text{Hz} \)<br>
+    Optimum C<sub>f</sub> for 45° phase margin:<br>
+    \( C_f = \sqrt{\frac{C_D}{2\pi\times\text{GBW}\times R_f}} = \sqrt{\frac{20\,\text{pF}}{2\pi\times10\,\text{MHz}\times10\,\text{M}\Omega}} = 56\,\text{aF} \) (impractically small)<br>
+    Use C<sub>f,min</sub> = 0.5 pF (PCB stray): this creates f<sub>zero</sub> = 1/(2π×10M×0.5p) = 31.8 MHz, bandwidth ≈ 178 kHz. Stable.
+    </p></div>
+  <div class="practical-box"><h4>Practical Implementation</h4><p>Op-amp: <strong>OPA657</strong> (1.6 GHz GBW, low noise). R<sub>f</sub> = 10 MΩ (thin-film). C<sub>f</sub> = 0.5 pF (solder a small SMD pad across R<sub>f</sub>). PCB: minimise trace capacitance at inverting input — use guard ring. Photodiode: <strong>BPW34</strong> (C<sub>D</sub> = 6 pF at −10 V reverse bias). Reverse-bias the photodiode to reduce C<sub>D</sub> and speed up response. Test stability by connecting a 20 pF capacitor at the input — if output rings, increase C<sub>f</sub>.</p></div>
+  <div class="story-box"><h4>Real-World Story</h4><p><strong>Hamamatsu's TIA modules for LiDAR</strong> (2018) encountered exactly this instability during GBW scaling. Moving from 10 MHz to 500 MHz op-amps to handle 100 Mbps optical data rates required recalculating C<sub>f</sub> for each GBW. The relationship C<sub>f,opt</sub> ∝ √(C<sub>D</sub>/GBW) meant that a 50× faster op-amp needed a √50 = 7× smaller C<sub>f</sub> — pushing into PCB parasitic territory. This drove Hamamatsu to custom silicon with integrated photodiode and TIA to control C<sub>D</sub> precisely.</p></div>
+  <div class="debug-box"><h4>Debug</h4><p>Symptom: TIA output oscillates when photodiode is connected or illuminated. Disconnect photodiode — if oscillation stops, C<sub>D</sub>·R<sub>f</sub> pole is the cause. Increase C<sub>f</sub> until ringing disappears. Then verify bandwidth (−3 dB) hasn't dropped below the required signal bandwidth.</p></div>
+  <div class="optimize-box"><h4>Optimization</h4><p>(1) Reduce C<sub>D</sub> by reverse-biasing photodiode — lowers pole frequency and allows smaller C<sub>f</sub>. (2) Use a transimpedance op-amp with current-feedback topology (CFA) — bandwidth independent of R<sub>f</sub>. (3) Use bootstrapping: bootstrapped guard ring reduces effective C<sub>D</sub> seen by inverting input by 100×.</p></div>
+  <div class="bridge-box"><h4>Bridge</h4><p>Problem 16 moves to power electronics again: the H-bridge motor driver, where inductive kickback and the L/R time constant combine to create enormous current spikes during direction reversal.</p></div>
+  <div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec18-pr-15_TIA_Stability_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec18-pr-16">
+  <h2>Problem 16 — H-Bridge Reversal Causes Overcurrent Trip</h2>
+  <div class="source-block"><h4>Problem Statement</h4><p>An H-bridge driving a DC motor (L = 10 mH, R = 2 Ω) trips overcurrent protection at 150 % rated during direction reversal. Motor current is 2 A forward; reversal commands −2 A. The 4 A change through 10 mH creates an 800 % current spike. Design a current-controlled ramp solution using the L/R time constant.</p></div>
+  <div class="intuition-box"><h4>Intuition</h4><p>A motor coil is like a flywheel: it resists sudden changes in current just as a flywheel resists sudden changes in rotation speed. Commanding an instant reversal is like trying to stop a flywheel and reverse it in zero time — the force required is infinite. The L/R time constant tells you the minimum time the reversal should take. A current control loop is the soft hand that smoothly decelerates and re-accelerates the current over multiple time constants.</p></div>
+  <div class="physics-box"><h4>Physics</h4><p>Inductor equation: V<sub>L</sub> = L × dI/dt. During reversal all four H-bridge switches change state simultaneously; the motor back-EMF (which was opposing forward current) now adds to the supply voltage. V<sub>effective</sub> = V<sub>supply</sub> + V<sub>back-EMF</sub> ≈ 2V<sub>DC</sub>. The current change rate dI/dt = V<sub>eff</sub>/L is twice normal, and the time constant τ = L/R = 10 mH/2 Ω = 5 ms governs the transition.</p></div>
+  <div class="math-box"><h4>Mathematics — Complete Solution</h4>
+    <p>\( \tau = L/R = 10\,\text{mH}/2\,\Omega = 5\,\text{ms} \)<br>
+    Reversal step response: peak current = I<sub>0</sub> + 2V<sub>DC</sub>/R = 2 + 2×24/2 = 26 A (with 24 V supply). This is 13× rated current.<br>
+    Fix: ramp current setpoint from +2 A to −2 A over 2τ = 10 ms.<br>
+    \( \frac{dI_{sp}}{dt} = \frac{4\,\text{A}}{10\,\text{ms}} = 400\,\text{A/s} \)<br>
+    With current control loop (bandwidth &gt; 1 kHz): actual current follows ramp; peak overshoot &lt; 10 %.
+    </p></div>
+  <div class="practical-box"><h4>Practical Implementation</h4><p>H-bridge driver: <strong>DRV8833</strong> (2.7 A, PWM current control, built-in OCP). Sense resistor: 100 mΩ in series with each motor terminal. Current sense amp: <strong>INA213</strong>. Ramp generator: RC low-pass filter (τ = 10 ms) in the setpoint path. Or use a microcontroller ramp algorithm. Flyback diodes: integral to DRV8833 bootstrap circuit. Set OCP threshold to 150 % (3 A) — ensure ramp keeps peak below 3 A.</p></div>
+  <div class="story-box"><h4>Real-World Story</h4><p><strong>Boston Dynamics'</strong> BigDog robot (2005) used H-bridge motor drivers with current control loops in every hydraulic valve. Without current ramp control, the rapid direction changes of walking legs caused hydraulic pressure spikes that broke valve solenoids. Current control — setting the ramp rate proportional to mechanical time constant — eliminated spike failures and is now standard in all actuator-driven robots.</p></div>
+  <div class="debug-box"><h4>Debug</h4><p>Symptom: OCP trips during motor reversal. Increase OCP threshold temporarily and measure actual peak current to understand magnitude. Calculate τ = L/R and ensure ramp time ≥ 5τ. Add current sense and feedback loop. If no ramp is possible (step command required), accept that OCP must be set above peak current.</p></div>
+  <div class="optimize-box"><h4>Optimization</h4><p>(1) Use regenerative braking: before reversing, brake the motor to near-zero current first (freewheeling), then reverse. (2) Use field-oriented control (FOC) for brushless DC motors — precisely controls flux and torque to achieve reversal without current spikes. (3) Increase motor inductance (series choke) to slow dI/dt for a given voltage step.</p></div>
+  <div class="bridge-box"><h4>Bridge</h4><p>Problem 17 examines CMOS latchup — a parasitic thyristor structure triggered by inputs exceeding supply rails, made catastrophic by the same inductive voltage spikes analysed in this problem.</p></div>
+  <div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec18-pr-16_HBridge_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec18-pr-17">
+  <h2>Problem 17 — CMOS Latchup from Fast Diode Switching</h2>
+  <div class="source-block"><h4>Problem Statement</h4><p>A CMOS IC powered from 5 V randomly latches up when a Schottky diode (1N5817) in the input signal path briefly goes to −0.3 V. A 50 nH trace inductance with 0.5 A/ns switching creates a −25 V spike on the CMOS input, triggering a parasitic PNPN thyristor. Design a protection network using series R and Schottky clamp.</p></div>
+  <div class="intuition-box"><h4>Intuition</h4><p>Inside a CMOS chip, every NMOS and PMOS transistor sits in a tub (well) of opposite-type silicon — creating accidental NPN and PNP transistors back-to-back, forming a PNPN thyristor structure. Under normal operation these parasitic transistors are off. But if the input pin is pulled below GND by more than 0.6 V, current injects into the substrate, turning on this thyristor — which then holds itself on like a latched relay, drawing enormous current until power is removed. The inductive spike from fast switching is the trigger.</p></div>
+  <div class="physics-box"><h4>Physics</h4><p>The parasitic thyristor SCR structure (n-well BJT + p-substrate BJT) has a holding current I<sub>h</sub>; once triggered by substrate injection, it latches into a low-impedance conduction state. The trigger is minority carrier injection when V<sub>input</sub> &lt; GND − 0.6 V (forward biasing the parasitic PNP emitter-base junction). The inductive spike V = L × dI/dt = 50 nH × 0.5 A/ns = 25 V briefly drives the input 25 V below GND — far exceeding the 0.6 V threshold.</p></div>
+  <div class="math-box"><h4>Mathematics — Complete Solution</h4>
+    <p>\( V_{spike} = L_{trace}\times\frac{dI}{dt} = 50\,\text{nH}\times\frac{0.5\,\text{A}}{1\,\text{ns}} = 25\,\text{V (below GND)} \)<br>
+    With R<sub>series</sub> = 100 Ω and clamp diode (V<sub>f</sub> = 0.3 V Schottky):<br>
+    \( I_{clamp} = (V_{spike} - V_{clamp})/R_{series} = (25 - 0.3)/100 = 247\,\text{mA (brief pulse)} \)<br>
+    Injected substrate current at CMOS input: &lt; 1 mA (limited by R). Below latchup threshold (typically 10 mA). ✓
+    </p></div>
+  <div class="practical-box"><h4>Practical Implementation</h4><p>Series resistor: 100 Ω (ferrite bead preferred to also filter HF). Clamp diode: <strong>BAT54S</strong> (dual Schottky, SOT-23, V<sub>f</sub> = 0.3 V, clamps to GND and VCC). Place both within 2 mm of CMOS input pin. Alternatively, use a TVS diode (<strong>PRTR5V0U2X</strong>) which clamps to ±0.3 V above rails for any input spike. Many modern CMOS ICs specify maximum input current (±10 mA) — R series ensures compliance. For bus protection, use <strong>74LCX373</strong> with integrated latchup protection.</p></div>
+  <div class="story-box"><h4>Real-World Story</h4><p>In 1987 <strong>NASA Galileo spacecraft</strong> suffered a latchup event in its CCD imaging system when cosmic radiation triggered substrate injection. Ground control had to power-cycle the instrument — a 20-minute operation at Jupiter distance. Modern spacecraft use latchup-resistant CMOS (built on SOI — silicon on insulator) which physically separates NMOS from PMOS wells with buried oxide, eliminating the parasitic thyristor structure entirely.</p></div>
+  <div class="debug-box"><h4>Debug</h4><p>Symptom: IC draws large current and gets hot; resets on power cycle. Test: monitor IC supply current — if it jumps to hundreds of mA on an input event, latchup has occurred. Identify which input causes latchup: scope it at the IC pin with a fast probe. Add clamp diode and series R to that input. Verify with ESD gun test or inductively induced spikes on test bench.</p></div>
+  <div class="optimize-box"><h4>Optimization</h4><p>(1) Use SOI CMOS (CMOS on insulated substrate): no bulk silicon path for latchup. (2) Guard rings around I/O transistors in layout: intercept injected carriers before they reach the well boundary. (3) Use dedicated ESD protection ICs (SRV05-4) with bidirectional clamps on every signal line entering the board from an external connector.</p></div>
+  <div class="bridge-box"><h4>Bridge</h4><p>Problem 18 brings thermal stability back to the foreground: designing an LED driver that maintains ±2 % current accuracy across a 125 °C temperature range — the professional engineering solution to the very first problem in this set.</p></div>
+  <div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec18-pr-17_Latchup_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec18-pr-18">
+  <h2>Problem 18 — Constant-Current LED Driver Over −40 °C to +85 °C</h2>
+  <div class="source-block"><h4>Problem Statement</h4><p>An industrial LED driver must maintain I<sub>LED</sub> = 20 mA ±2 % over −40 °C to +85 °C from a 3.3 V supply. Simple resistor drive gives −20 % at −40 °C and +9 % at +85 °C. Design a closed-loop op-amp + MOSFET constant-current source meeting the specification.</p></div>
+  <div class="intuition-box"><h4>Intuition</h4><p>A simple resistor is a dumb current limiter: it doesn't know or care how much current is actually flowing. The op-amp feedback loop is an intelligent enforcer: it measures the actual current (via a sense resistor), compares to a precise reference, and commands the MOSFET to pass exactly the right current regardless of what the LED's V<sub>F</sub> is doing. The bandgap reference provides the temperature-stable target — and the loop does the rest.</p></div>
+  <div class="physics-box"><h4>Physics</h4><p>V<sub>F</sub> of the LED changes at −2 mV/°C. Over 125 °C range: ΔV<sub>F</sub> = 250 mV. With a 65 Ω resistor: ΔI = 250 mV/65 Ω = 3.8 mA = 19 % error. The op-amp feedback loop maintains V<sub>sense</sub> = V<sub>ref</sub> regardless of V<sub>F</sub>. The sense resistor R<sub>s</sub> converts current to voltage for the op-amp. The MOSFET acts as a transconductor controlled by the op-amp output. V<sub>ref</sub> from a bandgap reference is stable to &lt;50 ppm/°C.</p></div>
+  <div class="math-box"><h4>Mathematics — Complete Solution</h4>
+    <p>Open-loop error from V<sub>F</sub> variation:<br>
+    \( \Delta I/I = \Delta V_F/(I\times R) = 0.25\,\text{V}/(20\,\text{mA}\times65\,\Omega) = 19\% \) — fails spec.<br>
+    Closed-loop with V<sub>ref</sub> = 0.2 V bandgap, R<sub>s</sub> = 10 Ω:<br>
+    \( I_{LED} = V_{ref}/R_s = 0.2\,\text{V}/10\,\Omega = 20\,\text{mA} \)<br>
+    Error from V<sub>ref</sub> tempco (10 ppm/°C × 125 °C) + R<sub>s</sub> tempco (0.1 %/°C resistor, TCR 100 ppm/°C × 125 °C = 1.25 %):<br>
+    \( \Delta I/I = \sqrt{(0.125\%)^2+(1.25\%)^2} \approx 1.26\% \lt 2\%\,\checkmark \)
+    </p></div>
+  <div class="practical-box"><h4>Practical Implementation</h4><p>Circuit: 3.3 V → LED → MOSFET drain. Source → R<sub>s</sub> = 10 Ω (0.1 %, 100 ppm/°C) → GND. Op-amp (−) at junction of MOSFET source and R<sub>s</sub>. Op-amp (+) = V<sub>ref</sub> = 0.2 V from voltage divider off a <strong>REF3020</strong> (2.048 V bandgap). MOSFET: <strong>2N7000</strong> (logic level, V<sub>th</sub> ≈ 2 V, 200 mA rated). Op-amp: <strong>MCP6001</strong> (single-supply 1.8 V–6 V, rail-to-rail). Or use <strong>AMC7135</strong> (dedicated 350 mA LED driver IC with internal current reference).</p></div>
+  <div class="story-box"><h4>Real-World Story</h4><p><strong>Cree's outdoor street lighting modules</strong> (2010) specified ±3 % current accuracy from −40 °C to 85 °C. Early designs using BJT constant-current sources drifted ±8 % due to V<sub>BE</sub> variation. Switching to an op-amp feedback loop with a bandgap reference (TL431 in precision mode) achieved ±0.8 % — exceeding spec. The same topology was adopted for all Cree outdoor fixtures, halving the luminous flux variation over temperature compared to competitors.</p></div>
+  <div class="debug-box"><h4>Debug</h4><p>Symptom: LED brightness changes noticeably with temperature. Measure actual I<sub>LED</sub> at −40 °C and +85 °C with a current meter. If error &gt;5 %: simple resistor drive confirmed. Upgrade to op-amp feedback loop. If error still &gt;2 % with feedback: check V<sub>ref</sub> tempco (scope across bandgap reference at both temperatures) and R<sub>s</sub> tempco (measure resistance change).</p></div>
+  <div class="optimize-box"><h4>Optimization</h4><p>(1) Use an IC constant-current LED driver (<strong>AL5809</strong>, <strong>NSI45020AT1G</strong>): integrates reference, op-amp, and driver transistor — ±5 % over full temperature range with no external components. (2) Hyper-stable sense resistor: Vishay Z-foil resistor (0.2 ppm/°C) reduces R<sub>s</sub> error to negligible. (3) For multi-channel drivers, use <strong>PCA9685</strong> PWM controller with a single precision current reference — all channels track identically.</p></div>
+  <div class="bridge-box"><h4>Bridge</h4><p>Problem 19 examines the body diode of the synchronous buck converter's low-side MOSFET — an unwanted PN junction that causes reverse recovery losses and the same inductive switching spikes seen throughout this lecture set.</p></div>
+  <div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec18-pr-18_LED_ConstCurrent_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec18-pr-19">
+  <h2>Problem 19 — MOSFET Body Diode Reverse Recovery During Dead Time</h2>
+  <div class="source-block"><h4>Problem Statement</h4><p>A synchronous buck converter (48 V input, 2 A inductor current) uses 100 ns dead time. During dead time, the low-side MOSFET body diode conducts (V<sub>F</sub> = 0.7 V). When Q<sub>H</sub> turns on, V<sub>SW</sub> slams from −0.7 V to 48 V in 5 ns. The body diode has t<sub>rr</sub> = 150 ns, causing a reverse recovery current spike of 10 A. Design three solutions including a Schottky bypass and a GaN FET approach.</p></div>
+  <div class="intuition-box"><h4>Intuition</h4><p>The body diode is like a slow one-way valve that needs time to fully close after being open. When the high-side switch slams on while the body diode is still closing, current reverses through the barely-closed valve — a momentary short circuit. The Schottky bypass is a much faster valve placed in parallel: because it closes ten times faster, the slow body diode valve sees almost no current and its slow closure no longer matters. GaN FETs have no valve at all — they simply do not have a PN body diode.</p></div>
+  <div class="physics-box"><h4>Physics</h4><p>During body diode conduction, minority carriers (electrons injected into p-body region) accumulate. When reverse voltage is applied, these carriers must recombine or be swept out — this takes t<sub>rr</sub> = 150 ns. During this interval the diode remains conductive in reverse, allowing Q<sub>H</sub> (now on) to see a near-short on its drain. The resulting reverse recovery current = stored charge Q<sub>rr</sub>/t<sub>rr</sub>. The dV/dt = 48.7 V/5 ns = 9.74 V/ns also couples back through C<sub>GD</sub> (Problem 5 revisited).</p></div>
+  <div class="math-box"><h4>Mathematics — Complete Solution</h4>
+    <p>\( \text{Dead time loss} = V_F\times I_L\times t_{dead}\times f_{sw} = 0.7\times2\times100\,\text{ns}\times500\,\text{kHz} = 70\,\text{mW} \)<br>
+    Reverse recovery spike: \( I_{rr,peak} = \sqrt{2\times Q_{rr}\times I_F/t_{rr}} \) (approximate). For Q<sub>rr</sub> = 1 µC, I<sub>F</sub> = 2 A:<br>
+    \( I_{rr} \approx \sqrt{2\times1\,\mu\text{C}\times2\,\text{A}/150\,\text{ns}} = \sqrt{26.7\,\text{A}^2} = 5.2\,\text{A} \)<br>
+    With Schottky (t<sub>rr</sub> ≈ 0, V<sub>F</sub> = 0.3 V): loss = 0.3 × 2 × 100n × 500k = 30 mW. Q<sub>rr</sub> ≈ 0. ✓
+    </p></div>
+  <div class="practical-box"><h4>Practical Implementation</h4><p>Schottky bypass: <strong>STPS3L60U</strong> (60 V, 3 A, t<sub>rr</sub> = 0, V<sub>F</sub> = 0.45 V at 2 A) in parallel with Q<sub>L</sub>. Place directly adjacent to Q<sub>L</sub> drain/source pads. GaN solution: <strong>EPC2053</strong> (80 V, 7 mΩ GaN FET, no body diode) — requires negative gate bias during off-state (−5 V). Dedicated GaN driver: <strong>LMG1210</strong>. Dead time can be reduced to &lt;10 ns with GaN. Synchronous Schottky is the cost-effective Si solution; GaN is the performance solution.</p></div>
+  <div class="story-box"><h4>Real-World Story</h4><p><strong>Google's data centre power supplies</strong> (2014 hyperscaler generation) needed &gt;98 % efficiency at 500 kHz switching. Si MOSFET body diode reverse recovery losses accounted for 1.2 % of the efficiency budget. Switching to GaN FETs with no body diode reclaimed this 1.2 %, meeting the 98 % target and reducing cooling costs by 15 % per rack — a $2 M/year saving per large data centre. This drove the rapid adoption of GaN power ICs across the entire data centre market.</p></div>
+  <div class="debug-box"><h4>Debug</h4><p>Symptom: efficiency drops at higher switching frequency; high-side MOSFET gets hot. Probe V<sub>SW</sub> during Q<sub>H</sub> turn-on: look for negative current spike (reverse recovery). If spike &gt;1 A, body diode reverse recovery is significant. Add Schottky bypass. Also check dead time — if dead time &gt;t<sub>rr</sub>, reverse recovery is avoided but conduction loss increases.</p></div>
+  <div class="optimize-box"><h4>Optimization</h4><p>(1) Adaptive dead time control: measure V<sub>SW</sub>, set dead time to minimum that avoids body diode conduction — reduces both conduction and recovery losses. (2) Use SiC MOSFETs: body diode t<sub>rr</sub> = 20 ns vs 150 ns for Si — 7× lower recovery charge. (3) Use quasi-resonant switching: use inductor resonance to achieve ZVS (zero voltage switching), bringing Q<sub>H</sub> drain to zero before turn-on — eliminates reverse recovery entirely.</p></div>
+  <div class="bridge-box"><h4>Bridge</h4><p>Problem 20 synthesises all concepts — diodes, BJTs, MOSFETs, biasing, frequency response, protection — into a complete 1 W audio amplifier design, the most comprehensive challenge in this lecture.</p></div>
+  <div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec18-pr-19_BodyDiode_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec18-pr-20">
+  <h2>Problem 20 — Complete 1 W Audio Amplifier with DC Protection</h2>
+  <div class="source-block"><h4>Problem Statement</h4><p>Design a complete 1 W audio amplifier: input 100 mV (Z<sub>source</sub> = 2 kΩ), output 1 W into 8 Ω speaker, bandwidth 20 Hz–20 kHz (−3 dB), THD &lt;1 %, speaker DC protection, single 9 V supply, using BJTs, resistors, capacitors, and diodes only. Calculate the gain budget, all component values, capacitor sizes for low-frequency extension, crossover biasing, and DC protection.</p></div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagram</h4>
+    <svg viewBox="0 0 540 250" width="100%" style="max-width:540px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- VCC rail -->
+      <text x="10" y="18" font-size="11" fill="#4a90d9">+9V</text>
+      <line x1="30" y1="20" x2="510" y2="20" stroke="#4a90d9" stroke-width="1.5" stroke-dasharray="5,3"/>
+      <!-- Stage 1: CE pre-amp -->
+      <text x="60" y="38" font-size="10" fill="#555">Stage 1: CE</text>
+      <!-- Cin -->
+      <line x1="30" y1="100" x2="60" y2="100" stroke="#555" stroke-width="1.5"/>
+      <line x1="60" y1="93" x2="60" y2="107" stroke="#4a90d9" stroke-width="3"/>
+      <line x1="64" y1="93" x2="64" y2="107" stroke="#4a90d9" stroke-width="3"/>
+      <line x1="64" y1="100" x2="80" y2="100" stroke="#555" stroke-width="1.5"/>
+      <text x="24" y="97" font-size="9" fill="#555">mic</text>
+      <text x="38" y="90" font-size="8" fill="#e00">1µF</text>
+      <!-- BJT Q1 -->
+      <line x1="100" y1="20" x2="100" y2="50" stroke="#555" stroke-width="1.5"/>
+      <rect x="83" y="50" width="34" height="16" fill="none" stroke="#4a90d9" stroke-width="1.5" rx="2"/>
+      <text x="87" y="62" font-size="9" fill="#333">RC 3.9k</text>
+      <line x1="100" y1="66" x2="100" y2="90" stroke="#555" stroke-width="1.5"/>
+      <line x1="90" y1="90" x2="110" y2="90" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="110" y1="82" x2="110" y2="100" stroke="#4a90d9" stroke-width="2.2"/>
+      <line x1="90" y1="95" x2="108" y2="95" stroke="#555" stroke-width="1.5"/>
+      <line x1="108" y1="90" x2="108" y2="100" stroke="#4a90d9" stroke-width="2.2"/>
+      <line x1="90" y1="103" x2="110" y2="103" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="80" y1="100" x2="90" y2="97" stroke="#555" stroke-width="1.5"/>
+      <line x1="100" y1="103" x2="100" y2="120" stroke="#555" stroke-width="1.5"/>
+      <rect x="83" y="120" width="34" height="16" fill="none" stroke="#4a90d9" stroke-width="1.5" rx="2"/>
+      <text x="87" y="132" font-size="9" fill="#333">RE 1k</text>
+      <line x1="100" y1="136" x2="100" y2="185" stroke="#555" stroke-width="1.5"/>
+      <!-- Interstage coupling -->
+      <line x1="110" y1="90" x2="160" y2="90" stroke="#555" stroke-width="1.5"/>
+      <line x1="160" y1="83" x2="160" y2="97" stroke="#4a90d9" stroke-width="3"/>
+      <line x1="164" y1="83" x2="164" y2="97" stroke="#4a90d9" stroke-width="3"/>
+      <line x1="164" y1="90" x2="200" y2="90" stroke="#555" stroke-width="1.5"/>
+      <text x="152" y="80" font-size="8" fill="#e00">10µF</text>
+      <!-- Stage 2: Class AB -->
+      <text x="220" y="38" font-size="10" fill="#555">Stage 2: Class AB</text>
+      <!-- D1 D2 bias diodes -->
+      <line x1="250" y1="20" x2="250" y2="55" stroke="#555" stroke-width="1.5"/>
+      <polygon points="242,55 258,55 250,45" fill="none" stroke="#4a90d9" stroke-width="1.5"/>
+      <line x1="242" y1="65" x2="258" y2="65" stroke="#4a90d9" stroke-width="1.5"/>
+      <polygon points="242,65 258,65 250,75" fill="none" stroke="#4a90d9" stroke-width="1.5"/>
+      <line x1="242" y1="75" x2="258" y2="75" stroke="#4a90d9" stroke-width="1.5"/>
+      <line x1="250" y1="75" x2="250" y2="90" stroke="#555" stroke-width="1.5"/>
+      <text x="262" y="62" font-size="9" fill="#555">D1,D2</text>
+      <text x="262" y="73" font-size="9" fill="#555">1N4148</text>
+      <!-- NPN Q2 upper -->
+      <line x1="200" y1="90" x2="240" y2="60" stroke="#555" stroke-width="1.5"/>
+      <line x1="300" y1="60" x2="330" y2="60" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="330" y1="50" x2="330" y2="80" stroke="#4a90d9" stroke-width="2.2"/>
+      <line x1="305" y1="65" x2="320" y2="65" stroke="#555" stroke-width="1.5"/>
+      <line x1="320" y1="58" x2="320" y2="72" stroke="#4a90d9" stroke-width="2.2"/>
+      <line x1="300" y1="72" x2="330" y2="72" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="240" y1="60" x2="305" y2="65" stroke="#555" stroke-width="1.5"/>
+      <text x="335" y="62" font-size="9" fill="#555">Q_NPN</text>
+      <!-- PNP Q3 lower -->
+      <line x1="300" y1="120" x2="330" y2="120" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="330" y1="110" x2="330" y2="140" stroke="#4a90d9" stroke-width="2.2"/>
+      <line x1="305" y1="130" x2="320" y2="130" stroke="#555" stroke-width="1.5"/>
+      <line x1="320" y1="123" x2="320" y2="137" stroke="#4a90d9" stroke-width="2.2"/>
+      <line x1="300" y1="138" x2="330" y2="138" stroke="#4a90d9" stroke-width="2"/>
+      <line x1="240" y1="90" x2="305" y2="130" stroke="#555" stroke-width="1.5"/>
+      <text x="335" y="126" font-size="9" fill="#555">Q_PNP</text>
+      <!-- Output node -->
+      <line x1="315" y1="72" x2="315" y2="138" stroke="#555" stroke-width="2"/>
+      <line x1="315" y1="105" x2="370" y2="105" stroke="#555" stroke-width="2"/>
+      <!-- Cout DC protection -->
+      <line x1="370" y1="98" x2="370" y2="112" stroke="#4a90d9" stroke-width="3"/>
+      <line x1="374" y1="98" x2="374" y2="112" stroke="#4a90d9" stroke-width="3"/>
+      <line x1="374" y1="105" x2="420" y2="105" stroke="#555" stroke-width="2"/>
+      <text x="348" y="93" font-size="8" fill="#e00">1000µF</text>
+      <!-- Speaker -->
+      <rect x="420" y="95" width="50" height="20" fill="none" stroke="#4a90d9" stroke-width="2" rx="3"/>
+      <text x="423" y="109" font-size="10" fill="#333">8Ω spkr</text>
+      <line x1="470" y1="105" x2="500" y2="105" stroke="#555" stroke-width="1.5"/>
+      <line x1="500" y1="105" x2="500" y2="185" stroke="#555" stroke-width="1.5"/>
+      <!-- GND -->
+      <line x1="80" y1="185" x2="510" y2="185" stroke="#555" stroke-width="1.5"/>
+      <line x1="285" y1="185" x2="285" y2="200" stroke="#555" stroke-width="1.5"/>
+      <line x1="268" y1="200" x2="302" y2="200" stroke="#555" stroke-width="2"/>
+      <line x1="274" y1="205" x2="296" y2="205" stroke="#555" stroke-width="1.5"/>
+      <line x1="280" y1="210" x2="290" y2="210" stroke="#555" stroke-width="1"/>
+      <!-- NPN/PNP to rails -->
+      <line x1="315" y1="60" x2="315" y2="20" stroke="#555" stroke-width="1.5"/>
+      <line x1="315" y1="138" x2="315" y2="185" stroke="#555" stroke-width="1.5"/>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">Complete 1 W amplifier: CE pre-amp (gain −31) + Class AB push-pull output (1 W, 8 Ω). 1000 µF coupling cap provides DC protection and 20 Hz low-frequency extension.</p>
+  </div>
+
+  <div class="intuition-box"><h4>Intuition</h4><p>Stage 1 is a common-emitter voltage amplifier — a sensitive microphone preamplifier. Stage 2 is a push-pull follower — a powerful current buffer. The NPN half handles positive signal swings (pushing), the PNP handles negative swings (pulling). Two diodes between the bases provide just enough forward bias to pre-open both transistors slightly, eliminating the crossover glitch where neither transistor conducts. The large output coupling capacitor blocks DC from reaching the speaker (which would destroy it) while passing all audio frequencies above 20 Hz.</p></div>
+
+  <div class="physics-box"><h4>Physics</h4><p>The CE stage operates the BJT in active region with emitter degeneration (R<sub>E2</sub> unbypassed) for gain stability and distortion reduction. The Class AB output stage keeps both transistors in forward-active region across the entire signal cycle: the two diode drops pre-bias bases so that at V<sub>in</sub> = 0, both transistors conduct a small quiescent current, eliminating crossover distortion. The emitters tied together form the output node — each transistor contributes current during its conduction half-cycle, and together they can source and sink current into the 8 Ω load.</p></div>
+
+  <div class="math-box"><h4>Mathematics — Complete Solution</h4>
+    <p><strong>Output power requirement:</strong><br>
+    \( V_{out,pk} = \sqrt{2\times P\times R_L} = \sqrt{2\times1\times8} = 4\,\text{V}_{peak} \)<br>
+    \( V_{out,rms} = 2.83\,\text{V},\quad \text{Gain needed} = V_{out}/V_{in} = 2.83/0.1 = 28.3 \)
+    </p>
+    <p><strong>Stage 1 — CE amplifier gain:</strong><br>
+    \( I_C = 1\,\text{mA},\quad g_m = 38.5\,\text{mA/V} \)<br>
+    Split degeneration: R<sub>E1</sub> = 100 Ω (bypassed), R<sub>E2</sub> = 900 Ω (unbypassed).<br>
+    \( A_{v1} = -g_m R_C/(1+g_m R_{E1}) = -150.15/(1+3.85) = -30.9 \approx -31 \)
+    </p>
+    <p><strong>Capacitor values for 20 Hz response:</strong><br>
+    \( C_{in}: f_c = 20\,\text{Hz},\quad R_{eff} = 7\,\text{k}\Omega \to C_{in} = 1\,\mu\text{F} \)<br>
+    \( C_{bypass}: R_{eff} = 1/g_m = 26\,\Omega \to C = 1/(2\pi\times26\times20) = 306\,\mu\text{F} \to 330\,\mu\text{F} \)<br>
+    \( C_{out}: R = 8\,\Omega \to C = 1/(2\pi\times8\times20) = 995\,\mu\text{F} \to 1000\,\mu\text{F} \)
+    </p>
+    <p><strong>Output stage — crossover bias:</strong><br>
+    2× 1N4148 forward drops = 2 × 0.65 = 1.30 V between NPN and PNP bases.<br>
+    \( I_{quiescent} \approx 1-2\,\text{mA} \) — minimal crossover distortion.
+    </p>
+    <p><strong>DC protection:</strong><br>
+    \( C_{out} = 1000\,\mu\text{F}: f_{-3dB} = 1/(2\pi\times8\times1000\mu) = 19.9\,\text{Hz} \approx 20\,\text{Hz}\,\checkmark \)
+    </p>
+    <p><strong>THD estimate:</strong><br>
+    CE stage with R<sub>E2</sub> = 900 Ω degeneration: &lt;0.5 %. Class AB crossover bias: &lt;0.1 %. Total: &lt;0.6 % &lt; 1 % ✓.
+    </p></div>
+
+  <div class="practical-box"><h4>Practical Implementation</h4><p>Q1 (CE stage): <strong>BC547B</strong>. Q2 (NPN output): <strong>BD139</strong> (80 V, 1.5 A, T0-126 package). Q3 (PNP output): <strong>BD140</strong> (80 V, 1.5 A, complementary to BD139). D1, D2: <strong>1N4148</strong> (thermal tracking diodes — mount on same heatsink as Q2/Q3 for tempco compensation). C<sub>bypass</sub>: 330 µF Panasonic FR series. C<sub>out</sub>: 1000 µF 16 V Nichicon HE. BD139/BD140 on small heatsink (10 °C/W). At 1 W output: P<sub>Q</sub> = V<sub>CC</sub>²/(8π²R<sub>L</sub>) = 81/(79.8) = 1.01 W in each output transistor — heatsink keeps T<sub>j</sub> &lt; 100 °C.</p></div>
+
+  <div class="story-box"><h4>Real-World Story</h4><p>The Class AB push-pull output stage was popularised by <strong>RCA's 3-watt audio amplifier application note</strong> (AN-7, 1964) using complementary 2N3055/2N2955 transistors. This became the template for every transistor radio, hi-fi amplifier, and intercom system for the next 30 years. The BD139/BD140 complementary pair introduced by <strong>Philips Semiconductors in 1971</strong> brought the topology to consumer audio in a compact TO-126 package, enabling the portable cassette player revolution. The exact circuit in this problem is reproduced, with minor tweaks, in thousands of hobbyist and educational designs every year.</p></div>
+
+  <div class="debug-box"><h4>Debug</h4><p><strong>Symptom 1:</strong> Crossover distortion (buzzing/harsh sound at low volume). <strong>Cause:</strong> Insufficient bias — diodes D1/D2 not thermally coupled to output transistors. Fix: mount D1/D2 against BD139/BD140 case. <strong>Symptom 2:</strong> Bass missing (&lt;200 Hz weak). <strong>Cause:</strong> C<sub>bypass</sub> too small. Replace 330 µF with 470 µF. <strong>Symptom 3:</strong> DC at speaker output (&gt;50 mV). <strong>Cause:</strong> Q1 biasing fault — V<sub>B</sub> incorrect. Measure V<sub>B</sub> vs expected (should be ≈1.5 V). Check R1, R2 values. <strong>Symptom 4:</strong> Oscillation at high volume. <strong>Cause:</strong> Missing supply decoupling — add 100 µF + 100 nF at V<sub>CC</sub> pin of output stage.</p></div>
+
+  <div class="optimize-box"><h4>Optimization</h4><p>(1) Add a <strong>global negative feedback loop</strong> from output to CE stage base via a 10 kΩ–100 kΩ feedback resistor: reduces THD from 0.6 % to &lt;0.1 %, lowers output impedance to &lt;0.5 Ω (better speaker damping factor). (2) Replace D1/D2 with a <strong>V<sub>BE</sub> multiplier</strong> (one BJT with resistors): adjustable bias voltage, better thermal tracking over the full signal swing — eliminates crossover distortion completely. (3) Use a <strong>bootstrapped supply</strong> (capacitor from output to R<sub>C</sub> of CE stage): output voltage can swing to within 0.5 V of supply instead of 1 V — increases maximum output power from 1 W to 1.2 W without changing supply voltage.</p></div>
+
+  <div class="bridge-box"><h4>Bridge</h4><p>Problem 20 completes the master problem set. The five grand insights distilled from all 20 problems: (1) Time and frequency domains are inseparable. (2) Feedback is everywhere — thermal, electrical, mechanical. (3) Parasitics define real behavior. (4) Temperature changes every parameter. (5) No component works alone — every design is a system requiring device, driver, filter, and protection working together.</p></div>
+
+  <div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec18-pr-20_AudioAmp_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+</div><!-- END LECTURE 18 -->

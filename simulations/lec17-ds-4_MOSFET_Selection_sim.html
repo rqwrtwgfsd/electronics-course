@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Sim: MOSFET FOM and Loss Analysis</title>
+<style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:Arial,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:12px;}canvas{display:block;border:1px solid #444;border-radius:6px;background:#0d0d1a;}.controls{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0;}.ctrl{display:flex;flex-direction:column;gap:3px;font-size:12px;}label{color:#aaa;}input[type=range]{width:140px;}.vals{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#ccc;margin:6px 0;}.val-item{background:#222;border-radius:4px;padding:4px 8px;}h3{font-size:13px;color:#90caf9;margin-bottom:6px;}@media(prefers-color-scheme:light){body{background:#f5f5f5;color:#111;}canvas{background:#fff;border-color:#ccc;}.val-item{background:#eee;color:#222;}label{color:#555;}h3{color:#005a9c;}}</style>
+</head>
+<body>
+<h3>Lecture 17 DS-4: MOSFET Total Loss vs Switching Frequency</h3>
+<p style="font-size:11px;color:#aaa;margin-bottom:8px;">Conduction loss = I^2 x Rdson. Switching loss ~ proportional to Qg x f. Optimum device: minimum FOM = Rdson x Qg.</p>
+<canvas id="cv"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>I_load (A)</label><input type="range" id="IL" min="0.5" max="30" value="10" step="0.5"><span id="ILV">10.0</span></div>
+  <div class="ctrl"><label>V_input (V)</label><input type="range" id="VIN" min="5" max="100" value="48" step="1"><span id="VINV">48</span></div>
+  <div class="ctrl"><label>Rdson (mOhm)</label><input type="range" id="Rds" min="1" max="500" value="50" step="1"><span id="RdsV">50</span></div>
+  <div class="ctrl"><label>Qg (nC)</label><input type="range" id="Qg" min="1" max="200" value="30" step="1"><span id="QgV">30</span></div>
+</div>
+<div class="vals">
+  <div class="val-item">P_cond: <strong id="pcond">-</strong></div>
+  <div class="val-item">P_sw at 200kHz: <strong id="psw200">-</strong></div>
+  <div class="val-item">FOM = Rdson x Qg: <strong id="fom">-</strong></div>
+  <div class="val-item">Optimum freq: <strong id="fopt">-</strong></div>
+</div>
+<script>
+var cv=document.getElementById("cv");
+var ctx=cv.getContext("2d");
+function resizeCanvas(){var w=cv.parentElement.getBoundingClientRect().width;cv.width=Math.min(w-24,700);cv.height=Math.round(cv.width*0.48);}
+function get(id){return parseFloat(document.getElementById(id).value);}
+function draw(){
+  var W=cv.width,H=cv.height;
+  var IL=get("IL"),VIN=get("VIN"),Rds=get("Rds")*1e-3,Qg=get("Qg")*1e-9;
+  document.getElementById("ILV").textContent=get("IL").toFixed(1);
+  document.getElementById("VINV").textContent=get("VIN");
+  document.getElementById("RdsV").textContent=get("Rds");
+  document.getElementById("QgV").textContent=get("Qg");
+  var D=0.25;
+  var I_rms=IL*Math.sqrt(D);
+  var Pcond=I_rms*I_rms*Rds;
+  var t_sw=Qg/1.0; // assume 1A gate drive current -> switch time = Qg/1A
+  var P_sw_200=0.5*VIN*IL*2*t_sw*200e3;
+  var FOM=Rds*Qg;
+  document.getElementById("pcond").textContent=Pcond.toFixed(2)+"W";
+  document.getElementById("psw200").textContent=P_sw_200.toFixed(2)+"W";
+  document.getElementById("fom").textContent=(FOM*1e12).toFixed(0)+"pOhm.C";
+  var f_opt=Math.sqrt(Pcond/(0.5*VIN*IL*2*t_sw));
+  document.getElementById("fopt").textContent=f_opt>=1e6?(f_opt/1e6).toFixed(2)+"MHz":f_opt>=1e3?(f_opt/1e3).toFixed(0)+"kHz":f_opt.toFixed(0)+"Hz";
+  ctx.clearRect(0,0,W,H);
+  var pad={l:60,r:20,t:28,b:40};
+  var pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  var f_min=1e3,f_max=10e6;
+  function fx(f){return pad.l+Math.log10(f/f_min)/Math.log10(f_max/f_min)*pw;}
+  var P_scale=Math.max(Pcond,P_sw_200)*3;
+  function py(P){return H-pad.b-Math.min(1,Math.max(0,P/P_scale))*ph;}
+  ctx.strokeStyle="#1e2a3a";ctx.lineWidth=0.5;
+  for(var k=0;k<=4;k++){
+    var P=P_scale*k/4;
+    ctx.beginPath();ctx.moveTo(pad.l,py(P));ctx.lineTo(W-pad.r,py(P));ctx.stroke();
+    ctx.fillStyle="#555";ctx.font="10px Arial";ctx.fillText(P.toFixed(1)+"W",2,py(P)+4);
+  }
+  [10e3,100e3,1e6,10e6].forEach(function(f){
+    ctx.beginPath();ctx.moveTo(fx(f),pad.t);ctx.lineTo(fx(f),H-pad.b);ctx.stroke();
+    ctx.fillStyle="#555";ctx.font="10px Arial";
+    ctx.fillText(f>=1e6?(f/1e6)+"M":(f/1e3)+"k",fx(f)-8,H-pad.b+14);
+  });
+  var N=300;
+  // Conduction loss (constant with f)
+  ctx.beginPath();ctx.strokeStyle="#55aaff";ctx.lineWidth=2;ctx.setLineDash([5,3]);
+  ctx.moveTo(pad.l,py(Pcond));ctx.lineTo(W-pad.r,py(Pcond));
+  ctx.stroke();ctx.setLineDash([]);
+  // Switching loss (linear with f)
+  ctx.beginPath();ctx.strokeStyle="#ff9955";ctx.lineWidth=2;
+  for(var i=0;i<=N;i++){
+    var f=f_min*Math.pow(f_max/f_min,i/N);
+    var Psw=0.5*VIN*IL*2*t_sw*f;
+    if(i===0)ctx.moveTo(fx(f),py(Psw));else ctx.lineTo(fx(f),py(Psw));
+  }
+  ctx.stroke();
+  // Total loss
+  ctx.beginPath();ctx.strokeStyle="#55ffaa";ctx.lineWidth=2.5;
+  for(var i=0;i<=N;i++){
+    var f2=f_min*Math.pow(f_max/f_min,i/N);
+    var Ptot=Pcond+0.5*VIN*IL*2*t_sw*f2;
+    if(i===0)ctx.moveTo(fx(f2),py(Ptot));else ctx.lineTo(fx(f2),py(Ptot));
+  }
+  ctx.stroke();
+  if(f_opt>=f_min&&f_opt<=f_max){
+    ctx.strokeStyle="#ffaa55";ctx.lineWidth=1;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(fx(f_opt),pad.t);ctx.lineTo(fx(f_opt),H-pad.b);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle="#ffaa55";ctx.font="9px Arial";ctx.fillText("f_opt",fx(f_opt)+2,pad.t+14);
+  }
+  ctx.strokeStyle="#666";ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,H-pad.b);ctx.lineTo(W-pad.r,H-pad.b);ctx.stroke();
+  ctx.fillStyle="#55aaff";ctx.font="11px Arial";ctx.fillText("Conduction (I^2 x Rdson)",pad.l+10,pad.t+16);
+  ctx.fillStyle="#ff9955";ctx.font="11px Arial";ctx.fillText("Switching (~Qg x f)",pad.l+10,pad.t+30);
+  ctx.fillStyle="#55ffaa";ctx.font="11px Arial";ctx.fillText("Total",pad.l+10,pad.t+44);
+  ctx.fillStyle="#aaa";ctx.font="10px Arial";ctx.fillText("Switching Frequency",W/2-40,H-5);
+  ctx.fillStyle="#90caf9";ctx.font="bold 11px Arial";
+  ctx.fillText("IL="+IL+"A  Rdson="+get("Rds")+"mO  Qg="+get("Qg")+"nC  FOM="+(FOM*1e12).toFixed(0)+"pO.C",pad.l+5,pad.t-8);
+}
+["IL","VIN","Rds","Qg"].forEach(function(id){document.getElementById(id).addEventListener("input",draw);});
+window.addEventListener("resize",function(){resizeCanvas();draw();});
+resizeCanvas();draw();
+</script></body></html>

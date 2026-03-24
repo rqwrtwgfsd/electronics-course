@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec18 Pr8 — Colpitts Oscillator</title>
+<style>
+  :root{--bg:#f8f8f8;--fg:#222;--accent:#4a90d9;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a2e;--fg:#e0e0e0;--accent:#7ab4f5;}}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:Arial,sans-serif;padding:10px;}
+  h3{margin:6px 0;color:var(--accent);}
+  canvas{border:1px solid #555;border-radius:4px;display:block;width:100%;}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;font-size:13px;}
+  input[type=range]{width:130px;accent-color:var(--accent);}
+  .vals{background:#0002;border-radius:4px;padding:8px;font-size:13px;margin:6px 0;}
+  .vals span{color:var(--accent);font-weight:bold;}
+</style>
+</head>
+<body>
+<h3>Problem 8 — Colpitts Oscillator: Frequency &amp; Loop Gain</h3>
+<div class="controls">
+  <label>L (µH): <input type="range" id="Lval" min="10" max="500" value="150" step="5"> <b id="LvalV">150</b></label>
+  <label>C1 (pF): <input type="range" id="C1" min="50" max="1000" value="200" step="10"> <b id="C1V">200</b></label>
+  <label>C2 (pF): <input type="range" id="C2" min="100" max="2000" value="820" step="10"> <b id="C2V">820</b></label>
+  <label>I_C (mA): <input type="range" id="IC" min="0.5" max="10" value="2" step="0.1"> <b id="ICV">2.0</b></label>
+</div>
+<canvas id="cv"></canvas>
+<div class="vals" id="info"></div>
+<script>
+const cv=document.getElementById('cv');const ctx=cv.getContext('2d');
+function resizeCanvas(){const w=cv.parentElement.getBoundingClientRect().width||480;cv.width=Math.round(w);cv.height=Math.round(w*0.55);}
+function draw(){
+  resizeCanvas();
+  const W=cv.width,H=cv.height;
+  const L=+document.getElementById('Lval').value*1e-6;
+  const C1=+document.getElementById('C1').value*1e-12;
+  const C2=+document.getElementById('C2').value*1e-12;
+  const IC=+document.getElementById('IC').value*1e-3;
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  ctx.fillStyle=isDark?'#1a1a2e':'#f8f8f8';ctx.fillRect(0,0,W,H);
+  const RC=2.2e3,beta=200;
+  const Cs=C1*C2/(C1+C2);
+  const f0=1/(2*Math.PI*Math.sqrt(L*Cs));
+  const gm=IC/0.026;
+  const rpi=beta/gm;
+  const Av=gm*(RC*rpi/(RC+rpi));
+  const fb=C1/C2;
+  const loop_gain=Av*fb;
+  // Simulate oscillation waveform
+  const padL=50,padR=20,padT=35,padB=50;
+  const gW=W-padL-padR,gH=H-padT-padB;
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,padT);ctx.lineTo(padL,padT+gH);ctx.lineTo(padL+gW,padT+gH);ctx.stroke();
+  // Show oscillation waveform (simulated)
+  const T=1/f0;
+  const tmax=5*T;
+  const amp=loop_gain>1?Math.min(3,Math.log(loop_gain)*1.5):0.5;
+  function xp(t){return padL+(t/tmax)*gW;}
+  const Vmid=padT+gH/2;
+  function yp(v){return Vmid-v*(gH/2)/4;}
+  // Time axis zero
+  ctx.strokeStyle='#3334';ctx.lineWidth=0.5;
+  ctx.beginPath();ctx.moveTo(padL,Vmid);ctx.lineTo(padL+gW,Vmid);ctx.stroke();
+  // Oscillation waveform
+  ctx.strokeStyle='#4a90d9';ctx.lineWidth=2.5;ctx.beginPath();let first=true;
+  for(let t=0;t<=tmax;t+=tmax/1000){
+    const v=amp*Math.sin(2*Math.PI*f0*t);
+    if(first){ctx.moveTo(xp(t),yp(v));first=false;}else ctx.lineTo(xp(t),yp(v));
+  }ctx.stroke();
+  // Time labels
+  const fg=isDark?'#aaa':'#555';ctx.fillStyle=fg;ctx.font='10px Arial';
+  for(let i=0;i<=5;i++)ctx.fillText((i*T*1e6).toFixed(2)+'µs',xp(i*T)-10,padT+gH+13);
+  for(let v=-3;v<=3;v+=1)ctx.fillText(v+'V',padL-25,yp(v)+4);
+  ctx.fillStyle=isDark?'#ccc':'#333';ctx.font='11px Arial';
+  ctx.fillText('Time',padL+gW/2-15,H-5);
+  ctx.save();ctx.translate(12,padT+gH/2);ctx.rotate(-Math.PI/2);ctx.fillText('V_out',0,0);ctx.restore();
+  // Frequency annotation
+  ctx.strokeStyle='#ff9800';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(xp(T),padT);ctx.lineTo(xp(T),padT+gH);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#ff9800';ctx.font='10px Arial';ctx.fillText('T=1/f₀',xp(T)+3,padT+12);
+  ctx.fillStyle=isDark?'#e0e0e0':'#222';ctx.font='bold 11px Arial';ctx.fillText('Colpitts Oscillator — Simulated Waveform',padL+2,padT-8);
+  document.getElementById('info').innerHTML=
+    `C_s=<span>${(Cs*1e12).toFixed(1)}pF</span> | f₀=<span>${(f0/1e6).toFixed(3)} MHz</span> | g_m=<span>${(gm*1000).toFixed(1)}mA/V</span><br>`+
+    `A_v=<span>${Av.toFixed(1)}</span> | β_feedback=C1/C2=<span>${fb.toFixed(3)}</span> | Loop gain=<span>${loop_gain.toFixed(1)}</span> `+
+    (loop_gain>1?'<span style="color:#43a047">✓ Oscillates</span>':'<span style="color:#e05">✗ No oscillation</span>');
+}
+['Lval','C1','C2','IC'].forEach(id=>{
+  const el=document.getElementById(id);const vl=document.getElementById(id+'V');
+  el.addEventListener('input',()=>{vl.textContent=id==='IC'?parseFloat(el.value).toFixed(1):el.value;draw();});
+});
+window.addEventListener('resize',draw);resizeCanvas();draw();
+</script>
+</body></html>

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Miller Capacitance — MOSFET Gate</title>
+<style>:root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}@media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}.module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}h1{font-size:18px;margin:4px 0}.layout{display:grid;grid-template-columns:1fr 260px;gap:16px}canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}.controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}.ctrl-group{margin-bottom:12px}.ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}.ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}.result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}@media(max-width:600px){.layout{grid-template-columns:1fr}}</style>
+</head>
+<body>
+<header><div class="module-id">Lecture 12 | Scenario 30</div><h1>Miller Effect: C_GD dV/dt Turn-on &amp; Gate-Source Bleeder</h1></header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group"><div class="ctrl-label">C_GD Miller (pF) <span class="ctrl-value" id="lbl-cgd">100 pF</span></div><input type="range" id="sl-cgd" min="10" max="500" value="100" step="10"></div>
+    <div class="ctrl-group"><div class="ctrl-label">dV/dt (V/ns) <span class="ctrl-value" id="lbl-dvdt">10 V/ns</span></div><input type="range" id="sl-dvdt" min="1" max="50" value="10" step="1"></div>
+    <div class="ctrl-group"><div class="ctrl-label">Gate-Source R (kΩ) <span class="ctrl-value" id="lbl-rgs">10 kΩ</span></div><input type="range" id="sl-rgs" min="0.5" max="100" value="10" step="0.5"></div>
+    <div class="result-box" id="result">Adjust gate-source R to prevent turn-on</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slCgd=document.getElementById('sl-cgd'),slDvdt=document.getElementById('sl-dvdt'),slRgs=document.getElementById('sl-rgs');
+const lblCgd=document.getElementById('lbl-cgd'),lblDvdt=document.getElementById('lbl-dvdt'),lblRgs=document.getElementById('lbl-rgs');
+const result=document.getElementById('result');
+function draw(){
+  const W=cv.width,H=cv.height;
+  const Cgd=parseFloat(slCgd.value)*1e-12;const dvdt=parseFloat(slDvdt.value)*1e9;const Rgs=parseFloat(slRgs.value)*1e3;
+  lblCgd.textContent=slCgd.value+' pF';lblDvdt.textContent=slDvdt.value+' V/ns';lblRgs.textContent=parseFloat(slRgs.value).toFixed(1)+' kΩ';
+  ctx.clearRect(0,0,W,H);
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  // Miller current: I_miller = C_GD * dV/dt
+  const I_miller=Cgd*dvdt; // Amperes!
+  // Voltage on gate from Miller current through Rgs
+  const Vgs_miller=I_miller*Rgs;
+  const Vth=3.0; // typical gate threshold
+  const tTotal=50e-9; // 50ns window
+  const VBus=600;const VBus_fall=500; // bus voltage swing
+  const vMin=-2,vMax=Vth*2;
+  function yPx(v){return pad+plotH*(1-(v-vMin)/(vMax-vMin))}
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  [0,Vth,Vth*0.5,vMax].forEach(v=>{if(v<=vMax&&v>=vMin){ctx.beginPath();ctx.moveTo(pad,yPx(v));ctx.lineTo(W-pad,yPx(v));ctx.stroke()}});
+  ctx.strokeStyle='#888';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  // Threshold line
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#e53935';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(pad,yPx(Vth));ctx.lineTo(W-pad,yPx(Vth));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#e53935';ctx.font='10px system-ui';ctx.textAlign='left';ctx.fillText('V_th = '+Vth+'V',pad+4,yPx(Vth)-4);
+  // dV/dt event at t=10ns
+  const t_event=10e-9,t_dur=VBus_fall/dvdt; // time for bus to swing VBus_fall
+  // Vgs without Rgs (high impedance = max Miller effect)
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    let v=0;
+    if(t>=t_event&&t<t_event+t_dur){v=Vgs_miller*(1-Math.exp(-(t-t_event)/1e-9));}
+    else if(t>=t_event+t_dur){v=Vgs_miller*Math.exp(-(t-t_event-t_dur)/5e-9);}
+    v=Math.max(vMin,Math.min(vMax,v));
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  // Vgs with Rgs (bleeder reduces Miller voltage)
+  const Vgs_rgs=Vgs_miller*Math.min(1,Rgs/(Rgs+10e3)); // Rgs divides with gate driver impedance ~10kΩ
+  // actually: V_gs = I_miller * (Rgs || Rdriver)
+  const Rdriver=1e3;const Vgs_final=I_miller*(Rgs*Rdriver/(Rgs+Rdriver));
+  ctx.strokeStyle='#2e7d32';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    let v=0;
+    if(t>=t_event&&t<t_event+t_dur){v=Vgs_final*(1-Math.exp(-(t-t_event)/2e-9));}
+    else if(t>=t_event+t_dur){v=Vgs_final*Math.exp(-(t-t_event-t_dur)/((Rgs*Rdriver/(Rgs+Rdriver))*Cgd));}
+    v=Math.max(vMin,Math.min(vMax,v));
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  ctx.fillStyle='#888';ctx.textAlign='right';ctx.font='10px system-ui';
+  [0,Vth*0.5,Vth,Vth*1.5].filter(v=>v<=vMax&&v>=vMin).forEach(v=>ctx.fillText(v.toFixed(1)+'V',pad-4,yPx(v)+3));
+  ctx.textAlign='center';[0,10,20,30,40,50].forEach(ns=>ctx.fillText(ns+'ns',pad+(ns/50)*plotW,H-pad+14));
+  ctx.textAlign='left';ctx.font='11px system-ui';
+  ctx.fillStyle='#e53935';ctx.fillText('No R_gs: V_gs spikes to '+Vgs_miller.toFixed(1)+'V',pad+8,pad+16);
+  ctx.fillStyle='#2e7d32';ctx.fillText('With R_gs='+parseFloat(slRgs.value)+'kΩ: '+Vgs_final.toFixed(1)+'V',pad+8,pad+30);
+  const triggered_no=Vgs_miller>=Vth;const triggered_yes=Vgs_final>=Vth;
+  result.innerHTML='<b>Miller current: C_GD × dV/dt</b><br>= '+slCgd.value+'pF × '+slDvdt.value+'V/ns = <b>'+( I_miller).toFixed(1)+'A</b><br>V_GS no R_gs: <b>'+Vgs_miller.toFixed(1)+'V</b> '+(triggered_no?'⚠️ TRIGGERS at Vth='+Vth+'V!':'✅')+'<br>V_GS with R_gs: <b>'+Vgs_final.toFixed(1)+'V</b> '+(triggered_yes?'⚠️ Still triggers!':'✅ Safe')+'<br><b>Rule: R_GS bleeder must keep V_GS < V_th during dV/dt events</b>';
+}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slCgd,slDvdt,slRgs].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});resizeCanvas();draw();
+</script>
+</body>
+</html>

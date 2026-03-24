@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec29 Pr30 — ECG Signal Chain Simulation</title>
+<style>
+  body{margin:0;padding:10px;font-family:sans-serif;background:#1a1a2e;color:#e0e0e0;}
+  canvas{display:block;border:1px solid #444;border-radius:6px;background:#0f0f1e;}
+  .ctrl{margin:6px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  label{min-width:200px;font-size:0.85em;}
+  input[type=range]{flex:1;min-width:120px;}
+  .val{min-width:80px;font-size:0.85em;color:#7ec8e3;}
+  .result-box{background:#162032;border:1px solid #2a4a6a;border-radius:6px;padding:10px;margin-top:8px;font-size:0.85em;line-height:1.6;}
+  h3{color:#7ec8e3;margin:4px 0 10px;}
+</style>
+</head>
+<body>
+<h3>Problem 30 — ECG Frontend: Signal Chain Frequency Response</h3>
+<canvas id="cv"></canvas>
+<div class="ctrl">
+  <label>INA gain:</label>
+  <input type="range" id="gain" min="100" max="2000" value="1000" step="50">
+  <span class="val" id="gain_v">1000×</span>
+</div>
+<div class="ctrl">
+  <label>HPF cutoff (Hz):</label>
+  <input type="range" id="hpf" min="0.01" max="2" value="0.05" step="0.01">
+  <span class="val" id="hpf_v">0.05 Hz</span>
+</div>
+<div class="ctrl">
+  <label>LPF cutoff (Hz):</label>
+  <input type="range" id="lpf" min="50" max="500" value="150" step="10">
+  <span class="val" id="lpf_v">150 Hz</span>
+</div>
+<div class="result-box" id="result">Results</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+function resizeCanvas(){
+  const w=cv.parentElement.getBoundingClientRect().width-20;
+  cv.width=Math.max(300,w); cv.height=Math.round(cv.width*0.45);
+}
+function getVals(){
+  return {
+    gain:parseFloat(document.getElementById('gain').value),
+    hpf:parseFloat(document.getElementById('hpf').value),
+    lpf:parseFloat(document.getElementById('lpf').value)
+  };
+}
+function updateLabels(){
+  document.getElementById('gain_v').textContent=parseFloat(document.getElementById('gain').value).toFixed(0)+'×';
+  document.getElementById('hpf_v').textContent=parseFloat(document.getElementById('hpf').value).toFixed(2)+' Hz';
+  document.getElementById('lpf_v').textContent=parseFloat(document.getElementById('lpf').value).toFixed(0)+' Hz';
+}
+function draw(){
+  const W=cv.width, H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  const {gain,hpf,lpf}=getVals();
+
+  const mx=60,my=15,bx=W-15,by=H-30;
+  const pw=bx-mx,ph=by-my;
+  const fMin=0.01, fMax=2000;
+  const fRange=Math.log10(fMax/fMin);
+  const gain_dB=20*Math.log10(gain);
+  const gainMin_dB=gain_dB-60, gainMax_dB=gain_dB+10;
+
+  ctx.strokeStyle='#444'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(mx,my); ctx.lineTo(mx,by); ctx.lineTo(bx,by); ctx.stroke();
+
+  // Freq grid
+  for(let exp=-2;exp<=4;exp++){
+    for(let m=1;m<=9;m+=3){
+      const f=m*Math.pow(10,exp);
+      if(f<fMin||f>fMax) continue;
+      const x=mx+(Math.log10(f/fMin)/fRange)*pw;
+      ctx.strokeStyle=m===1?'#2a2a45':'#1a1a35'; ctx.lineWidth=0.5;
+      ctx.beginPath(); ctx.moveTo(x,my); ctx.lineTo(x,by); ctx.stroke();
+    }
+    const f=Math.pow(10,exp);
+    if(f<fMin||f>fMax) continue;
+    const x=mx+(Math.log10(f/fMin)/fRange)*pw;
+    ctx.fillStyle='#666'; ctx.font='9px sans-serif';
+    const lbl=exp>=3?f/1e3+'k':exp>=2?f.toFixed(0):exp>=1?f.toFixed(0):exp>=0?f.toFixed(0):f.toFixed(2);
+    ctx.fillText(lbl+'Hz', x-12, by+14);
+  }
+  for(let g=gainMin_dB;g<=gainMax_dB;g+=20){
+    const y=by-(g-gainMin_dB)/(gainMax_dB-gainMin_dB)*ph;
+    if(y<my||y>by) continue;
+    ctx.strokeStyle='#252540'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(mx,y); ctx.lineTo(bx,y); ctx.stroke();
+    ctx.fillStyle='#666'; ctx.font='9px sans-serif';
+    ctx.fillText(g+'dB', mx-42, y+4);
+  }
+
+  // ECG band highlight
+  const xh1=mx+(Math.log10(hpf/fMin)/fRange)*pw;
+  const xh2=mx+(Math.log10(lpf/fMin)/fRange)*pw;
+  ctx.fillStyle='rgba(100,200,100,0.06)';
+  ctx.fillRect(Math.max(mx,xh1), my, Math.min(bx,xh2)-Math.max(mx,xh1), ph);
+
+  // Transfer function: HPF × INA gain × LPF (2nd order each)
+  function H(f){
+    const w=2*Math.PI*f;
+    const wh=2*Math.PI*hpf, wl=2*Math.PI*lpf;
+    // 2nd order HPF
+    const hpf_mag=(w**2)/(Math.sqrt((wh**2-w**2)**2+(w*wh/0.7071)**2)||1e-99);
+    // INA
+    const ina_gain=gain;
+    // 4th order Butterworth LPF (two 2nd order stages)
+    const q1=0.5412, q2=1.3066;
+    function lpStage(wc,Q,w){
+      const n=wc**2;
+      const d=Math.sqrt((wc**2-w**2)**2+(w*wc/Q)**2);
+      return n/d;
+    }
+    const lpf_mag=lpStage(wl,q1,w)*lpStage(wl,q2,w);
+    return hpf_mag*ina_gain*lpf_mag;
+  }
+
+  ctx.strokeStyle='#4fc3f7'; ctx.lineWidth=2;
+  ctx.beginPath(); let first=true;
+  for(let i=0;i<=600;i++){
+    const f=fMin*Math.pow(fMax/fMin,i/600);
+    const mag=H(f);
+    if(mag<=0) continue;
+    const mag_dB=20*Math.log10(mag);
+    const x=mx+(Math.log10(f/fMin)/fRange)*pw;
+    const y=by-(mag_dB-gainMin_dB)/(gainMax_dB-gainMin_dB)*ph;
+    if(first){ctx.moveTo(x,Math.max(my,Math.min(by,y)));first=false;}
+    else ctx.lineTo(x,Math.max(my,Math.min(by,y)));
+  }
+  ctx.stroke();
+
+  // 50Hz marker
+  const f50=50;
+  if(f50>fMin&&f50<fMax){
+    const x50=mx+(Math.log10(f50/fMin)/fRange)*pw;
+    ctx.strokeStyle='#ff7043'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(x50,my); ctx.lineTo(x50,by); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#ff7043'; ctx.font='9px sans-serif';
+    ctx.fillText('50Hz mains', x50+2, my+12);
+    const h50=H(50);
+    const m50=h50>0?20*Math.log10(h50):gainMin_dB;
+    ctx.fillText(m50.toFixed(0)+'dB', x50+2, my+23);
+  }
+
+  ctx.fillStyle='#7ec8e3'; ctx.font='11px sans-serif';
+  ctx.fillText('|H(f)| dB', mx+5, my+10);
+  ctx.fillText('Frequency →', bx-70, by+26);
+  ctx.fillStyle='rgba(100,200,100,0.6)'; ctx.font='9px sans-serif';
+  ctx.fillText('ECG band', mx+(xh2-xh1)/2+mx-50, my+ph/2);
+
+  // Signal analysis
+  const H_ecg=H(10), H_50=H(50), H_150=H(150);
+  const noise_density=50e-9; // INA333 noise 50nV/rtHz
+  const noise_rms=noise_density*Math.sqrt(lpf-hpf)*1e9; // nV_rms RTI
+
+  document.getElementById('result').innerHTML=
+    `<b>ECG Signal Chain:</b><br>
+    Gain = ${gain}× = ${(20*Math.log10(gain)).toFixed(0)} dB<br>
+    HPF fc = ${hpf.toFixed(2)} Hz (removes baseline wander) | LPF fc = ${lpf.toFixed(0)} Hz (anti-aliasing)<br>
+    Gain at 10Hz (ECG): ${H_ecg>1?20*Math.log10(H_ecg).toFixed(0)+'dB':'below range'} | at 50Hz (mains): ${H_50>1?20*Math.log10(H_50).toFixed(0)+'dB':'below range'}<br>
+    RTI noise estimate: ${noise_rms.toFixed(0)} nV_rms ${noise_rms<1000?'✓ < 1µV_rms spec':'⚠ exceeds 1µV_rms'}<br>
+    Smallest ECG = 50µV → output = ${(50e-6*gain*1000).toFixed(0)} mV`;
+}
+
+['gain','hpf','lpf'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{updateLabels();draw();}));
+resizeCanvas(); updateLabels(); draw();
+window.addEventListener('resize',()=>{resizeCanvas();draw();});
+</script>
+</body>
+</html>

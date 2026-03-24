@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 18 Pr 13 — MOSFET as VCR for AGC</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  h1 { font-size:18px; margin-bottom:12px; border-bottom:2px solid var(--accent); padding-bottom:8px; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; display:flex; justify-content:space-between; margin-bottom:4px; }
+  .val { color:var(--accent); font-family:monospace; font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .info { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.2); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.6; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<h1>Pr 13 — MOSFET in Linear Region: R_DS vs V_GS (Voltage-Controlled Resistor)</h1>
+<div class="layout">
+  <canvas id="cv" height="380"></canvas>
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>V_GS (V) <span class="val" id="v-vgs">2.5</span></label>
+      <input type="range" id="vgs" min="1.5" max="5" value="2.5" step="0.1">
+    </div>
+    <div class="ctrl-group">
+      <label>V_th (V) <span class="val" id="v-vth">1.5</span></label>
+      <input type="range" id="vth" min="0.5" max="3" value="1.5" step="0.1">
+    </div>
+    <div class="ctrl-group">
+      <label>µCox·W/L (mA/V²) <span class="val" id="v-k">2</span></label>
+      <input type="range" id="kval" min="0.5" max="20" value="2" step="0.5">
+    </div>
+    <div class="info" id="info">MOSFET in triode: R_DS = 1/(k(VGS-Vth)).</div>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function resizeCanvas() {
+  cv.width = cv.parentElement.getBoundingClientRect().width || 600;
+  cv.height = 380;
+}
+
+function draw() {
+  resizeCanvas();
+  const W = cv.width, H = cv.height;
+  const dark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const bg = dark ? '#1a1a1a' : '#fff';
+  const fg = dark ? '#e8e8e8' : '#1a1a1a';
+  const gridC = dark ? '#333' : '#eee';
+
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  const VGS = +document.getElementById('vgs').value;
+  const Vth = +document.getElementById('vth').value;
+  const K = +document.getElementById('kval').value * 1e-3; // A/V²
+
+  document.getElementById('v-vgs').textContent = VGS.toFixed(1) + ' V';
+  document.getElementById('v-vth').textContent = Vth.toFixed(1) + ' V';
+  document.getElementById('v-k').textContent = (K*1e3).toFixed(1) + ' mA/V²';
+
+  const pad = { l: 65, r: 20, t: 40, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  // R_DS vs VGS curve from Vth to 5V
+  const vgsMin = Math.max(Vth + 0.01, 0.5), vgsMax = 5;
+  const calcRds = v => (v > Vth) ? 1 / (K * (v - Vth)) : 1e6;
+
+  const Rds_at_vgs = calcRds(VGS);
+  const yMax_kOhm = Math.min(20, calcRds(vgsMin + 0.05) / 1000);
+
+  ctx.strokeStyle = gridC; ctx.lineWidth = 1;
+  for (let i = 0; i <= 5; i++) {
+    const y = pad.t + ph * i / 5;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText((yMax_kOhm * (5-i) / 5).toFixed(1) + 'kΩ', pad.l - 4, y + 4);
+  }
+  for (let v = 1; v <= 5; v++) {
+    const x = pad.l + pw * (v - 1) / 4;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(v + 'V', x, pad.t + ph + 18);
+  }
+
+  ctx.fillStyle = fg; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('V_GS (V)', pad.l + pw / 2, H - 6);
+  ctx.save(); ctx.translate(14, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('R_DS (kΩ)', 0, 0); ctx.restore();
+
+  // R_DS curve
+  ctx.beginPath(); ctx.strokeStyle = '#1565c0'; ctx.lineWidth = 2.5;
+  let first = true;
+  for (let i = 0; i <= 300; i++) {
+    const v = 1 + 4 * i / 300;
+    const Rds = calcRds(v) / 1000;
+    const x = pad.l + pw * (v - 1) / 4;
+    const y = pad.t + ph * (1 - Math.min(Rds, yMax_kOhm) / yMax_kOhm);
+    if (v <= Vth) { first = true; continue; }
+    if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Vth line
+  const xVth = pad.l + pw * (Vth - 1) / 4;
+  ctx.setLineDash([4,4]); ctx.strokeStyle = '#e53935'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(xVth, pad.t); ctx.lineTo(xVth, pad.t+ph); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#e53935'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('V_th', xVth, pad.t + 16);
+
+  // Current VGS marker
+  if (VGS >= 1 && VGS <= 5) {
+    const cx = pad.l + pw * (VGS - 1) / 4;
+    const cy = pad.t + ph * (1 - Math.min(Rds_at_vgs/1000, yMax_kOhm) / yMax_kOhm);
+    ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI*2);
+    ctx.fillStyle = '#43a047'; ctx.fill();
+  }
+
+  ctx.fillStyle = fg; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('R_DS = 1/(µCox·W/L·(VGS−Vth))', pad.l, pad.t - 10);
+
+  const overdrive = VGS - Vth;
+  document.getElementById('info').innerHTML =
+    `<b>Operating point:</b><br>` +
+    `V_GS = ${VGS.toFixed(1)} V<br>` +
+    `V_overdrive = ${overdrive.toFixed(2)} V<br>` +
+    `R_DS = ${(overdrive > 0 ? Rds_at_vgs/1000 : 1e6).toFixed(2)} kΩ<br>` +
+    `<b>AGC: control V_GS to set gain continuously</b><br>` +
+    `VCA gain = −R_load/R_DS varies with V_GS`;
+}
+
+['vgs','vth','kval'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+window.addEventListener('resize', draw);
+draw();
+</script>
+</body>
+</html>

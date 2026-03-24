@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 13 Pr 1 — MOSFET Reverse Recovery Failure</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  header { border-bottom:2px solid var(--accent); padding-bottom:10px; margin-bottom:16px; }
+  h1 { font-size:18px; margin:4px 0; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  .ctrl-label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; margin-bottom:4px; display:flex; justify-content:space-between; }
+  .ctrl-value { color:var(--accent); font-size:13px; font-weight:700; font-family:monospace; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .result-box { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.25); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.7; }
+  .warn { color:#cc4400; font-weight:700; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header><h1>Lec 13 Pr 1 — MOSFET Reverse Recovery Energy &amp; Lifetime</h1></header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Switching Freq <span class="ctrl-value" id="vFreq">1000 Hz</span></div>
+      <input type="range" id="freq" min="50" max="5000" step="50" value="1000">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Diode t_rr <span class="ctrl-value" id="vTrr">30 µs</span></div>
+      <input type="range" id="trr" min="10" max="100" step="5" value="30">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Load Current <span class="ctrl-value" id="vIl">1.2 A</span></div>
+      <input type="range" id="il" min="0.1" max="5" step="0.1" value="1.2">
+    </div>
+    <div class="result-box" id="result">Adjust sliders to see MOSFET stress</div>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const rFreq = document.getElementById('freq');
+const rTrr  = document.getElementById('trr');
+const rIl   = document.getElementById('il');
+
+function fmt(n,d=2){ return n.toFixed(d); }
+
+function draw(){
+  cv.width = cv.parentElement.getBoundingClientRect().width || 620;
+  cv.height = 380;
+  const W = cv.width, H = cv.height;
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#fff';
+  ctx.fillStyle = bg; ctx.fillRect(0,0,W,H);
+
+  const freq = +rFreq.value;   // Hz
+  const trr  = +rTrr.value * 1e-6; // s
+  const il   = +rIl.value;    // A
+  const Vdc  = 24;             // V
+
+  document.getElementById('vFreq').textContent = freq < 1000 ? freq+' Hz' : (freq/1000).toFixed(1)+' kHz';
+  document.getElementById('vTrr').textContent  = (+rTrr.value)+' µs';
+  document.getElementById('vIl').textContent   = fmt(il,1)+' A';
+
+  // Energy per cycle during reverse recovery
+  const E_cycle = 0.5 * Vdc * il * trr; // J
+  const P_extra  = E_cycle * freq;       // W
+
+  // Hours to failure model: each cycle contributes 1 unit of "damage"
+  // Failure at 21.6e6 cycles (6h @ 1kHz reference)
+  const failCycles = 21.6e6;
+  const hoursToFail = failCycles / (freq * 3600);
+
+  // Duty ratio of recovery (% of period occupied by trr)
+  const period = 1/freq;
+  const dutyRec = Math.min(trr/period * 100, 100);
+
+  // ---------- Draw: bar chart of key quantities ----------
+  const metrics = [
+    { label:'P_extra (W)',    val: P_extra,      max:20,   color:'#e53935' },
+    { label:'Duty_rec (%)',   val: dutyRec,       max:100,  color:'#fb8c00' },
+    { label:'E/cycle (mJ)',   val: E_cycle*1000,  max:5,    color:'#8e24aa' },
+    { label:'Time-to-fail (h)', val: Math.min(hoursToFail,200), max:200, color:'#1e88e5' },
+  ];
+
+  const pad = 54, barH = 38, gap = 18;
+  const totalH = metrics.length * (barH + gap);
+  const startY = (H - totalH) / 2 + 10;
+  const barMaxW = W - pad*2 - 110;
+
+  ctx.font = 'bold 12px system-ui';
+  ctx.fillStyle = '#888'; ctx.textAlign='left';
+  ctx.fillText('MOSFET Stress Metrics — Reverse Recovery', pad, startY - 14);
+
+  metrics.forEach((m,i) => {
+    const y = startY + i*(barH+gap);
+    const frac = Math.min(m.val / m.max, 1);
+    const bw   = frac * barMaxW;
+
+    // background track
+    ctx.fillStyle = 'rgba(128,128,128,0.12)';
+    ctx.fillRect(pad, y, barMaxW, barH);
+
+    // bar fill
+    ctx.fillStyle = m.color;
+    ctx.fillRect(pad, y, bw, barH);
+
+    // label
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#111';
+    ctx.font = '11px system-ui'; ctx.textAlign='left';
+    ctx.fillText(m.label, pad+4, y + barH/2 - 6);
+    ctx.font = 'bold 13px monospace'; ctx.textAlign='right';
+    const dispVal = m.label.includes('mJ') ? fmt(m.val,2) :
+                    m.label.includes('(h)') ? (m.val>=200?'>200':fmt(m.val,1)) :
+                    fmt(m.val,2);
+    ctx.fillText(dispVal, pad + barMaxW + 95, y + barH/2 + 5);
+  });
+
+  // Waveform sketch: V_DS spike during recovery
+  const wx = pad, wy = startY + metrics.length*(barH+gap) + 20;
+  const ww = W - 2*pad, wh = 80;
+  if(wy + wh < H - 10) {
+    ctx.strokeStyle = 'rgba(128,128,128,0.3)'; ctx.lineWidth=1;
+    ctx.strokeRect(wx, wy, ww, wh);
+    ctx.font='10px system-ui'; ctx.fillStyle='#888'; ctx.textAlign='left';
+    ctx.fillText('V_DS sketch (each period)', wx+4, wy+12);
+
+    // Draw simplified V_DS waveform
+    const periods = 4;
+    ctx.beginPath(); ctx.strokeStyle='#e53935'; ctx.lineWidth=2;
+    const T = ww/periods;
+    for(let p=0; p<periods; p++){
+      const x0 = wx + p*T;
+      const x1 = x0 + T*0.4;  // on time
+      const x2 = x0 + T*0.4 + Math.min(dutyRec/100*T, T*0.35); // recovery
+      const x3 = x0 + T;
+
+      ctx.moveTo(x0, wy + wh*0.85);  // low (on)
+      ctx.lineTo(x1, wy + wh*0.85);
+      ctx.lineTo(x1, wy + wh*0.1);   // turn off spike
+      ctx.lineTo(x2, wy + wh*0.1);   // spike duration = trr
+      ctx.lineTo(x2, wy + wh*0.85);  // settle
+      ctx.lineTo(x3, wy + wh*0.85);
+    }
+    ctx.stroke();
+    ctx.font='9px system-ui'; ctx.fillStyle='#e53935'; ctx.textAlign='left';
+    ctx.fillText('← spike during recovery', wx + ww*0.42, wy+22);
+  }
+
+  // Result text
+  const warn = P_extra > 2 || hoursToFail < 10;
+  document.getElementById('result').innerHTML =
+    `<b>Extra switching loss:</b> ${fmt(P_extra,2)} W<br>` +
+    `<b>Energy per cycle:</b> ${fmt(E_cycle*1000,3)} mJ<br>` +
+    `<b>Recovery duty ratio:</b> ${fmt(dutyRec,1)}%<br>` +
+    `<b>Est. time-to-failure:</b> ${hoursToFail>=200?'>200 h':fmt(hoursToFail,1)+' h'}<br>` +
+    (warn ? `<span class="warn">⚠ High stress — use Schottky!</span>` :
+            `<span style="color:green">✓ Acceptable stress level</span>`);
+}
+
+['freq','trr','il'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+window.addEventListener('resize', draw);
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 18 Pr 17 — CMOS Latchup: Inductive Spike on Input</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  h1 { font-size:18px; margin-bottom:12px; border-bottom:2px solid var(--accent); padding-bottom:8px; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; display:flex; justify-content:space-between; margin-bottom:4px; }
+  .val { color:var(--accent); font-family:monospace; font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .info { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.2); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.6; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<h1>Pr 17 — CMOS Latchup: V_spike = L × dI/dt on Input Trace</h1>
+<div class="layout">
+  <canvas id="cv" height="380"></canvas>
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>Trace L (nH) <span class="val" id="v-l">50</span></label>
+      <input type="range" id="lval" min="1" max="200" value="50" step="1">
+    </div>
+    <div class="ctrl-group">
+      <label>dI/dt (A/ns) <span class="val" id="v-di">0.5</span></label>
+      <input type="range" id="dival" min="0.01" max="5" value="0.5" step="0.01">
+    </div>
+    <div class="ctrl-group">
+      <label>Series R protection (Ω) <span class="val" id="v-rp">0</span></label>
+      <input type="range" id="rpval" min="0" max="500" value="0" step="10">
+    </div>
+    <div class="info" id="info">Spike = L × dI/dt. Below GND → latchup.</div>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function resizeCanvas() {
+  cv.width = cv.parentElement.getBoundingClientRect().width || 600;
+  cv.height = 380;
+}
+
+function draw() {
+  resizeCanvas();
+  const W = cv.width, H = cv.height;
+  const dark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const bg = dark ? '#1a1a1a' : '#fff';
+  const fg = dark ? '#e8e8e8' : '#1a1a1a';
+  const gridC = dark ? '#333' : '#eee';
+
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  const L_nH = +document.getElementById('lval').value;
+  const dI_ns = +document.getElementById('dival').value;
+  const Rp = +document.getElementById('rpval').value;
+
+  document.getElementById('v-l').textContent = L_nH + ' nH';
+  document.getElementById('v-di').textContent = dI_ns.toFixed(2) + ' A/ns';
+  document.getElementById('v-rp').textContent = Rp + ' Ω';
+
+  const L = L_nH * 1e-9;
+  const didt = dI_ns * 1e9; // A/s
+  const V_spike_open = L * didt; // V
+  // With protection R: current limited, spike partially absorbed
+  // Simplified: spike divided by clamp voltage effect
+  const V_spike_protected = Rp > 0 ? V_spike_open * 50 / (Rp + 50) : V_spike_open; // voltage divider with 50Ω source
+  const LATCHUP_THRESHOLD = 0.6; // V below GND
+
+  const pad = { l: 60, r: 20, t: 50, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  // Show time-domain spike waveform
+  const spike_ns = 2; // 2ns spike duration
+  const t_total_ns = 20;
+
+  const yMin = -Math.max(1, V_spike_open * 1.2);
+  const yMax = 5;
+
+  ctx.strokeStyle = gridC; ctx.lineWidth = 1;
+  const vals = [5, 2, 0, -0.6, -2, -5];
+  vals.forEach(v => {
+    if (v >= yMin && v <= yMax) {
+      const y = pad.t + ph * (1 - (v - yMin) / (yMax - yMin));
+      ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+pw, y); ctx.stroke();
+      ctx.fillStyle = fg; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+      ctx.fillText(v + 'V', pad.l-4, y+4);
+    }
+  });
+  for (let t = 0; t <= 20; t += 5) {
+    const x = pad.l + pw * t / t_total_ns;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t+ph); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(t + 'ns', x, pad.t+ph+18);
+  }
+
+  ctx.fillStyle = fg; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Time (ns)', pad.l + pw / 2, H - 6);
+  ctx.save(); ctx.translate(14, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Input Voltage (V)', 0, 0); ctx.restore();
+
+  // CMOS latchup threshold (−0.6V)
+  const latchY = pad.t + ph * (1 - (-LATCHUP_THRESHOLD - yMin) / (yMax - yMin));
+  ctx.setLineDash([5,4]); ctx.strokeStyle = '#e53935'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pad.l, latchY); ctx.lineTo(pad.l+pw, latchY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#e53935'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('LATCHUP threshold (−0.6V)', pad.l+4, latchY-3);
+
+  // Spike waveform (unprotected)
+  const drawSpike = (Vspike, color, label) => {
+    ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 2.5;
+    for (let i = 0; i <= 400; i++) {
+      const t = t_total_ns * i / 400;
+      let V = 0;
+      if (t > 5 && t < 5 + spike_ns) {
+        const x_phase = (t - 5) / spike_ns;
+        V = -Vspike * Math.sin(Math.PI * x_phase);
+      }
+      const x = pad.l + pw * i / 400;
+      const y = pad.t + ph * (1 - (Math.max(yMin, Math.min(yMax, V)) - yMin) / (yMax - yMin));
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.fillStyle = color; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+    ctx.fillText(label, pad.l+pw-4, pad.t + (color === '#e53935' ? 16 : 28));
+  };
+
+  drawSpike(V_spike_open, '#e53935', `No protection: V_spike=−${V_spike_open.toFixed(1)}V`);
+  if (Rp > 0) {
+    drawSpike(V_spike_protected, '#1565c0', `R=${Rp}Ω: V_spike=−${V_spike_protected.toFixed(1)}V`);
+  }
+
+  ctx.fillStyle = fg; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(`V_spike = L×dI/dt = ${L_nH}nH × ${dI_ns.toFixed(2)}A/ns = ${V_spike_open.toFixed(1)} V`, pad.l, pad.t - 20);
+
+  const latchTrigger = V_spike_open > LATCHUP_THRESHOLD;
+  const protectedOK = Rp > 0 && V_spike_protected < LATCHUP_THRESHOLD;
+  document.getElementById('info').innerHTML =
+    `<b>V_spike (inductive) = ${V_spike_open.toFixed(2)} V below GND</b><br>` +
+    `Latchup threshold: −0.6 V<br>` +
+    `${latchTrigger ? '⚠ LATCHUP TRIGGERED!' : '✓ Below latchup threshold'}<br>` +
+    (Rp > 0 ? `Protected spike: ${V_spike_protected.toFixed(2)} V → ${protectedOK ? '✓ Safe' : '⚠ Still risky'}<br>` : '') +
+    `<b>Fix: Series R + Schottky clamp to GND</b>`;
+}
+
+['lval','dival','rpval'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+window.addEventListener('resize', draw);
+draw();
+</script>
+</body>
+</html>

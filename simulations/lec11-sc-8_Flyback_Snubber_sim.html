@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scenario 8 — Flyback Diode and RC Snubber</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  header { border-bottom:2px solid var(--accent); padding-bottom:10px; margin-bottom:16px; }
+  .module-id { font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:1px; }
+  h1 { font-size:18px; margin:4px 0; }
+  .layout { display:grid; grid-template-columns:1fr 280px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; background:var(--surface); width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  .ctrl-label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px; display:flex; justify-content:space-between; }
+  .ctrl-value { color:var(--accent); font-size:13px; font-weight:700; font-family:monospace; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .result-box { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.25); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.5; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 11 | Scenario 8</div>
+  <h1>Inductive Load Spike — Flyback Diode &amp; RC Snubber</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Motor Inductance (mH) <span class="ctrl-value" id="p1-val">50</span></div>
+      <input type="range" id="p1" min="1" max="200" value="50">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Protection <span class="ctrl-value" id="p2-val">Both</span></div>
+      <input type="range" id="p2" min="0" max="2" step="1" value="0">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Motor Current (A) <span class="ctrl-value" id="p3-val">2.0</span></div>
+      <input type="range" id="p3" min="1" max="20" value="10">
+    </div>
+    <div class="result-box" id="result">Adjust to see drain voltage spike</div>
+  </div>
+</div>
+<script>
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+function isDark() { return window.matchMedia && window.matchMedia('(prefers-color-scheme:dark)').matches; }
+
+function draw() {
+  const L = +document.getElementById('p1').value * 1e-3;
+  const prot = +document.getElementById('p2').value; // 0=none,1=diode,2=diode+snubber
+  const I0 = +document.getElementById('p3').value / 5;
+  document.getElementById('p1-val').textContent = (L*1000).toFixed(0) + ' mH';
+  document.getElementById('p2-val').textContent = ['None','Diode only','Diode + Snubber'][prot];
+  document.getElementById('p3-val').textContent = I0.toFixed(1) + ' A';
+
+  const VCC=12, R_motor=10, R_snub=10, C_snub=100e-9;
+  const tau_motor=L/R_motor;
+  // Peak spike without protection: V = L*dI/dt; with t_off = 50ns
+  const t_off = 50e-9;
+  const V_spike_raw = L * I0 / t_off;
+  const V_diode_clamp = VCC + 0.7;
+  const V_snub = prot>=1 ? V_diode_clamp : V_spike_raw;
+
+  canvas.width = canvas.parentElement.getBoundingClientRect().width || 600;
+  canvas.height = 380;
+  const W = canvas.width, H = canvas.height;
+  const dark = isDark();
+  const bg = dark ? '#2a2a2a' : '#f5f5f5';
+  const fg = dark ? '#e8e8e8' : '#1a1a1a';
+  const ac = dark ? '#4499ff' : '#0066cc';
+  const gr = dark ? '#444' : '#ddd';
+  const red='#e53935', grn='#43a047', orange='#ff9800';
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=fg; ctx.font='bold 13px system-ui'; ctx.textAlign='center';
+  ctx.fillText('MOSFET Drain Voltage — Inductive Kickback Event', W/2, 22);
+
+  const mx=65, my=40, mw=W-85, mh=H-100;
+  const totalT=200; // µs
+  const Vscale=Math.max(80, V_spike_raw*1.2);
+  const toX=t=>mx+mw*t/totalT;
+  const toY=v=>my+mh*(1-v/Vscale);
+
+  ctx.strokeStyle=gr; ctx.lineWidth=1;
+  [0,0.25,0.5,0.75,1].forEach(f=>{
+    const v=f*Vscale, y=toY(v);
+    ctx.beginPath(); ctx.moveTo(mx,y); ctx.lineTo(mx+mw,y); ctx.stroke();
+    ctx.fillStyle=fg; ctx.font='10px system-ui'; ctx.textAlign='right';
+    ctx.fillText(v.toFixed(0)+'V',mx-3,y+4);
+  });
+  [0,50,100,150,200].forEach(t=>{
+    const x=toX(t);
+    ctx.beginPath(); ctx.moveTo(x,my); ctx.lineTo(x,my+mh); ctx.stroke();
+    ctx.fillStyle=fg; ctx.font='10px system-ui'; ctx.textAlign='center';
+    ctx.fillText(t+'µs',x,my+mh+14);
+  });
+
+  // VCC line
+  ctx.strokeStyle=grn; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(mx,toY(VCC)); ctx.lineTo(mx+mw,toY(VCC)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=grn; ctx.font='10px system-ui'; ctx.textAlign='left';
+  ctx.fillText('VCC='+VCC+'V',mx+4,toY(VCC)-3);
+
+  // MOSFET Vds_max
+  const Vds_max=60;
+  if(Vds_max<Vscale){
+    ctx.strokeStyle=red; ctx.lineWidth=1; ctx.setLineDash([6,4]);
+    ctx.beginPath(); ctx.moveTo(mx,toY(Vds_max)); ctx.lineTo(mx+mw,toY(Vds_max)); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=red; ctx.font='10px system-ui'; ctx.textAlign='left';
+    ctx.fillText('V_DS_max='+Vds_max+'V',mx+4,toY(Vds_max)-3);
+  }
+
+  // Draw Vds waveform
+  const colors_prot=[red,'#ff9800',grn];
+  for(let p=0;p<=2;p++){
+    ctx.strokeStyle=colors_prot[p]; ctx.lineWidth=p===prot?2.5:1;
+    ctx.globalAlpha=p===prot?1:0.3;
+    ctx.beginPath();
+    const Vclamp = p===0 ? 999 : (p===1 ? V_diode_clamp : V_diode_clamp);
+    const tau_snub = p>=2 ? R_snub*C_snub*1e6 : 0.001; // µs
+    for(let i=0;i<=500;i++){
+      const t=i/500*totalT; // µs
+      let v;
+      if(t<50){ v=VCC; } // motor running
+      else {
+        const dt=t-50;
+        if(p===0){
+          // No protection: spike then decays
+          const spike=V_spike_raw*Math.exp(-dt/2);
+          v=Math.min(spike+VCC,200);
+        } else if(p===1){
+          // Diode: clamp to VCC+0.7, current recirculates with tau_motor
+          v=VCC+(V_diode_clamp-VCC)*Math.exp(-dt/(tau_motor*1e6));
+        } else {
+          // Diode + snubber: faster clamp
+          v=VCC+(V_diode_clamp-VCC)*Math.exp(-dt/(tau_motor*1e6*0.5));
+        }
+      }
+      const x=toX(t); const y=toY(Math.min(Vscale,Math.max(0,v)));
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    ctx.globalAlpha=1;
+  }
+
+  ctx.strokeStyle=fg; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(mx,my); ctx.lineTo(mx,my+mh); ctx.lineTo(mx+mw,my+mh); ctx.stroke();
+
+  // Legend
+  ['None','Diode','Diode+Snubber'].forEach((l,i)=>{
+    ctx.fillStyle=colors_prot[i]; ctx.fillRect(mx+i*130,my+mh+28,12,2);
+    ctx.fillStyle=fg; ctx.font='10px system-ui'; ctx.textAlign='left';
+    ctx.fillText(l,mx+i*130+16,my+mh+33);
+  });
+
+  const peak=prot===0?V_spike_raw:V_diode_clamp;
+  const fails=peak>Vds_max;
+  document.getElementById('result').innerHTML=
+    `<b>L = ${(L*1000).toFixed(0)}mH, I₀ = ${I0.toFixed(1)}A</b><br>`+
+    `Unprotected spike: ${V_spike_raw.toFixed(0)}V<br>`+
+    `With ${['no protection','flyback diode','diode + snubber'][prot]}: peak = ${peak.toFixed(0)}V<br>`+
+    (prot===0&&fails?'<span style="color:red">MOSFET DESTROYED ('+peak.toFixed(0)+'V > '+Vds_max+'V max)</span>':
+     prot>=1?'<span style="color:green">✓ MOSFET protected ('+peak.toFixed(0)+'V < '+Vds_max+'V max)</span>':'');
+}
+
+['p1','p2','p3'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>draw());
+draw();
+</script>
+</body>
+</html>

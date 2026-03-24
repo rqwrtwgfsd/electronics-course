@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Sim: Boundary Cases Device Comparison</title>
+<style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:Arial,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:12px;}canvas{display:block;border:1px solid #444;border-radius:6px;background:#0d0d1a;}.controls{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0;}.ctrl{display:flex;flex-direction:column;gap:3px;font-size:12px;}label{color:#aaa;}input[type=range]{width:140px;}.vals{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#ccc;margin:6px 0;}.val-item{background:#222;border-radius:4px;padding:4px 8px;}h3{font-size:13px;color:#90caf9;margin-bottom:6px;}@media(prefers-color-scheme:light){body{background:#f5f5f5;color:#111;}canvas{background:#fff;border-color:#ccc;}.val-item{background:#eee;color:#222;}label{color:#555;}h3{color:#005a9c;}}</style>
+</head>
+<body>
+<h3>Lecture 17 DS-5: Power Loss Comparison - BJT vs MOSFET vs IGBT</h3>
+<p style="font-size:11px;color:#aaa;margin-bottom:8px;">Compare device losses at varying load current. Shows crossover between BJT, MOSFET, and IGBT efficiency regions.</p>
+<canvas id="cv"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>Supply voltage (V)</label><input type="range" id="Vsup" min="3" max="600" value="12" step="1"><span id="VsupV">12</span></div>
+  <div class="ctrl"><label>MOSFET Rdson (mOhm)</label><input type="range" id="Rds" min="1" max="2000" value="18" step="1"><span id="RdsV">18</span></div>
+  <div class="ctrl"><label>BJT VCE_sat (V)</label><input type="range" id="Vce" min="0.05" max="2" value="0.2" step="0.05"><span id="VceV">0.20</span></div>
+  <div class="ctrl"><label>IGBT VCE_sat (V)</label><input type="range" id="Vigbt" min="0.5" max="4" value="2.0" step="0.1"><span id="VigbtV">2.0</span></div>
+</div>
+<div class="vals">
+  <div class="val-item">BJT/MOSFET crossover: <strong id="cross_bm">-</strong></div>
+  <div class="val-item">MOSFET/IGBT crossover: <strong id="cross_mi">-</strong></div>
+  <div class="val-item">Best for this Vsup: <strong id="best">-</strong></div>
+</div>
+<script>
+var cv=document.getElementById("cv");
+var ctx=cv.getContext("2d");
+function resizeCanvas(){var w=cv.parentElement.getBoundingClientRect().width;cv.width=Math.min(w-24,700);cv.height=Math.round(cv.width*0.48);}
+function get(id){return parseFloat(document.getElementById(id).value);}
+function draw(){
+  var W=cv.width,H=cv.height;
+  var Vsup=get("Vsup"),Rds=get("Rds")*1e-3,Vce=get("Vce"),Vigbt=get("Vigbt");
+  document.getElementById("VsupV").textContent=get("Vsup");
+  document.getElementById("RdsV").textContent=get("Rds");
+  document.getElementById("VceV").textContent=get("Vce").toFixed(2);
+  document.getElementById("VigbtV").textContent=get("Vigbt").toFixed(1);
+  // crossover BJT vs MOSFET: Vce_sat*I = I^2*Rds -> I = Vce_sat/Rds
+  var I_cross_bm=Vce/Rds;
+  var I_cross_mi=Vigbt/Rds;
+  document.getElementById("cross_bm").textContent=I_cross_bm.toFixed(1)+"A";
+  document.getElementById("cross_mi").textContent=I_cross_mi.toFixed(1)+"A";
+  var best;
+  if(Vsup>600){best="IGBT (high voltage)";}
+  else if(Vsup>100){best="IGBT or SiC MOSFET";}
+  else{best="Logic-level N-MOSFET";}
+  document.getElementById("best").textContent=best;
+  ctx.clearRect(0,0,W,H);
+  var pad={l:60,r:20,t:28,b:40};
+  var pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  var I_max=30;
+  var P_max=Math.max(Vce*I_max, I_max*I_max*Rds, Vigbt*I_max, 2)*1.2;
+  function ix(I){return pad.l+I/I_max*pw;}
+  function py(P){return H-pad.b-Math.min(1,Math.max(0,P/P_max))*ph;}
+  ctx.strokeStyle="#1e2a3a";ctx.lineWidth=0.5;
+  for(var k=0;k<=4;k++){
+    var P=P_max*k/4;
+    ctx.beginPath();ctx.moveTo(pad.l,py(P));ctx.lineTo(W-pad.r,py(P));ctx.stroke();
+    ctx.fillStyle="#555";ctx.font="10px Arial";ctx.fillText(P.toFixed(1)+"W",2,py(P)+4);
+  }
+  [0,5,10,15,20,25,30].forEach(function(I){
+    ctx.beginPath();ctx.moveTo(ix(I),pad.t);ctx.lineTo(ix(I),H-pad.b);ctx.stroke();
+    ctx.fillStyle="#555";ctx.font="10px Arial";ctx.fillText(I+"A",ix(I)-8,H-pad.b+14);
+  });
+  var N=300;
+  // BJT loss = Vce_sat * I
+  ctx.beginPath();ctx.strokeStyle="#ff5555";ctx.lineWidth=2.5;
+  for(var i=0;i<=N;i++){
+    var I=I_max*i/N;
+    var P=Vce*I;
+    if(i===0)ctx.moveTo(ix(I),py(P));else ctx.lineTo(ix(I),py(P));
+  }
+  ctx.stroke();
+  // MOSFET loss = I^2 * Rds
+  ctx.beginPath();ctx.strokeStyle="#55aaff";ctx.lineWidth=2.5;
+  for(var i=0;i<=N;i++){
+    var I=I_max*i/N;
+    var P=I*I*Rds;
+    if(i===0)ctx.moveTo(ix(I),py(P));else ctx.lineTo(ix(I),py(P));
+  }
+  ctx.stroke();
+  // IGBT loss = Vigbt * I
+  ctx.beginPath();ctx.strokeStyle="#ffaa55";ctx.lineWidth=2.5;
+  for(var i=0;i<=N;i++){
+    var I=I_max*i/N;
+    var P=Vigbt*I;
+    if(i===0)ctx.moveTo(ix(I),py(P));else ctx.lineTo(ix(I),py(P));
+  }
+  ctx.stroke();
+  // Crossover lines
+  if(I_cross_bm>0&&I_cross_bm<I_max){
+    ctx.strokeStyle="#55ff88";ctx.lineWidth=1;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(ix(I_cross_bm),pad.t);ctx.lineTo(ix(I_cross_bm),H-pad.b);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle="#55ff88";ctx.font="9px Arial";ctx.fillText("BJT=MOS@"+I_cross_bm.toFixed(0)+"A",ix(I_cross_bm)+2,pad.t+14);
+  }
+  ctx.strokeStyle="#666";ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,H-pad.b);ctx.lineTo(W-pad.r,H-pad.b);ctx.stroke();
+  ctx.fillStyle="#ff5555";ctx.font="11px Arial";ctx.fillText("BJT (Vce_sat x I)",pad.l+10,pad.t+16);
+  ctx.fillStyle="#55aaff";ctx.font="11px Arial";ctx.fillText("MOSFET (I^2 x Rdson)",pad.l+10,pad.t+30);
+  ctx.fillStyle="#ffaa55";ctx.font="11px Arial";ctx.fillText("IGBT (Vce_sat x I)",pad.l+10,pad.t+44);
+  ctx.fillStyle="#aaa";ctx.font="10px Arial";ctx.fillText("Load Current (A)",W/2-40,H-5);
+  ctx.fillStyle="#90caf9";ctx.font="bold 11px Arial";
+  ctx.fillText("Vsup="+Vsup+"V  Rdson="+get("Rds")+"mO  Vce_BJT="+Vce+"V  Vce_IGBT="+Vigbt+"V",pad.l+5,pad.t-8);
+}
+["Vsup","Rds","Vce","Vigbt"].forEach(function(id){document.getElementById(id).addEventListener("input",draw);});
+window.addEventListener("resize",function(){resizeCanvas();draw();});
+resizeCanvas();draw();
+</script></body></html>

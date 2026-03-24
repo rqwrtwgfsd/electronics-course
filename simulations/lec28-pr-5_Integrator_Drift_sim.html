@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Lec28 Pr5 — Integrator Drift</title>
+<style>
+  body{margin:0;padding:10px;font-family:sans-serif;background:#1a1a2e;color:#e0e0e0;}
+  canvas{display:block;border:1px solid #444;border-radius:6px;background:#0f0f1e;}
+  .ctrl{margin:7px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  label{min-width:200px;font-size:0.85em;} input[type=range]{flex:1;min-width:120px;}
+  .val{min-width:70px;font-size:0.85em;color:#7ec8e3;}
+  .result-box{background:#162032;border:1px solid #2a4a6a;border-radius:6px;padding:10px;margin-top:8px;font-size:0.85em;}
+  h3{color:#7ec8e3;margin:4px 0 10px;}
+</style></head><body>
+<h3>Problem 5 — Op-Amp Integrator: Output Drift vs V_OS and I_B</h3>
+<canvas id="cv"></canvas>
+<div class="ctrl"><label>V_OS (mV):</label><input type="range" id="vos" min="0.01" max="10" value="2" step="0.1"><span class="val" id="vos_v">2.0 mV</span></div>
+<div class="ctrl"><label>I_B (nA):</label><input type="range" id="ib" min="0.1" max="200" value="80" step="0.5"><span class="val" id="ib_v">80 nA</span></div>
+<div class="ctrl"><label>R (MOhm):</label><input type="range" id="r" min="0.01" max="10" value="1" step="0.01"><span class="val" id="r_v">1.0 MΩ</span></div>
+<div class="ctrl"><label>C_f (µF):</label><input type="range" id="cf" min="0.01" max="10" value="1" step="0.01"><span class="val" id="cf_v">1.0 µF</span></div>
+<div class="result-box" id="result">Results</div>
+<script>
+const cv=document.getElementById('cv');const ctx=cv.getContext('2d');
+function resizeCanvas(){const w=cv.parentElement.getBoundingClientRect().width-20;cv.width=Math.max(300,w);cv.height=Math.round(cv.width*0.4);}
+function getV(){return{vos:parseFloat(document.getElementById('vos').value)*1e-3,ib:parseFloat(document.getElementById('ib').value)*1e-9,r:parseFloat(document.getElementById('r').value)*1e6,cf:parseFloat(document.getElementById('cf').value)*1e-6};}
+function updateL(){document.getElementById('vos_v').textContent=parseFloat(document.getElementById('vos').value).toFixed(2)+' mV';document.getElementById('ib_v').textContent=parseFloat(document.getElementById('ib').value).toFixed(0)+' nA';document.getElementById('r_v').textContent=parseFloat(document.getElementById('r').value).toFixed(2)+' MΩ';document.getElementById('cf_v').textContent=parseFloat(document.getElementById('cf').value).toFixed(2)+' µF';}
+function draw(){
+  const W=cv.width,H=cv.height;ctx.clearRect(0,0,W,H);
+  const {vos,ib,r,cf}=getV();
+  const mx=55,my=15,bx=W-15,by=H-30,pw=bx-mx,ph=by-my;
+  const drift_vos=vos/(r*cf); // V/s
+  const drift_ib=ib/cf; // V/s
+  const drift_total=drift_vos+drift_ib;
+  const railV=5;
+  const tRail=railV/Math.abs(drift_total);
+  const tMax=Math.min(tRail*1.5,3600);
+  ctx.strokeStyle='#444';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx,by);ctx.lineTo(bx,by);ctx.stroke();
+  for(let i=0;i<=4;i++){
+    const y=my+i*ph/4;const v=railV*(1-i/4);
+    ctx.strokeStyle='#252540';ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(mx,y);ctx.lineTo(bx,y);ctx.stroke();
+    ctx.fillStyle='#666';ctx.font='10px sans-serif';ctx.fillText(v.toFixed(1)+'V',mx-40,y+4);
+  }
+  for(let i=0;i<=5;i++){
+    const x=mx+i*pw/5;const t=tMax*i/5;
+    ctx.strokeStyle='#252540';ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(x,my);ctx.lineTo(x,by);ctx.stroke();
+    const tl=t>3600?(t/3600).toFixed(1)+'h':t>60?(t/60).toFixed(1)+'min':t.toFixed(0)+'s';
+    ctx.fillStyle='#666';ctx.font='10px sans-serif';ctx.fillText(tl,x-12,by+14);
+  }
+  // VOS drift
+  ctx.strokeStyle='#4fc3f7';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=200;i++){const t=tMax*i/200;const v=Math.min(drift_vos*t,railV);const x=mx+(t/tMax)*pw;const y=by-(v/railV)*ph;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}
+  ctx.stroke();
+  // IB drift
+  ctx.strokeStyle='#ff7043';ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=200;i++){const t=tMax*i/200;const v=Math.min(drift_ib*t,railV);const x=mx+(t/tMax)*pw;const y=by-(v/railV)*ph;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}
+  ctx.stroke();
+  // Total
+  ctx.strokeStyle='#aed581';ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=200;i++){const t=tMax*i/200;const v=Math.min(drift_total*t,railV);const x=mx+(t/tMax)*pw;const y=by-(v/railV)*ph;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}
+  ctx.stroke();
+  ctx.fillStyle='#4fc3f7';ctx.font='9px sans-serif';ctx.fillText('V_OS drift',mx+5,my+14);
+  ctx.fillStyle='#ff7043';ctx.fillText('I_B drift',mx+5,my+26);
+  ctx.fillStyle='#aed581';ctx.fillText('Total',mx+5,my+38);
+  ctx.fillStyle='#7ec8e3';ctx.font='11px sans-serif';ctx.fillText('V_out →',mx+5,by-8);ctx.fillText('Time →',bx-50,by+26);
+  const tRailFmt=tRail>3600?(tRail/3600).toFixed(1)+'h':tRail>60?(tRail/60).toFixed(1)+'min':tRail.toFixed(0)+'s';
+  document.getElementById('result').innerHTML=
+    `<b>Integrator Drift:</b><br>Drift from V_OS: ${(drift_vos*1000).toFixed(2)} mV/s | From I_B: ${(drift_ib*1000).toFixed(2)} mV/s<br>Total: ${(drift_total*1000).toFixed(2)} mV/s → Rail in ${tRailFmt}<br>${drift_ib>drift_vos?'I_B dominates drift — add R_comp = R at non-inverting input':'V_OS dominates — use chopper/auto-zero op-amp'}<br>Fix: Add R_f across C_f to limit DC gain.`;
+}
+['vos','ib','r','cf'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{updateL();draw();}));
+resizeCanvas();updateL();draw();window.addEventListener('resize',()=>{resizeCanvas();draw();});
+</script></body></html>

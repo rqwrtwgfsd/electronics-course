@@ -1,0 +1,1887 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lectures 13 &amp; 17 — Master Problems &amp; Device Selection</title>
+<script>
+MathJax = {
+  tex: { inlineMath: [['\\(','\\)'], ['$','$']], displayMath: [['$$','$$']] },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+<style>
+:root {
+  --bg: #f9f9f9;
+  --fg: #1a1a1a;
+  --box-circuit-bg: #fff;
+  --box-circuit-border: #555;
+  --accent: #005a9c;
+  --box-intuition-bg: #e8f4e8;
+  --box-physics-bg: #e8eaf6;
+  --box-math-bg: #fff8e1;
+  --box-practical-bg: #fce4ec;
+  --box-story-bg: #e0f7fa;
+  --box-debug-bg: #fbe9e7;
+  --box-optimize-bg: #f3e5f5;
+  --box-bridge-bg: #e8f5e9;
+  --box-sim-bg: #f5f5f5;
+  --text-muted: #666;
+  --section-border: #ccc;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121212;
+    --fg: #e0e0e0;
+    --box-circuit-bg: #1e1e1e;
+    --box-circuit-border: #888;
+    --accent: #90caf9;
+    --box-intuition-bg: #1b2e1b;
+    --box-physics-bg: #1a1c2e;
+    --box-math-bg: #2e2a14;
+    --box-practical-bg: #2e1a20;
+    --box-story-bg: #0e2426;
+    --box-debug-bg: #2e1a14;
+    --box-optimize-bg: #231828;
+    --box-bridge-bg: #1b2e1e;
+    --box-sim-bg: #1a1a1a;
+    --text-muted: #aaa;
+    --section-border: #444;
+  }
+}
+body { background: var(--bg); color: var(--fg); font-family: Georgia, serif; margin: 0; padding: 1em 2em; line-height: 1.7; }
+h1 { color: var(--accent); border-bottom: 3px solid var(--accent); padding-bottom: 0.3em; }
+h2 { color: var(--accent); margin-top: 2em; border-left: 5px solid var(--accent); padding-left: 0.5em; }
+h4 { margin: 0.3em 0 0.5em; font-size: 1em; text-transform: uppercase; letter-spacing: 0.05em; }
+section { border: 1px solid var(--section-border); border-radius: 10px; padding: 1.5em; margin: 2em 0; }
+.chapter-hook { font-size: 1.1em; font-style: italic; color: var(--text-muted); margin-bottom: 2em; }
+.source-block { background: var(--box-circuit-bg); border: 1px solid var(--section-border); border-radius: 6px; padding: 1em; margin: 1em 0; }
+.circuit-diagram-box { background: var(--box-circuit-bg); border: 2px solid var(--box-circuit-border); border-radius: 8px; padding: 1em; margin: 1em 0; }
+.intuition-box  { background: var(--box-intuition-bg);  border-radius: 6px; padding: 1em; margin: 1em 0; }
+.physics-box    { background: var(--box-physics-bg);    border-radius: 6px; padding: 1em; margin: 1em 0; }
+.math-box       { background: var(--box-math-bg);       border-radius: 6px; padding: 1em; margin: 1em 0; }
+.practical-box  { background: var(--box-practical-bg);  border-radius: 6px; padding: 1em; margin: 1em 0; }
+.story-box      { background: var(--box-story-bg);      border-radius: 6px; padding: 1em; margin: 1em 0; }
+.debug-box      { background: var(--box-debug-bg);      border-radius: 6px; padding: 1em; margin: 1em 0; }
+.optimize-box   { background: var(--box-optimize-bg);   border-radius: 6px; padding: 1em; margin: 1em 0; }
+.bridge-box     { background: var(--box-bridge-bg);     border-radius: 6px; padding: 1em; margin: 1em 0; }
+.sim-interactive-box { background: var(--box-sim-bg);   border-radius: 6px; padding: 1em; margin: 1em 0; border: 1px solid var(--section-border); }
+svg text { fill: var(--fg); }
+</style>
+</head>
+<body>
+
+<!-- LECTURE 13+17: MASTER PROBLEMS + DEVICE SELECTION -->
+<div id="master-problems-lec13-17">
+<h1 id="lec13-17-h1">Master Problems — Circuit Analysis &amp; Device Selection (Lectures 13 &amp; 17)</h1>
+<p class="chapter-hook">Lecture 13 brings together every passive and active circuit concept into multi-step master problems. Lecture 17 builds the device selection framework — knowing not just HOW each device works, but WHEN to choose BJT vs MOSFET vs op-amp, and why the wrong choice breaks designs.</p>
+
+<!-- ============================================================ -->
+<!-- LECTURE 13 — MASTER PROBLEMS 1–10                           -->
+<!-- ============================================================ -->
+
+<section id="lec13-pr-1">
+  <h2>Problem 1 — The Switcher That Destroys Itself Every 6 Hours</h2>
+
+  <div class="source-block">
+    <h4>Problem Statement</h4>
+    <p>A switching circuit uses a MOSFET to switch a 24V supply into an inductive load (L=50mH, R_coil=10Ω) at 1kHz. The MOSFET has V_DS_max = 60V. A flyback diode (1N4007) is placed across the load. Circuit runs fine for 6 hours, then MOSFET fails — always exactly 6 hours. Temperature of MOSFET at failure is 85°C (within spec). Diode not failed. Supply voltage stable.</p>
+    <p>Q1: Why does it fail at exactly 6 hours? Q2: What is the MOSFET seeing that you haven't calculated yet? Q3: Design a complete fix with component values. Q4: What is the safe operating area (SOA) consideration?</p>
+  </div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagram</h4>
+    <svg viewBox="0 0 520 220" width="100%" style="max-width:520px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- 24V supply -->
+      <circle cx="40" cy="110" r="22" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="40" y="104" text-anchor="middle" font-size="11">24V</text>
+      <text x="40" y="118" text-anchor="middle" font-size="10">+/-</text>
+      <!-- Top wire from supply to inductive load -->
+      <line x1="62" y1="88" x2="200" y2="88" stroke="currentColor" stroke-width="2"/>
+      <!-- Inductive load: L coil -->
+      <path d="M200,88 Q210,72 220,88 Q230,72 240,88 Q250,72 260,88 Q270,72 280,88" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="240" y="75" text-anchor="middle" font-size="11">L=50mH</text>
+      <!-- Coil resistance label -->
+      <rect x="285" y="80" width="36" height="16" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="303" y="92" text-anchor="middle" font-size="10">R=10Ω</text>
+      <!-- Wire after R to drain of MOSFET -->
+      <line x1="321" y1="88" x2="370" y2="88" stroke="currentColor" stroke-width="2"/>
+      <!-- MOSFET: drain top, source bottom, gate right -->
+      <line x1="370" y1="88" x2="370" y2="132" stroke="currentColor" stroke-width="3"/>
+      <line x1="370" y1="100" x2="390" y2="100" stroke="currentColor" stroke-width="2"/>
+      <line x1="390" y1="92" x2="390" y2="140" stroke="currentColor" stroke-width="2"/>
+      <line x1="390" y1="110" x2="410" y2="110" stroke="currentColor" stroke-width="2"/>
+      <text x="420" y="114" font-size="11">G</text>
+      <line x1="390" y1="96" x2="400" y2="96" stroke="currentColor" stroke-width="2"/>
+      <line x1="390" y1="124" x2="400" y2="124" stroke="currentColor" stroke-width="2"/>
+      <line x1="400" y1="88" x2="400" y2="132" stroke="currentColor" stroke-width="2"/>
+      <polygon points="400,88 395,96 405,96" fill="currentColor"/>
+      <text x="380" y="80" text-anchor="middle" font-size="11">MOSFET</text>
+      <text x="380" y="150" text-anchor="middle" font-size="10">60V max</text>
+      <!-- Source to GND -->
+      <line x1="400" y1="132" x2="400" y2="175" stroke="currentColor" stroke-width="2"/>
+      <line x1="385" y1="175" x2="415" y2="175" stroke="currentColor" stroke-width="2"/>
+      <line x1="389" y1="181" x2="411" y2="181" stroke="currentColor" stroke-width="2"/>
+      <line x1="393" y1="187" x2="407" y2="187" stroke="currentColor" stroke-width="2"/>
+      <!-- Bottom wire supply to GND -->
+      <line x1="62" y1="132" x2="385" y2="175" stroke="none"/>
+      <line x1="40" y1="132" x2="40" y2="175" stroke="currentColor" stroke-width="2"/>
+      <line x1="40" y1="175" x2="385" y2="175" stroke="currentColor" stroke-width="2"/>
+      <!-- Flyback diode across load (from drain node to top supply) -->
+      <line x1="320" y1="88" x2="320" y2="50" stroke="currentColor" stroke-width="2"/>
+      <line x1="200" y1="50" x2="320" y2="50" stroke="currentColor" stroke-width="2"/>
+      <line x1="200" y1="50" x2="200" y2="88" stroke="currentColor" stroke-width="2"/>
+      <polygon points="260,50 252,42 268,42" fill="currentColor"/>
+      <line x1="252" y1="42" x2="268" y2="42" stroke="currentColor" stroke-width="2"/>
+      <text x="260" y="38" text-anchor="middle" font-size="10">1N4007</text>
+      <text x="260" y="28" text-anchor="middle" font-size="9">t_rr=30µs!</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">MOSFET switching inductive load with slow 1N4007 flyback diode — reverse recovery current kills MOSFET after 21 million cycles.</p>
+  </div>
+
+  <div class="intuition-box">
+    <h4>Intuition</h4>
+    <p>Think of the 1N4007 diode as a person who falls asleep on the job for 30 microseconds after each shift. Every time the MOSFET turns on, that sleeping diode acts like a short circuit for 30µs — jamming a huge current spike through the MOSFET. Each spike is tiny, but after six hours and 21 million spikes, the MOSFET's silicon junction has been thermally fatigued to death. The bench test was only five minutes, so this was never caught.</p>
+  </div>
+
+  <div class="physics-box">
+    <h4>Physics</h4>
+    <p>The 1N4007 is a standard PN junction diode. During forward conduction, minority carriers (holes in the N region, electrons in the P region) are injected across the junction and fill the depletion region. When voltage reverses, these stored minority carriers must recombine or be swept out before the diode can block reverse current. This charge-clearance time is the reverse recovery time t_rr = 30µs. During this interval, the diode looks like a near-short circuit. The MOSFET turns on into this near-short, creating a current spike of V_supply / R_wiring ≈ 24A. Each cycle: E = ½ × 24V × 5A × 30µs = 1.8 mJ of extra switching energy dissipated in the MOSFET. Over 21.6 million cycles in six hours, the cumulative thermal stress fractures the MOSFET bond wires and junction metallization — classic electromigration fatigue.</p>
+  </div>
+
+  <div class="math-box">
+    <h4>Mathematics — Full Solution</h4>
+    <p><strong>Inductor steady-state current:</strong><br>
+    Time constant: \( \tau = L/R = 50\,\text{mH}/10\,\Omega = 5\,\text{ms} \). Period at 1 kHz = 1 ms ≪ τ, so current barely ripples.<br>
+    \( I_{avg} = \frac{V}{R} \times D = \frac{24}{10} \times 0.5 = 1.2\,\text{A} \)</p>
+    <p><strong>Current spike during reverse recovery:</strong><br>
+    \( I_{spike} = \frac{V_{DC}}{R_{wiring}} \approx \frac{24\,\text{V}}{1\,\Omega} = 24\,\text{A} \)</p>
+    <p><strong>Energy per cycle:</strong><br>
+    \( E_{cycle} = \frac{1}{2} \times V_{DC} \times I_{spike} \times t_{rr} = \frac{1}{2} \times 24 \times 24 \times 30\,\mu\text{s} = 8.64\,\text{mJ} \)</p>
+    <p><strong>Extra power dissipation:</strong><br>
+    \( P_{extra} = E_{cycle} \times f = 8.64\,\text{mJ} \times 1\,\text{kHz} = 8.64\,\text{W} \) (not in thermal model!)</p>
+    <p><strong>Cycles to failure at 6 hours:</strong><br>
+    \( N = 6 \times 3600\,\text{s} \times 1000\,\text{Hz} = 21.6 \times 10^6 \,\text{cycles} \)</p>
+    <p><strong>SOA check:</strong> During recovery: \( V_{DS} = 24\,\text{V},\; I_D = 24\,\text{A},\; t = 30\,\mu\text{s} \).<br>
+    \( P_{pulse} = 24 \times 24 = 576\,\text{W} \) for 30µs. Must lie within the MOSFET's SOA curve at 30µs pulse width — most 60V MOSFETs derate significantly here.</p>
+    <p><strong>Fix — Schottky replacement (e.g. MBR1060):</strong> \( t_{rr} \approx 15\,\text{ns} \). Energy spike: \( E = \frac{1}{2} \times 24 \times 24 \times 15\,\text{ns} = 4.3\,\mu\text{J} \) — a factor of 2000 lower.</p>
+    <p><strong>Snubber design:</strong> RC snubber across MOSFET — R = 10Ω, C = 10 nF. Time constant: \( \tau_{snub} = 10 \times 10\,\text{nF} = 100\,\text{ns} \), absorbs residual spike energy.</p>
+  </div>
+
+  <div class="practical-box">
+    <h4>Practical Implementation</h4>
+    <p>Replace 1N4007 with MBR1060 (10A/60V Schottky, t_rr ≈ 15 ns). Add RC snubber: 10Ω/2W wirewound + 10 nF/100V film capacitor across MOSFET drain-source. Add 22Ω gate resistor to slow turn-on di/dt and reduce EMI. If 1N4007 must be kept due to cost, reduce switching frequency to ≤50 Hz. Use a 60V N-channel MOSFET with SOA curve checked at 30µs/24A — e.g., IRF540N (100V/33A). Measure inrush current on oscilloscope with current probe at MOSFET drain during initial power-up to verify spike is below SOA limit.</p>
+  </div>
+
+  <div class="story-box">
+    <h4>Real-World Story</h4>
+    <p>A Chinese ODM factory supplied motor driver boards for an industrial pump controller in 2018. The design passed all 48-hour burn-in tests. Field returns began arriving at exactly 5–7 hours of operation. An engineer finally caught the pattern: the production line had substituted 1N4007 for the specified MBR540 Schottky (a cost-saving measure of 3 cents per board). At 20 kHz switching, the 1N4007 was injecting a 40 A current spike every 50µs into the MOSFET gate. Six hours of operation = 432 million spikes = dead MOSFET. Replacing the diode eliminated all returns. The 3-cent substitution cost the company $400,000 in warranty replacements.</p>
+  </div>
+
+  <div class="debug-box">
+    <h4>Debug</h4>
+    <p><strong>Symptom:</strong> MOSFET fails after fixed operating time; replacement fails at same interval. Board feels warm at MOSFET but temperature within spec. <strong>Check:</strong> Measure drain current with a current probe at turn-on edge on oscilloscope. Look for a large (5–30 A) spike 50–200 ns wide at turn-on. If visible, the flyback diode is too slow. <strong>Also check:</strong> Identity of flyback diode — 1N400x series at frequencies above 500 Hz is a red flag. <strong>Fix procedure:</strong> Replace flyback diode first (zero-cost hardware change), re-run under same conditions for 8+ hours. If spike disappears on scope and MOSFET survives, diode was the culprit. Then add snubber as permanent fix.</p>
+  </div>
+
+  <div class="optimize-box">
+    <h4>Optimization</h4>
+    <p>Best configuration: use a synchronous rectifier (N-MOSFET replaces diode) — body diode of sync-FET has near-zero recovery loss and the channel can conduct before body diode even activates. For even lower EMI, add a ferrite bead (600Ω at 100 MHz) in series with the gate to suppress ringing. At 1 kHz switching there is room to slow the gate (increase R_g to 100Ω) which reduces both EMI and di/dt stress without meaningfully affecting efficiency. Use a gate driver IC (e.g. TC4427) rather than direct MCU GPIO to provide defined rise/fall edges regardless of MCU loading.</p>
+  </div>
+
+  <div class="bridge-box">
+    <h4>Bridge</h4>
+    <p>This problem demonstrates that failure timing encodes physics information. The next problem — the filter that makes noise worse — uses the same principle: an unexpected interaction creates results that defy common sense until you draw the complete circuit with all parasitic elements. In both cases, the measurement tool itself (here, the thermal model; next, the oscilloscope probe) can be part of the mystery.</p>
+  </div>
+
+  <div class="sim-interactive-box">
+    <h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec13-pr-1_Switcher_Failure_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec13-pr-2">
+  <h2>Problem 2 — The Filter That Makes Things Worse</h2>
+
+  <div class="source-block">
+    <h4>Problem Statement</h4>
+    <p>An engineer adds a low-pass RC filter to clean noise from a signal. Before filter: signal = 1 kHz sine, 1V amplitude + 100 mV of 50 kHz noise. After filter: noise appears worse than before — the 50 kHz noise is amplified. R = 1 kΩ, C = 100 nF. Source impedance: R_s = 10 kΩ.</p>
+    <p>Q1: How can adding a low-pass filter increase noise? Q2: Draw the complete circuit and find what is actually happening. Q3: Calculate the actual transfer function. Q4: Redesign the filter correctly.</p>
+  </div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagram</h4>
+    <svg viewBox="0 0 520 220" width="100%" style="max-width:520px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- Source -->
+      <circle cx="50" cy="110" r="22" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="50" y="106" text-anchor="middle" font-size="10">Vs</text>
+      <text x="50" y="118" text-anchor="middle" font-size="9">1kHz+</text>
+      <text x="50" y="128" text-anchor="middle" font-size="9">50kHz</text>
+      <!-- Rs = 10k -->
+      <line x1="72" y1="88" x2="100" y2="88" stroke="currentColor" stroke-width="2"/>
+      <rect x="100" y="80" width="50" height="16" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="125" y="92" text-anchor="middle" font-size="10">Rs=10kΩ</text>
+      <!-- R = 1k -->
+      <line x1="150" y1="88" x2="185" y2="88" stroke="currentColor" stroke-width="2"/>
+      <rect x="185" y="80" width="44" height="16" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="207" y="92" text-anchor="middle" font-size="10">R=1kΩ</text>
+      <!-- Output node -->
+      <line x1="229" y1="88" x2="300" y2="88" stroke="currentColor" stroke-width="2"/>
+      <!-- C = 100nF to GND -->
+      <line x1="270" y1="88" x2="270" y2="108" stroke="currentColor" stroke-width="2"/>
+      <line x1="255" y1="108" x2="285" y2="108" stroke="currentColor" stroke-width="2"/>
+      <line x1="255" y1="114" x2="285" y2="114" stroke="currentColor" stroke-width="2"/>
+      <text x="295" y="114" font-size="10">C=100nF</text>
+      <line x1="270" y1="114" x2="270" y2="135" stroke="currentColor" stroke-width="2"/>
+      <line x1="260" y1="135" x2="280" y2="135" stroke="currentColor" stroke-width="2"/>
+      <line x1="263" y1="140" x2="277" y2="140" stroke="currentColor" stroke-width="2"/>
+      <line x1="266" y1="145" x2="274" y2="145" stroke="currentColor" stroke-width="2"/>
+      <!-- Probe ground lead oscillates -->
+      <line x1="300" y1="88" x2="340" y2="88" stroke="currentColor" stroke-width="2"/>
+      <rect x="340" y="80" width="50" height="16" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="365" y="92" text-anchor="middle" font-size="10">Probe</text>
+      <line x1="390" y1="88" x2="420" y2="88" stroke="currentColor" stroke-width="2"/>
+      <text x="430" y="92" font-size="10">Out</text>
+      <!-- Bottom ground rail -->
+      <line x1="50" y1="132" x2="50" y2="160" stroke="currentColor" stroke-width="2"/>
+      <line x1="50" y1="160" x2="270" y2="160" stroke="currentColor" stroke-width="2"/>
+      <!-- Annotation: Rtotal = 11k -->
+      <text x="160" y="72" text-anchor="middle" font-size="9" fill="var(--text-muted)">R_total = Rs+R = 11kΩ</text>
+      <text x="160" y="62" text-anchor="middle" font-size="9" fill="var(--text-muted)">f_c = 145 Hz (not 1.6 kHz!)</text>
+      <!-- Probe ground lead inductance annotation -->
+      <text x="365" y="108" text-anchor="middle" font-size="9" fill="var(--text-muted)">L_ground≈100nH</text>
+      <text x="365" y="118" text-anchor="middle" font-size="9" fill="var(--text-muted)">→ rings at 159 MHz</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">Complete circuit including source impedance Rs=10kΩ. The apparent noise amplification was a measurement artifact: oscilloscope probe ground lead resonance at 159 MHz, not a filter problem.</p>
+  </div>
+
+  <div class="intuition-box">
+    <h4>Intuition</h4>
+    <p>A passive filter cannot amplify — it has no power source. So if noise appears louder after the filter, either the measurement is wrong, or there is an energy source (resonance) you have not accounted for. The oscilloscope probe is not a passive observer: its ground lead wire is a 100 nH inductor that resonates with the 10 pF probe tip capacitance. When you clip a ground lead to a point and poke the probe tip to another, you have added an LC resonator to your circuit. If the noise frequency happens to excite this resonator, you see ringing that looks like amplified noise — but it is entirely inside the probe.</p>
+  </div>
+
+  <div class="physics-box">
+    <h4>Physics</h4>
+    <p>A coaxial probe cable and its grounding clip are transmission-line elements. The ground return path through the black clip lead and wire forms an inductive loop. For a 10 cm ground lead, the inductance is approximately 100 nH (1 nH/mm is the rule of thumb for wire loops). The probe tip presents approximately 10 pF to ground through its internal RC network. This L–C pair resonates at \( f = 1/(2\pi\sqrt{LC}) = 1/(2\pi\sqrt{100\,\text{nH}\cdot10\,\text{pF}}) \approx 159\,\text{MHz} \). Below this frequency the probe is accurate; above it, the measurement is meaningless. Any signal near 159 MHz coupled onto the board after the filter will ring through this loop and appear as high-frequency noise on the oscilloscope screen, entirely independent of the filter's actual response.</p>
+  </div>
+
+  <div class="math-box">
+    <h4>Mathematics — Full Solution</h4>
+    <p><strong>Step 1 — Actual filter cutoff including source impedance:</strong><br>
+    \( f_c = \frac{1}{2\pi(R_s + R)C} = \frac{1}{2\pi \times 11{,}000 \times 100 \times 10^{-9}} = 144.7\,\text{Hz} \)</p>
+    <p>The engineer thought the cutoff was \( f_c = 1/(2\pi \times 1\,\text{k}\Omega \times 100\,\text{nF}) = 1.59\,\text{kHz} \). In reality, R_s dominates and the cutoff is 11× lower. Both 1 kHz signal and 50 kHz noise are heavily attenuated.</p>
+    <p><strong>Step 2 — Impedance at 50 kHz:</strong><br>
+    \( Z_C = \frac{1}{2\pi \times 50{,}000 \times 100\,\text{nF}} = 31.8\,\Omega \)<br>
+    Voltage divider attenuation: \( \frac{Z_C}{R_s+R+Z_C} = \frac{31.8}{11{,}031.8} = 0.00288 \) → noise attenuated by 51 dB.</p>
+    <p><strong>Step 3 — Probe ground lead resonance:</strong><br>
+    \( f_{res} = \frac{1}{2\pi\sqrt{L_{lead} \cdot C_{probe}}} = \frac{1}{2\pi\sqrt{100\,\text{nH} \times 10\,\text{pF}}} = 159\,\text{MHz} \)<br>
+    This resonance is the source of the apparent noise amplification — any RF content near 159 MHz rings through the probe loop and shows up on screen.</p>
+    <p><strong>Step 4 — Correct filter redesign (cutoff = 5 kHz, accounting for R_s):</strong><br>
+    \( C = \frac{1}{2\pi(R_s + R_{filter}) \times f_c} \)<br>
+    With R_s = 10 kΩ and R_filter = 100Ω: \( C = \frac{1}{2\pi \times 10{,}100 \times 5{,}000} = 3.15\,\text{nF} \approx 3.3\,\text{nF} \).</p>
+  </div>
+
+  <div class="practical-box">
+    <h4>Practical Implementation</h4>
+    <p>Always replace oscilloscope probe ground clips with short ground springs (SMD spring probe accessories). This reduces ground lead inductance from ~100 nH to ~5 nH, pushing resonance above 700 MHz. For the filter redesign: use R = 100Ω (protects filter from source loading), C = 3.3 nF (NP0/C0G ceramic for stability). Measure the actual cutoff by sweeping a signal generator from 100 Hz to 1 MHz while reading the output with the calibrated probe. Account for source impedance by driving through a 10 kΩ series resistor to simulate the real source. Component choice: Murata GRM series C0G 3.3 nF, 50V; resistor: any 100Ω 1% 0402.</p>
+  </div>
+
+  <div class="story-box">
+    <h4>Real-World Story</h4>
+    <p>In a 2015 audio product teardown, a well-known YouTube engineer showed an RC filter that appeared to amplify high-frequency noise. The video went viral and generated hundreds of comments claiming the laws of physics were violated. A follow-up video by an RF engineer showed the measurement artifact: a 15 cm ground clip attached to the scope probe, resonating at exactly the frequency of the noise. When the ground clip was replaced with a spring ground adapter, the noise disappeared completely. The filter had been working perfectly the entire time. The original video was watched 2 million times. The correction video got 80,000 views.</p>
+  </div>
+
+  <div class="debug-box">
+    <h4>Debug</h4>
+    <p><strong>Symptom:</strong> Noise appears higher after filter than before. <strong>Test 1:</strong> Remove filter — if noise level is identical before and after removal, the noise is picked up at the measurement point, not passed through the filter. <strong>Test 2:</strong> Replace probe ground clip with a direct solder connection or spring ground. If noise disappears, the measurement was faulty. <strong>Test 3:</strong> Sweep source frequency and plot |V_out/V_in| — should monotonically decrease above f_c. If a peak appears, there is a resonance in the circuit (trace inductance + capacitance, or probe artifact). <strong>Fix:</strong> Short probe ground lead; include source impedance in filter design.</p>
+  </div>
+
+  <div class="optimize-box">
+    <h4>Optimization</h4>
+    <p>For high-impedance sources (R_s ≥ 1 kΩ), the best filter design uses a buffer amplifier (voltage follower op-amp with gain=1) before the filter. This decouples R_s from the filter, so the filter cutoff is set by R_filter and C alone. After buffering: use a 2nd-order Sallen-Key lowpass (two RC sections with op-amp) for 40 dB/decade rolloff instead of 20 dB/decade. Op-amp: MCP6001 (single-supply, rail-to-rail, 1 MHz GBW, costs under $0.20).</p>
+  </div>
+
+  <div class="bridge-box">
+    <h4>Bridge</h4>
+    <p>Problem 2 taught that measurement is part of the circuit. Problem 3 — the capacitor charging to the wrong voltage — extends this to two-capacitor circuits where the charging path itself is the mystery. The time constant depends on the Thevenin resistance seen by each capacitor individually, which must be calculated with all other capacitors removed and sources killed.</p>
+  </div>
+
+  <div class="sim-interactive-box">
+    <h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec13-pr-2_Filter_Noise_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec13-pr-3">
+  <h2>Problem 3 — The Capacitor That Charges to the Wrong Voltage</h2>
+
+  <div class="source-block">
+    <h4>Problem Statement</h4>
+    <p>Circuit: 5V supply, R1=R2=R3=10kΩ. R1 from 5V to node A; R2 from A to B; R3 from B to GND. C1=100µF from node A to GND; C2=100µF from node B to GND. Switch S1 in series with R1. Both capacitors initially uncharged. S1 closes at t=0.</p>
+    <p>Q1: V_A(∞) and V_B(∞)? Q2: Write transient equations. Q3: Are time constants equal? Q4: At t=5ms, find V_A and V_B. Q5: Current through R2 at t=0⁺ and t=∞? Q6: Which capacitor charges faster and why?</p>
+  </div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagram</h4>
+    <svg viewBox="0 0 520 220" width="100%" style="max-width:520px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- 5V supply -->
+      <text x="30" y="70" text-anchor="middle" font-size="12">5V</text>
+      <line x1="30" y1="75" x2="30" y2="90" stroke="currentColor" stroke-width="2"/>
+      <!-- S1 switch -->
+      <circle cx="30" cy="95" r="5" fill="none" stroke="currentColor" stroke-width="2"/>
+      <line x1="30" y1="85" x2="30" y2="90" stroke="currentColor" stroke-width="2"/>
+      <line x1="30" y1="100" x2="30" y2="105" stroke="currentColor" stroke-width="2"/>
+      <text x="42" y="99" font-size="9">S1</text>
+      <!-- R1 -->
+      <line x1="30" y1="105" x2="110" y2="105" stroke="currentColor" stroke-width="2"/>
+      <rect x="110" y="97" width="50" height="16" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="135" y="109" text-anchor="middle" font-size="10">R1=10k</text>
+      <!-- Node A -->
+      <line x1="160" y1="105" x2="220" y2="105" stroke="currentColor" stroke-width="2"/>
+      <circle cx="200" cy="105" r="3" fill="currentColor"/>
+      <text x="200" y="95" text-anchor="middle" font-size="11">A</text>
+      <!-- C1 from A to GND -->
+      <line x1="200" y1="105" x2="200" y2="128" stroke="currentColor" stroke-width="2"/>
+      <line x1="185" y1="128" x2="215" y2="128" stroke="currentColor" stroke-width="2"/>
+      <line x1="185" y1="134" x2="215" y2="134" stroke="currentColor" stroke-width="2"/>
+      <text x="225" y="135" font-size="10">C1=100µF</text>
+      <line x1="200" y1="134" x2="200" y2="155" stroke="currentColor" stroke-width="2"/>
+      <!-- R2 -->
+      <rect x="220" y="97" width="50" height="16" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="245" y="109" text-anchor="middle" font-size="10">R2=10k</text>
+      <!-- Node B -->
+      <line x1="270" y1="105" x2="340" y2="105" stroke="currentColor" stroke-width="2"/>
+      <circle cx="320" cy="105" r="3" fill="currentColor"/>
+      <text x="320" y="95" text-anchor="middle" font-size="11">B</text>
+      <!-- C2 from B to GND -->
+      <line x1="320" y1="105" x2="320" y2="128" stroke="currentColor" stroke-width="2"/>
+      <line x1="305" y1="128" x2="335" y2="128" stroke="currentColor" stroke-width="2"/>
+      <line x1="305" y1="134" x2="335" y2="134" stroke="currentColor" stroke-width="2"/>
+      <text x="345" y="135" font-size="10">C2=100µF</text>
+      <line x1="320" y1="134" x2="320" y2="155" stroke="currentColor" stroke-width="2"/>
+      <!-- R3 -->
+      <line x1="340" y1="105" x2="400" y2="105" stroke="currentColor" stroke-width="2"/>
+      <rect x="400" y="97" width="50" height="16" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="425" y="109" text-anchor="middle" font-size="10">R3=10k</text>
+      <!-- GND rail -->
+      <line x1="450" y1="105" x2="470" y2="105" stroke="currentColor" stroke-width="2"/>
+      <line x1="470" y1="75" x2="470" y2="155" stroke="currentColor" stroke-width="2"/>
+      <line x1="30" y1="155" x2="470" y2="155" stroke="currentColor" stroke-width="2"/>
+      <line x1="245" y1="148" x2="265" y2="148" stroke="currentColor" stroke-width="2"/>
+      <line x1="249" y1="153" x2="261" y2="153" stroke="currentColor" stroke-width="2"/>
+      <line x1="253" y1="158" x2="257" y2="158" stroke="currentColor" stroke-width="2"/>
+      <!-- Annotations -->
+      <text x="245" y="175" text-anchor="middle" font-size="9" fill="var(--text-muted)">τ₁=τ₂=667ms</text>
+      <text x="245" y="186" text-anchor="middle" font-size="9" fill="var(--text-muted)">V_A(∞)=3.33V, V_B(∞)=1.67V</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">Symmetric resistor–capacitor ladder. Both capacitors charge with τ=667ms to different final voltages; V_A always = 2×V_B throughout the transient.</p>
+  </div>
+
+  <div class="intuition-box">
+    <h4>Intuition</h4>
+    <p>At the moment the switch closes, both capacitors are empty and act like short circuits, dragging both nodes A and B instantly to 0V. No current flows through R2 because both ends are at the same potential (0V). Current flows only into C1 from the supply. As C1 charges, node A rises; only then does a voltage difference appear across R2, which starts charging C2. The system is like two buckets connected by a pipe: the first bucket (C1) must fill a little before water flows through the pipe into the second bucket (C2).</p>
+  </div>
+
+  <div class="physics-box">
+    <h4>Physics</h4>
+    <p>Capacitors resist instantaneous voltage change because charge cannot be deposited instantly — current must flow continuously to redistribute charge on the plates. When both capacitors start at zero, they short-circuit the nodes they're connected to. Any charge deposited onto C1 by current through R1 raises V_A; by the symmetric resistor ratio, V_B tracks at exactly half of V_A because R2+R3 sees the same voltage as R1 in steady state. The key insight is that the Thevenin resistance seen by each capacitor — computed with sources killed and the other capacitor removed — is equal for both (6.67 kΩ by the symmetry of three equal resistors), giving equal time constants despite different final voltages.</p>
+  </div>
+
+  <div class="math-box">
+    <h4>Mathematics — Full Solution</h4>
+    <p><strong>Steady state (t→∞), capacitors open:</strong><br>
+    \( I_\infty = \frac{5\,\text{V}}{R_1+R_2+R_3} = \frac{5}{30{,}000} = 0.1\overline{6}\,\text{mA} \)<br>
+    \( V_A(\infty) = 5 - I_\infty R_1 = 5 - 1.67 = 3.33\,\text{V} \)<br>
+    \( V_B(\infty) = I_\infty R_3 = 1.67\,\text{V} \)</p>
+    <p><strong>Initial conditions (t=0⁺), capacitors shorted:</strong><br>
+    \( V_A(0^+) = V_B(0^+) = 0\,\text{V} \)<br>
+    \( I_{R_2}(0^+) = 0\,\text{A} \) (both nodes at same potential)</p>
+    <p><strong>Thevenin resistance for each capacitor:</strong><br>
+    Kill 5V source (short), remove C1: \( R_{th1} = R_1 \parallel (R_2+R_3) = 10\,\text{k}\parallel 20\,\text{k} = 6.667\,\text{k}\Omega \)<br>
+    Kill 5V source, remove C2: \( R_{th2} = R_3 \parallel (R_1+R_2) = 10\,\text{k}\parallel 20\,\text{k} = 6.667\,\text{k}\Omega \)<br>
+    \( \tau_1 = \tau_2 = 6667 \times 100\times10^{-6} = 0.667\,\text{s} \)</p>
+    <p><strong>Transient equations:</strong><br>
+    \( V_A(t) = 3.33\left(1 - e^{-t/0.667}\right) \)<br>
+    \( V_B(t) = 1.67\left(1 - e^{-t/0.667}\right) \)<br>
+    Ratio maintained: \( V_A(t) = 2\,V_B(t) \) always.</p>
+    <p><strong>At t = 5ms:</strong><br>
+    \( e^{-0.005/0.667} = e^{-0.0075} = 0.9925 \)<br>
+    \( V_A(5\,\text{ms}) = 3.33 \times 0.0075 = 0.025\,\text{V} \)<br>
+    \( V_B(5\,\text{ms}) = 1.67 \times 0.0075 = 0.0125\,\text{V} \)<br>
+    (5 ms is only 0.75% of τ — barely any charging has occurred.)</p>
+    <p><strong>Current through R2 at t→∞:</strong><br>
+    \( I_{R_2}(\infty) = \frac{V_A(\infty)-V_B(\infty)}{R_2} = \frac{1.667}{10{,}000} = 0.1\overline{6}\,\text{mA} \)</p>
+  </div>
+
+  <div class="practical-box">
+    <h4>Practical Implementation</h4>
+    <p>This topology appears in real circuits as a two-stage RC power supply filter. The long τ = 667ms means the circuit takes about 3.3 seconds to reach 99% of final voltage — important for power-on sequencing in microcontroller circuits. If you need faster settling, reduce R or reduce C. If C1 = C2 = 10µF (ceramic), τ = 66.7ms — settles in 333ms. Use MLCC capacitors (Samsung/Murata X7R) for better temperature stability than electrolytic. Note: X7R capacitance derates with DC bias — at 3.3V, a nominal 100µF X7R may be only 70µF. Use C0G for precision timing if needed.</p>
+  </div>
+
+  <div class="story-box">
+    <h4>Real-World Story</h4>
+    <p>In early 2020, a power sequencing bug was found in a WiFi module design at a startup. The MCU required 3.3V on VDDIO before 1.8V on VDDCORE could rise (per datasheet sequencing requirement). The designer used a two-resistor RC delay network to stagger the power rails. But because the source impedance of the regulator had not been included in the time constant calculation, the delay was 40% shorter than designed. In production (colder temperature, higher regulator output impedance), the delay was correct. In the lab (warm, low impedance bench supply), the delay was too short — VDDCORE beat VDDIO — and the modules failed to boot. The fix was adding a 10Ω series resistor to dominate the τ calculation and make it supply-impedance-independent.</p>
+  </div>
+
+  <div class="debug-box">
+    <h4>Debug</h4>
+    <p><strong>Symptom:</strong> Two-stage RC filter does not reach expected voltage; settling time is longer or shorter than calculated. <strong>Check 1:</strong> Measure Thevenin equivalent of source — include source resistance in R_total calculation. <strong>Check 2:</strong> Verify capacitor values with LCR meter under DC bias matching operating conditions (MLCC derating). <strong>Check 3:</strong> Confirm both capacitors are actually reaching the expected final voltage — if C2 is lower than V_B(∞), a leakage path (ESD diode, gate input, resistive load) is discharging it. <strong>Fix:</strong> Buffer each RC stage with a voltage follower op-amp to prevent interaction between stages.</p>
+  </div>
+
+  <div class="optimize-box">
+    <h4>Optimization</h4>
+    <p>The symmetric property (equal τ, ratio of voltages maintained) is useful in precision analog design. To exploit it: set R1=R2=R3 and C1=C2 for a precision voltage divider with known, matched time constants — useful in instrumentation amplifier bias networks where you want zero differential transient. For power supply sequencing: replace R2 with a Zener diode to create a threshold-based sequence rather than a time-based one. This eliminates dependence on τ and gives a defined voltage step rather than an exponential curve.</p>
+  </div>
+
+  <div class="bridge-box">
+    <h4>Bridge</h4>
+    <p>The next problem — the PCB transmission line — moves from time-domain RC analysis to distributed LC analysis. Where RC gives exponential settling, an LC transmission line gives ringing and reflections. The λ/10 rule provides the boundary between the two regimes: below it, use lumped circuit analysis; above it, transmission-line theory is required.</p>
+  </div>
+
+  <div class="sim-interactive-box">
+    <h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec13-pr-3_Capacitor_Charging_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec13-pr-4">
+  <h2>Problem 4 — The Transmission Line in Your Living Room</h2>
+
+  <div class="source-block">
+    <h4>Problem Statement</h4>
+    <p>A PCB designer runs a 50 cm trace (0.2mm wide, FR4) from an MCU GPIO (rise time=1ns, Z_out=50Ω) to a CMOS input (Z_in=1MΩ). Signal: 50MHz clock. The designer says "it's just a wire." The engineer says "add 33Ω series termination."</p>
+    <p>Q1: Calculate trace L and C. Q2: Find Z₀ of the trace. Q3: Trace resonant frequency. Q4: Without termination — what happens? Q5: With 33Ω — calculate new rise time. Q6: λ/10 rule — when is termination needed?</p>
+  </div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagram</h4>
+    <svg viewBox="0 0 520 200" width="100%" style="max-width:520px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- MCU GPIO block -->
+      <rect x="10" y="70" width="70" height="60" fill="none" stroke="currentColor" stroke-width="2" rx="4"/>
+      <text x="45" y="96" text-anchor="middle" font-size="10">MCU</text>
+      <text x="45" y="108" text-anchor="middle" font-size="9">GPIO</text>
+      <text x="45" y="120" text-anchor="middle" font-size="9">Z=50Ω</text>
+      <!-- Z_source -->
+      <line x1="80" y1="100" x2="105" y2="100" stroke="currentColor" stroke-width="2"/>
+      <rect x="105" y="93" width="34" height="14" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="122" y="104" text-anchor="middle" font-size="9">Z_s=50Ω</text>
+      <!-- Series termination resistor (optional) -->
+      <line x1="139" y1="100" x2="164" y2="100" stroke="currentColor" stroke-width="2"/>
+      <rect x="164" y="93" width="34" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4,2"/>
+      <text x="181" y="104" text-anchor="middle" font-size="9">R_s=33Ω</text>
+      <!-- PCB trace as transmission line -->
+      <line x1="198" y1="100" x2="350" y2="100" stroke="currentColor" stroke-width="3"/>
+      <line x1="198" y1="120" x2="350" y2="120" stroke="currentColor" stroke-width="1" stroke-dasharray="4,2"/>
+      <text x="274" y="90" text-anchor="middle" font-size="9">50cm trace</text>
+      <text x="274" y="80" text-anchor="middle" font-size="9">Z₀=146Ω, t_d=3.5ns</text>
+      <!-- Arrows indicating wave travel -->
+      <text x="240" y="112" font-size="14">→</text>
+      <text x="310" y="132" font-size="14">←</text>
+      <!-- Load block -->
+      <line x1="350" y1="100" x2="375" y2="100" stroke="currentColor" stroke-width="2"/>
+      <rect x="375" y="70" width="70" height="60" fill="none" stroke="currentColor" stroke-width="2" rx="4"/>
+      <text x="410" y="96" text-anchor="middle" font-size="10">CMOS</text>
+      <text x="410" y="108" text-anchor="middle" font-size="9">Input</text>
+      <text x="410" y="120" text-anchor="middle" font-size="9">Z=1MΩ</text>
+      <!-- GND rail -->
+      <line x1="10" y1="155" x2="445" y2="155" stroke="currentColor" stroke-width="1" stroke-dasharray="3,2"/>
+      <text x="227" y="170" text-anchor="middle" font-size="9" fill="var(--text-muted)">Γ_source=−0.49  Γ_load=+1.0 (open)</text>
+      <text x="227" y="182" text-anchor="middle" font-size="9" fill="var(--text-muted)">Without term: 2V overshoot seen at load!</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">50cm trace on FR4 forms a 146Ω transmission line. Without termination, the open-circuit load reflects the full wave, producing 2V overshoot from a 1V signal.</p>
+  </div>
+
+  <div class="intuition-box">
+    <h4>Intuition</h4>
+    <p>Imagine shouting into a tunnel. Sound travels forward, hits the closed far end, and reflects back at you. If you shout the word "yes" and the echo returns "yes" too, you might hear "yes-YES" overlapping — the echo reinforces the original. This is reflection from an open circuit (Z_load → ∞): the reflection coefficient is +1, meaning the reflected wave is a full copy of the incident wave. The load momentarily sees the incident wave plus the full reflection = twice the original voltage. For a 1V signal this produces a 2V spike at the CMOS input, potentially latch-up or oxide damage. Termination resistors absorb the returning echo so it never re-reflects.</p>
+  </div>
+
+  <div class="physics-box">
+    <h4>Physics</h4>
+    <p>Every PCB trace has distributed inductance (from current flow in the conductor) and distributed capacitance (from the conductor over a ground plane). Per unit length these combine to give a characteristic impedance \( Z_0 = \sqrt{L'/C'} \). When a voltage step travels down a transmission line and encounters a load whose impedance does not match Z₀, the electromagnetic boundary conditions (continuity of tangential E and H fields at the interface) require a reflected wave to satisfy both. At an open circuit (Z→∞), all energy reflects. At a short circuit (Z=0), all energy reflects with inverted polarity. When reflected energy returns to the source and the source impedance also mismatches, a second reflection occurs — and so on until the energy is fully absorbed by resistive losses in the terminating impedances.</p>
+  </div>
+
+  <div class="math-box">
+    <h4>Mathematics — Full Solution</h4>
+    <p><strong>Trace parameters:</strong><br>
+    \( L_{trace} = 50\,\text{cm} \times 8\,\text{nH/cm} = 400\,\text{nH} \)<br>
+    \( C_{trace} = 50\,\text{cm} \times 1.1\,\text{pF/cm} = 55\,\text{pF} \)</p>
+    <p><strong>Characteristic impedance (microstrip formula):</strong><br>
+    \( Z_0 = \frac{87}{\sqrt{\varepsilon_r+1.41}}\ln\!\left(\frac{5.98H}{0.8W+T}\right) = \frac{87}{\sqrt{5.41}}\ln\!\left(\frac{9.568\,\text{mm}}{0.195\,\text{mm}}\right) = 37.4 \times 3.89 = 145.6\,\Omega \)</p>
+    <p><strong>Resonant frequency (lumped LC):</strong><br>
+    \( f_0 = \frac{1}{2\pi\sqrt{400\,\text{nH}\times55\,\text{pF}}} = \frac{1}{2\pi\times4.69\,\text{ns}} = 33.9\,\text{MHz} \)<br>
+    Signal is 50 MHz > 34 MHz resonance — driving through a resonant structure.</p>
+    <p><strong>One-way propagation delay:</strong><br>
+    \( v = c/\sqrt{\varepsilon_r} = 3\times10^8/\sqrt{4.4} = 1.43\times10^8\,\text{m/s} \)<br>
+    \( t_d = 0.5\,\text{m}/1.43\times10^8 = 3.5\,\text{ns} \)</p>
+    <p><strong>Reflection coefficients:</strong><br>
+    \( \Gamma_s = \frac{Z_s - Z_0}{Z_s + Z_0} = \frac{50-146}{50+146} = -0.49 \)<br>
+    \( \Gamma_L = \frac{1\,\text{M}\Omega - 146}{1\,\text{M}\Omega + 146} \approx +1.0 \)</p>
+    <p>Load sees: original 1V, then +1V reflection at t=7ns → 2V total. Then −0.49V re-reflection at t=14ns → 1.51V. Settles over many ns.</p>
+    <p><strong>Perfect series termination:</strong><br>
+    \( R_s = Z_0 - Z_{source} = 146 - 50 = 96\,\Omega \)<br>
+    Rise time with R_s=96Ω: \( \tau = R_s \times C_{trace} = 96\times55\,\text{pF} = 5.28\,\text{ns} \)<br>
+    \( t_r \approx 2.2\tau = 11.6\,\text{ns} \)</p>
+    <p><strong>λ/10 rule at 50 MHz in FR4:</strong><br>
+    \( \lambda = v/f = 1.43\times10^8/50\times10^6 = 2.86\,\text{m} \)<br>
+    \( \lambda/10 = 28.6\,\text{cm} \). Trace = 50 cm > 28.6 cm → transmission line treatment required.</p>
+  </div>
+
+  <div class="practical-box">
+    <h4>Practical Implementation</h4>
+    <p>For 50 MHz signals on FR4: keep traces under 28 cm to avoid termination. If longer traces are needed, add a 100Ω (closest to 96Ω) 0402 resistor in series at the driver end — place it within 1 mm of the MCU GPIO pin, before the trace, not at the far end. For 50Ω controlled impedance (standard for RF): use a 3mm wide trace on standard 1.6mm FR4 with ground plane on layer 2. Verify with time-domain reflectometry (TDR) or use a signal integrity tool (Hyperlynx, SiSoft). PCB stackup: SIG/GND/PWR/SIG with GND plane on layer 2 directly under signal traces for best controlled impedance.</p>
+  </div>
+
+  <div class="story-box">
+    <h4>Real-World Story</h4>
+    <p>In the development of the original Raspberry Pi in 2012, engineers found that the 50MHz SDIO bus to the SD card slot was generating bit errors that increased with trace length. PCB revision 1.0 had a 12cm trace — fine. A layout change in revision 1.1 extended the trace to 22 cm to accommodate a relocated connector. At room temperature: worked. At 10°C: random SDIO failures. Temperature lowered the driver output impedance slightly, shifting the reflection coefficient, and the longer trace settled more slowly at lower temperatures. A 22Ω series termination resistor added near the SD connector in revision 1.2 eliminated the failures permanently.</p>
+  </div>
+
+  <div class="debug-box">
+    <h4>Debug</h4>
+    <p><strong>Symptom:</strong> Digital bus errors or clock jitter that worsen with trace length or at high frequencies; oscilloscope shows ringing or overshoot on clock edges. <strong>Step 1:</strong> Measure rise time. If rise time &lt; 2×t_delay (where t_delay = trace_length_m / 1.43×10⁸), termination is needed. <strong>Step 2:</strong> Check for 2× overshoot at load (vs source); confirms open-circuit reflection. <strong>Step 3:</strong> Add 33–100Ω series resistor at driver end. <strong>Step 4:</strong> Verify ringing gone on scope, BER drops to 0. If ringing persists with termination: check for branch stubs or via inductance on signal path.</p>
+  </div>
+
+  <div class="optimize-box">
+    <h4>Optimization</h4>
+    <p>Best practice for high-speed PCB: use differential signaling (LVDS) instead of single-ended CMOS for clock signals above 30 MHz. LVDS has built-in 100Ω termination at the receiver, controlled 100Ω differential trace impedance, and common-mode rejection that eliminates ground plane noise coupling. For single-ended unavoidable: use Thevenin parallel termination (two resistors from the signal to VCC and GND) at the load end to prevent initial 2V overshoot while also providing DC load. For EMI compliance: route high-speed traces on inner layers sandwiched between ground planes.</p>
+  </div>
+
+  <div class="bridge-box">
+    <h4>Bridge</h4>
+    <p>Transmission-line theory involves matching impedances so that no energy reflects. Problem 5 — the LDO oscillating only during load transitions — is also a stability and impedance problem, but in a feedback control system rather than a passive transmission line. In both cases, a mismatch (of impedances or of phase margin) causes oscillation; in both cases, adding a properly-valued passive component (a termination resistor or a feedback capacitor) restores stability.</p>
+  </div>
+
+  <div class="sim-interactive-box">
+    <h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec13-pr-4_Transmission_Line_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec13-pr-5">
+  <h2>Problem 5 — The Power Supply That Oscillates at Exactly the Wrong Moment</h2>
+
+  <div class="source-block">
+    <h4>Problem Statement</h4>
+    <p>LDO regulator: 5V in → 3.3V out. Output cap: C_out=10µF electrolytic, ESR=0.5Ω. Load: MCU drawing 0mA sleep / 50mA active / 200mA burst. The regulator oscillates at 180kHz only when the MCU transitions from sleep to active — not at any steady-state current level.</p>
+    <p>Q1: Why does transition cause oscillation but steady state does not? Q2: Role of ESR in LDO stability. Q3: Calculate stability condition. Q4: Design fix with component values. Q5: What if electrolytic is replaced with ceramic (ESR=5mΩ)?</p>
+  </div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagram</h4>
+    <svg viewBox="0 0 520 200" width="100%" style="max-width:520px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- 5V input -->
+      <text x="30" y="65" text-anchor="middle" font-size="12">5V</text>
+      <line x1="30" y1="70" x2="30" y2="90" stroke="currentColor" stroke-width="2"/>
+      <!-- LDO block -->
+      <rect x="20" y="90" width="80" height="40" fill="none" stroke="currentColor" stroke-width="2" rx="4"/>
+      <text x="60" y="107" text-anchor="middle" font-size="10">LDO</text>
+      <text x="60" y="119" text-anchor="middle" font-size="9">3.3V out</text>
+      <!-- Output line -->
+      <line x1="100" y1="110" x2="180" y2="110" stroke="currentColor" stroke-width="2"/>
+      <!-- ESR of capacitor -->
+      <rect x="180" y="103" width="30" height="14" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="195" y="114" text-anchor="middle" font-size="9">ESR</text>
+      <text x="195" y="126" text-anchor="middle" font-size="9">0.5Ω</text>
+      <!-- C_out capacitor -->
+      <line x1="210" y1="110" x2="240" y2="110" stroke="currentColor" stroke-width="2"/>
+      <line x1="240" y1="95" x2="240" y2="125" stroke="currentColor" stroke-width="2"/>
+      <line x1="250" y1="95" x2="250" y2="125" stroke="currentColor" stroke-width="2"/>
+      <text x="267" y="114" font-size="9">10µF</text>
+      <line x1="250" y1="110" x2="290" y2="110" stroke="currentColor" stroke-width="2"/>
+      <!-- Load: MCU -->
+      <rect x="290" y="90" width="80" height="40" fill="none" stroke="currentColor" stroke-width="2" rx="4"/>
+      <text x="330" y="107" text-anchor="middle" font-size="10">MCU</text>
+      <text x="330" y="119" text-anchor="middle" font-size="9">0/50/200mA</text>
+      <!-- GND connections -->
+      <line x1="240" y1="125" x2="240" y2="155" stroke="currentColor" stroke-width="2"/>
+      <line x1="60" y1="130" x2="60" y2="155" stroke="currentColor" stroke-width="2"/>
+      <line x1="330" y1="130" x2="330" y2="155" stroke="currentColor" stroke-width="2"/>
+      <line x1="30" y1="155" x2="380" y2="155" stroke="currentColor" stroke-width="2"/>
+      <!-- Stability annotation -->
+      <text x="195" y="148" text-anchor="middle" font-size="9" fill="var(--text-muted)">f_zero = 31.8kHz</text>
+      <text x="195" y="160" text-anchor="middle" font-size="9" fill="var(--text-muted)">ESR adds phase lead → stable</text>
+      <!-- Oscillation waveform hint -->
+      <path d="M100,75 Q110,65 120,75 Q130,65 140,75 Q150,65 160,75" fill="none" stroke="red" stroke-width="1.5"/>
+      <text x="130" y="62" text-anchor="middle" font-size="9" fill="red">180kHz osc</text>
+      <text x="130" y="52" text-anchor="middle" font-size="9" fill="red">during transition</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">LDO with electrolytic output capacitor. ESR creates a stabilizing zero at 31.8kHz. Step-load transients excite the loop and can cause 180kHz oscillation if phase margin is inadequate during the transition.</p>
+  </div>
+
+  <div class="intuition-box">
+    <h4>Intuition</h4>
+    <p>An LDO regulator is a feedback control loop that constantly adjusts a transistor to keep output voltage equal to a reference. Like a car's cruise control, it works fine at constant speed. But when you suddenly step on the brakes (a sudden load current change), the control loop must react quickly. If the loop's phase margin is insufficient — meaning its internal delays push the feedback nearly 180° out of phase at the frequency it tries to correct — the correction overshoots, then overcorrects, oscillating like a driver who swerves left, overcorrects right, and swerves left again. The oscillation only happens during the transition because steady-state operation never demands fast loop action.</p>
+  </div>
+
+  <div class="physics-box">
+    <h4>Physics</h4>
+    <p>The ESR (equivalent series resistance) of an electrolytic capacitor is caused by the electrolyte's resistivity, the aluminum oxide layer, and the contact resistance between foil and terminals. This resistance, normally considered undesirable, creates a zero in the LDO's control-loop transfer function: \( f_z = 1/(2\pi \cdot \text{ESR} \cdot C) \). A zero adds phase lead — it makes the loop signal arrive slightly earlier than it would with a pure capacitor — and this phase lead increases the phase margin of the feedback loop. Modern ceramic capacitors have ESR of 5–10 mΩ, moving this zero to many megahertz (far above the loop unity-gain frequency), removing the phase boost entirely. An LDO designed around an electrolytic output capacitor will oscillate when a ceramic capacitor is substituted, even though the ceramic appears to be a "better" capacitor by almost every metric.</p>
+  </div>
+
+  <div class="math-box">
+    <h4>Mathematics — Full Solution</h4>
+    <p><strong>ESR zero frequency:</strong><br>
+    \( f_z = \frac{1}{2\pi \cdot \text{ESR} \cdot C_{out}} = \frac{1}{2\pi \times 0.5 \times 10\times10^{-6}} = 31.8\,\text{kHz} \)</p>
+    <p><strong>Stability condition (minimum ESR):</strong><br>
+    For phase boost to appear at unity-gain frequency \( f_{ug} = 200\,\text{kHz} \):<br>
+    \( f_z < f_{ug} \implies \text{ESR} > \frac{1}{2\pi f_{ug} C_{out}} = \frac{1}{2\pi\times200{,}000\times10\,\mu} = 79.6\,\text{m}\Omega \)<br>
+    Our ESR = 500 mΩ > 80 mΩ → <em>satisfies minimum ESR condition</em>.</p>
+    <p><strong>Maximum ESR (voltage droop limit):</strong><br>
+    \( \text{ESR}_{max} = \frac{\Delta V_{droop,max}}{\Delta I_{max}} = \frac{50\,\text{mV}}{200\,\text{mA}} = 0.25\,\Omega \)<br>
+    Our ESR = 0.5Ω > 0.25Ω → <em>too high, causes 100mV droop</em>.</p>
+    <p><strong>If ceramic cap (ESR = 5mΩ):</strong><br>
+    \( f_z = \frac{1}{2\pi\times0.005\times10\,\mu} = 3.18\,\text{MHz} \)<br>
+    This is above \( f_{ug} = 200\,\text{kHz} \) → zero provides no phase boost at unity gain → reduced phase margin → <em>oscillation</em>.</p>
+    <p><strong>Optimum fix — parallel combination:</strong><br>
+    C1 = 10µF electrolytic (ESR=0.5Ω): provides ESR zero at 31.8kHz for stability.<br>
+    C2 = 1µF ceramic X7R (ESR=5mΩ): handles fast transients (low ESL).<br>
+    Together: stable AND low transient droop.</p>
+  </div>
+
+  <div class="practical-box">
+    <h4>Practical Implementation</h4>
+    <p>Always check the LDO datasheet section "Output Capacitor Requirements" — many list both minimum and maximum ESR, and minimum capacitance. For older PMOS LDOs (LP2950, LM2940): use 10–100µF electrolytic with ESR 0.1–1Ω. For modern LDOs designed for ceramic (TPS7A, MIC5504): use 1–10µF X7R MLCC, no electrolytic required. If a design must support both capacitor types: add a 100–200mΩ series resistor (current sense type, low inductance) in series with the ceramic capacitor output path to add effective ESR. Measure LDO stability by injecting a small current step (e.g., via a switched resistor) and observing the output waveform on a scope — any ringing indicates marginal phase margin.</p>
+  </div>
+
+  <div class="story-box">
+    <h4>Real-World Story</h4>
+    <p>In 2017, a wearable fitness device manufacturer shipped 50,000 units with a known LDO: the LP5900. The design verification used a 10µF Panasonic electrolytic at the output. For production, the contract manufacturer substituted a 10µF Samsung MLCC (ceramic) because of a supply chain shortage. The ceramic capacitor had ESR of 3mΩ. All 50,000 units shipped. In the field, the LDO oscillated at 220 kHz during Bluetooth transmit bursts, corrupting the accelerometer data stream and causing false step-count readings. The fix was a datasheet update and a field service advisory: add one 10Ω/0402 resistor in series between the LDO output pin and the ceramic capacitor. The $0.002 resistor was added to all new production boards. Total recall and rework cost: $180,000.</p>
+  </div>
+
+  <div class="debug-box">
+    <h4>Debug</h4>
+    <p><strong>Symptom:</strong> Power rail shows oscillation at 50kHz–500kHz during load transients; stable at DC. <strong>Step 1:</strong> Probe LDO output capacitor type. If ceramic: check LDO datasheet for minimum ESR requirement. <strong>Step 2:</strong> Add 0.1–1µF ceramic in parallel with output capacitor — if oscillation stops, the original ceramic was too small for fast transient handling. <strong>Step 3:</strong> Add 100mΩ series resistor at LDO output. If oscillation frequency decreases or stops: ESR zero was in the wrong position. <strong>Step 4:</strong> Scope the LDO enable pin and VIN during oscillation — if VIN drops during oscillation, the source impedance is too high and a bulk input capacitor (47–100µF) is needed.</p>
+  </div>
+
+  <div class="optimize-box">
+    <h4>Optimization</h4>
+    <p>Best modern approach: use an LDO specifically designed for ceramic output capacitors (e.g., TI TPS7A05, Microchip MIC5504). These use internal frequency compensation that does not require ESR for stability. For high-current LDOs (I_out > 500mA): use a switched-capacitor or synchronous buck regulator instead — LDOs waste power as (V_in − V_out) × I_out = heat. At 5V in, 3.3V out, 200mA: LDO waste = 1.7V × 200mA = 340mW. A buck converter at 90% efficiency dissipates only 37mW. For battery-powered designs this is the difference between 10 hours and 14 hours of operation.</p>
+  </div>
+
+  <div class="bridge-box">
+    <h4>Bridge</h4>
+    <p>ESR as a stability zero is an elegant example of a parasite becoming a feature. Problem 6 — the inductor that charges backward — uses another "unwanted" phenomenon: inductor current reversal. Just as ESR accidentally stabilizes the LDO, a reverse-polarity battery accidentally creates the operating principle of bidirectional DC–DC converters.</p>
+  </div>
+
+  <div class="sim-interactive-box">
+    <h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec13-pr-5_LDO_Stability_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec13-pr-6">
+  <h2>Problem 6 — The Inductor That Charges Backward</h2>
+
+  <div class="source-block">
+    <h4>Problem Statement</h4>
+    <p>Circuit: 12V supply, R=100Ω, L=10mH in series. At t=0, S1 closes; circuit reaches steady state. Then S2 closes, connecting a 4V opposing battery in parallel with L.</p>
+    <p>Q1: I_L at t=T (just before S2). Q2: V_L at T⁻ and T⁺. Q3: New steady-state current after S2. Q4: Write I_L(t) for t>T. Q5: Time for I_L=0 (using 20V opposing to force reversal). Q6: What happens physically at current reversal?</p>
+  </div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagram</h4>
+    <svg viewBox="0 0 520 200" width="100%" style="max-width:520px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- 12V supply -->
+      <circle cx="40" cy="100" r="20" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="40" y="96" text-anchor="middle" font-size="11">12V</text>
+      <text x="40" y="108" text-anchor="middle" font-size="10">+/-</text>
+      <!-- S1 switch -->
+      <line x1="60" y1="80" x2="90" y2="80" stroke="currentColor" stroke-width="2"/>
+      <circle cx="95" cy="80" r="4" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="95" y="68" text-anchor="middle" font-size="9">S1</text>
+      <!-- R=100Ω -->
+      <line x1="99" y1="80" x2="120" y2="80" stroke="currentColor" stroke-width="2"/>
+      <rect x="120" y="72" width="44" height="16" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="142" y="84" text-anchor="middle" font-size="10">R=100Ω</text>
+      <!-- L=10mH -->
+      <line x1="164" y1="80" x2="190" y2="80" stroke="currentColor" stroke-width="2"/>
+      <path d="M190,80 Q198,64 206,80 Q214,64 222,80 Q230,64 238,80 Q246,64 254,80" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="222" y="64" text-anchor="middle" font-size="10">L=10mH</text>
+      <!-- Node A (junction of R, L, and battery) -->
+      <line x1="254" y1="80" x2="300" y2="80" stroke="currentColor" stroke-width="2"/>
+      <circle cx="300" cy="80" r="3" fill="currentColor"/>
+      <text x="300" y="68" text-anchor="middle" font-size="10">A</text>
+      <!-- 4V battery across L -->
+      <line x1="300" y1="80" x2="300" y2="100" stroke="currentColor" stroke-width="2"/>
+      <circle cx="300" cy="120" r="15" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="5,3"/>
+      <text x="300" y="116" text-anchor="middle" font-size="10">4V</text>
+      <text x="300" y="128" text-anchor="middle" font-size="9">S2</text>
+      <line x1="300" y1="135" x2="300" y2="155" stroke="currentColor" stroke-width="2"/>
+      <!-- GND connections -->
+      <line x1="40" y1="120" x2="40" y2="155" stroke="currentColor" stroke-width="2"/>
+      <line x1="40" y1="155" x2="300" y2="155" stroke="currentColor" stroke-width="2"/>
+      <!-- Current direction arrow -->
+      <text x="222" y="95" text-anchor="middle" font-size="11">→</text>
+      <text x="222" y="107" text-anchor="middle" font-size="9">I_L</text>
+      <!-- Annotations -->
+      <text x="400" y="80" font-size="9" fill="var(--text-muted)">Before S2: I=120mA</text>
+      <text x="400" y="92" font-size="9" fill="var(--text-muted)">After S2: I_∞=80mA</text>
+      <text x="400" y="104" font-size="9" fill="var(--text-muted)">τ=L/R=0.1ms</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">Inductor driven by 12V through R=100Ω; at steady state a 4V opposing battery connects in parallel with L, reducing final current and illustrating bidirectional energy flow.</p>
+  </div>
+
+  <div class="intuition-box">
+    <h4>Intuition</h4>
+    <p>An inductor is a flywheel for current. Once current is spinning at 120 mA, closing S2 adds a headwind (the 4V opposing battery). The flywheel does not stop instantly — it gradually slows to the new equilibrium speed of 80 mA, set by the balance of forces (12V drive minus 4V opposition = 8V net). If the headwind were strong enough (20V opposing battery), the flywheel would slow all the way to zero and then spin in reverse, exactly as a motor driving against a strong load reverses when the electrical supply changes sign. This reversal is precisely how regenerative braking works in electric vehicles.</p>
+  </div>
+
+  <div class="physics-box">
+    <h4>Physics</h4>
+    <p>The inductor stores energy in its magnetic field: \( E = \frac{1}{2}LI^2 \). When current decreases from 120 mA to 80 mA, the stored energy decreases from 72µJ to 32µJ. The difference (40µJ) is absorbed by the 4V battery (it is charged) and dissipated in R. If the new steady-state current is negative (as with a 20V opposing battery), energy must flow from the battery into the inductor and then into the 12V supply — this is exactly regenerative braking or bidirectional power conversion. The inductor continuity equation (\( V_L = L\,dI/dt \)) means current cannot jump instantaneously; the change is smooth and exponential with time constant \( \tau = L/R \).</p>
+  </div>
+
+  <div class="math-box">
+    <h4>Mathematics — Full Solution</h4>
+    <p><strong>Phase 1 — before S2 (t &lt; T):</strong><br>
+    \( \tau_1 = L/R = 10\,\text{mH}/100\,\Omega = 0.1\,\text{ms} \)<br>
+    \( I_L(T) = \frac{12\,\text{V}}{100\,\Omega} = 120\,\text{mA} \) (DC steady state)</p>
+    <p><strong>New steady state after S2 (4V opposing):</strong><br>
+    KVL: \( 12 - I\cdot R - 4 = 0 \implies I_\infty = \frac{8}{100} = 80\,\text{mA} \)</p>
+    <p><strong>Transient for t > T (using universal formula):</strong><br>
+    \( I_L(t) = 80 + (120-80)\,e^{-(t-T)/0.1\text{ms}} = 80 + 40\,e^{-10{,}000(t-T)}\,[\text{mA}] \)<br>
+    Decays from 120 mA to 80 mA with τ = 0.1 ms.</p>
+    <p><strong>If opposing battery = 20V (current reversal case):</strong><br>
+    \( I_\infty = (12-20)/100 = -80\,\text{mA} \)<br>
+    \( I_L(t) = -80 + (120-(-80))\,e^{-10{,}000(t-T)} = -80 + 200\,e^{-10{,}000(t-T)}\,[\text{mA}] \)<br>
+    Zero crossing: \( 200\,e^{-10{,}000\Delta t} = 80 \implies \Delta t = \frac{\ln(2.5)}{10{,}000} = 91.6\,\mu\text{s} \)</p>
+    <p><strong>V_L at transition:</strong><br>
+    At t=T⁻: \( V_L = 0 \) (steady state, no change in current).<br>
+    At t=T⁺: \( V_L = -4\,\text{V} \) (battery forces V_L = +4V with opposing polarity = net −4V in loop).<br>
+    Initial rate of change: \( dI/dt|_{T^+} = V_L/L = (12-4-I\cdot R)/L = (12-4-12)/0.01 = -400\,\text{A/s} \)</p>
+  </div>
+
+  <div class="practical-box">
+    <h4>Practical Implementation</h4>
+    <p>This topology is the heart of a synchronous buck-boost converter. In the Bel Power and Texas Instruments LM5175 buck-boost controller, the inductor is the energy-storage element that transfers energy from a higher-voltage bus to a lower-voltage bus (or vice versa in boost mode) by controlling the duty cycle to set the average inductor current — and therefore the output voltage. Key design consideration: when inductor current reverses in a synchronous converter, the low-side switch must continue conducting (synchronous rectification). If a diode is used instead, the current is clamped to zero (discontinuous conduction mode), fundamentally changing the transfer function.</p>
+  </div>
+
+  <div class="story-box">
+    <h4>Real-World Story</h4>
+    <p>Tesla's regenerative braking system, introduced in the Model S in 2012, is a real-time version of this problem at scale. The motor winding (L ≈ 1 mH) was carrying forward current to drive the wheels. When the driver lifts the accelerator, the control system reverses the effective supply (the battery bank becomes the "opposing" voltage), causing inductor current to reverse — now the motor acts as a generator, pushing current back into the battery. The crossover moment (when I_L = 0) corresponds to zero torque — the instant the car transitions from driving to braking. Engineers had to manage the current-reversal transient carefully to avoid mechanical jerk felt by passengers. The zero-crossing is smoothed over about 50 ms using a controlled slew rate on the gate drive signals.</p>
+  </div>
+
+  <div class="debug-box">
+    <h4>Debug</h4>
+    <p><strong>Symptom:</strong> In a bidirectional converter, large voltage spikes appear on the bus during direction reversal; diodes or switches fail near the zero-crossing event. <strong>Cause:</strong> If a diode (not synchronous switch) is used, inductor current cannot reverse — energy builds up in L and discharges as a voltage spike \( V = L\,dI/dt \) when the diode blocks. <strong>Fix:</strong> Replace diodes with synchronous switches (MOSFETs) that can conduct in both directions. Add dead time between high-side and low-side gate signals to prevent shoot-through during transition. Measure inductor current with a current probe through the transition to confirm smooth zero-crossing.</p>
+  </div>
+
+  <div class="optimize-box">
+    <h4>Optimization</h4>
+    <p>For bidirectional converters operating near zero-crossing: the discontinuous-conduction-mode (DCM) to continuous-conduction-mode (CCM) transition changes the converter's small-signal transfer function, potentially destabilizing the control loop. Modern controllers (e.g., LM5175) use valley current sensing to detect zero-crossing and automatically switch control modes. To minimize zero-crossing disturbance: increase switching frequency (reduces L for same ripple current), add a small dead-band around zero-current, and use adaptive gate timing to minimize body-diode conduction during the transition.</p>
+  </div>
+
+  <div class="bridge-box">
+    <h4>Bridge</h4>
+    <p>Inductor current reversal is the mechanism of energy transfer in all switching converters. Problem 7 — the 1 kHz bandpass filter — uses the same energy storage (in both L and C) to create a resonance that selectively passes one frequency. Resonance is what happens when the inductor's opposing EMF and the capacitor's restoring voltage exactly cancel at one specific frequency.</p>
+  </div>
+
+  <div class="sim-interactive-box">
+    <h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec13-pr-6_Inductor_Backward_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec13-pr-7">
+  <h2>Problem 7 — Design a Filter That Passes 1kHz Exactly and Rejects Everything Else</h2>
+
+  <div class="source-block">
+    <h4>Problem Statement</h4>
+    <p>Design a bandpass filter centered at exactly 1kHz. Requirements: at 1kHz output=100% of input; at 500Hz and 2kHz output &lt;10% (−20dB). Only R, L, C (no op-amps). Max L=100mH, min C=1nF. Source impedance: 50Ω. Load: 10kΩ.</p>
+  </div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagram</h4>
+    <svg viewBox="0 0 520 180" width="100%" style="max-width:520px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- Source with Rs -->
+      <circle cx="40" cy="90" r="20" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="40" y="86" text-anchor="middle" font-size="10">Vs</text>
+      <text x="40" y="98" text-anchor="middle" font-size="9">50Ω src</text>
+      <!-- Rs -->
+      <line x1="60" y1="78" x2="85" y2="78" stroke="currentColor" stroke-width="2"/>
+      <rect x="85" y="71" width="36" height="14" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="103" y="82" text-anchor="middle" font-size="9">Rs=50Ω</text>
+      <!-- R_filter=33Ω -->
+      <line x1="121" y1="78" x2="145" y2="78" stroke="currentColor" stroke-width="2"/>
+      <rect x="145" y="71" width="36" height="14" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="163" y="82" text-anchor="middle" font-size="9">R=33Ω</text>
+      <!-- L=100mH -->
+      <line x1="181" y1="78" x2="205" y2="78" stroke="currentColor" stroke-width="2"/>
+      <path d="M205,78 Q212,64 219,78 Q226,64 233,78 Q240,64 247,78 Q254,64 261,78" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="233" y="62" text-anchor="middle" font-size="9">L=100mH</text>
+      <!-- C=253nF -->
+      <line x1="261" y1="78" x2="285" y2="78" stroke="currentColor" stroke-width="2"/>
+      <line x1="285" y1="64" x2="285" y2="92" stroke="currentColor" stroke-width="2"/>
+      <line x1="293" y1="64" x2="293" y2="92" stroke="currentColor" stroke-width="2"/>
+      <text x="305" y="82" font-size="9">C=253nF</text>
+      <!-- Output node -->
+      <line x1="293" y1="78" x2="360" y2="78" stroke="currentColor" stroke-width="2"/>
+      <circle cx="340" cy="78" r="3" fill="currentColor"/>
+      <!-- R_load = 10kΩ to GND -->
+      <line x1="340" y1="78" x2="340" y2="95" stroke="currentColor" stroke-width="2"/>
+      <rect x="330" y="95" width="20" height="40" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="360" y="118" font-size="9">R_L=10kΩ</text>
+      <line x1="340" y1="135" x2="340" y2="150" stroke="currentColor" stroke-width="2"/>
+      <!-- GND -->
+      <line x1="40" y1="110" x2="40" y2="150" stroke="currentColor" stroke-width="2"/>
+      <line x1="40" y1="150" x2="340" y2="150" stroke="currentColor" stroke-width="2"/>
+      <!-- Output label -->
+      <line x1="360" y1="78" x2="400" y2="78" stroke="currentColor" stroke-width="2"/>
+      <text x="410" y="82" font-size="11">Vout</text>
+      <!-- Annotation -->
+      <text x="233" y="125" text-anchor="middle" font-size="9" fill="var(--text-muted)">f₀=1kHz, Q=6.63, BW=151Hz</text>
+      <text x="233" y="137" text-anchor="middle" font-size="9" fill="var(--text-muted)">−20dB at 500Hz and 2kHz ✓</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">Series RLC bandpass filter. At resonance Z_L+Z_C=0, only R_total remains, passing maximum current to the load. Q=6.63 provides the required −20dB rejection at one octave away.</p>
+  </div>
+
+  <div class="intuition-box">
+    <h4>Intuition</h4>
+    <p>A series RLC circuit is a mechanical resonator: the inductor is the mass (resists change in current = inertia), the capacitor is the spring (stores energy and pushes back), and the resistor is the damper (absorbs energy). At exactly the resonant frequency, the inertia and spring effects cancel each other perfectly — current flows freely, limited only by the damper. Too fast or too slow and either the inertia or spring blocks the current. Tuning the filter is like tuning a guitar string: changing L or C shifts the pitch (resonant frequency); changing R adjusts how sharp or broad the tone is (bandwidth/Q factor).</p>
+  </div>
+
+  <div class="physics-box">
+    <h4>Physics</h4>
+    <p>In an LC circuit, energy alternates between the magnetic field of the inductor and the electric field of the capacitor. At resonance \( \omega_0 = 1/\sqrt{LC} \), the energy transfer is in perfect balance: as the capacitor discharges, it drives exactly the current the inductor needs to build the magnetic field that will recharge the capacitor on the next half-cycle. The impedances \( Z_L = j\omega L \) and \( Z_C = 1/(j\omega C) \) are exactly equal and opposite, cancelling in the series path, leaving only R to limit current. Above resonance, Z_L dominates (reactance grows); below resonance, Z_C dominates (reactance also grows). Either way, current is reduced and the bandpass characteristic emerges.</p>
+  </div>
+
+  <div class="math-box">
+    <h4>Mathematics — Full Solution</h4>
+    <p><strong>Resonant frequency with L=100mH:</strong><br>
+    \( f_0 = 1\,\text{kHz} \implies LC = \frac{1}{4\pi^2 f_0^2} = \frac{1}{4\pi^2\times10^6} = 25.33\,\text{nF·H} \)<br>
+    \( C = 25.33\,\text{nF·H}/100\,\text{mH} = 253.3\,\text{nF} \)</p>
+    <p><strong>Required R from −20dB rejection at 500Hz:</strong><br>
+    At \( \omega = 2\pi\times500 \): \( \omega L = 314.2\,\Omega \), \( 1/\omega C = 1256.8\,\Omega \)<br>
+    \( |H| = 0.1 \implies R = \sqrt{\frac{|Z_{detuned}|^2 \times 0.01}{1-0.01}} \)<br>
+    \( |\omega L - 1/\omega C| = |314.2 - 1256.8| = 942.6\,\Omega \)<br>
+    \( R = \sqrt{\frac{942.6^2 \times 0.01}{0.99}} = \sqrt{8979.6} = 94.8\,\Omega \)</p>
+    <p><strong>Accounting for source and inductor DCR:</strong><br>
+    \( R_{filter} = R_{total} - R_s - R_{DCR} = 94.8 - 50 - 10 = 34.8\,\Omega \approx 33\,\Omega \)</p>
+    <p><strong>Q factor and bandwidth:</strong><br>
+    \( Q = \frac{\omega_0 L}{R_{total}} = \frac{6283\times0.1}{94.8} = 6.63 \)<br>
+    \( BW_{-3dB} = f_0/Q = 1000/6.63 = 150.8\,\text{Hz} \)</p>
+    <p><strong>Passband amplitude at 1kHz:</strong><br>
+    \( A_0 = \frac{R_{load}}{R_{total}+R_{load}} = \frac{10{,}000}{94.8+10{,}000} = 99.1\% \approx 100\% \checkmark \)</p>
+  </div>
+
+  <div class="practical-box">
+    <h4>Practical Implementation</h4>
+    <p>L = 100mH: use a Bourns SRR1806 or Coilcraft MSS series inductor. Check DCR ≤ 10Ω. C = 253nF: build from 220nF + 33nF C0G/NP0 in parallel (C0G capacitors have &lt;0.1% temperature coefficient). Avoid X7R for the main resonant capacitor — its ±15% capacitance variation with temperature will shift f₀ by ±7.5%. Fine-tune resonance by replacing the 33nF with a 5–50nF adjustable trimmer and sweeping a 1kHz signal generator while measuring output voltage peak. R = 33Ω: use a precision 0.1% metal film resistor. Verify the −20dB rejection points by measuring at 500Hz and 2kHz. Typical measured Q will be slightly lower than calculated due to inductor core losses adding effective series resistance.</p>
+  </div>
+
+  <div class="story-box">
+    <h4>Real-World Story</h4>
+    <p>The touch-tone telephone system (DTMF), standardized by Bell Labs in 1963, uses a 4×4 matrix of RLC bandpass filters to decode the two-tone keypresses. Each key generates a low-frequency tone (697, 770, 852, or 941 Hz) and a high-frequency tone (1209, 1336, 1477, or 1633 Hz) simultaneously. Telephone exchanges had racks of passive RLC filters tuned to each frequency. The Q factors were carefully set to about 15 — high enough to reject adjacent-channel tones but low enough to decode through a noisy phone line. The same LC filter design principles from this problem were used in millions of telephone exchange filter cards until digital signal processing (DSP) replaced them in the 1990s.</p>
+  </div>
+
+  <div class="debug-box">
+    <h4>Debug</h4>
+    <p><strong>Symptom:</strong> Bandpass filter center frequency is 5–15% off from calculated. <strong>Most likely cause:</strong> Inductor DCR not included in R_total, shifting the Q and bandwidth; or capacitor is X7R type with significant voltage/temperature derating. <strong>Debug:</strong> Measure actual L and C with an LCR meter at the operating frequency (not at 1kHz default — some LCR meters measure at 100Hz or 1MHz). Include the measured DCR in R_total. <strong>Secondary cause:</strong> Source impedance not matched — if the source driving the filter is not 50Ω as assumed, R_total is wrong. Buffer with an op-amp voltage follower to remove source impedance from the calculation.</p>
+  </div>
+
+  <div class="optimize-box">
+    <h4>Optimization</h4>
+    <p>For a sharper passband (higher Q) without increasing L or decreasing R: use a coupled resonator (transformer-coupled or capacitor-coupled two-tank design). Two coupled identical RLC resonators give a Butterworth or Chebyshev bandpass response with steeper skirts. For even higher selectivity at audio frequencies without large inductors: use an active biquad filter (state-variable topology with two op-amps and two equal-value capacitors). A 5532 op-amp biquad bandpass can achieve Q=100 at 1kHz with R and C values, no inductor required, and the Q and f₀ are independently adjustable.</p>
+  </div>
+
+  <div class="bridge-box">
+    <h4>Bridge</h4>
+    <p>The bandpass filter achieves frequency independence through the resonance of L and C. Problem 8 — the oscilloscope probe compensation — achieves frequency independence through a different mechanism: matching RC time constants so that the voltage divider ratio holds at every frequency simultaneously. Both are "flat response" designs; one exploits resonance, the other exploits cancellation.</p>
+  </div>
+
+  <div class="sim-interactive-box">
+    <h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec13-pr-7_Bandpass_Filter_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec13-pr-8">
+  <h2>Problem 8 — The Voltage Divider That Doesn't Divide Correctly at High Frequency</h2>
+
+  <div class="source-block">
+    <h4>Problem Statement</h4>
+    <p>10:1 oscilloscope probe: R_tip=9MΩ, cable C=100pF, scope R=1MΩ, C_scope=20pF. At DC: 10:1 attenuation correct. At 100MHz: 1,000,000:1 attenuation (completely wrong). Design the compensation capacitor that restores flat 10:1 at all frequencies.</p>
+    <p>Q1: Why does attenuation change? Q2: What component fixes it and where? Q3: Calculate correct value. Q4: What are over- and under-compensation symptoms?</p>
+  </div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagram</h4>
+    <svg viewBox="0 0 520 180" width="100%" style="max-width:520px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- Signal input -->
+      <text x="20" y="80" font-size="11">Vin</text>
+      <line x1="45" y1="75" x2="70" y2="75" stroke="currentColor" stroke-width="2"/>
+      <!-- C_comp in parallel with R_tip -->
+      <line x1="70" y1="75" x2="70" y2="60" stroke="currentColor" stroke-width="2"/>
+      <line x1="60" y1="60" x2="80" y2="60" stroke="currentColor" stroke-width="2"/>
+      <line x1="60" y1="54" x2="80" y2="54" stroke="currentColor" stroke-width="2"/>
+      <text x="88" y="60" font-size="9">C_comp</text>
+      <text x="88" y="70" font-size="9">13.3pF</text>
+      <!-- R_tip -->
+      <rect x="70" y="75" width="110" height="16" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="125" y="87" text-anchor="middle" font-size="10">R_tip = 9MΩ</text>
+      <!-- Connect C_comp top to input side of R_tip -->
+      <line x1="70" y1="54" x2="70" y2="75" stroke="none"/>
+      <!-- Wire from R_tip to node A -->
+      <line x1="180" y1="83" x2="230" y2="83" stroke="currentColor" stroke-width="2"/>
+      <circle cx="210" cy="83" r="3" fill="currentColor"/>
+      <text x="210" y="72" text-anchor="middle" font-size="10">A</text>
+      <!-- C_comp connects from input to node A -->
+      <line x1="70" y1="57" x2="210" y2="57" stroke="currentColor" stroke-width="2" stroke-dasharray="4,2"/>
+      <line x1="210" y1="57" x2="210" y2="83" stroke="currentColor" stroke-width="2" stroke-dasharray="4,2"/>
+      <!-- R_scope -->
+      <line x1="210" y1="83" x2="210" y2="100" stroke="currentColor" stroke-width="2"/>
+      <rect x="197" y="100" width="26" height="25" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="235" y="112" font-size="9">R_scope</text>
+      <text x="235" y="122" font-size="9">=1MΩ</text>
+      <!-- C_load (cable + scope cap) -->
+      <line x1="280" y1="83" x2="310" y2="83" stroke="currentColor" stroke-width="2"/>
+      <line x1="310" y1="70" x2="310" y2="96" stroke="currentColor" stroke-width="2"/>
+      <line x1="318" y1="70" x2="318" y2="96" stroke="currentColor" stroke-width="2"/>
+      <text x="330" y="83" font-size="9">C_load</text>
+      <text x="330" y="93" font-size="9">=120pF</text>
+      <!-- Connect R_scope to node A -->
+      <line x1="210" y1="83" x2="280" y2="83" stroke="currentColor" stroke-width="2"/>
+      <!-- GND -->
+      <line x1="210" y1="125" x2="210" y2="145" stroke="currentColor" stroke-width="2"/>
+      <line x1="318" y1="96" x2="318" y2="145" stroke="currentColor" stroke-width="2"/>
+      <line x1="70" y1="145" x2="350" y2="145" stroke="currentColor" stroke-width="2"/>
+      <!-- Condition annotation -->
+      <text x="180" y="162" text-anchor="middle" font-size="9" fill="var(--text-muted)">Flat response: R_tip×C_comp = R_scope×C_load</text>
+      <text x="180" y="172" text-anchor="middle" font-size="9" fill="var(--text-muted)">9MΩ×13.3pF = 1MΩ×120pF = 120µs ✓</text>
+      <!-- Output label -->
+      <line x1="318" y1="83" x2="380" y2="83" stroke="currentColor" stroke-width="2"/>
+      <text x="390" y="87" font-size="11">Vout</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">10:1 oscilloscope probe with compensation capacitor C_comp=13.3pF in parallel with R_tip=9MΩ. When R₁C₁=R₂C₂, the attenuation is frequency-independent (flat response). Adjusting C_comp with a trimmer compensates for cable and scope capacitance variations.</p>
+  </div>
+
+  <div class="intuition-box">
+    <h4>Intuition</h4>
+    <p>A voltage divider at DC is just two resistors. At high frequency, resistors have capacitance in parallel — from stray fields. The lower arm (the oscilloscope input) has 120 pF of capacitance, which at high frequencies acts like a short circuit, collapsing its impedance to nearly zero. All voltage drops across the upper arm (9MΩ) and nothing reaches the scope. The compensation capacitor is a shortcut — it bypasses the upper 9MΩ resistor at high frequencies, making the upper arm as "short" as the lower arm. When both arms are equally short at high frequencies, the ratio is maintained. Think of it as giving the signal a fast lane around the slow 9MΩ highway.</p>
+  </div>
+
+  <div class="physics-box">
+    <h4>Physics</h4>
+    <p>The frequency-compensated divider works because it creates equal time constants in both arms. A time constant \( \tau = RC \) determines how quickly voltage across a parallel RC responds to a step input. If both arms have equal τ, then at every frequency — DC or 10GHz — their impedance ratio is identical. This is because the impedance of a parallel RC is \( Z(j\omega) = R/(1+j\omega RC) \), and the ratio of two such impedances is \( Z_1/Z_2 = (R_1/R_2) \times (1+j\omega R_2 C_2)/(1+j\omega R_1 C_1) \). This ratio equals R_1/R_2 (frequency-independent) only when R_1C_1 = R_2C_2. This is the exact condition \( R_{tip}\cdot C_{comp} = R_{scope}\cdot C_{load} \).</p>
+  </div>
+
+  <div class="math-box">
+    <h4>Mathematics — Full Solution</h4>
+    <p><strong>DC attenuation:</strong><br>
+    \( A_{DC} = \frac{R_{scope}}{R_{tip}+R_{scope}} = \frac{1\,\text{M}\Omega}{9\,\text{M}\Omega+1\,\text{M}\Omega} = 0.1 = 10\!:\!1 \checkmark \)</p>
+    <p><strong>At 100 MHz without compensation:</strong><br>
+    \( Z_{C_{load}} = \frac{1}{2\pi\times10^8\times120\times10^{-12}} = 13.3\,\Omega \)<br>
+    \( A_{100M} = \frac{13.3}{9\times10^6+13.3} \approx 1.5\times10^{-6} \) — over one million to one attenuation!</p>
+    <p><strong>Condition for frequency-independent attenuation:</strong><br>
+    \( R_{tip}\cdot C_{comp} = R_{scope}\cdot C_{load} \)<br>
+    \( C_{comp} = \frac{R_{scope}\cdot C_{load}}{R_{tip}} = \frac{1\,\text{M}\Omega\times120\,\text{pF}}{9\,\text{M}\Omega} = 13.3\,\text{pF} \)</p>
+    <p><strong>Verification at 100 MHz with C_comp:</strong><br>
+    \( Z_{upper} = R_{tip}\parallel\frac{1}{j\omega C_{comp}} = 9\,\text{M}\Omega\parallel\frac{1}{j\omega\times13.3\,\text{pF}} \approx 119.3\,\Omega \) at 100MHz<br>
+    \( Z_{lower} = R_{scope}\parallel Z_{C_{load}} = 1\,\text{M}\Omega\parallel13.3\,\Omega \approx 13.3\,\Omega \)<br>
+    \( A = \frac{Z_{lower}}{Z_{upper}+Z_{lower}} = \frac{13.3}{119.3+13.3} = \frac{13.3}{132.6} = 0.100 = 10\!:\!1 \checkmark \)</p>
+    <p><strong>Time constants (equality check):</strong><br>
+    Upper: \( \tau_{upper} = 9\,\text{M}\Omega\times13.3\,\text{pF} = 120\,\mu\text{s} \)<br>
+    Lower: \( \tau_{lower} = 1\,\text{M}\Omega\times120\,\text{pF} = 120\,\mu\text{s} \checkmark \)</p>
+    <p><strong>Over-compensation (C_comp = 20pF):</strong><br>
+    \( \tau_{upper} = 9\,\text{M}\times20\,\text{p} = 180\,\mu\text{s} > \tau_{lower} = 120\,\mu\text{s} \) → upper arm slower → step response undershoots.</p>
+    <p><strong>Under-compensation (C_comp = 8pF):</strong><br>
+    \( \tau_{upper} = 72\,\mu\text{s} < \tau_{lower} = 120\,\mu\text{s} \) → upper arm faster → step response overshoots.</p>
+  </div>
+
+  <div class="practical-box">
+    <h4>Practical Implementation</h4>
+    <p>Use a 5–25pF NPO trimmer capacitor (Murata TZC3 series) in parallel with R_tip inside the probe body. To adjust: connect probe to the 1kHz CAL output on the oscilloscope front panel (all oscilloscopes provide this). Observe the square wave on screen. Adjust trimmer until corners are perfectly sharp with no overshoot or undershoot. Lock the trimmer with a small amount of UV-cure adhesive. Re-calibrate whenever the probe is used with a different oscilloscope (different C_scope value shifts τ_lower). Probes are specified at the input capacitance of a particular oscilloscope model — use the right probe for the right scope.</p>
+  </div>
+
+  <div class="story-box">
+    <h4>Real-World Story</h4>
+    <p>Hewlett-Packard introduced the first compensated 10:1 oscilloscope probe in 1958. Prior to this, engineers used uncompensated probes that had flat response only up to a few kilohertz. The breakthrough came when HP engineer Howard Vollum realized that adding a small capacitor (now called the probe compensation capacitor) in parallel with the tip resistor would make the attenuation frequency-independent. The concept was simple but the implementation required a trimmer that could be adjusted in the field because cable lengths and oscilloscope input capacitances varied between instruments. This design has been unchanged in every oscilloscope probe sold since 1958. The next time you touch the small screw on a probe's collar, you are turning a component designed 66 years ago.</p>
+  </div>
+
+  <div class="debug-box">
+    <h4>Debug</h4>
+    <p><strong>Symptom:</strong> Square wave on scope shows sharp spike at rising edge (over-compensation) or rounded edges (under-compensation). Frequency-domain measurements show attenuation increasing above 1 MHz even with 10:1 probe. <strong>Step 1:</strong> Verify probe is connected to the matching oscilloscope it was calibrated for. <strong>Step 2:</strong> Connect probe to 1kHz CAL output; observe square wave for under/overshoot. <strong>Step 3:</strong> Adjust compensation trimmer until square wave edges are sharp and flat. <strong>Step 4:</strong> Confirm: sine wave amplitude should be constant from 1kHz to the probe's rated bandwidth (typically 200MHz–500MHz for modern probes). If amplitude drops at high frequency even with proper calibration: cable is damaged or probe ground spring is broken.</p>
+  </div>
+
+  <div class="optimize-box">
+    <h4>Optimization</h4>
+    <p>For measurements above 500MHz, passive 10:1 probes become impractical because the cable's distributed capacitance cannot be compensated. Use active probes (e.g., Tektronix TAP1500) with a FET input amplifier at the probe tip — input capacitance under 1pF, bandwidth exceeding 1.5GHz. For differential measurements: use a differential active probe (e.g., Tektronix TDP1500). For power measurements in switching supplies: use a high-voltage differential probe (HVFO) with 1000:1 attenuation for measuring across switching nodes at 600V+ while still connecting to a 300V oscilloscope input. All these are variations of the same frequency-compensated divider principle, implemented with precision resistor arrays and matched capacitors inside the probe housing.</p>
+  </div>
+
+  <div class="bridge-box">
+    <h4>Bridge</h4>
+    <p>The probe compensation problem achieves flat frequency response by ensuring RC time constants are equal in both halves. Problem 9 — measuring capacitance by timing RC charging — flips this principle: instead of hiding the time constant, it uses the time constant as the measurement target. By setting the threshold to exactly 63.2% of supply voltage, the time to threshold equals τ=RC exactly, making C directly readable from a timer.</p>
+  </div>
+
+  <div class="sim-interactive-box">
+    <h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec13-pr-8_Probe_Compensation_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec13-pr-9">
+  <h2>Problem 9 — Design a Circuit That Measures How Fast a Capacitor Charges</h2>
+
+  <div class="source-block">
+    <h4>Problem Statement</h4>
+    <p>Unknown capacitor C_x. Known: R=10kΩ precision resistor, 5V supply, comparator at 3.16V (=63.2% of 5V), MCU timer with 1µs resolution. Design: charge C_x through R, measure time to threshold, calculate C_x. Additional challenge: C_x has unknown initial charge.</p>
+  </div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagram</h4>
+    <svg viewBox="0 0 520 200" width="100%" style="max-width:520px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- 5V supply -->
+      <text x="40" y="55" text-anchor="middle" font-size="11">5V</text>
+      <line x1="40" y1="60" x2="40" y2="80" stroke="currentColor" stroke-width="2"/>
+      <!-- S_charge (to 5V through R) -->
+      <circle cx="40" cy="85" r="5" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="55" y="89" font-size="9">S_charge</text>
+      <!-- R=10kΩ -->
+      <line x1="40" y1="90" x2="40" y2="100" stroke="currentColor" stroke-width="2"/>
+      <rect x="22" y="100" width="36" height="18" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="40" y="113" text-anchor="middle" font-size="9">R=10kΩ</text>
+      <!-- Node to Cx -->
+      <line x1="40" y1="118" x2="40" y2="130" stroke="currentColor" stroke-width="2"/>
+      <line x1="40" y1="130" x2="120" y2="130" stroke="currentColor" stroke-width="2"/>
+      <circle cx="90" cy="130" r="3" fill="currentColor"/>
+      <!-- Cx capacitor -->
+      <line x1="90" y1="130" x2="90" y2="148" stroke="currentColor" stroke-width="2"/>
+      <line x1="76" y1="148" x2="104" y2="148" stroke="currentColor" stroke-width="2"/>
+      <line x1="76" y1="154" x2="104" y2="154" stroke="currentColor" stroke-width="2"/>
+      <text x="113" y="154" font-size="10">C_x</text>
+      <line x1="90" y1="154" x2="90" y2="175" stroke="currentColor" stroke-width="2"/>
+      <!-- S_discharge to GND -->
+      <circle cx="40" cy="160" r="5" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="55" y="164" font-size="9">S_discharge</text>
+      <line x1="40" y1="130" x2="40" y2="155" stroke="currentColor" stroke-width="2"/>
+      <line x1="40" y1="165" x2="40" y2="175" stroke="currentColor" stroke-width="2"/>
+      <!-- GND -->
+      <line x1="40" y1="175" x2="90" y2="175" stroke="currentColor" stroke-width="2"/>
+      <line x1="60" y1="175" x2="60" y2="185" stroke="currentColor" stroke-width="2"/>
+      <line x1="54" y1="185" x2="66" y2="185" stroke="currentColor" stroke-width="2"/>
+      <line x1="57" y1="190" x2="63" y2="190" stroke="currentColor" stroke-width="2"/>
+      <!-- Comparator -->
+      <line x1="90" y1="130" x2="200" y2="130" stroke="currentColor" stroke-width="2"/>
+      <polygon points="200,110 240,130 200,150" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="195" y="118" font-size="9">+</text>
+      <!-- Threshold from precision divider -->
+      <line x1="200" y1="150" x2="200" y2="170" stroke="currentColor" stroke-width="2"/>
+      <text x="210" y="165" font-size="9">V_ref=3.16V</text>
+      <text x="210" y="175" font-size="9">(=63.2%×5V)</text>
+      <!-- Output to MCU -->
+      <line x1="240" y1="130" x2="310" y2="130" stroke="currentColor" stroke-width="2"/>
+      <rect x="310" y="115" width="70" height="30" fill="none" stroke="currentColor" stroke-width="2" rx="3"/>
+      <text x="345" y="128" text-anchor="middle" font-size="9">MCU</text>
+      <text x="345" y="140" text-anchor="middle" font-size="9">Timer</text>
+      <!-- Annotation -->
+      <text x="380" y="80" font-size="9" fill="var(--text-muted)">C_x = t_measured / 10kΩ</text>
+      <text x="380" y="92" font-size="9" fill="var(--text-muted)">Valid because:</text>
+      <text x="380" y="104" font-size="9" fill="var(--text-muted)">V(τ)=63.2% → t=τ=RC</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">RC time-based capacitance meter. Discharge first to known initial condition, then time the charge to 63.2% threshold. The timer reading equals τ=RC, so C = timer/R directly.</p>
+  </div>
+
+  <div class="intuition-box">
+    <h4>Intuition</h4>
+    <p>The number 63.2% is special: it is the universal fingerprint of one time constant. After exactly one τ=RC, a capacitor charging from 0V to V_supply always sits at 63.2% of V_supply. No matter what R and C are. So if you pick a comparator threshold at 63.2% of your supply, the time from "start charging" to "comparator trips" is exactly τ = RC. Dividing by R gives you C. It is as if you set a ruler so that its 1-centimeter mark is always at exactly the characteristic scale of the system — and you just read the number directly.</p>
+  </div>
+
+  <div class="physics-box">
+    <h4>Physics</h4>
+    <p>The fraction 63.2% comes from \( 1 - e^{-1} = 1 - 1/e = 0.6321 \). This is not a coincidence or a convenience — it is the universal constant of exponential decay. Any system whose rate of change is proportional to its current value (population growth, radioactive decay, RC charging) reaches 1/e of its total change in one time constant. For a capacitor: current flowing through R is proportional to the remaining voltage difference (V_supply − V_cap), which decreases as the capacitor charges. This self-reducing drive rate creates the exponential shape. The comparator at 63.2% is set to intercept exactly at the system's natural unit of time.</p>
+  </div>
+
+  <div class="math-box">
+    <h4>Mathematics — Full Solution</h4>
+    <p><strong>Basic measurement:</strong><br>
+    \( V_C(t) = 5(1-e^{-t/RC}) \). Set \( V_C = 3.16\,\text{V} = 5\times0.632 \):<br>
+    \( 0.632 = 1-e^{-t/RC} \implies e^{-t/RC} = 0.368 = e^{-1} \implies t = RC = \tau \)<br>
+    \( C_x = \frac{t_{measured}}{R} = \frac{t_{measured}}{10{,}000} \)</p>
+    <p><strong>Error analysis:</strong></p>
+    <p>Timer resolution error for C=1µF: \( \tau = 10\,\text{k}\times1\,\mu = 10\,\text{ms} = 10{,}000\,\text{counts} \). Error: ±0.01% — negligible.</p>
+    <p>Timer resolution error for C=100pF: \( \tau = 10\,\text{k}\times100\,\text{p} = 1\,\mu\text{s} = 1\,\text{count} \). Error: ±100% — useless. Fix: increase R to 1MΩ → τ=100µs.</p>
+    <p>Error from incomplete discharge (V_initial = 0.5V):<br>
+    \( 3.16 = 5 + (0.5-5)e^{-t/\tau} \implies e^{-t/\tau} = \frac{3.16-5}{0.5-5} = 0.409 \)<br>
+    \( t = \tau\ln(1/0.409) = 0.894\,\tau \) → measures 10.6% low. Discharge phase is critical.</p>
+    <p><strong>Two-point method (eliminates V_initial):</strong><br>
+    Measure \( t_1 \) (V_C=1V) and \( t_2 \) (V_C=3.16V). Then:<br>
+    \( \Delta t = t_2 - t_1 \)<br>
+    \( C_x = \frac{\Delta t}{R\ln\left(\frac{V_s-V_1}{V_s-V_2}\right)} = \frac{\Delta t}{10{,}000\times\ln\!\left(\frac{4}{1.84}\right)} = \frac{\Delta t}{7{,}770} \)</p>
+    <p>This works for any initial voltage because the difference Δt depends only on RC and the chosen voltage windows, not on V_initial.</p>
+  </div>
+
+  <div class="practical-box">
+    <h4>Practical Implementation</h4>
+    <p>Comparator: TLV3011 (SOT-23, single-supply, rail-to-rail, propagation delay 400ns — much less than τ for any C &gt; 100pF). Threshold voltage divider: R1=27kΩ + R2=47kΩ → V_ref = 5×47/(27+47) = 3.18V ≈ 3.16V. Use 0.1% resistors. The threshold tracks supply voltage (both numerator and denominator scale equally), cancelling supply variation errors. Discharge switch: BSS138 N-MOSFET gate tied to GPIO; R_drain=100Ω to limit discharge current spike. Measurement range with R=10kΩ: C = 100pF (τ=1µs, marginal) to C = 100µF (τ=1s). For C &gt; 1mF: increase timer resolution or reduce R to 1kΩ. For C &lt; 100pF: use 1MΩ resistor instead.</p>
+  </div>
+
+  <div class="story-box">
+    <h4>Real-World Story</h4>
+    <p>The Atmel AT42QT1010 capacitive touch sensor IC, used in hundreds of millions of smartphones and tablets from 2006 to 2015, implements exactly this RC timing principle. The IC charges a sensor electrode through a known resistance, measures the time to reach a threshold, and compares it to a stored baseline. When a finger touches the electrode, its capacitance (2–8pF) adds to the sensor pad capacitance (5–50pF), increasing τ by about 5–15%. The IC detects this change and registers a touch. The RC timing measurement runs at 100 kHz, providing noise rejection through oversampling. By 2010, this IC or a derivative was inside every iPhone, iPad, and Android device — an elegant analog timer principle running inside a digital product.</p>
+  </div>
+
+  <div class="debug-box">
+    <h4>Debug</h4>
+    <p><strong>Symptom:</strong> Measured C_x is consistently 5–15% low. <strong>Most likely cause:</strong> Capacitor not fully discharged before measurement (V_initial &gt; 0). Increase discharge time to at least 5τ based on the maximum expected C. <strong>Secondary cause:</strong> Stray capacitance at the comparator input node adds to C_x. Measure C_stray by running measurement with no capacitor connected — the result is C_stray. Subtract from all measurements. <strong>Third cause:</strong> Comparator propagation delay adds a fixed error to t_measured. Calibrate with a known C_ref (0.1% tolerance) and adjust threshold to compensate for the delay offset.</p>
+  </div>
+
+  <div class="optimize-box">
+    <h4>Optimization</h4>
+    <p>For high-accuracy capacitance measurement: use the two-point method to eliminate initial-condition error. For very small capacitances (below 1pF): use an AC bridge method (compare C_x to a reference capacitor using a balanced Wheatstone-like bridge driven at 1kHz). The best technique for precision IC capacitance measurement: sigma-delta modulation (charge-balance method used in Microchip MCP6S26 and similar), which converts capacitance to a digital stream by comparing charge-to-threshold times against a reference, achieving 0.001pF resolution. The core principle — time to threshold proportional to RC — is the same.</p>
+  </div>
+
+  <div class="bridge-box">
+    <h4>Bridge</h4>
+    <p>Problem 9 reduced a complex measurement to a single timing operation by choosing the threshold to match the natural scale of the system (63.2%). Problem 10 — the five-capacitor bridge — reduces a complex five-element circuit to a simple one-capacitor equivalent by exploiting symmetry. In both cases, the insight is choosing the right perspective: the system simplifies itself when viewed from the right angle.</p>
+  </div>
+
+  <div class="sim-interactive-box">
+    <h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec13-pr-9_Capacitance_Meter_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec13-pr-10">
+  <h2>Problem 10 — The Circuit With Five Capacitors That Nobody Can Analyze by Inspection</h2>
+
+  <div class="source-block">
+    <h4>Problem Statement</h4>
+    <p>Five capacitors all connected in a bridge network: C1=10µF (A to C), C2=10µF (A to D), C3=10µF (B to C), C4=10µF (B to D), C5=10µF (C to D). Node A: 10V through R1=1kΩ. Node B: GND through R2=1kΩ. All caps initially uncharged.</p>
+    <p>Q1: V_A, V_B, V_C, V_D at t=0⁺. Q2: Same at t=∞. Q3: V_CD. Q4: Role of C5. Q5: Simplify and find τ.</p>
+  </div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagram</h4>
+    <svg viewBox="0 0 520 220" width="100%" style="max-width:520px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- 10V source and R1 -->
+      <text x="30" y="55" text-anchor="middle" font-size="11">10V</text>
+      <line x1="30" y1="60" x2="30" y2="80" stroke="currentColor" stroke-width="2"/>
+      <rect x="14" y="80" width="32" height="14" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="30" y="91" text-anchor="middle" font-size="9">R1=1k</text>
+      <!-- Node A -->
+      <line x1="30" y1="94" x2="30" y2="110" stroke="currentColor" stroke-width="2"/>
+      <circle cx="30" cy="110" r="4" fill="currentColor"/>
+      <text x="14" y="114" text-anchor="middle" font-size="11">A</text>
+      <!-- C1: A to C -->
+      <line x1="30" y1="110" x2="100" y2="110" stroke="currentColor" stroke-width="2"/>
+      <line x1="100" y1="100" x2="100" y2="120" stroke="currentColor" stroke-width="2"/>
+      <line x1="107" y1="100" x2="107" y2="120" stroke="currentColor" stroke-width="2"/>
+      <text x="103" y="95" text-anchor="middle" font-size="9">C1</text>
+      <line x1="107" y1="110" x2="200" y2="110" stroke="currentColor" stroke-width="2"/>
+      <!-- Node C -->
+      <circle cx="200" cy="110" r="4" fill="currentColor"/>
+      <text x="200" y="103" text-anchor="middle" font-size="11">C</text>
+      <!-- C2: A to D -->
+      <line x1="30" y1="110" x2="30" y2="150" stroke="currentColor" stroke-width="2"/>
+      <line x1="22" y1="150" x2="38" y2="150" stroke="currentColor" stroke-width="2"/>
+      <line x1="22" y1="157" x2="38" y2="157" stroke="currentColor" stroke-width="2"/>
+      <text x="48" y="157" font-size="9">C2</text>
+      <line x1="30" y1="157" x2="30" y2="175" stroke="currentColor" stroke-width="2"/>
+      <line x1="30" y1="175" x2="200" y2="175" stroke="currentColor" stroke-width="2"/>
+      <!-- Node D -->
+      <circle cx="200" cy="175" r="4" fill="currentColor"/>
+      <text x="200" y="190" text-anchor="middle" font-size="11">D</text>
+      <!-- C5: C to D -->
+      <line x1="200" y1="110" x2="200" y2="130" stroke="currentColor" stroke-width="2"/>
+      <line x1="190" y1="130" x2="210" y2="130" stroke="currentColor" stroke-width="2"/>
+      <line x1="190" y1="137" x2="210" y2="137" stroke="currentColor" stroke-width="2"/>
+      <text x="218" y="137" font-size="9">C5</text>
+      <line x1="200" y1="137" x2="200" y2="175" stroke="currentColor" stroke-width="2"/>
+      <!-- C3: B to C -->
+      <line x1="400" y1="110" x2="320" y2="110" stroke="currentColor" stroke-width="2"/>
+      <line x1="320" y1="100" x2="320" y2="120" stroke="currentColor" stroke-width="2"/>
+      <line x1="313" y1="100" x2="313" y2="120" stroke="currentColor" stroke-width="2"/>
+      <text x="316" y="95" text-anchor="middle" font-size="9">C3</text>
+      <line x1="313" y1="110" x2="200" y2="110" stroke="currentColor" stroke-width="2"/>
+      <!-- C4: B to D -->
+      <line x1="400" y1="175" x2="320" y2="175" stroke="currentColor" stroke-width="2"/>
+      <line x1="320" y1="165" x2="320" y2="185" stroke="currentColor" stroke-width="2"/>
+      <line x1="313" y1="165" x2="313" y2="185" stroke="currentColor" stroke-width="2"/>
+      <text x="316" y="162" text-anchor="middle" font-size="9">C4</text>
+      <line x1="313" y1="175" x2="200" y2="175" stroke="currentColor" stroke-width="2"/>
+      <!-- Node B and R2 -->
+      <circle cx="400" cy="110" r="4" fill="currentColor"/>
+      <text x="414" y="114" text-anchor="middle" font-size="11">B</text>
+      <line x1="400" y1="110" x2="400" y2="175" stroke="currentColor" stroke-width="2"/>
+      <rect x="386" y="180" width="28" height="14" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="400" y="191" text-anchor="middle" font-size="9">R2=1k</text>
+      <line x1="400" y1="194" x2="400" y2="210" stroke="currentColor" stroke-width="2"/>
+      <!-- GND -->
+      <line x1="30" y1="210" x2="400" y2="210" stroke="currentColor" stroke-width="2"/>
+      <line x1="30" y1="175" x2="30" y2="210" stroke="currentColor" stroke-width="2"/>
+      <!-- Annotations -->
+      <text x="245" y="60" font-size="9" fill="var(--text-muted)">By symmetry: V_C=V_D always</text>
+      <text x="245" y="72" font-size="9" fill="var(--text-muted)">C5 carries zero current → irrelevant</text>
+      <text x="245" y="84" font-size="9" fill="var(--text-muted)">τ = 2kΩ × 10µF = 20ms</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">Five-capacitor bridge. Perfect circuit symmetry (C1=C2=C3=C4=C5, R1=R2) means V_C=V_D at all times, so C5 is never charged and can be removed. The circuit reduces to a simple 2kΩ, 10µF RC with τ=20ms.</p>
+  </div>
+
+  <div class="intuition-box">
+    <h4>Intuition</h4>
+    <p>Symmetry is the shortcut to circuit analysis that textbooks underteach. This bridge looks intimidating — five capacitors, four nodes, what is V_CD? — until you notice that every element on the top half (C1, C2, R1) is mirrored identically on the bottom half (C3, C4, R2). Mirror images stay equal. So nodes C and D are always at the same potential, and C5 between them sees zero volts across it and carries zero current — it might as well not exist. Once you remove C5, C1 and C2 in parallel form 20µF, as do C3 and C4. These two 20µF capacitors are in series in the charging loop, giving C_eq = 10µF. Driving R = 2kΩ, the single time constant is τ = 20ms.</p>
+  </div>
+
+  <div class="physics-box">
+    <h4>Physics</h4>
+    <p>The symmetry argument is not just mathematical convenience — it reflects the physical principle of charge distribution. When the circuit is perfectly symmetric, charge distributes equally between the symmetric paths. Nodes C and D, connected identically to identical sources through identical impedances, accumulate identical charges and therefore sit at identical potentials. No electric field exists between C and D; therefore no current flows through C5. The capacitor remains uncharged throughout the entire transient. This is an example of the physical principle that a circuit element in a potential-equipotential region carries no current — the same principle that explains why the internal resistance of an ideal battery is irrelevant in a balanced bridge (Wheatstone bridge null condition).</p>
+  </div>
+
+  <div class="math-box">
+    <h4>Mathematics — Full Solution</h4>
+    <p><strong>At t=0⁺ (all caps = shorts):</strong><br>
+    All caps short: A≡C≡D and B≡C≡D → A=B=C=D.<br>
+    \( V_{ABCD} = 10\,\text{V}\times\frac{R_2}{R_1+R_2} = 10\times\frac{1\,\text{k}}{2\,\text{k}} = 5\,\text{V} \)</p>
+    <p><strong>At t=∞ (all caps = opens):</strong><br>
+    Caps open, current flows: \( I = 10/(R_1+R_2) = 5\,\text{mA} \)<br>
+    \( V_A = 10 - 5\,\text{mA}\times1\,\text{k} = 5\,\text{V} \)<br>
+    \( V_B = 5\,\text{mA}\times1\,\text{k} = 5\,\text{V} \)<br>
+    Nodes C, D: floating, no DC path; charge conservation → V_C=V_D=5V.</p>
+    <p><strong>Symmetry argument:</strong><br>
+    C1=C2=C3=C4=C5, R1=R2 → V_C(t) = V_D(t) for all t → V_CD = 0 always → C5 inactive.</p>
+    <p><strong>Simplified equivalent circuit:</strong><br>
+    Remove C5. C1∥C2 = 20µF from A to node CD. C3∥C4 = 20µF from B to node CD.<br>
+    Series combination: \( C_{eq} = \frac{20\,\mu\times20\,\mu}{20\,\mu+20\,\mu} = 10\,\mu\text{F} \)<br>
+    Total R in series: \( R_{total} = R_1+R_2 = 2\,\text{k}\Omega \)<br>
+    \( \tau = R_{total}\times C_{eq} = 2{,}000\times10\times10^{-6} = 20\,\text{ms} \)</p>
+    <p><strong>Charge conservation at steady state:</strong><br>
+    Q on each cap = \( C\times V_{cap} = 10\,\mu\times0 = 0 \) (V_A=V_C=5V, no voltage across any cap).<br>
+    All node voltages remain at 5V throughout — the transient moves from 0V to 5V on every node simultaneously with τ=20ms.</p>
+  </div>
+
+  <div class="practical-box">
+    <h4>Practical Implementation</h4>
+    <p>This circuit topology — a capacitor bridge — appears in precision null-detection circuits and AC bridge measurements (Schering bridge for capacitance measurement, Hay bridge for inductance). The bridge balance condition (V_CD = 0) is used as the measurement null: when the bridge is balanced, the galvanometer in the C5 position reads zero, confirming that V_C = V_D. Any imbalance (one capacitor deviating from another) produces a V_CD ≠ 0 that is proportional to the capacitance mismatch. Capacitance mismatch as small as 0.01% can be detected by a sensitive null detector. This technique is used in precision LCR bridges (Keysight E4980A, Hioki IM3536) to measure capacitance to seven significant figures.</p>
+  </div>
+
+  <div class="story-box">
+    <h4>Real-World Story</h4>
+    <p>The original 1843 Wheatstone bridge used the same principle for resistance measurement. Charles Wheatstone's circuit balanced four resistors so that the galvanometer read zero; then the unknown resistance was solved from the balance condition. In the 1960s, the technique was adapted for capacitance by replacing all four resistors with capacitors — the Schering bridge, still the gold standard for precision dielectric constant measurement of capacitor materials. Modern ceramic manufacturers (Murata, TDK, AVX) use automated Schering bridge setups to verify that their MLCC capacitors meet the specified tolerance within 0.1%. The capacitor bridge in Problem 10 is thus the ancestor of every precision ceramic capacitor you have ever used.</p>
+  </div>
+
+  <div class="debug-box">
+    <h4>Debug</h4>
+    <p><strong>Symptom:</strong> In a capacitor bridge measurement, null is never reached — V_CD does not go to zero even when the bridge appears balanced. <strong>Cause 1:</strong> One capacitor has significant leakage resistance (ESR too high or electrolytic degraded). The leakage breaks the symmetry because the bridge now contains both R and C elements. The bridge cannot be balanced with only capacitors. <strong>Fix:</strong> Use low-loss NP0/C0G or polypropylene capacitors in the bridge arms. <strong>Cause 2:</strong> Stray capacitance from PCB traces to ground adds an asymmetric element to one arm. <strong>Fix:</strong> Use a ground shield around the bridge and make all traces equal length. <strong>Cause 3:</strong> The frequency of the AC source is below 100 Hz — capacitive impedances too high and leakage resistance too dominant.</p>
+  </div>
+
+  <div class="optimize-box">
+    <h4>Optimization</h4>
+    <p>For maximum bridge sensitivity: drive the bridge from a 1kHz sine wave source (not DC — AC bridges can detect phase imbalance as well as amplitude imbalance, giving two-dimensional detection of capacitance AND loss angle). Use a synchronous detector (lock-in amplifier) at the null detector position — this allows measuring V_CD even when it is 100dB below the drive signal. The Stanford Research SR830 lock-in amplifier implements exactly this, achieving capacitance resolution of 0.001 fF (femtofarad) at 1kHz. The five-capacitor bridge from this problem is the conceptual ancestor of this instrument.</p>
+  </div>
+
+  <div class="bridge-box">
+    <h4>Bridge</h4>
+    <p>The ten master problems are complete. Each one exposed a hidden interaction — diode recovery time, probe parasitics, source impedance, transmission-line reflections, ESR stability, inductor polarity, bandpass resonance, time-constant matching, RC timing precision, and bridge symmetry. Lecture 17 now builds the device selection framework: given all these circuit behaviors, which semiconductor device — diode, BJT, or MOSFET — best serves each application?</p>
+  </div>
+
+  <div class="sim-interactive-box">
+    <h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec13-pr-10_Cap_Bridge_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- LECTURE 17 — DEVICE SELECTION                               -->
+<!-- ============================================================ -->
+
+<section id="lec17-ds-1">
+  <h2>Device Selection 1 — The Master Framework: 8 Questions in Order</h2>
+
+  <div class="source-block">
+    <h4>Problem Statement</h4>
+    <p>Most students memorize what devices do but never learn how to choose between them. Given any circuit requirement, apply the 8-question elimination framework to arrive at the correct device choice. Apply the framework to three worked examples: (A) 5V/3A switching supply rectifier at 200kHz. (B) 1kHz audio amplifier, 1mV input, 10kΩ source, 600Ω output. (C) 5V/500mA solenoid driven by 3.3V MCU GPIO.</p>
+  </div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>The 8-Question Elimination Framework</h4>
+    <svg viewBox="0 0 520 200" width="100%" style="max-width:520px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <rect x="10" y="10" width="500" height="180" fill="none" stroke="currentColor" stroke-width="1.5" rx="6"/>
+      <text x="260" y="30" text-anchor="middle" font-size="13" font-weight="bold">Device Selection: Ask These 8 Questions in Order</text>
+      <text x="20" y="52" font-size="10">Q1: FUNCTION — Rectify? Switch? Amplify? Protect? Convert?</text>
+      <text x="20" y="67" font-size="10">Q2: VOLTAGE — Supply voltage, signal voltage, reverse blocking voltage.</text>
+      <text x="20" y="82" font-size="10">Q3: CURRENT — Load current, control current, quiescent current.</text>
+      <text x="20" y="97" font-size="10">Q4: SPEED — Switching frequency? Signal bandwidth? Rise time?</text>
+      <text x="20" y="112" font-size="10">Q5: POWER or SIGNAL — Watts (efficiency, thermal)? mW (noise, gain)?</text>
+      <text x="20" y="127" font-size="10">Q6: CONTROL — Voltage source (MOSFET)? Current source (BJT)? Drive budget?</text>
+      <text x="20" y="142" font-size="10">Q7: ENVIRONMENT — Temp range (−40/+85/+125°C)? Size? Cost?</text>
+      <text x="20" y="157" font-size="10">Q8: SAFETY/PROTECTION — ESD? Reverse polarity? Overvoltage? Overcurrent?</text>
+      <text x="20" y="177" font-size="10" fill="var(--text-muted)">After all 8: the answer is usually obvious. If still unclear: prototype both and measure.</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">The universal device selection flowchart. Apply top to bottom for every design decision — wrong answers to any question eliminate entire device families.</p>
+  </div>
+
+  <div class="intuition-box">
+    <h4>Intuition</h4>
+    <p>Device selection is an elimination game, not a memorization game. Each question eliminates wrong answers until only one device survives. A slow diode at Q4 gets eliminated for high-frequency switching. A BJT at Q6 gets eliminated if the control signal cannot supply base current. A standard MOSFET gets eliminated at Q6 if the gate voltage is only 3.3V. By the time all eight questions are answered, at most one or two devices remain viable — and usually the correct choice is obvious.</p>
+  </div>
+
+  <div class="physics-box">
+    <h4>Physics</h4>
+    <p>Each question maps to a physical property. Q2 (voltage) maps to junction breakdown field strength and oxide thickness. Q3 (current) maps to carrier mobility and die area. Q4 (speed) maps to minority carrier storage time (diodes/BJTs) or gate oxide capacitance charge time (MOSFETs). Q5 (power vs signal) maps to the dominant loss mechanism: conduction loss (R_DS_on × I², or V_CE_sat × I_C) versus noise floor (thermal and 1/f noise). Q6 (control type) maps to the fundamental operating equation: BJTs are exponential current-controlled devices \( I_C = I_S e^{V_{BE}/V_T} \); MOSFETs are square-law voltage-controlled devices \( I_D = K(V_{GS}-V_{th})^2 \). These physics differences make BJTs naturally suited to current-source drive and MOSFETs naturally suited to voltage-source drive.</p>
+  </div>
+
+  <div class="math-box">
+    <h4>Mathematics — Full Solution (Three Worked Examples)</h4>
+    <p><strong>Example A — 5V/3A rectifier at 200kHz:</strong><br>
+    Q2: Reverse voltage ≈ 2×5V = 10V. Any diode qualifies.<br>
+    Q3: 3A average → need ≥5A rated (margin).<br>
+    Q4: t_rr ≪ 1/(2×200kHz) = 2.5µs. 1N4007 t_rr=30µs → eliminated. UF4007 t_rr=75ns → OK. Schottky t_rr≈0 → best.<br>
+    Q5: Efficiency critical. V_F=0.7V → loss = 0.7×3=2.1W. Schottky V_F=0.35V → loss=1.05W → 2× better.<br>
+    <strong>Answer: Schottky 5A/40V, e.g., MBR540 or SB540.</strong></p>
+    <p><strong>Example B — Audio amplifier 1kHz, 1mV in, 600Ω out:</strong><br>
+    Q1: Voltage amplification. Q4: 1kHz, any BJT fine. Q5: Signal level (mW).<br>
+    Gain needed: 100× (1mV→100mV). But source impedance 10kΩ must not be loaded.<br>
+    BJT r_π at I_C=1mA, β=200: r_π = β/g_m = 200/(38.5mA/V) = 5.2kΩ &lt; 10kΩ → loads mic!<br>
+    Solution: Emitter follower stage 1 (Z_in=β×R_E≈2MΩ) + CE stage 2 (A_v=−100) + emitter follower stage 3 (Z_out≈26Ω).<br>
+    \( A_v = -g_m R_C = -\frac{1\,\text{mA}}{26\,\text{mV}}\times2.6\,\text{k}\Omega = -100 \)<br>
+    <strong>BJT: BC547 (NPN, β=200–450, f_T=100MHz, I_C=100mA, V_CE=45V, 1kHz audio).</strong></p>
+    <p><strong>Example C — 5V solenoid at 500mA, 3.3V MCU drive:</strong><br>
+    Q1: Switch. Q6: 3.3V, ≤8mA GPIO.<br>
+    BJT BC337: I_B=500mA/100=5mA. GPIO can supply. V_CE_sat×I=0.2×0.5=0.1W OK.<br>
+    MOSFET SI2300: R_DS_on=60mΩ at V_GS=2.5V → loss=500mA²×0.06=15mW. Better.<br>
+    <strong>Winner: Logic-level MOSFET SI2300 (if available) or BJT BC337 (cheaper, simpler).</strong></p>
+  </div>
+
+  <div class="practical-box">
+    <h4>Practical Implementation</h4>
+    <p>For every new design, write the 8 questions as a checklist in your design notebook before touching the schematic. For Q4 at high frequency: always verify t_rr versus 1/(2×f_sw) for diodes; verify f_T/β versus signal frequency for BJTs; verify Q_g×f_sw×V_GS versus maximum gate driver power for MOSFETs. For Q6: if drive voltage is 3.3V and MOSFET datasheet shows R_DS_on at V_GS=10V only — that MOSFET will have 5–10× higher R_DS_on at 3.3V drive, possibly overheating. Always find the R_DS_on at V_GS matching your actual drive voltage.</p>
+  </div>
+
+  <div class="story-box">
+    <h4>Real-World Story</h4>
+    <p>In 2019, a startup building an IoT soil moisture sensor shipped 10,000 units with a battery life problem: the device was supposed to run 2 years on two AA batteries but was dying in 4 months. Root cause: the firmware engineer picked a standard IRF530 MOSFET to switch the sensor circuit on and off. IRF530 R_DS_on specification: 160mΩ at V_GS=10V. But the batteries supplied only 3V. At V_GS=3V, R_DS_on of the IRF530 is over 1Ω — the MOSFET was barely on. Quiescent current in the "off" state was 2mA instead of the expected 10µA. Replacing the IRF530 with a BSS84 logic-level P-channel MOSFET (R_DS_on=3Ω at V_GS=−2.5V → much lower at −3V because it is fully enhanced) brought standby current to 1µA and battery life to 2.4 years as designed. The 8-question framework, had it been used at Q6, would have caught this immediately.</p>
+  </div>
+
+  <div class="debug-box">
+    <h4>Debug</h4>
+    <p><strong>Symptom:</strong> Device runs hot, incorrect output level, or fails to turn on fully despite correct circuit topology. Apply the 8 questions retroactively: Q4 (speed): is the device too slow for the switching frequency? Q5 (power): is the conduction loss calculation using the correct R_DS_on or V_CE_sat at the actual operating conditions? Q6 (control): is the gate or base receiving the full required drive voltage and current? Q7 (temperature): does the device have sufficient thermal margin at worst-case ambient? Q8 (protection): is there a freewheeling diode on any inductive load? Running through all eight questions on a failing design almost always identifies the root cause within the first three questions that are "wrong."</p>
+  </div>
+
+  <div class="optimize-box">
+    <h4>Optimization</h4>
+    <p>The 8-question framework also applies to optimization: re-ask Q4 (can I use a faster device to increase switching frequency and shrink passive components?), Q5 (can I reduce conduction loss with a lower-R_DS_on device or higher β BJT?), and Q7 (can I use a wider temperature range device to eliminate heatsinking and reduce BOM cost?). For maximum efficiency in power switching: evaluate the figure of merit FOM = R_DS_on × Q_g. For minimum noise in signal amplification: check the device's 1/f noise corner frequency — BJTs have lower 1/f noise below ~1MHz, JFETs dominate for lowest noise at audio frequencies, while MOSFETs have higher 1/f noise but lower input capacitance at RF.</p>
+  </div>
+
+  <div class="bridge-box">
+    <h4>Bridge</h4>
+    <p>With the framework established, the next device selection section applies it specifically to diodes: not just "use a diode to rectify," but understanding why a Schottky is chosen over a PN diode at certain frequencies, why a Zener is chosen over a TVS for voltage regulation, and why a varactor is the only correct choice for tunable RF capacitance.</p>
+  </div>
+
+  <div class="sim-interactive-box">
+    <h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec17-ds-1_Device_Framework_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec17-ds-2">
+  <h2>Device Selection 2 — Diode Selection Deep Dive</h2>
+
+  <div class="source-block">
+    <h4>Problem Statement</h4>
+    <p>Diode selection requires understanding six distinct situations where "one-way flow" is needed, and a 5-step elimination procedure for each. Work through: (A) 5V/3A switching supply at 200kHz. (B) ESD protection for a 3.3V ADC input that can see ±24V. (C) RF signal detector at 915MHz. (D) Varactor-tuned oscillator for FM radio band.</p>
+  </div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Diode Elimination Decision Tree</h4>
+    <svg viewBox="0 0 520 200" width="100%" style="max-width:520px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- Root -->
+      <rect x="185" y="5" width="150" height="24" fill="none" stroke="currentColor" stroke-width="1.5" rx="4"/>
+      <text x="260" y="21" text-anchor="middle" font-size="11">"I need a diode"</text>
+      <line x1="260" y1="29" x2="260" y2="44" stroke="currentColor" stroke-width="1.5"/>
+      <!-- Speed branch -->
+      <text x="260" y="52" text-anchor="middle" font-size="10">Step 1: Blocking voltage?</text>
+      <line x1="180" y1="58" x2="130" y2="75" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="340" y1="58" x2="390" y2="75" stroke="currentColor" stroke-width="1.5"/>
+      <text x="120" y="85" text-anchor="middle" font-size="9">&lt;40V</text>
+      <text x="400" y="85" text-anchor="middle" font-size="9">&gt;600V</text>
+      <text x="260" y="72" text-anchor="middle" font-size="9">40V–600V</text>
+      <!-- Schottky -->
+      <rect x="70" y="90" width="100" height="20" fill="none" stroke="currentColor" stroke-width="1.5" rx="3"/>
+      <text x="120" y="104" text-anchor="middle" font-size="9">Schottky possible</text>
+      <rect x="350" y="90" width="100" height="20" fill="none" stroke="currentColor" stroke-width="1.5" rx="3"/>
+      <text x="400" y="104" text-anchor="middle" font-size="9">HV PN or SiC Schottky</text>
+      <!-- Step 2 frequency -->
+      <line x1="260" y1="58" x2="260" y2="90" stroke="currentColor" stroke-width="1.5"/>
+      <text x="260" y="102" text-anchor="middle" font-size="9">Standard PN range</text>
+      <line x1="260" y1="108" x2="260" y2="120" stroke="currentColor" stroke-width="1.5"/>
+      <text x="260" y="130" text-anchor="middle" font-size="10">Step 2: Speed?</text>
+      <line x1="180" y1="136" x2="120" y2="153" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="340" y1="136" x2="390" y2="153" stroke="currentColor" stroke-width="1.5"/>
+      <text x="90" y="163" text-anchor="middle" font-size="9">&lt;100Hz: 1N4007</text>
+      <text x="260" y="153" text-anchor="middle" font-size="9">1kHz–100kHz: UF4007</text>
+      <text x="410" y="163" text-anchor="middle" font-size="9">&gt;100kHz: Schottky</text>
+      <line x1="260" y1="136" x2="260" y2="158" stroke="currentColor" stroke-width="1.5"/>
+      <!-- Bottom annotation -->
+      <text x="260" y="185" text-anchor="middle" font-size="9" fill="var(--text-muted)">Step 3: Current? Step 4: V_F critical? Step 5: Protection or rectification?</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">Diode elimination tree: start at blocking voltage, then speed, then current, then voltage drop criticality, then protection type.</p>
+  </div>
+
+  <div class="intuition-box">
+    <h4>Intuition</h4>
+    <p>All diodes are "one-way valves," but the valve mechanism differs: a PN diode's one-way behavior comes from minority carrier injection and recombination — a slow, stored-charge mechanism. A Schottky diode's one-way behavior comes from a metal-semiconductor work function difference — no minority carriers, no stored charge, essentially instant switching. Choosing the wrong type at the wrong speed is like using a hydraulic check valve (PN — slow, but handles high backpressure) where you need a spring-loaded ball valve (Schottky — fast, low backpressure). Both block reverse flow; only one does it fast enough at high frequency.</p>
+  </div>
+
+  <div class="physics-box">
+    <h4>Physics</h4>
+    <p>The PN diode's reverse recovery time t_rr originates from minority carrier injection: when forward-biased, holes are injected into the N-side and electrons into the P-side. These minority carriers persist after forward bias ends, causing reverse current until they recombine (lifetime ~µs for silicon). Schottky diodes form a metal-semiconductor junction at the surface; conduction is by majority carriers only (electrons flowing from semiconductor to metal). No minority carriers are injected, so there is no stored charge and no recovery time — only the junction capacitance C_j limits switching speed. At RF frequencies, even C_j matters, and specialized detector Schottkys (HSMS-2850) minimize C_j at the expense of forward current capability.</p>
+  </div>
+
+  <div class="math-box">
+    <h4>Mathematics — Full Solution</h4>
+    <p><strong>Example A — 5V/3A rectifier at 200kHz:</strong><br>
+    t_rr requirement: \( t_{rr} \ll \frac{1}{2f_{sw}} = \frac{1}{400\,\text{kHz}} = 2.5\,\mu\text{s} \)<br>
+    1N4007: t_rr = 30µs → eliminated. UF4007: t_rr = 75ns → acceptable. MBR540: t_rr≈0 → best.<br>
+    V_F loss: MBR540 at V_F=0.35V: \( P_{loss}=0.35\times3=1.05\,\text{W} \). Winner: Schottky MBR540.</p>
+    <p><strong>Example B — ESD protection for 3.3V ADC, signal range ±24V:</strong><br>
+    Series resistor: R = 1kΩ (limits fault current; adds &lt;1% error at 10kΩ ADC input impedance).<br>
+    Clamp diodes: BAT54S (dual Schottky in SOT-23). V_F = 0.3V at 1mA.<br>
+    Clamp voltages: to 3.3V rail (+3.6V max), to GND (−0.3V min).<br>
+    At +24V input: \( I_{clamp} = (24-3.6)/1\,\text{k} = 20.4\,\text{mA} \) — well within BAT54S 200mA rating.<br>
+    At −24V input: \( I_{clamp} = 24/1\,\text{k} = 24\,\text{mA} \) — acceptable.</p>
+    <p><strong>Example C — RF detector at 915MHz:</strong><br>
+    Need: very low C_j (for high-frequency response) and low V_F (for small signal detection).<br>
+    C_j requirement: \( Z_{C_j} = 1/(2\pi\times915\,\text{MHz}\times C_j) \gg Z_{load} \)<br>
+    For Z_load=50Ω: C_j ≪ 1/(2π×915M×50) = 3.5pF. Use Schottky with C_j &lt; 1pF: HSMS-2850 (C_j=0.18pF at V_R=0).</p>
+    <p><strong>Example D — Varactor for 88–108MHz FM tuning:</strong><br>
+    Varactor C_j range needed: at 88MHz \( C_j = 1/(4\pi^2\times88^2\times10^{12}\times L) \); at 108MHz \( C_j' = C_j\times(88/108)^2 = 0.664\,C_j \)<br>
+    For L=1µH: C_j range = 3.26pF to 2.17pF (ratio 1.5:1 needed from varactor).<br>
+    Varactor BB833: C_j = 8.2pF at V_R=1V, 2.3pF at V_R=8V. Ratio = 3.6:1. More than adequate. Select operating range V_R=2V–7V for 3.5:1 coverage.</p>
+  </div>
+
+  <div class="practical-box">
+    <h4>Practical Implementation</h4>
+    <p>For switching supply rectifiers: always use a Schottky for f_sw &gt; 100kHz. Mount diode directly adjacent to the inductor with minimal trace length to reduce parasitic inductance in the switching loop. Heatsink or thermal pad if P_loss &gt; 500mW. For ESD protection: BAT54S in SOT-23 is the industry-standard choice — cheap, small, dual diodes in one package. Place within 2mm of the connector pin. For RF detection: mount HSMS-2850 with ground plane directly beneath; no through-holes under the device (they add inductance). For varactor tuning: decouple the tuning voltage with a 100nF capacitor and 1kΩ resistor (high impedance at RF, low impedance to DC tuning) — prevents RF signal from leaking into the tuning voltage line.</p>
+  </div>
+
+  <div class="story-box">
+    <h4>Real-World Story</h4>
+    <p>The original Sony Walkman WM-D6C (1982) used two BB109 varactor diodes in its FM tuner. The varactors allowed the local oscillator frequency to be voltage-controlled by a 0–9V tuning ramp, giving smooth continuous tuning across the FM band without mechanical potentiometers or variable capacitors. The tuning precision depended entirely on the varactor's C-V characteristic — a too-flat response gave poor low-band coverage; too steep a response gave inaccurate high-band tuning. Sony characterized the BB109's C-V curve across temperature (−10°C to +50°C) and used a thermistor-compensated tuning voltage to keep the oscillator on-frequency regardless of ambient temperature. This temperature compensation of a varactor circuit is still standard practice in all FM receivers today.</p>
+  </div>
+
+  <div class="debug-box">
+    <h4>Debug</h4>
+    <p><strong>Symptom (switching supply):</strong> Diode runs extremely hot; efficiency lower than calculated. Verify diode is not a PN type at high frequency — slow t_rr causes excessive reverse recovery loss. Replace with Schottky. <strong>Symptom (ESD protection):</strong> ADC reads incorrect values when signal is near 0V or 3.3V. Check: clamp diode V_F not too high — if V_F = 0.7V (PN diode) it clamps at 3.3+0.7=4V, potentially above ADC maximum; use Schottky (V_F=0.3V) to clamp at 3.6V within ADC limit. <strong>Symptom (varactor):</strong> FM tuner covers wrong frequency range or has dead spots. Check varactor reverse bias voltage range — if supply is only 3.3V, a varactor with V_R range of 0–8V will only use a small portion of its C-V curve. Select a varactor designed for 0–3.3V tuning range (e.g., Skyworks SMV2019).</p>
+  </div>
+
+  <div class="optimize-box">
+    <h4>Optimization</h4>
+    <p>For the lowest possible rectifier loss in a high-current converter: replace the Schottky diode entirely with a synchronous N-MOSFET rectifier. A 5mΩ MOSFET conducting 10A dissipates P=I²R=0.5W versus P=V_F×I=3.5W for a Schottky at 10A — 7× less loss. The MOSFET requires a gate driver synchronized to the main switch, but every modern PWM controller IC (TI LM5100 series, ON Semi NCP3420) includes a synchronous rectifier driver. For ESD protection on high-speed differential pairs: use PRTR5V0U2X (NXP, bidirectional TVS array, C_load &lt; 0.3pF — critical for USB 3.2 and PCIe signal integrity).</p>
+  </div>
+
+  <div class="bridge-box">
+    <h4>Bridge</h4>
+    <p>Diode selection is governed by five numerical thresholds: blocking voltage, switching frequency, average current, V_F tolerance, and protection energy. BJT selection is governed by five different thresholds — and the critical one is β: the current gain that determines whether the control source has enough drive capability. The next section covers BJT selection with the same elimination rigor applied to diodes.</p>
+  </div>
+
+  <div class="sim-interactive-box">
+    <h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec17-ds-2_Diode_Selection_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec17-ds-3">
+  <h2>Device Selection 3 — BJT Selection Deep Dive: NPN vs PNP, β, and Current Mirrors</h2>
+
+  <div class="source-block">
+    <h4>Problem Statement</h4>
+    <p>BJTs are preferred for signal amplification, current mirrors, and temperature sensing. Apply BJT selection to: (A) NPN vs PNP choice for high-side vs low-side switching. (B) Why BJT current mirrors outperform MOSFET for precision (&lt;1% matching). (C) Temperature sensor design using V_BE. (D) Why parallel BJTs fail while parallel MOSFETs succeed.</p>
+  </div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Circuit Diagrams: Low-Side NPN Switch and High-Side PNP Switch</h4>
+    <svg viewBox="0 0 520 200" width="100%" style="max-width:520px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- Low-side NPN -->
+      <text x="100" y="20" text-anchor="middle" font-size="11" font-weight="bold">Low-Side NPN</text>
+      <text x="100" y="32" text-anchor="middle" font-size="9">(sink current to GND)</text>
+      <!-- VCC to load to collector -->
+      <text x="100" y="55" text-anchor="middle" font-size="10">VCC</text>
+      <line x1="100" y1="58" x2="100" y2="70" stroke="currentColor" stroke-width="2"/>
+      <rect x="80" y="70" width="40" height="15" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <text x="100" y="81" text-anchor="middle" font-size="9">LOAD</text>
+      <!-- NPN BJT symbol (simplified) -->
+      <line x1="100" y1="85" x2="100" y2="105" stroke="currentColor" stroke-width="2"/>
+      <line x1="100" y1="95" x2="85" y2="105" stroke="currentColor" stroke-width="2"/>
+      <line x1="100" y1="95" x2="115" y2="82" stroke="currentColor" stroke-width="2"/>
+      <polygon points="115,82 108,87 110,94" fill="currentColor"/>
+      <text x="120" y="98" font-size="9">NPN</text>
+      <!-- Base -->
+      <line x1="85" y1="95" x2="65" y2="95" stroke="currentColor" stroke-width="2"/>
+      <rect x="45" y="89" width="20" height="12" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <text x="55" y="99" text-anchor="middle" font-size="8">R_B</text>
+      <line x1="45" y1="95" x2="30" y2="95" stroke="currentColor" stroke-width="2"/>
+      <text x="20" y="99" font-size="9">GPIO</text>
+      <!-- Emitter to GND -->
+      <line x1="100" y1="105" x2="100" y2="130" stroke="currentColor" stroke-width="2"/>
+      <line x1="90" y1="130" x2="110" y2="130" stroke="currentColor" stroke-width="2"/>
+      <line x1="93" y1="135" x2="107" y2="135" stroke="currentColor" stroke-width="2"/>
+      <line x1="96" y1="140" x2="104" y2="140" stroke="currentColor" stroke-width="2"/>
+      <text x="100" y="158" text-anchor="middle" font-size="9">GPIO HIGH→ON</text>
+      <!-- High-side PNP -->
+      <text x="380" y="20" text-anchor="middle" font-size="11" font-weight="bold">High-Side PNP</text>
+      <text x="380" y="32" text-anchor="middle" font-size="9">(source current from VCC)</text>
+      <text x="380" y="55" text-anchor="middle" font-size="10">VCC</text>
+      <line x1="380" y1="58" x2="380" y2="70" stroke="currentColor" stroke-width="2"/>
+      <!-- Emitter to VCC -->
+      <line x1="380" y1="70" x2="380" y2="85" stroke="currentColor" stroke-width="2"/>
+      <!-- PNP BJT -->
+      <line x1="380" y1="85" x2="380" y2="105" stroke="currentColor" stroke-width="2"/>
+      <line x1="380" y1="95" x2="365" y2="85" stroke="currentColor" stroke-width="2"/>
+      <line x1="380" y1="95" x2="395" y2="108" stroke="currentColor" stroke-width="2"/>
+      <polygon points="380,85 373,88 378,95" fill="currentColor"/>
+      <text x="400" y="98" font-size="9">PNP</text>
+      <!-- Base -->
+      <line x1="365" y1="95" x2="345" y2="95" stroke="currentColor" stroke-width="2"/>
+      <rect x="325" y="89" width="20" height="12" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <text x="335" y="99" text-anchor="middle" font-size="8">R_B</text>
+      <line x1="325" y1="95" x2="305" y2="95" stroke="currentColor" stroke-width="2"/>
+      <text x="290" y="99" font-size="9">GPIO</text>
+      <!-- Collector through load to GND -->
+      <line x1="380" y1="105" x2="380" y2="125" stroke="currentColor" stroke-width="2"/>
+      <rect x="360" y="125" width="40" height="15" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <text x="380" y="136" text-anchor="middle" font-size="9">LOAD</text>
+      <line x1="380" y1="140" x2="380" y2="160" stroke="currentColor" stroke-width="2"/>
+      <line x1="370" y1="160" x2="390" y2="160" stroke="currentColor" stroke-width="2"/>
+      <line x1="373" y1="165" x2="387" y2="165" stroke="currentColor" stroke-width="2"/>
+      <line x1="376" y1="170" x2="384" y2="170" stroke="currentColor" stroke-width="2"/>
+      <text x="380" y="185" text-anchor="middle" font-size="9">GPIO LOW→ON</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">NPN low-side switch: emitter at GND, GPIO drives base HIGH to turn on. PNP high-side switch: emitter at VCC, GPIO pulls base LOW to turn on (note inverted control logic).</p>
+  </div>
+
+  <div class="intuition-box">
+    <h4>Intuition</h4>
+    <p>The NPN vs PNP choice is fundamentally about which side of the load you want the transistor on. NPN sits between the load and GND — it sinks current. To turn it on, push its base above its emitter (which sits near GND), so a positive GPIO voltage works perfectly. PNP sits between VCC and the load — it sources current. To turn it on, pull its base below its emitter (which sits near VCC), so the base needs to be at a lower voltage than VCC. A 3.3V GPIO pulling the base of a 5V PNP to 3.3V creates V_EB = 5−3.3 = 1.7V — more than enough to saturate it. This is the practical trick for high-side switching without a dedicated gate driver IC.</p>
+  </div>
+
+  <div class="physics-box">
+    <h4>Physics</h4>
+    <p>The V_BE of a BJT decreases at approximately −2mV/°C due to the temperature dependence of the intrinsic carrier concentration n_i: \( I_C = I_S e^{V_{BE}/V_T} \) where \( I_S \propto n_i^2 \propto e^{-E_g/kT} \). As temperature rises, n_i increases exponentially, meaning more reverse saturation current I_S flows for the same V_BE — equivalently, less V_BE is needed to maintain the same I_C. This predictable −2mV/°C slope makes V_BE a linear temperature sensor across −40°C to +150°C. The slope is stable and consistent between BJT devices of the same type — making V_BE thermometry far more reliable than MOSFET threshold voltage sensing, which has much larger device-to-device variation and non-linear temperature behavior.</p>
+  </div>
+
+  <div class="math-box">
+    <h4>Mathematics — Full Solution</h4>
+    <p><strong>NPN BJT selection steps:</strong><br>
+    Step 1: V_CE_max &gt; 1.5×V_supply. For 12V: need &gt;18V → BC337 (V_CEO=45V) OK.<br>
+    Step 2: I_C_max &gt; 2×I_load. For 500mA: need &gt;1A → BC337 (I_C=800mA) OK.<br>
+    Step 3: Base drive I_B = I_C/β. At β=100, I_C=500mA: I_B=5mA. GPIO limit 8mA → OK.<br>
+    R_B = (V_GPIO − V_BE)/I_B = (3.3−0.7)/5mA = 520Ω → use 470Ω.<br>
+    Step 4: Power check: P=V_CE_sat×I_C=0.2×0.5=0.1W → TO-92 fine, no heatsink.</p>
+    <p><strong>BJT current mirror precision (why BJT &gt;&gt; MOSFET):</strong><br>
+    BJT: \( I_C = I_S e^{V_{BE}/V_T} \). For matched pair (same die, adjacent): ΔV_BE &lt; 1mV.<br>
+    Current mismatch: \( \Delta I_C/I_C = \Delta V_{BE}/V_T = 1\,\text{mV}/26\,\text{mV} = 3.8\% \) (worst case; typically &lt;1%).<br>
+    MOSFET: \( I_D = K(V_{GS}-V_{th})^2 \). V_th mismatch between adjacent devices: 5–50mV.<br>
+    \( \Delta I_D/I_D \approx 2\Delta V_{th}/(V_{GS}-V_{th}) = 2\times20\,\text{mV}/200\,\text{mV} = 20\% \) — much worse.</p>
+    <p><strong>Temperature sensor:</strong><br>
+    \( V_{BE}(T) \approx V_{BE}(25°C) - 0.002\times(T-25) \)<br>
+    For BC547 at I_C=1µA: V_BE(25°C) ≈ 0.565V.<br>
+    At 100°C: V_BE = 0.565 − 0.002×75 = 0.565 − 0.150 = 0.415V.<br>
+    Sensitivity: −2mV/°C → measure V_BE with 12-bit ADC (resolution=5V/4096=1.22mV) → 0.61°C resolution.</p>
+    <p><strong>Parallel BJT failure (thermal runaway):</strong><br>
+    If BJT 1 heats by ΔT: \( \Delta V_{BE1} = -2\,\text{mV/°C}\times\Delta T \) → V_BE1 drops → I_C1 increases (same V_BE applied to both) → more heat → more current → positive feedback → thermal runaway.<br>
+    Required emitter resistors: R_E = 0.1–0.5Ω each. Voltage drop: V_RE=I_C×R_E stabilizes via negative feedback.</p>
+  </div>
+
+  <div class="practical-box">
+    <h4>Practical Implementation</h4>
+    <p>NPN low-side switch for 12V relay (80mA coil) from 5V MCU: BC337 (I_C=800mA, V_CEO=45V, β≥100). R_B = (5−0.7)/(80mA/10) = 4.3V/8mA = 537Ω → use 470Ω. Add 1N4148 flyback diode across relay coil — mandatory. PNP high-side switch for 12V load from 3.3V MCU: BC327 (PNP, I_C=800mA, V_EBC=45V). R_B = (12−3.3−0.7)/I_B = 8V/(80mA/50) = 5kΩ. GPIO LOW → BJT ON. R_B pullup (10kΩ) from 3.3V to base ensures OFF state when GPIO is hi-Z. BJT temperature sensor for −20°C to +100°C: BC547 at I_C=10µA (stable, low self-heating). Measure V_BE with 16-bit ADC. Calibrate at two temperatures for offset and slope.</p>
+  </div>
+
+  <div class="story-box">
+    <h4>Real-World Story</h4>
+    <p>The LM35 temperature sensor IC (Texas Instruments, introduced 1975) is a precision BJT temperature sensor based exactly on the V_BE principle. A precision current is forced through the base of a matched BJT pair; the difference in V_BE between the two transistors (ΔVBE = V_T × ln(N), where N is the ratio of their emitter areas) is proportional to absolute temperature. This PTAT (Proportional to Absolute Temperature) voltage is amplified and scaled to 10mV/°C. Over 5 billion units of the LM35 and its descendants have been sold since 1975. Every digital fever thermometer, HVAC controller, and weather station of the 1980s–2000s used this BJT V_BE principle — the same physics as the calculation above.</p>
+  </div>
+
+  <div class="debug-box">
+    <h4>Debug</h4>
+    <p><strong>Symptom (BJT switch):</strong> Load does not turn on reliably; transistor barely warm. Likely cause: insufficient base drive. Check: measure V_BE with DMM while GPIO is HIGH. V_BE &lt; 0.5V means base current is too low. Reduce R_B by 50% and retest. If transistor is hot but load current is low: transistor may be in linear (not saturated) region — increase base drive 5–10× over I_C/β to ensure deep saturation. <strong>Symptom (parallel BJTs):</strong> One BJT runs much hotter than the others. Cause: thermal runaway starting. Add 0.1–0.33Ω emitter resistors to each BJT immediately. Verify equal current sharing by measuring voltage drop across each emitter resistor.</p>
+  </div>
+
+  <div class="optimize-box">
+    <h4>Optimization</h4>
+    <p>For precision BJT current mirrors needing &lt;0.1% accuracy: use a Wilson or cascode current mirror topology. Wilson mirror reduces base current error from I_C/β to I_C/β² — for β=200, error drops from 0.5% to 0.0025%. Use matched transistor pairs on the same die (e.g., MAT12 dual matched BJT pair) for thermal coupling and V_BE matching &lt;0.25mV. For high-side switching with higher efficiency than PNP BJT: transition to N-channel MOSFET + charge pump bootstrap driver for loads above 1A — the R_DS_on benefit outweighs the added driver complexity above approximately 1A of load current.</p>
+  </div>
+
+  <div class="bridge-box">
+    <h4>Bridge</h4>
+    <p>BJTs are current-controlled devices with strong gain and temperature-dependent V_BE — properties that make them ideal for mirrors, amplifiers, and thermometers. MOSFETs trade current control for voltage control and add positive temperature coefficient to R_DS_on — properties that make them ideal for power switching and parallel operation. The next section explores the MOSFET selection deep dive, including the most commonly missed criterion: logic-level versus standard threshold voltage selection.</p>
+  </div>
+
+  <div class="sim-interactive-box">
+    <h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec17-ds-3_BJT_Selection_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec17-ds-4">
+  <h2>Device Selection 4 — MOSFET Selection: Logic Level, Voltage Rating, R_DS_on, and the Figure of Merit</h2>
+
+  <div class="source-block">
+    <h4>Problem Statement</h4>
+    <p>MOSFETs dominate power switching above 1A. The most commonly missed selection criteria: (A) Logic-level vs standard threshold — 3.3V MCU cannot drive a standard MOSFET. (B) Voltage rating trade-off: R_DS_on scales as V_BR^2.5 for silicon. (C) Gate charge Q_g determines switching loss at frequency. (D) Figure of merit FOM = R_DS_on × Q_g — the single number that ranks MOSFET quality. Apply to: MPPT buck converter 48V→12V at 200kHz, 10A.</p>
+  </div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>N-Channel MOSFET Switch Schematic</h4>
+    <svg viewBox="0 0 520 200" width="100%" style="max-width:520px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- V_supply -->
+      <text x="60" y="25" text-anchor="middle" font-size="11">V_supply</text>
+      <line x1="60" y1="30" x2="60" y2="50" stroke="currentColor" stroke-width="2"/>
+      <!-- Inductive load -->
+      <path d="M60,50 Q68,36 76,50 Q84,36 92,50 Q100,36 108,50 Q116,36 124,50" fill="none" stroke="currentColor" stroke-width="2"/>
+      <text x="92" y="38" text-anchor="middle" font-size="9">L (inductive load)</text>
+      <!-- Drain -->
+      <line x1="124" y1="50" x2="160" y2="50" stroke="currentColor" stroke-width="2"/>
+      <line x1="160" y1="50" x2="160" y2="70" stroke="currentColor" stroke-width="2"/>
+      <!-- MOSFET body symbol -->
+      <line x1="155" y1="70" x2="165" y2="70" stroke="currentColor" stroke-width="3"/>
+      <line x1="155" y1="130" x2="165" y2="130" stroke="currentColor" stroke-width="3"/>
+      <line x1="165" y1="70" x2="165" y2="130" stroke="currentColor" stroke-width="2"/>
+      <line x1="170" y1="75" x2="170" y2="125" stroke="currentColor" stroke-width="2"/>
+      <line x1="165" y1="100" x2="145" y2="100" stroke="currentColor" stroke-width="2"/>
+      <!-- Gate -->
+      <line x1="145" y1="100" x2="120" y2="100" stroke="currentColor" stroke-width="2"/>
+      <rect x="80" y="93" width="40" height="14" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <text x="100" y="104" text-anchor="middle" font-size="9">R_gate=10Ω</text>
+      <line x1="80" y1="100" x2="60" y2="100" stroke="currentColor" stroke-width="2"/>
+      <text x="44" y="104" text-anchor="middle" font-size="9">Gate drv</text>
+      <!-- Drain-Source arrow on MOSFET -->
+      <polygon points="170,95 175,100 170,105" fill="currentColor"/>
+      <text x="185" y="80" font-size="9">D</text>
+      <text x="185" y="130" font-size="9">S</text>
+      <text x="138" y="104" font-size="9">G</text>
+      <!-- Source to GND -->
+      <line x1="165" y1="130" x2="165" y2="155" stroke="currentColor" stroke-width="2"/>
+      <line x1="155" y1="155" x2="175" y2="155" stroke="currentColor" stroke-width="2"/>
+      <line x1="158" y1="161" x2="172" y2="161" stroke="currentColor" stroke-width="2"/>
+      <line x1="161" y1="167" x2="169" y2="167" stroke="currentColor" stroke-width="2"/>
+      <!-- Flyback diode (body diode) -->
+      <line x1="205" y1="50" x2="205" y2="155" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4,3"/>
+      <polygon points="205,110 198,100 212,100" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <text x="225" y="105" font-size="9">Body</text>
+      <text x="225" y="115" font-size="9">diode</text>
+      <!-- Annotations -->
+      <text x="350" y="50" font-size="9">STANDARD: V_th=3–5V</text>
+      <text x="350" y="62" font-size="9">Need V_GS=10V for full on</text>
+      <text x="350" y="80" font-size="9">LOGIC LEVEL: V_th=1–2V</text>
+      <text x="350" y="92" font-size="9">V_GS=3.3V gives full R_DS_on</text>
+      <text x="350" y="110" font-size="9">FOM = R_DS_on × Q_g</text>
+      <text x="350" y="122" font-size="9">Lower is better technology</text>
+      <text x="350" y="140" font-size="9">R_DS_on ∝ V_BR^2.5</text>
+      <text x="350" y="152" font-size="9">SiC breaks this: 100× better</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">N-channel MOSFET power switch. Gate resistor limits dV/dt and EMI. Body diode provides freewheeling path. The choice between logic-level and standard threshold depends entirely on V_GS available from the gate driver.</p>
+  </div>
+
+  <div class="intuition-box">
+    <h4>Intuition</h4>
+    <p>A standard MOSFET is like a heavy door that requires a strong push (10V gate voltage) to fully open. If your MCU only pushes with 3.3V, the door is only half-open: the MOSFET is partially on, with much higher resistance than its datasheet claims, overheating under load. A logic-level MOSFET is a lighter door that a 3.3V push fully opens. The FOM (figure of merit) is a single number that tells you how good the MOSFET technology is — it combines the two most important properties (on-resistance and gate charge) into one. Lower FOM = better technology = less heat in both conduction and switching.</p>
+  </div>
+
+  <div class="physics-box">
+    <h4>Physics</h4>
+    <p>The voltage rating of a MOSFET sets the required thickness of the drift region (the lightly doped N-region between drain and body). A thicker drift region can withstand higher electric fields before avalanche breakdown. But a thicker drift region means more resistive silicon for current to traverse: R_DS_on increases with drift region thickness. The relationship is approximately \( R_{DS,on} \propto V_{BR}^{2.5} \) — a doubling of voltage rating multiplies R_DS_on by 5.7×. Silicon carbide (SiC) has a critical field strength 10× higher than silicon, allowing the same voltage to be blocked with a 10× thinner drift region, reducing R_DS_on by approximately 100× at the same voltage rating. This is the physics behind the SiC MOSFET revolution in EV powertrains.</p>
+  </div>
+
+  <div class="math-box">
+    <h4>Mathematics — Full Solution (48V→12V Buck at 200kHz, 10A)</h4>
+    <p><strong>Q2: Voltage rating:</strong><br>
+    V_DS_max &gt; 1.5×48V = 72V. Use 100V MOSFET (standard margin).</p>
+    <p><strong>Q3: Current rating:</strong><br>
+    I_D_rms ≈ I_out × √D = 10×√0.25 = 5A (D=V_out/V_in=12/48=0.25).<br>
+    Rating &gt; 2× = 10A minimum. Choose 20A MOSFET for thermal margin.</p>
+    <p><strong>Conduction loss:</strong><br>
+    \( P_{cond} = I_{rms}^2 \times R_{DS,on} = 25 \times 50\,\text{m}\Omega = 1.25\,\text{W} \) (typical 100V Si MOSFET)</p>
+    <p><strong>Q4: Gate charge switching loss:</strong><br>
+    \( P_{sw} = \frac{1}{2}(V_{in} I_{out})(t_r + t_f) f_{sw} \)<br>
+    For Q_g=30nC at V_GS=10V: t_sw ≈ Q_g/I_gate = 30nC/1A = 30ns.<br>
+    \( P_{sw} = \frac{1}{2}\times48\times10\times60\,\text{ns}\times200\,\text{kHz} = 2.88\,\text{W} \)</p>
+    <p><strong>Gate drive power:</strong><br>
+    \( P_{gate} = Q_g \times V_{GS} \times f_{sw} = 30\,\text{nC}\times10\,\text{V}\times200\,\text{kHz} = 60\,\text{mW} \)</p>
+    <p><strong>FOM comparison:</strong><br>
+    Si MOSFET 100V (e.g. IPP060N10): R_DS_on=6mΩ, Q_g=65nC → FOM = 390pΩ·C<br>
+    GaN MOSFET 100V (e.g. EPC2034): R_DS_on=10mΩ, Q_g=5.8nC → FOM = 58pΩ·C<br>
+    FOM ratio: 390/58 = 6.7× better for GaN — meaning lower total losses at frequency.</p>
+    <p><strong>R_DS_on voltage scaling (silicon):</strong><br>
+    \( R_{DS,on}(600\,\text{V}) = R_{DS,on}(60\,\text{V}) \times (600/60)^{2.5} = 10\,\text{m}\Omega\times316 = 3.16\,\Omega \)<br>
+    SiC at 600V: R_DS_on ≈ 30mΩ → 100× better than silicon MOSFET.</p>
+  </div>
+
+  <div class="practical-box">
+    <h4>Practical Implementation</h4>
+    <p>For 48V→12V at 200kHz: select Si MOSFET with V_DS &gt; 100V, R_DS_on &lt; 50mΩ at V_GS=10V, Q_g &lt; 50nC. Example: IRFB4310 (100V/140A, R_DS_on=11mΩ, Q_g=110nC). Gate driver: TC4427 (2A peak, propagation delay 40ns). PCB layout: minimize the switching loop (V_supply → MOSFET drain → source → inductor → back to supply). High-current ground return path: 2oz copper pour directly under the MOSFET. Thermal pad of MOSFET directly on heatsink or large copper area. Temperature monitoring: NTC thermistor within 1cm of MOSFET — shut down at T_j &gt; 100°C. MOSFET gate trace: keep under 5mm, 0.3mm wide minimum, dedicated ground return.</p>
+  </div>
+
+  <div class="story-box">
+    <h4>Real-World Story</h4>
+    <p>Tesla's Model 3 inverter (introduced 2017) was the first production electric vehicle to use SiC MOSFETs instead of IGBTs in the main drive inverter. The device chosen was STMicroelectronics SCT2750NYE (1200V/21A SiC MOSFET). The key metric: R_DS_on = 750mΩ at V_GS=15V versus an equivalent silicon IGBT's V_CE_sat×I = 2.5V×21A = 52.5W of steady-state loss. The SiC MOSFET loss: (21A)²×0.75Ω = 330W — comparable. But the SiC MOSFET's faster switching (no tail current) allowed switching at 20kHz (vs IGBT's 8kHz maximum), reducing inductor and capacitor sizes by 2.5×. The overall result: 5% higher efficiency (accounting for switching losses), smaller and lighter inverter, and an additional 12km of range per charge. This was a direct application of the FOM calculation above — SiC MOSFETs have 100× better FOM at 1200V than silicon MOSFETs, making the design decision obvious to any engineer who ran the numbers.</p>
+  </div>
+
+  <div class="debug-box">
+    <h4>Debug</h4>
+    <p><strong>Symptom:</strong> MOSFET runs excessively hot under load; measured efficiency lower than calculated. <strong>Step 1:</strong> Measure V_GS during operation with an oscilloscope. If V_GS &lt; 8V, the MOSFET is not fully enhanced — increase gate driver supply voltage or switch to a logic-level MOSFET. <strong>Step 2:</strong> Check R_DS_on in the datasheet at the actual V_GS you are providing — not the headline V_GS=10V spec. At V_GS=3.3V, a standard MOSFET's R_DS_on can be 5–10× higher than specified. <strong>Step 3:</strong> If V_GS is correct but MOSFET still overheats: calculate switching loss (P_sw = ½ × V_DS × I_D × (t_r+t_f) × f_sw). If P_sw dominates: either reduce f_sw, reduce gate resistance to speed up switching, or use a lower-Q_g MOSFET.</p>
+  </div>
+
+  <div class="optimize-box">
+    <h4>Optimization</h4>
+    <p>For minimum total MOSFET loss: minimize (R_DS_on × D + ½×V_DS×I_D×(t_r+t_f)×f_sw) simultaneously. A larger die (lower R_DS_on) has more Q_g → more switching loss. The optimum is at the minimum of the total loss curve, typically where conduction loss equals switching loss. Tools: use the Texas Instruments WEBENCH Power Designer, enter your V_in, V_out, I_out, f_sw, and it automatically selects the optimum MOSFET from TI's portfolio. For manual selection: filter DigiKey or Mouser by V_DS, I_D, R_DS_on at your V_GS, and sort by FOM = R_DS_on × Q_g. The device with the lowest FOM within your voltage/current/package constraints is the correct choice.</p>
+  </div>
+
+  <div class="bridge-box">
+    <h4>Bridge</h4>
+    <p>MOSFET selection is governed by five key numbers: V_DS_max, I_D, R_DS_on at actual V_GS, Q_g, and FOM. Beyond MOSFETs and BJTs, certain applications require neither: Problem 5's boundary cases (AC mains switching, bidirectional blocking, precision current sources) require TRIACs, IGBTs, back-to-back MOSFETs, or specialized ICs. The final device selection section addresses these boundary cases — situations where standard transistors fail and specialized devices are required.</p>
+  </div>
+
+  <div class="sim-interactive-box">
+    <h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec17-ds-4_MOSFET_Selection_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="lec17-ds-5">
+  <h2>Device Selection 5 — Boundary Cases: IGBT, Bidirectional Switches, and the 15 Real Scenarios</h2>
+
+  <div class="source-block">
+    <h4>Problem Statement</h4>
+    <p>The hardest device selection cases — where students debate longest and interviews are won or lost. Apply the full framework to five boundary cases: (A) 3.3V supply, 5A load — BJT vs logic-level MOSFET. (B) 500kHz, 100mA — MOSFET vs BJT. (C) Precision 1mA current source over −40 to +85°C — BJT wins. (D) 240V AC, 10A — TRIAC vs IGBT. (E) Bidirectional switch — back-to-back MOSFETs. Then summarize the complete 15-scenario device selection map.</p>
+  </div>
+
+  <div class="circuit-diagram-box" style="background:var(--box-circuit-bg,#fff);border:2px solid var(--box-circuit-border,#555);border-radius:8px;padding:1em;margin:1em 0;">
+    <h4>Bidirectional Switch: Back-to-Back MOSFETs</h4>
+    <svg viewBox="0 0 520 180" width="100%" style="max-width:520px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+      <!-- Node in -->
+      <text x="30" y="90" font-size="11">In</text>
+      <line x1="50" y1="85" x2="100" y2="85" stroke="currentColor" stroke-width="2"/>
+      <!-- MOSFET 1 (left facing right) -->
+      <line x1="100" y1="85" x2="130" y2="85" stroke="currentColor" stroke-width="2"/>
+      <line x1="130" y1="75" x2="130" y2="95" stroke="currentColor" stroke-width="2"/>
+      <line x1="135" y1="78" x2="135" y2="92" stroke="currentColor" stroke-width="2"/>
+      <line x1="130" y1="85" x2="120" y2="85" stroke="currentColor" stroke-width="2"/>
+      <line x1="120" y1="75" x2="120" y2="95" stroke="currentColor" stroke-width="2"/>
+      <polygon points="135,83 140,85 135,87" fill="currentColor"/>
+      <text x="115" y="68" text-anchor="middle" font-size="9">M1</text>
+      <!-- Common source node -->
+      <line x1="135" y1="85" x2="165" y2="85" stroke="currentColor" stroke-width="2"/>
+      <circle cx="150" cy="85" r="3" fill="currentColor"/>
+      <text x="150" y="75" text-anchor="middle" font-size="9">S</text>
+      <!-- M1 gate down -->
+      <line x1="120" y1="95" x2="120" y2="115" stroke="currentColor" stroke-width="2"/>
+      <rect x="100" y="115" width="40" height="14" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <text x="120" y="126" text-anchor="middle" font-size="9">Gate 1</text>
+      <!-- MOSFET 2 (right facing left) -->
+      <line x1="165" y1="85" x2="195" y2="85" stroke="currentColor" stroke-width="2"/>
+      <line x1="195" y1="75" x2="195" y2="95" stroke="currentColor" stroke-width="2"/>
+      <line x1="200" y1="78" x2="200" y2="92" stroke="currentColor" stroke-width="2"/>
+      <line x1="195" y1="85" x2="210" y2="85" stroke="currentColor" stroke-width="2"/>
+      <line x1="210" y1="75" x2="210" y2="95" stroke="currentColor" stroke-width="2"/>
+      <polygon points="200,83 195,85 200,87" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <text x="205" y="68" text-anchor="middle" font-size="9">M2</text>
+      <!-- M2 gate down -->
+      <line x1="210" y1="95" x2="210" y2="115" stroke="currentColor" stroke-width="2"/>
+      <rect x="190" y="115" width="40" height="14" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <text x="210" y="126" text-anchor="middle" font-size="9">Gate 2</text>
+      <!-- Node out -->
+      <line x1="210" y1="85" x2="260" y2="85" stroke="currentColor" stroke-width="2"/>
+      <text x="270" y="90" font-size="11">Out</text>
+      <!-- Body diodes (dashed) -->
+      <line x1="110" y1="50" x2="110" y2="85" stroke="currentColor" stroke-width="1" stroke-dasharray="3,2"/>
+      <polygon points="110,55 106,65 114,65" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <line x1="200" y1="50" x2="200" y2="85" stroke="currentColor" stroke-width="1" stroke-dasharray="3,2"/>
+      <polygon points="200,85 196,75 204,75" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <text x="155" y="52" text-anchor="middle" font-size="9" fill="var(--text-muted)">Body diodes oppose each other</text>
+      <!-- Annotations -->
+      <text x="380" y="80" font-size="9">BOTH gates ON → current either way</text>
+      <text x="380" y="92" font-size="9">BOTH gates OFF → blocks both ways</text>
+      <text x="380" y="104" font-size="9">Used in: battery protection BMS</text>
+      <text x="380" y="116" font-size="9">analog switches, power mux</text>
+      <text x="380" y="135" font-size="9">IGBT used above 600V, &gt;20A</text>
+      <text x="380" y="147" font-size="9">TRIAC for AC mains control</text>
+    </svg>
+    <p style="font-size:0.85em;color:var(--text-muted);text-align:center;">Back-to-back N-channel MOSFETs with common source for true bidirectional blocking. Single MOSFET cannot block reverse current (body diode conducts); back-to-back configuration opposes body diodes so neither direction conducts when both gates are low.</p>
+  </div>
+
+  <div class="intuition-box">
+    <h4>Intuition</h4>
+    <p>A single MOSFET is a one-way door with a fire exit: current flows through the channel when the gate is on, but the body diode (the fire exit) always lets current through in the reverse direction even when the gate is off. To truly block reverse current, you face two of these doors back-to-back with their fire exits pointing toward each other. Now neither direction can bypass both fire exits simultaneously: forward current is blocked by M2's closed gate; reverse current is blocked by M1's closed gate. When both gates are driven on, both channels open and current can flow freely in either direction. This is the standard building block of battery management systems worldwide.</p>
+  </div>
+
+  <div class="physics-box">
+    <h4>Physics</h4>
+    <p>The IGBT exists because of a fundamental physical trade-off in silicon MOSFETs: the drift region needed to block high voltage (600V+) becomes so thick that R_DS_on grows unacceptably large. The IGBT solves this by using a P+ injecting layer at the collector (equivalent to the drain in MOSFET). When the IGBT is on, this P+ layer injects minority carriers (holes) into the drift region — this conductivity modulation dramatically reduces the effective resistance. The trade-off: when the IGBT turns off, these minority carriers must recombine — creating a "tail current" lasting 1–10µs. This limits IGBT switching frequency to typically 5–50kHz. SiC MOSFETs avoid this by being unipolar — no minority carrier injection, no tail current — allowing 200kHz+ switching at 1200V, which is why they are replacing IGBTs in the latest EV inverters.</p>
+  </div>
+
+  <div class="math-box">
+    <h4>Mathematics — Full Solution (5 Boundary Cases)</h4>
+    <p><strong>Boundary Case A — 3.3V supply, 5A load:</strong><br>
+    NPN BJT (e.g. BC337): V_CE_sat×I=0.3×5=1.5W. Base current = 5A/100=50mA — MCU cannot supply (GPIO max 16mA). Need driver stage or Darlington.<br>
+    Logic-level MOSFET (BSS316N, R_DS_on=18mΩ at V_GS=3.3V): \( P_{cond}=25\times0.018=0.45\,\text{W} \). Zero gate current.<br>
+    <strong>Winner: Logic-level N-MOSFET. BJT cannot be directly driven at 5A from MCU GPIO.</strong></p>
+    <p><strong>Boundary Case B — 500kHz, 100mA, 12V:</strong><br>
+    BSS138 MOSFET: P_sw=½×12×0.1×20ns×500kHz=6mW. P_cond=0.01²×3.5Ω×0.5=175µW. P_gate=2nC×4.5×500kHz=4.5mW. Total≈10mW.<br>
+    BC847 BJT at 500kHz: f/f_T=500k/100M=0.5% << 1. V_CE_sat×I=0.1×0.1=10mW. Storage time may limit.<br>
+    <strong>Either works. MOSFET if zero gate drive current needed; BJT if linearity matters.</strong></p>
+    <p><strong>Boundary Case C — 1mA ±0.1%, −40 to +85°C:</strong><br>
+    MOSFET: ΔV_th/ΔT ≈ −3mV/°C over 125°C range → ΔV_th=375mV → \( \Delta I_D/I_D = 2\Delta V_{th}/(V_{GS}-V_{th}) \approx 50\% \) change. Unusable.<br>
+    BJT Wilson mirror: V_BE tempco cancels in mirror topology. Residual error: I_B/β at worst case (β=50 at −40°C): ΔI/I = 1/β² = 1/2500 = 0.04%. Within spec.<br>
+    <strong>Winner: BJT Wilson current mirror.</strong></p>
+    <p><strong>Boundary Case D — 240V AC, 10A:</strong><br>
+    MOSFET 600V: R_DS_on=2Ω → P=100×2=200W. Unacceptable.<br>
+    TRIAC (BT139-600): V_T=1.5V → P=1.5×10=15W with heatsink. Bidirectional, latching.<br>
+    IGBT (IRG4PC50): V_CE_sat=2.0V at 10A → P=20W. Unidirectional → needs antiparallel diode for AC.<br>
+    <strong>Winner: TRIAC for simple AC control. IGBT+diode for PWM inverter application.</strong></p>
+    <p><strong>Boundary Case E — Bidirectional switch blocking:</strong><br>
+    Single N-MOSFET: body diode conducts reverse current → not bidirectional. Fails.<br>
+    Back-to-back N-MOSFETs (common source): body diodes oppose → no reverse path when gates off. Bidirectional when both gates on.<br>
+    \( P_{cond} = I^2 \times 2R_{DS,on} \) (twice one MOSFET since current passes through both channels in series).<br>
+    <strong>Winner: Back-to-back N-MOSFETs. Standard BMS battery protection topology.</strong></p>
+  </div>
+
+  <div class="practical-box">
+    <h4>Practical Implementation</h4>
+    <p>For battery BMS bidirectional switch: use back-to-back AON6258 N-channel MOSFETs (30V/20A, R_DS_on=3.5mΩ, common-source in SO-8). Control IC: BQ77915 (TI) drives both gates from a single GPIO and handles overcurrent shutdown. Individual gate resistors 5–10Ω each to prevent oscillation. For the IGBT AC power application: BT139-800 TRIAC, heatsink required (R_theta_jc=3°C/W; at 15W dissipation → ΔT=45°C; heatsink thermal resistance must be &lt;(85−25−45)/15 = 1°C/W). Gate trigger: MOC3022 opto-TRIAC driver — isolates MCU from mains voltage. For MPPT solar converter: use GaN MOSFET EPC2001C (100V/25A, R_DS_on=7mΩ, Q_g=6.5nC, FOM=45pΩ·C) — best commercially available FOM at 100V in 2024.</p>
+  </div>
+
+  <div class="story-box">
+    <h4>Real-World Story</h4>
+    <p>The Nissan Leaf battery management system (2010) uses a classic back-to-back MOSFET bidirectional switch design in its 192V battery pack protection circuit. Two STW30NM60ND N-channel MOSFETs (600V/27A, back-to-back in common-source configuration) act as the main disconnect between the battery cells and the inverter. When an overcurrent is detected (cell voltage drops below 2.7V during discharge), the BMS controller pulls both gate voltages to zero within 5µs — cutting all current flow in either direction, protecting cells from over-discharge damage. The same circuit allows regenerative braking current to flow back into the pack (bidirectional conduction). This design, first implemented in production EVs in 2010, is now in every EV battery pack worldwide and protects over 10 million battery packs from failure.</p>
+  </div>
+
+  <div class="debug-box">
+    <h4>Debug</h4>
+    <p><strong>Symptom (bidirectional MOSFET switch):</strong> Current flows through the switch even with both gates at 0V. Cause: one MOSFET's body diode is conducting in the "wrong" direction — the back-to-back orientation is incorrect. Verify that both MOSFETs are oriented with their sources connected together (common source). If the drains are connected together instead of sources, the body diodes point in the same direction and one will always conduct. <strong>Symptom (TRIAC):</strong> TRIAC latches on and does not turn off at zero crossing. Cause: load current did not fall below holding current I_H before next trigger. If the load is highly inductive, current lags voltage and may not fall to I_H at the zero crossing. Solution: add snubber RC (100Ω + 100nF) across the TRIAC to absorb inductive energy and allow clean commutation.</p>
+  </div>
+
+  <div class="optimize-box">
+    <h4>Optimization</h4>
+    <p>The frontier of device selection in 2024 is Gallium Nitride (GaN) transistors for everything below 650V at high frequency. GaN-on-Si devices (EPC, GaN Systems, Navitas) offer FOM = R_DS_on × Q_g that is 5–10× better than the best silicon MOSFETs and 3× better than current SiC MOSFETs at 100V. They switch at 1–10MHz with &lt;1mΩ devices available. The implications: a 1MHz GaN buck converter uses a 1µH inductor versus a 100kHz converter's 10µH inductor — 10× smaller passive component. The design challenge: GaN devices have no body diode (they use a reverse-conducting channel); gate drive waveforms must be precisely controlled with dead times under 5ns. Gate driver ICs specifically for GaN (Texas Instruments LMG1025, Navitas NCP51820) are required — standard MOSFET gate drivers are too slow.</p>
+  </div>
+
+  <div class="bridge-box">
+    <h4>Bridge</h4>
+    <p>Device selection is now complete: from the 8-question elimination framework through diodes, BJTs, MOSFETs, IGBTs, TRIACs, and bidirectional switches, every major semiconductor device has a defined domain where it is the optimal choice. The next lecture — Lecture 19, Bandwidth and Poles/Zeros — applies this device knowledge to frequency-domain analysis of amplifier circuits: how transistor gain, input capacitance, and parasitic poles combine to limit amplifier bandwidth, and how feedback reshapes the frequency response to create flat-bandwidth amplifiers used in every signal chain.</p>
+  </div>
+
+  <div class="sim-interactive-box">
+    <h4>Interactive Simulation</h4>
+    <iframe src="simulations/lec17-ds-5_Boundary_Cases_sim.html" width="100%" height="600px" frameborder="0" loading="lazy"></iframe>
+  </div>
+</section>
+
+</div><!-- END LECTURE 13-17 -->
+
+</body>
+</html>

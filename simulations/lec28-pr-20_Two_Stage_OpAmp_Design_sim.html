@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec28 Pr20 — Two-Stage CMOS Op-Amp Design</title>
+<style>
+  body{margin:0;padding:10px;font-family:sans-serif;background:#1a1a2e;color:#e0e0e0;}
+  canvas{display:block;border:1px solid #444;border-radius:6px;background:#0f0f1e;}
+  .ctrl{margin:6px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  label{min-width:200px;font-size:0.85em;}
+  input[type=range]{flex:1;min-width:120px;}
+  .val{min-width:70px;font-size:0.85em;color:#7ec8e3;}
+  .result-box{background:#162032;border:1px solid #2a4a6a;border-radius:6px;padding:10px;margin-top:8px;font-size:0.85em;line-height:1.6;}
+  h3{color:#7ec8e3;margin:4px 0 10px;}
+</style>
+</head>
+<body>
+<h3>Problem 20 — Two-Stage CMOS Op-Amp: Performance vs Compensation</h3>
+<canvas id="cv"></canvas>
+<div class="ctrl">
+  <label>Tail current I_tail (µA):</label>
+  <input type="range" id="itail" min="10" max="200" value="50" step="5">
+  <span class="val" id="itail_v">50 µA</span>
+</div>
+<div class="ctrl">
+  <label>Compensation cap C_c (pF):</label>
+  <input type="range" id="cc" min="0.5" max="10" value="2" step="0.1">
+  <span class="val" id="cc_v">2.0 pF</span>
+</div>
+<div class="ctrl">
+  <label>Stage-2 Gm2 (µA/V):</label>
+  <input type="range" id="gm2" min="200" max="2000" value="700" step="50">
+  <span class="val" id="gm2_v">700 µA/V</span>
+</div>
+<div class="result-box" id="result">Results</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+function resizeCanvas(){
+  const w=cv.parentElement.getBoundingClientRect().width-20;
+  cv.width=Math.max(300,w); cv.height=Math.round(cv.width*0.5);
+}
+function getVals(){
+  const itail=parseFloat(document.getElementById('itail').value)*1e-6;
+  const cc=parseFloat(document.getElementById('cc').value)*1e-12;
+  const gm2=parseFloat(document.getElementById('gm2').value)*1e-6;
+  return {itail,cc,gm2};
+}
+function updateLabels(){
+  document.getElementById('itail_v').textContent=parseFloat(document.getElementById('itail').value).toFixed(0)+' µA';
+  document.getElementById('cc_v').textContent=parseFloat(document.getElementById('cc').value).toFixed(1)+' pF';
+  document.getElementById('gm2_v').textContent=parseFloat(document.getElementById('gm2').value).toFixed(0)+' µA/V';
+}
+function draw(){
+  const W=cv.width, H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  const {itail,cc,gm2}=getVals();
+  const CL=5e-12;
+  const lambda_P=0.08, lambda_N=0.1;
+  const VDD=1.8;
+  const ID1=itail/2;
+
+  // Process params 0.18um
+  const mucox_N=200e-6, mucox_P=100e-6;
+  const Vov1=0.4; // overdrive diff pair (PMOS)
+  const Gm1=itail/Vov1; // Gm1 = Itail/Vov for MOSFET
+  const ro1=1/(lambda_P*ID1), ro3=1/(lambda_N*ID1);
+  const rout1=ro1*ro3/(ro1+ro3);
+  const Av1=Gm1*rout1;
+
+  const ID5=gm2*0.1; // ID5 = Gm2*Vov5/2, Vov5=0.2V
+  const ro5=1/(lambda_N*ID5), ro6=1/(lambda_P*ID5);
+  const rout2=ro5*ro6/(ro5+ro6);
+  const Av2=gm2*rout2;
+  const Av_total=Av1*Av2;
+  const Av_dB=20*Math.log10(Av_total);
+
+  const GBW=Gm1/(2*Math.PI*cc);
+  const SR=itail/cc;
+  const fp2=gm2/(2*Math.PI*CL);
+  const PM=90-Math.atan(GBW/fp2)*180/Math.PI;
+  const fRHP=gm2/(2*Math.PI*cc);
+  const Vn=Math.sqrt(8*1.38e-23*300*0.67/(3*Gm1))*1e9; // nV/rtHz
+  const IDD=itail+ID5+30e-6; // bias
+  const Power=IDD*VDD*1e3; // mW
+  const CC_condition=Gm1/gm2*CL*1e12;
+
+  // Bode plot
+  const mx=55,my=15,bx=W-15,by=H-30;
+  const pw=bx-mx,ph=by-my;
+  const phH=ph*0.6;
+  const phaseY0=my+phH+8;
+
+  const fMin=1e2, fMax=Math.max(1e9,10*GBW);
+  const fRange=Math.log10(fMax/fMin);
+  const fp1=1/(2*Math.PI*rout1*cc*Av2); // Miller-shifted dominant pole
+
+  // Axes
+  ctx.strokeStyle='#444'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(mx,my); ctx.lineTo(mx,by); ctx.lineTo(bx,by);
+  ctx.moveTo(mx,phaseY0); ctx.lineTo(bx,phaseY0); ctx.stroke();
+
+  // Freq grid
+  for(let exp=2;exp<=10;exp++){
+    const f=Math.pow(10,exp);
+    if(f>fMax) break;
+    const x=mx+(Math.log10(f/fMin)/fRange)*pw;
+    ctx.strokeStyle='#2a2a45'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(x,my); ctx.lineTo(x,by); ctx.stroke();
+    ctx.fillStyle='#666'; ctx.font='9px sans-serif';
+    const lbl=exp>=9?'1GHz':exp>=8?'100M':exp>=7?'10M':exp>=6?'1M':exp>=5?'100k':exp>=4?'10k':exp>=3?'1k':'100';
+    ctx.fillText(lbl, x-12, by+14);
+  }
+
+  const gainMax=Av_dB+10, gainMin=-10;
+  for(let g=Math.floor(gainMin/20)*20;g<=gainMax;g+=20){
+    const y=by-phH-(g-gainMin)/(gainMax-gainMin)*phH+phH;
+    const yy=my+phH-(g-gainMin)/(gainMax-gainMin)*phH;
+    if(yy<my||yy>my+phH) continue;
+    ctx.strokeStyle='#2a2a45'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(mx,yy); ctx.lineTo(bx,yy); ctx.stroke();
+    ctx.fillStyle='#666'; ctx.font='9px sans-serif';
+    ctx.fillText(g+'dB', mx-40, yy+4);
+  }
+
+  for(let ph_val=0;ph_val>=-180;ph_val-=45){
+    const y=phaseY0+(0-ph_val)/180*(by-phaseY0);
+    if(y>by||y<phaseY0) continue;
+    ctx.strokeStyle='#2a2a45'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(mx,y); ctx.lineTo(bx,y); ctx.stroke();
+    ctx.fillStyle='#666'; ctx.font='9px sans-serif';
+    ctx.fillText(ph_val+'°', mx-35, y+4);
+  }
+
+  // Gain curve
+  ctx.strokeStyle='#4fc3f7'; ctx.lineWidth=2;
+  ctx.beginPath(); let first=true;
+  for(let i=0;i<=500;i++){
+    const f=fMin*Math.pow(fMax/fMin,i/500);
+    const w=2*Math.PI*f;
+    let mag=Av_total;
+    mag/=Math.sqrt(1+(w/(2*Math.PI*fp1))**2);
+    mag/=Math.sqrt(1+(w/(2*Math.PI*fp2))**2);
+    const mag_dB=20*Math.log10(Math.max(mag,1e-4));
+    const x=mx+(Math.log10(f/fMin)/fRange)*pw;
+    const y=my+phH-(mag_dB-gainMin)/(gainMax-gainMin)*phH;
+    if(first){ctx.moveTo(x,Math.max(my,Math.min(my+phH,y)));first=false;}
+    else ctx.lineTo(x,Math.max(my,Math.min(my+phH,y)));
+  }
+  ctx.stroke();
+
+  // Phase curve
+  ctx.strokeStyle='#aed581'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+  ctx.beginPath(); first=true;
+  for(let i=0;i<=500;i++){
+    const f=fMin*Math.pow(fMax/fMin,i/500);
+    const w=2*Math.PI*f;
+    let phase=-Math.atan(w/(2*Math.PI*fp1))*180/Math.PI-Math.atan(w/(2*Math.PI*fp2))*180/Math.PI;
+    const x=mx+(Math.log10(f/fMin)/fRange)*pw;
+    const y=phaseY0+(0-phase)/180*(by-phaseY0);
+    if(first){ctx.moveTo(x,Math.max(phaseY0,Math.min(by,y)));first=false;}
+    else ctx.lineTo(x,Math.max(phaseY0,Math.min(by,y)));
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+
+  // GBW marker
+  const xgbw=mx+(Math.log10(GBW/fMin)/fRange)*pw;
+  if(xgbw>mx && xgbw<bx){
+    ctx.strokeStyle='#ff7043'; ctx.lineWidth=1; ctx.setLineDash([2,2]);
+    ctx.beginPath(); ctx.moveTo(xgbw,my); ctx.lineTo(xgbw,my+phH); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#ff7043'; ctx.font='9px sans-serif';
+    ctx.fillText('GBW', Math.min(xgbw+2,bx-35), my+10);
+  }
+
+  ctx.fillStyle='#7ec8e3'; ctx.font='11px sans-serif';
+  ctx.fillText('|A(f)| dB', mx+5, my+10);
+  ctx.fillText('Phase', mx+5, phaseY0+12);
+  ctx.fillText('Freq →', bx-45, by+22);
+
+  const pm_pass=PM>60, sr_pass=SR*1e-6>10, gbw_pass=GBW>=9e6, adc_pass=Av_dB>80;
+  document.getElementById('result').innerHTML=
+    `<b>Two-Stage Op-Amp Performance:</b><br>
+    Gm1 = ${(Gm1*1e6).toFixed(0)} µA/V | A_DC = ${Av_dB.toFixed(0)} dB ${adc_pass?'✓':'⚠'}<br>
+    GBW = ${(GBW/1e6).toFixed(1)} MHz ${gbw_pass?'✓':'⚠ need 10MHz'} | PM = ${PM.toFixed(0)}° ${pm_pass?'✓':'⚠'}<br>
+    SR = ${(SR/1e6).toFixed(0)} V/µs ${sr_pass?'✓':'⚠ need 10V/µs'} | Power = ${Power.toFixed(2)} mW<br>
+    V_noise = ${Vn.toFixed(1)} nV/√Hz | C_c condition: C_c ≥ ${CC_condition.toFixed(1)} pF ${cc*1e12>=CC_condition?'✓':'⚠'}<br>
+    f_p2 = ${(fp2/1e6).toFixed(0)} MHz | f_RHP = ${(fRHP/1e6).toFixed(0)} MHz`;
+}
+
+['itail','cc','gm2'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{updateLabels();draw();}));
+resizeCanvas(); updateLabels(); draw();
+window.addEventListener('resize',()=>{resizeCanvas();draw();});
+</script>
+</body>
+</html>

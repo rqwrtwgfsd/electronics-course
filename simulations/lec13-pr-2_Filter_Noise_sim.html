@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sim: RC Filter with Source Impedance</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Arial,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:12px;}
+canvas{display:block;border:1px solid #444;border-radius:6px;background:#0d0d1a;}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0;}
+.ctrl{display:flex;flex-direction:column;gap:3px;font-size:12px;}
+label{color:#aaa;}
+input[type=range]{width:140px;}
+.vals{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#ccc;margin:6px 0;}
+.val-item{background:#222;border-radius:4px;padding:4px 8px;}
+h3{font-size:13px;color:#90caf9;margin-bottom:6px;}
+@media(prefers-color-scheme:light){body{background:#f5f5f5;color:#111;}canvas{background:#fff;border-color:#ccc;}.val-item{background:#eee;color:#222;}label{color:#555;}h3{color:#005a9c;}}
+</style>
+</head>
+<body>
+<h3>Problem 2 — RC Filter Bode Plot (Including Source Impedance)</h3>
+<p style="font-size:11px;color:#aaa;margin-bottom:8px;">True cutoff = 1/(2π(Rs+R)C). Ignoring Rs means calculated cutoff is wrong. Probe ground resonance also shown.</p>
+<canvas id="cv"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>R_source (kΩ)</label><input type="range" id="rs" min="0" max="50" value="10" step="0.5"><span id="rsV">10.0</span></div>
+  <div class="ctrl"><label>R_filter (kΩ)</label><input type="range" id="rf" min="0.1" max="10" value="1" step="0.1"><span id="rfV">1.0</span></div>
+  <div class="ctrl"><label>C (nF)</label><input type="range" id="cap" min="1" max="1000" value="100" step="1"><span id="capV">100</span></div>
+  <div class="ctrl"><label>Probe L_ground (nH)</label><input type="range" id="lg" min="1" max="200" value="100" step="1"><span id="lgV">100</span></div>
+</div>
+<div class="vals">
+  <div class="val-item">f_c (naive, R only): <strong id="fc_naive">-</strong></div>
+  <div class="val-item">f_c (true, Rs+R): <strong id="fc_true">-</strong></div>
+  <div class="val-item">Probe resonance: <strong id="f_probe">-</strong></div>
+  <div class="val-item">Atten at 50kHz: <strong id="atten50">-</strong></div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+function resizeCanvas(){
+  const w=cv.parentElement.getBoundingClientRect().width;
+  cv.width=Math.min(w-24,700);
+  cv.height=Math.round(cv.width*0.45);
+}
+function get(id){return parseFloat(document.getElementById(id).value);}
+function setLbl(id,val){document.getElementById(id+'V')&&(document.getElementById(id+'V').textContent=val);}
+function draw(){
+  const W=cv.width,H=cv.height;
+  const rs=get('rs')*1e3,rf=get('rf')*1e3,C=get('cap')*1e-9,Lg=get('lg')*1e-9;
+  const Cp=10e-12; // probe capacitance 10pF
+  setLbl('rs',get('rs').toFixed(1));setLbl('rf',get('rf').toFixed(1));setLbl('cap',get('cap'));setLbl('lg',get('lg'));
+  const fc_naive=1/(2*Math.PI*rf*C);
+  const fc_true=1/(2*Math.PI*(rs+rf)*C);
+  const f_probe=1/(2*Math.PI*Math.sqrt(Lg*Cp));
+  document.getElementById('fc_naive').textContent=fc_naive>=1000?(fc_naive/1000).toFixed(1)+'kHz':fc_naive.toFixed(0)+'Hz';
+  document.getElementById('fc_true').textContent=fc_true>=1000?(fc_true/1000).toFixed(1)+'kHz':fc_true.toFixed(0)+'Hz';
+  document.getElementById('f_probe').textContent=(f_probe/1e6).toFixed(0)+'MHz';
+  // Attenuation at 50kHz
+  const w50=2*Math.PI*50e3;
+  const Zc50=1/(w50*C);
+  const a50=Zc50/Math.sqrt((rs+rf)*(rs+rf)+Zc50*Zc50);
+  document.getElementById('atten50').textContent=(20*Math.log10(a50)).toFixed(1)+'dB';
+  ctx.clearRect(0,0,W,H);
+  const pad={l:55,r:30,t:25,b:40};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  // Bode plot: log freq axis
+  const f_min=10,f_max=10e6;
+  function fx(f){return pad.l+Math.log10(f/f_min)/Math.log10(f_max/f_min)*pw;}
+  function fy_db(db){const db_min=-80,db_max=5;return pad.t+ph*(1-(db-db_min)/(db_max-db_min));}
+  // Grid
+  ctx.strokeStyle='#1e2a3a';ctx.lineWidth=0.5;
+  [-60,-40,-20,0].forEach(db=>{
+    ctx.beginPath();ctx.moveTo(pad.l,fy_db(db));ctx.lineTo(W-pad.r,fy_db(db));ctx.stroke();
+    ctx.fillStyle='#555';ctx.font='10px Arial';ctx.fillText(db+'dB',2,fy_db(db)+4);
+  });
+  [100,1e3,10e3,100e3,1e6].forEach(f=>{
+    ctx.beginPath();ctx.moveTo(fx(f),pad.t);ctx.lineTo(fx(f),H-pad.b);ctx.stroke();
+    ctx.fillStyle='#555';ctx.font='10px Arial';
+    const lbl=f>=1e6?(f/1e6)+'M':f>=1e3?(f/1e3)+'k':f;
+    ctx.fillText(lbl,fx(f)-8,H-pad.b+14);
+  });
+  // True response (with Rs)
+  ctx.beginPath();ctx.strokeStyle='#55aaff';ctx.lineWidth=2;
+  for(let i=0;i<=400;i++){
+    const f=f_min*Math.pow(f_max/f_min,i/400);
+    const w=2*Math.PI*f;
+    const Zc=1/(w*C);
+    const H_mag=Zc/Math.sqrt((rs+rf)*(rs+rf)+Zc*Zc);
+    const db=20*Math.log10(Math.max(H_mag,1e-8));
+    if(i===0)ctx.moveTo(fx(f),fy_db(db));else ctx.lineTo(fx(f),fy_db(db));
+  }
+  ctx.stroke();
+  // Naive response (R only, no Rs)
+  ctx.beginPath();ctx.strokeStyle='#ff9955';ctx.lineWidth=1.5;ctx.setLineDash([6,3]);
+  for(let i=0;i<=400;i++){
+    const f=f_min*Math.pow(f_max/f_min,i/400);
+    const w=2*Math.PI*f;
+    const Zc=1/(w*C);
+    const H_mag=Zc/Math.sqrt(rf*rf+Zc*Zc);
+    const db=20*Math.log10(Math.max(H_mag,1e-8));
+    if(i===0)ctx.moveTo(fx(f),fy_db(db));else ctx.lineTo(fx(f),fy_db(db));
+  }
+  ctx.stroke();ctx.setLineDash([]);
+  // Probe resonance line
+  ctx.beginPath();ctx.strokeStyle='#ff5555';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.moveTo(fx(f_probe),pad.t);ctx.lineTo(fx(f_probe),H-pad.b);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#ff7777';ctx.font='10px Arial';ctx.fillText('Probe res',fx(f_probe)+3,pad.t+16);
+  // fc lines
+  ctx.strokeStyle='#55ffaa';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(fx(fc_true),pad.t);ctx.lineTo(fx(fc_true),H-pad.b);ctx.stroke();
+  ctx.fillStyle='#55ffaa';ctx.font='10px Arial';ctx.fillText('f_c true',fx(fc_true)+2,pad.t+30);
+  ctx.strokeStyle='#ffaa55';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(fx(fc_naive),pad.t);ctx.lineTo(fx(fc_naive),H-pad.b);ctx.stroke();
+  ctx.fillStyle='#ffaa55';ctx.font='10px Arial';ctx.fillText('f_c naive',fx(fc_naive)+2,pad.t+45);
+  ctx.setLineDash([]);
+  // Legend
+  ctx.fillStyle='#55aaff';ctx.font='10px Arial';ctx.fillText('━ True (with Rs)',pad.l+5,pad.t+12);
+  ctx.fillStyle='#ff9955';ctx.font='10px Arial';ctx.fillText('┅ Naive (R only)',pad.l+100,pad.t+12);
+  ctx.fillStyle='#aaa';ctx.font='10px Arial';ctx.fillText('Frequency →',W/2-30,H-5);
+  ctx.fillStyle='#90caf9';ctx.font='bold 11px Arial';
+  ctx.fillText(`Rs=${(rs/1e3).toFixed(0)}kΩ  R=${(rf/1e3).toFixed(0)}kΩ  C=${(C*1e9).toFixed(0)}nF`,pad.l+5,pad.t-8);
+}
+['rs','rf','cap','lg'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>{resizeCanvas();draw();});
+resizeCanvas();draw();
+</script>
+</body>
+</html>

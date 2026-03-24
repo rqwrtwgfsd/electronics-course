@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Y-Cap Earth Leakage</title>
+<style>:root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}@media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}.module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}h1{font-size:18px;margin:4px 0}.layout{display:grid;grid-template-columns:1fr 260px;gap:16px}canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}.controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}.ctrl-group{margin-bottom:12px}.ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}.ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}.result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}@media(max-width:600px){.layout{grid-template-columns:1fr}}</style>
+</head>
+<body>
+<header><div class="module-id">Lecture 12 | Scenario 28</div><h1>Y-Capacitor Earth Leakage vs EMI Trade-off</h1></header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group"><div class="ctrl-label">Y-Cap per Machine (nF) <span class="ctrl-value" id="lbl-c">47 nF</span></div><input type="range" id="sl-c" min="1" max="470" value="47" step="1"></div>
+    <div class="ctrl-group"><div class="ctrl-label">Number of Machines <span class="ctrl-value" id="lbl-n">4</span></div><input type="range" id="sl-n" min="1" max="20" value="4" step="1"></div>
+    <div class="ctrl-group"><div class="ctrl-label">Mains Voltage (V) <span class="ctrl-value" id="lbl-v">230 V</span></div><input type="range" id="sl-v" min="110" max="230" value="230" step="10"></div>
+    <div class="result-box" id="result">Adjust to balance EMI vs leakage</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slC=document.getElementById('sl-c'),slN=document.getElementById('sl-n'),slV=document.getElementById('sl-v');
+const lblC=document.getElementById('lbl-c'),lblN=document.getElementById('lbl-n'),lblV=document.getElementById('lbl-v');
+const result=document.getElementById('result');
+function draw(){
+  const W=cv.width,H=cv.height;
+  const Cy=parseFloat(slC.value)*1e-9;const N=parseInt(slN.value);const Vmains=parseFloat(slV.value);
+  lblC.textContent=slC.value+' nF';lblN.textContent=N;lblV.textContent=Vmains+' V';
+  ctx.clearRect(0,0,W,H);
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  // Leakage current per machine: I_leak = V * 2*pi*f * C_y
+  const f=50;const Ileak_per=Vmains*2*Math.PI*f*Cy*1000; // mA
+  const Ileak_total=Ileak_per*N;
+  // ELCB trips at 30mA (residential) or 100mA (industrial)
+  const Itrip_res=30,Itrip_ind=100;
+  // Show bar chart: leakage vs number of machines
+  const maxN=20;const yMax=Math.max(Ileak_per*maxN*1.2,150);const yMin=0;
+  function yPx(i){return pad+plotH*(1-i/yMax)}
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  [0,30,100,yMax*0.5,yMax].forEach(v=>{if(v<=yMax){ctx.beginPath();ctx.moveTo(pad,yPx(v));ctx.lineTo(W-pad,yPx(v));ctx.stroke()}});
+  ctx.strokeStyle='#888';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  // Plot leakage vs N
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2;ctx.beginPath();
+  for(let n=1;n<=maxN;n++){
+    const il=Ileak_per*n;const xp=pad+((n-1)/(maxN-1))*plotW;const yp=yPx(Math.min(il,yMax));
+    n===1?ctx.moveTo(xp,yp):ctx.lineTo(xp,yp);
+  }ctx.stroke();
+  // Trip thresholds
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#e53935';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(pad,yPx(Itrip_res));ctx.lineTo(W-pad,yPx(Itrip_res));ctx.stroke();
+  ctx.strokeStyle='#f57c00';
+  ctx.beginPath();ctx.moveTo(pad,yPx(Itrip_ind));ctx.lineTo(W-pad,yPx(Itrip_ind));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#e53935';ctx.font='10px system-ui';ctx.textAlign='left';ctx.fillText('30mA ELCB (residential)',pad+4,yPx(Itrip_res)-4);
+  ctx.fillStyle='#f57c00';ctx.fillText('100mA ELCB (industrial)',pad+4,yPx(Itrip_ind)-4);
+  // Mark current N
+  const xN=pad+((N-1)/(maxN-1))*plotW;
+  ctx.strokeStyle='#2e7d32';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(xN,pad);ctx.lineTo(xN,H-pad);ctx.stroke();
+  ctx.fillStyle='#888';ctx.textAlign='right';ctx.font='10px system-ui';
+  [0,30,100,yMax*0.5,yMax].filter(v=>v<=yMax).forEach(v=>ctx.fillText(v.toFixed(0)+'mA',pad-4,yPx(v)+3));
+  ctx.textAlign='center';[1,5,10,15,20].forEach(n=>ctx.fillText(n,pad+((n-1)/(maxN-1))*plotW,H-pad+14));
+  const n_res_trip=Math.ceil(Itrip_res/Ileak_per);const n_ind_trip=Math.ceil(Itrip_ind/Ileak_per);
+  result.innerHTML='<b>Per machine: I_leak = '+(Ileak_per).toFixed(2)+'mA</b><br>Total ('+N+' machines): <b>'+Ileak_total.toFixed(1)+'mA</b><br>30mA ELCB trips at: <b>'+n_res_trip+' machines</b><br>100mA ELCB trips at: <b>'+n_ind_trip+' machines</b><br>Status: <b>'+(Ileak_total<30?'✅ OK for residential':Ileak_total<100?'⚠️ Need industrial ELCB':'⚠️ Use isolation transformer!')+'</b>';
+}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slC,slN,slV].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});resizeCanvas();draw();
+</script>
+</body>
+</html>

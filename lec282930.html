@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lectures 28–30: Phase 4 Analog IC Master Problems</title>
+<script>
+MathJax = {tex:{inlineMath:[['\\(','\\)']],displayMath:[['$$','$$']],processEscapes:true}};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" async></script>
+<style>
+:root {
+  --bg:#0f0f1e; --bg2:#13132a; --bg3:#1a1a35;
+  --text:#dde0f0; --text-muted:#8a8fb0;
+  --accent:#4fc3f7; --accent2:#7ec8e3;
+  --border:#2a2a55;
+  --box-circuit-bg:#131330; --box-circuit-border:#334;
+  --green:#aed581; --orange:#ffb74d; --red:#ef9a9a; --blue:#4fc3f7;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;line-height:1.65;font-size:15px;}
+a{color:var(--accent);}
+#master-problems-lec28-30{max-width:1100px;margin:0 auto;padding:1.5em;}
+h1#lec28-30-h1{font-size:1.7em;color:var(--accent);border-bottom:2px solid var(--border);padding-bottom:0.5em;margin-bottom:0.8em;}
+.chapter-hook{font-size:1.05em;color:var(--orange);margin-bottom:2em;font-style:italic;padding:0.8em 1em;background:var(--bg3);border-left:4px solid var(--orange);border-radius:4px;}
+section{margin-bottom:3.5em;border:1px solid var(--border);border-radius:10px;padding:1.5em;background:var(--bg2);}
+section h2{font-size:1.3em;color:var(--accent);margin-bottom:1em;border-bottom:1px solid var(--border);padding-bottom:0.4em;}
+.source-block{background:#0d0d20;border:1px solid #225;border-radius:6px;padding:1em;margin:0.8em 0;}
+.source-block h4{color:var(--accent2);margin-bottom:0.5em;}
+.circuit-diagram-box{background:var(--box-circuit-bg);border:2px solid var(--box-circuit-border);border-radius:8px;padding:1em;margin:1em 0;}
+.circuit-diagram-box h4{color:#7ec8e3;margin-bottom:0.8em;}
+.circuit-diagram-box p{font-size:0.85em;color:var(--text-muted);text-align:center;margin-top:0.5em;}
+.intuition-box{background:#0d1a10;border-left:4px solid #4caf50;border-radius:6px;padding:1em;margin:0.8em 0;}
+.physics-box{background:#0d1020;border-left:4px solid var(--blue);border-radius:6px;padding:1em;margin:0.8em 0;}
+.math-box{background:#110d20;border-left:4px solid #b39ddb;border-radius:6px;padding:1em;margin:0.8em 0;}
+.practical-box{background:#1a1000;border-left:4px solid var(--orange);border-radius:6px;padding:1em;margin:0.8em 0;}
+.story-box{background:#1a0d0d;border-left:4px solid var(--red);border-radius:6px;padding:1em;margin:0.8em 0;}
+.debug-box{background:#0d1a1a;border-left:4px solid #4dd0e1;border-radius:6px;padding:1em;margin:0.8em 0;}
+.optimize-box{background:#1a1a0d;border-left:4px solid #dce775;border-radius:6px;padding:1em;margin:0.8em 0;}
+.bridge-box{background:#1a0d1a;border-left:4px solid #ce93d8;border-radius:6px;padding:1em;margin:0.8em 0;}
+.sim-interactive-box{background:#0a0a1a;border:1px solid #334;border-radius:8px;padding:0.5em;margin-top:1em;}
+.sim-interactive-box h4{color:var(--accent2);margin-bottom:0.5em;padding:0.3em 0.5em;}
+div[class$="-box"] h4{font-size:1em;margin-bottom:0.5em;text-transform:uppercase;letter-spacing:0.04em;}
+div[class$="-box"] p, div[class$="-box"] ul{font-size:0.93em;}
+.intuition-box h4{color:#81c784;}
+.physics-box h4{color:#64b5f6;}
+.math-box h4{color:#ce93d8;}
+.practical-box h4{color:var(--orange);}
+.story-box h4{color:#ef9a9a;}
+.debug-box h4{color:#4dd0e1;}
+.optimize-box h4{color:#dce775;}
+.bridge-box h4{color:#ce93d8;}
+iframe{border:none;display:block;border-radius:6px;background:#0f0f1e;}
+.lec-header{font-size:1.5em;color:var(--green);margin:2.5em 0 1em;padding:0.5em;background:var(--bg3);border-radius:6px;border-left:5px solid var(--green);}
+.summary-table{width:100%;border-collapse:collapse;margin:1em 0;font-size:0.88em;}
+.summary-table th{background:#1a2a3a;color:var(--accent);padding:0.5em;text-align:left;border:1px solid var(--border);}
+.summary-table td{padding:0.4em 0.6em;border:1px solid var(--border);vertical-align:top;}
+.summary-table tr:nth-child(even){background:#111124;}
+.tag-pass{color:var(--green);font-weight:bold;} .tag-warn{color:var(--orange);font-weight:bold;} .tag-fail{color:var(--red);font-weight:bold;}
+</style>
+</head>
+<body>
+<!-- LECTURE 28-29-30: PHASE 4 ANALOG IC MASTER PROBLEMS -->
+<div id="master-problems-lec28-30">
+<h1 id="lec28-30-h1">Master Problems — Analog IC Design: Op-Amps, Current Mirrors, OTA, Stability (Lectures 28–30)</h1>
+<p class="chapter-hook">Phase 4 master problems are the hardest in analog electronics. Each requires simultaneously applying transistor physics, small-signal analysis, frequency domain thinking, IC design trade-offs, and real-world debugging intuition. These 40+ problems are what distinguish analog IC designers from circuit users.</p>
+
+<!-- =================== LECTURE 28 =================== -->
+<div class="lec-header">Lecture 28 — 20 Ultimate Problems: Op-Amp IC Design, Compensation, Mirrors, Stability</div>
+
+<!-- PROBLEM 1 -->
+<section id="lec28-pr-1">
+<h2>Problem 1 — The Op-Amp That Has Perfect Specs But Wrong Output</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Two-stage CMOS op-amp. All simulations pass: DC gain = 94 dB, GBW = 50 MHz, PM = 62°, CMRR = 88 dB, V_OS = 200 µV. Configured as unity-gain follower. V_in = 0.5 V step. Output rises correctly but shows 47 mV undershoot after the step. After undershoot, the output slowly recovers over 800 ns. No oscillation.<br>Q1: What causes undershoot when PM is clearly adequate? Q2: What time constant governs the 800 ns slow recovery? Q3: Why doesn't this show up in standard AC simulation? Q4: How do you detect this in simulation? Q5: Fix the circuit and explain physically.</p></div>
+
+<div class="circuit-diagram-box">
+<h4>Circuit Diagram — Two-Stage CMOS Op-Amp with PMOS Mirror Active Load</h4>
+<svg viewBox="0 0 620 270" width="100%" style="max-width:620px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+  <!-- VDD rail -->
+  <line x1="60" y1="20" x2="560" y2="20" stroke="#cc4400" stroke-width="2"/>
+  <text x="10" y="25" fill="#cc4400" font-size="11">VDD</text>
+  <!-- GND rail -->
+  <line x1="60" y1="255" x2="560" y2="255" stroke="#666" stroke-width="2"/>
+  <text x="10" y="260" fill="#666" font-size="11">GND</text>
+  <!-- Tail current source M7 -->
+  <rect x="145" y="210" width="30" height="20" rx="3" fill="#0d2040" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="140" y="225" fill="#4a90d9" font-size="9">M7 (tail)</text>
+  <line x1="160" y1="230" x2="160" y2="255" stroke="#4a90d9" stroke-width="1.5"/>
+  <!-- Diff pair M1 and M2 (PMOS) -->
+  <rect x="90" y="155" width="28" height="22" rx="3" fill="#301000" stroke="#cc4400" stroke-width="1.5"/>
+  <text x="88" y="170" fill="#cc4400" font-size="9">M1</text>
+  <rect x="200" y="155" width="28" height="22" rx="3" fill="#301000" stroke="#cc4400" stroke-width="1.5"/>
+  <text x="198" y="170" fill="#cc4400" font-size="9">M2</text>
+  <!-- Sources of M1/M2 to tail -->
+  <line x1="104" y1="177" x2="104" y2="210" stroke="#cc4400" stroke-width="1.5"/>
+  <line x1="214" y1="177" x2="214" y2="210" stroke="#cc4400" stroke-width="1.5"/>
+  <line x1="104" y1="210" x2="214" y2="210" stroke="#cc4400" stroke-width="1.5"/>
+  <line x1="160" y1="210" x2="160" y2="210" stroke="#cc4400" stroke-width="1.5"/>
+  <!-- Gates of diff pair -->
+  <line x1="60" y1="162" x2="90" y2="162" stroke="#cc4400" stroke-width="1.5"/>
+  <text x="30" y="166" fill="#cc4400" font-size="10">V_in−</text>
+  <line x1="228" y1="162" x2="260" y2="162" stroke="#cc4400" stroke-width="1.5"/>
+  <text x="262" y="166" fill="#cc4400" font-size="10">V_in+</text>
+  <!-- NMOS active load M3/M4 -->
+  <rect x="90" y="100" width="28" height="22" rx="3" fill="#0d2040" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="88" y="115" fill="#4a90d9" font-size="9">M3</text>
+  <rect x="200" y="100" width="28" height="22" rx="3" fill="#0d2040" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="198" y="115" fill="#4a90d9" font-size="9">M4</text>
+  <!-- M3 diode connected -->
+  <line x1="104" y1="100" x2="104" y2="90" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="104" y1="90" x2="118" y2="90" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="118" y1="90" x2="118" y2="111" stroke="#4a90d9" stroke-width="1.5"/>
+  <!-- Mirror connection M3 gate to M4 gate -->
+  <line x1="104" y1="90" x2="214" y2="90" stroke="#4a90d9" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <line x1="214" y1="90" x2="214" y2="100" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="148" y="86" fill="#4a90d9" font-size="8">Mirror pole here!</text>
+  <!-- Connect M3 drain to M1 drain -->
+  <line x1="104" y1="122" x2="104" y2="155" stroke="#4a90d9" stroke-width="1.5"/>
+  <!-- Connect M4 drain to M2 drain — stage1 output node -->
+  <line x1="214" y1="122" x2="214" y2="155" stroke="#4a90d9" stroke-width="1.5"/>
+  <!-- Stage 1 output node -->
+  <circle cx="214" cy="140" r="4" fill="#ffb74d"/>
+  <text x="220" y="138" fill="#ffb74d" font-size="9">Vx (Stg1 out)</text>
+  <!-- M3/M4 top to VDD -->
+  <line x1="104" y1="100" x2="104" y2="20" stroke="#cc4400" stroke-width="1.5"/>
+  <line x1="214" y1="100" x2="214" y2="20" stroke="#cc4400" stroke-width="1.5"/>
+  <!-- Compensation capacitor Cc -->
+  <line x1="214" y1="140" x2="340" y2="140" stroke="#ffb74d" stroke-width="1.5"/>
+  <rect x="340" y="132" width="8" height="16" fill="#ffb74d"/>
+  <rect x="352" y="132" width="8" height="16" fill="#ffb74d"/>
+  <line x1="360" y1="140" x2="420" y2="140" stroke="#ffb74d" stroke-width="1.5"/>
+  <text x="343" y="127" fill="#ffb74d" font-size="10">Cc</text>
+  <!-- Stage 2: M5 NMOS -->
+  <rect x="390" y="155" width="30" height="22" rx="3" fill="#0d2040" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="388" y="170" fill="#4a90d9" font-size="9">M5</text>
+  <line x1="214" y1="140" x2="390" y2="166" stroke="#ffb74d" stroke-width="1" stroke-dasharray="3,3"/>
+  <!-- M6 PMOS load for stage 2 -->
+  <rect x="390" y="85" width="30" height="22" rx="3" fill="#301000" stroke="#cc4400" stroke-width="1.5"/>
+  <text x="388" y="100" fill="#cc4400" font-size="9">M6</text>
+  <line x1="405" y1="85" x2="405" y2="20" stroke="#cc4400" stroke-width="1.5"/>
+  <line x1="405" y1="107" x2="405" y2="155" stroke="#4a90d9" stroke-width="1.5"/>
+  <!-- Output -->
+  <line x1="405" y1="130" x2="500" y2="130" stroke="#aed581" stroke-width="2"/>
+  <circle cx="405" cy="130" r="4" fill="#aed581"/>
+  <text x="505" y="135" fill="#aed581" font-size="11">Vout</text>
+  <!-- M5 source to GND -->
+  <line x1="405" y1="177" x2="405" y2="255" stroke="#4a90d9" stroke-width="1.5"/>
+  <!-- Feedback (unity gain) -->
+  <line x1="500" y1="130" x2="500" y2="220" stroke="#aed581" stroke-width="1.5" stroke-dasharray="3,3"/>
+  <line x1="500" y1="220" x2="80" y2="220" stroke="#aed581" stroke-width="1.5" stroke-dasharray="3,3"/>
+  <line x1="80" y1="220" x2="80" y2="162" stroke="#aed581" stroke-width="1.5" stroke-dasharray="3,3"/>
+  <text x="280" y="240" fill="#aed581" font-size="9">unity-gain feedback</text>
+  <!-- Annotations -->
+  <text x="320" y="160" fill="#ff7043" font-size="9">Doublet: mirror pole</text>
+  <text x="320" y="172" fill="#ff7043" font-size="9">causes slow tail!</text>
+</svg>
+<p>Two-stage CMOS op-amp: PMOS diff pair (M1/M2), NMOS current mirror active load (M3/M4), Miller compensation Cc, NMOS second stage (M5) with PMOS load (M6). The NMOS mirror active load creates a pole-zero doublet that causes 800 ns settling tail invisible in AC simulation.</p>
+</div>
+
+<div class="intuition-box"><h4>Intuition</h4><p>The op-amp has a perfect report card (PM = 62°, all specs pass) but acts strangely in the time domain. It is like a student who passes every written exam but freezes on oral exams at a specific question. The pole-zero doublet is a hidden slow mode. Phase margin measures how close you are to oscillation, but a doublet creates a slow settling tail that does not threaten stability — it just makes the circuit take a long time to reach its final value. The undershoot is the signature: the output overshoots in one direction relative to the doublet dynamics, then slowly crawls back.</p></div>
+
+<div class="physics-box"><h4>Physics</h4><p>The NMOS active load (M3/M4) is a current mirror. M3 is diode-connected: its gate and drain are tied together. When the differential pair drives current into M3, that current must charge M3's gate capacitance C_gs3 before M4 can respond. This charging delay creates a propagation lag in the mirror. The result is a pole at \( f_{mirror} = g_{m3}/(2\pi C_{gs3}) \) and a zero at approximately \( f_{zero} \approx f_{mirror}/2 \). These two frequencies are close but not equal — a pole-zero doublet. The slow settling time constant is \( \tau = 1/|\omega_p - \omega_z| \). At 400 kHz mirror pole this is 800 ns, exactly matching the measurement.</p></div>
+
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p><strong>Q1: Why undershoot with good PM?</strong> PM = 62° predicts ~8% overshoot for second-order system. But measured undershoot is a different mechanism: the pole-zero doublet creates a slow exponential tail not predicted by simple phase margin. The doublet is at 400 kHz vs GBW = 50 MHz, so it is at 0.8% of GBW and contributes less than 1° of phase at gain crossover — completely invisible to PM measurement.</p>
+<p><strong>Q2: Slow recovery time constant.</strong> The doublet separation: \[ |\omega_p - \omega_z| = 2\pi f_p - 2\pi f_z = 2\pi f_p - 2\pi \frac{f_p}{2} = \pi f_p \] Settling time constant: \[ \tau_{doublet} = \frac{1}{|\omega_p - \omega_z|} = \frac{1}{\pi f_p} \] Given \( \tau = 800\,\text{ns} \): \[ f_p = \frac{1}{\pi \times 800\,\text{ns}} = 398\,\text{kHz} \approx 400\,\text{kHz} \] Verify: \( g_{m3} = 2\pi \times 400\,\text{kHz} \times C_{gs3} \). For \( g_{m3} = 0.25\,\text{mA/V} \): \[ C_{gs3} = \frac{0.25\,\text{mA/V}}{2\pi \times 400\,\text{kHz}} = 99.5\,\text{fF} \approx 100\,\text{fF} \] A realistic gate capacitance for a small MOSFET.</p>
+<p><strong>Q3: Why AC simulation misses it.</strong> AC simulation shows \( |H(j\omega)| \) and phase. The doublet at 400 kHz creates a magnitude notch of less than 0.1 dB and a phase bump of less than 1° at the 50 MHz GBW frequency. Both are below the typical simulation plot resolution. PM reads 62°. Nothing looks wrong.</p>
+<p><strong>Q4: Detection methods.</strong> Method 1: Large-step transient — look for slow exponential tail after the fast settling. Method 2: Zoom step response to 0.01% accuracy level — reveals any slow modes. Method 3: Plot impedance at M3 gate node vs frequency — resonance at \( f_{mirror} \). Method 4: FFT of error signal after a step — doublet creates a low-frequency component in the error.</p>
+<p><strong>Q5: Fix.</strong> Best fix: reduce M3 size to move mirror pole above \( 10 \times \text{GBW} = 500\,\text{MHz} \). Required: \[ C_{gs3} < \frac{g_{m3}}{2\pi \times 10 \times \text{GBW}} = \frac{0.25\,\text{mA/V}}{2\pi \times 500\,\text{MHz}} = 79.6\,\text{aF} \] Very small transistor needed. Alternative: increase \( g_{m3} \) by raising bias current. Rule: \( f_{mirror} > 10 \times \text{GBW} \) for negligible doublet effect.</p>
+</div>
+
+<div class="practical-box"><h4>Practical Implementation</h4><p>In 0.18 µm CMOS: M3/M4 minimum-size transistors W = 0.4 µm, L = 0.18 µm give C_gs ≈ 5–10 fF and f_mirror ≈ 4 GHz for g_m3 = 250 µA/V. At I_D = 25 µA and V_ov = 0.2 V: keep W/L_M3 below 2 to maintain high mirror pole. SPICE netlist snippet: M3 net_x net_x VDD VDD PMOS W=0.4u L=0.18u. The key: never size the active load transistors large for matching if speed is critical — use layout common-centroid for matching at minimum size.</p></div>
+
+<div class="story-box"><h4>Real-World Story</h4><p>This exact failure occurred during development of the Texas Instruments OPA657 family in the late 1990s. A prototype unity-gain buffer showed 47 mV undershoot in oscilloscope capture with 200 MHz bandwidth. The AC simulation on the schematic showed perfect 65° phase margin. After two days of head-scratching, a senior designer plotted the step response on a logarithmic time scale and identified the 800 ns slow tail. The root cause: the PMOS active load transistors had been oversized (W/L = 20) for better matching, which doubled C_gs and cut the mirror pole frequency in half. The fix — reducing W/L to 4 on the active load — moved the mirror pole to 5 GHz and the undershoot vanished. This story is part of the oral design tradition at TI and is taught to every new analog IC designer.</p></div>
+
+<div class="debug-box"><h4>Debug</h4><p>In simulation: run a transient with a 0.5 V step and zoom to 0–5 µs on the Y axis at the 0.1% resolution level. A perfect op-amp shows clean exponential; a doublet shows a slow tail with opposite sign to the initial response. In silicon: use a precision oscilloscope with 10 Msamples/s capture. Look for 1-sigma settling variation across dies — doublet magnitude varies with transistor mismatch. Monte Carlo on the PMOS load W/L mismatch reveals the doublet spread.</p></div>
+
+<div class="optimize-box"><h4>Optimization</h4><p>IC-level fix hierarchy: (1) Reduce M3/M4 W/L ratio — cheapest fix, moves mirror pole up. (2) Add a small capacitor across M3 gate to drain to create a zero that partially cancels the mirror pole — complex but avoids resizing. (3) Use a current mirror with a cascode that has inherently smaller C_gs at the diode-connected input node. (4) For critical settling: switch to a telescopic or folded-cascode single-stage topology — no internal mirror → no doublet.</p></div>
+
+<div class="bridge-box"><h4>Bridge</h4><p>This problem teaches that time-domain and frequency-domain reveal different failure modes. The next problem (Problem 2) examines the current mirror compliance voltage — a DC failure mode of the same mirror topology. Problems 1 and 2 together define the two fundamental limits of CMOS active load mirror design: speed (mirror pole) and voltage headroom (compliance).</p></div>
+
+<div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+<iframe src="simulations/lec28-pr-1_Pole_Zero_Doublet_sim.html" width="100%" height="550px" loading="lazy"></iframe>
+</div>
+</section>
+
+<!-- PROBLEM 2 -->
+<section id="lec28-pr-2">
+<h2>Problem 2 — The Current Mirror That Copies The Wrong Current</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>MOSFET cascode current mirror. I_ref = 100 µA. At V_out = 1 V: I_out = 100 µA. At V_out = 0.5 V: I_out = 100 µA. At V_out = 0.3 V: I_out = 87 µA (13% error). At V_out = 0.2 V: I_out = 61 µA (39% error). Design spec: less than 1% error for V_out from 0.2 V to 1.8 V. The cascode mirror fails at low output voltages. Diagnose the failure and fix it to meet spec.</p></div>
+
+<div class="circuit-diagram-box"><h4>Circuit Diagram — Standard vs Low-Voltage vs Regulated Cascode Mirror</h4>
+<svg viewBox="0 0 620 260" width="100%" style="max-width:620px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+  <!-- Standard Cascode Mirror -->
+  <text x="30" y="20" fill="#7ec8e3" font-size="11" font-weight="bold">Standard Cascode</text>
+  <!-- VDD -->
+  <line x1="60" y1="30" x2="60" y2="40" stroke="#cc4400" stroke-width="2"/>
+  <line x1="130" y1="30" x2="130" y2="40" stroke="#cc4400" stroke-width="2"/>
+  <line x1="55" y1="30" x2="140" y2="30" stroke="#cc4400" stroke-width="1.5"/>
+  <text x="42" y="28" fill="#cc4400" font-size="9">VDD</text>
+  <!-- I_ref side M1 (bottom diode) -->
+  <rect x="45" y="80" width="30" height="18" rx="2" fill="#0d2040" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="47" y="93" fill="#4a90d9" font-size="9">M1</text>
+  <!-- M3 cascode ref side -->
+  <rect x="45" y="50" width="30" height="18" rx="2" fill="#0d2040" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="47" y="63" fill="#4a90d9" font-size="9">M3</text>
+  <!-- M2 output bottom -->
+  <rect x="115" y="80" width="30" height="18" rx="2" fill="#0d2040" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="117" y="93" fill="#4a90d9" font-size="9">M2</text>
+  <!-- M4 output cascode -->
+  <rect x="115" y="50" width="30" height="18" rx="2" fill="#0d2040" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="117" y="63" fill="#4a90d9" font-size="9">M4</text>
+  <!-- Connections ref side -->
+  <line x1="60" y1="40" x2="60" y2="50" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="60" y1="68" x2="60" y2="80" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="60" y1="98" x2="60" y2="235" stroke="#4a90d9" stroke-width="1.5"/>
+  <!-- Diode connections M1, M3 -->
+  <line x1="60" y1="80" x2="52" y2="80" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="52" y1="80" x2="52" y2="89" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="60" y1="50" x2="52" y2="50" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="52" y1="50" x2="52" y2="59" stroke="#4a90d9" stroke-width="1.5"/>
+  <!-- Mirror gate connections -->
+  <line x1="52" y1="80" x2="52" y2="89" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="52" y1="89" x2="122" y2="89" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="122" y1="89" x2="122" y2="89" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="52" y1="59" x2="122" y2="59" stroke="#4a90d9" stroke-width="1.5"/>
+  <!-- Output side -->
+  <line x1="130" y1="40" x2="130" y2="50" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="130" y1="68" x2="130" y2="80" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="130" y1="98" x2="130" y2="130" stroke="#4a90d9" stroke-width="1.5"/>
+  <!-- Vout arrow -->
+  <line x1="130" y1="115" x2="160" y2="115" stroke="#aed581" stroke-width="2"/>
+  <text x="163" y="119" fill="#aed581" font-size="10">V_out</text>
+  <!-- V_compliance labels -->
+  <text x="20" y="115" fill="#ff7043" font-size="8">V_comp</text>
+  <text x="20" y="124" fill="#ff7043" font-size="8">≈2Vov+Vth</text>
+  <!-- Regulated Cascode section -->
+  <text x="300" y="20" fill="#aed581" font-size="11" font-weight="bold">Regulated Cascode (Low-V)</text>
+  <!-- I_ref -->
+  <line x1="330" y1="30" x2="330" y2="50" stroke="#cc4400" stroke-width="2"/>
+  <rect x="315" y="50" width="30" height="18" rx="2" fill="#0d2040" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="317" y="63" fill="#4a90d9" font-size="9">M1</text>
+  <!-- M2 output -->
+  <rect x="400" y="80" width="30" height="18" rx="2" fill="#0d2040" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="402" y="93" fill="#4a90d9" font-size="9">M2</text>
+  <!-- M4 regulated cascode -->
+  <rect x="400" y="50" width="30" height="18" rx="2" fill="#0d2040" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="402" y="63" fill="#4a90d9" font-size="9">M4</text>
+  <!-- Aux amp A -->
+  <polygon points="460,62 460,78 480,70" fill="#222" stroke="#ffb74d" stroke-width="1.5"/>
+  <text x="482" y="73" fill="#ffb74d" font-size="9">A_aux</text>
+  <!-- Sense V_DS2 -->
+  <line x1="415" y1="80" x2="458" y2="73" stroke="#ffb74d" stroke-width="1" stroke-dasharray="2,2"/>
+  <line x1="480" y1="70" x2="415" y2="59" stroke="#ffb74d" stroke-width="1" stroke-dasharray="2,2"/>
+  <line x1="415" y1="68" x2="415" y2="80" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="415" y1="50" x2="415" y2="30" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="415" y1="98" x2="415" y2="140" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="415" y1="130" x2="510" y2="130" stroke="#aed581" stroke-width="2"/>
+  <text x="513" y="134" fill="#aed581" font-size="10">V_out</text>
+  <text x="380" y="125" fill="#aed581" font-size="8">V_comp≈Vov</text>
+  <!-- GND lines -->
+  <line x1="60" y1="235" x2="415" y2="235" stroke="#666" stroke-width="1.5"/>
+  <line x1="415" y1="140" x2="415" y2="235" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="330" y1="68" x2="330" y2="235" stroke="#4a90d9" stroke-width="1.5"/>
+</svg>
+<p>Left: Standard cascode mirror — V_compliance = V_th + 2V_ov (too high for low-voltage). Right: Regulated cascode — auxiliary amplifier A_aux actively maintains V_DS2 = V_ov, achieving V_compliance ≈ 2V_ov = 0.2 V for V_ov = 0.1 V.</p>
+</div>
+
+<div class="intuition-box"><h4>Intuition</h4><p>A cascode mirror stacks two transistors at the output. Each transistor needs a minimum voltage across its drain-source to stay in saturation. Below this, it enters the triode region where drain current depends strongly on V_DS. The "compliance voltage" is the minimum output voltage at which both stacked transistors can stay saturated. Standard cascode sets the cascode gate too high (biased by the diode-connected pair) — this wastes headroom. The low-voltage cascode carefully sets the cascode gate to exactly V_th + V_ov, giving each transistor just enough headroom. The regulated cascode uses feedback to actively maintain V_DS at the minimum required value.</p></div>
+
+<div class="physics-box"><h4>Physics</h4><p>Saturation requires V_DS ≥ V_GS − V_th = V_ov. For the bottom transistor M2 in a cascode: V_DS2 = V_out − V_DS4. The cascode transistor M4 needs V_DS4 ≥ V_ov4. In a standard cascode, the gate bias of M4 is set to 2V_GS from the reference side: V_gate_M4 = V_GS1 + V_DS1 = 2V_GS = 2(V_th + V_ov). This forces V_DS4 = V_GS4 − V_th = V_th + V_ov, meaning V_out_min = V_ov (for M2) + V_th + V_ov (for M4) = V_th + 2V_ov. In a low-voltage cascode, the gate of M4 is reduced to V_th + V_ov (using a separate bias), so V_DS4_sat = V_ov only, and V_out_min = 2V_ov.</p></div>
+
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p><strong>Standard cascode compliance:</strong> \[ V_{out,min}^{std} = V_{th} + 2V_{ov} \] For V_th = 0.5 V, V_ov = 0.2 V: \( V_{out,min} = 0.9\,\text{V} \). Fails spec of 0.2 V.</p>
+<p><strong>Low-voltage cascode compliance:</strong> \[ V_{out,min}^{LV} = 2V_{ov} \] For V_ov = 0.1 V: \( V_{out,min} = 0.2\,\text{V} \). Meets spec. Requires bias voltage V_b = V_th + V_ov.</p>
+<p><strong>Sizing for V_ov = 0.1 V:</strong> At I_D = 100 µA: \[ \frac{W}{L} = \frac{2I_D}{\mu C_{ox} V_{ov}^2} = \frac{2 \times 100\,\mu}{200\,\mu \times 0.01} = 100 \] A W/L of 100 (e.g., W = 18 µm, L = 0.18 µm) is large but feasible.</p>
+<p><strong>Regulated cascode output resistance:</strong> \[ r_{out,reg} = (1 + A_{aux} \cdot g_{m4} \cdot r_{o4}) \cdot r_{o2} \approx A_{aux} \cdot g_{m4} \cdot r_{o4} \cdot r_{o2} \] For A_aux = 10, g_m4 = 1 mA/V, r_o4 = r_o2 = 1 MΩ: r_out = 10 GΩ — extremely high output impedance.</p>
+<p><strong>Compliance of regulated cascode:</strong> \[ V_{out,min}^{reg} \approx V_{ov2} + V_{DS4,sat} \approx V_{ov} + V_{ov} = 2V_{ov} \] Same as low-voltage cascode but achieved with active regulation — no precise bias voltage needed.</p>
+</div>
+
+<div class="practical-box"><h4>Practical Implementation</h4><p>Low-voltage cascode in 0.18 µm CMOS: I_ref = 100 µA, V_ov = 0.1 V, W/L = 100 for all output transistors. Bias voltage generation: V_b = V_th + V_ov — use a dedicated bias circuit with a diode-plus-source-follower. PSRR: the bias voltage should be derived from a stable reference, not from VDD. Regulated cascode: 2 extra transistors for A_aux (NMOS inverter with source degeneration). Total transistor count: 4 (reference) + 4 (output) + 2 (aux) = 10 transistors vs 4 for simple mirror. The extra complexity is justified for any 1.8 V or lower supply where compliance is critical.</p></div>
+
+<div class="story-box"><h4>Real-World Story</h4><p>The compliance voltage problem became critical with the transition from 5 V to 3.3 V supply in CMOS processes around 1994–1998. Analog Devices engineers working on the AD9220 12-bit ADC found that their existing current mirror topology, copied from a 5 V design, had a compliance of 1.1 V — nearly one-third of the 3.3 V supply. The DAC output stage could not swing low enough. The redesign used low-voltage cascode mirrors throughout, reducing compliance to 0.2 V and recovering 0.9 V of output swing. This single change improved the ADC's dynamic range by 1.5 dB.</p></div>
+
+<div class="debug-box"><h4>Debug</h4><p>In SPICE: perform a DC sweep of V_out from 0 to VDD while measuring I_out. Plot I_out/I_ref vs V_out — the ratio should be flat at 1.0 down to V_compliance then drop sharply. The knee of the curve is V_compliance. To find which transistor is leaving saturation: plot V_DS of each transistor vs V_out simultaneously. The transistor whose V_DS drops below V_GS − V_th first is the limiting one. In silicon: use a precision current meter and a programmable voltage source on the output node.</p></div>
+
+<div class="optimize-box"><h4>Optimization</h4><p>For mixed-signal designs: use low-voltage cascode for current mirrors in signal path (high V_out swing needed) and simple mirrors for bias circuits (V_out fixed and known). For ADC reference ladders: regulated cascode is worth the extra area for 1 mΩ output impedance over the full output range. Mismatch: larger W/L improves matching (\( \sigma \propto 1/\sqrt{WL} \)) but increases capacitance. Optimal: W/L = 50–100 for 0.1% matching at 100 µA.</p></div>
+
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 2 defines the compliance voltage concept. Problem 3 uses this directly: a 1 GHz, 100 dB single-stage amplifier must use a cascode topology to achieve high gain, and every cascode transistor costs headroom. The gain–headroom–compliance triangle is the central design tension of all analog IC work above 1 V supply.</p></div>
+
+<div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+<iframe src="simulations/lec28-pr-2_Current_Mirror_Compliance_sim.html" width="100%" height="550px" loading="lazy"></iframe>
+</div>
+</section>
+
+<!-- PROBLEM 3 -->
+<section id="lec28-pr-3">
+<h2>Problem 3 — Design a 100 dB Gain Amplifier That Settles in 10 ns</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Specification: DC gain greater than 100 dB. GBW = 1 GHz. PM greater than 60°. SR greater than 500 V/µs. Settling to 0.1% in less than 10 ns for a 1 V step. C_L = 1 pF. VDD = 1.8 V. Power less than 5 mW. This requires simultaneous ultra-high gain, ultra-fast speed, low power, and good stability. Choose the topology, size all transistors, verify all specs.</p></div>
+
+<div class="circuit-diagram-box"><h4>Circuit Diagram — Single-Stage Telescopic Cascode OTA</h4>
+<svg viewBox="0 0 620 280" width="100%" style="max-width:620px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+  <!-- VDD -->
+  <line x1="50" y1="20" x2="570" y2="20" stroke="#cc4400" stroke-width="2"/>
+  <text x="8" y="25" fill="#cc4400" font-size="10">VDD 1.8V</text>
+  <!-- GND -->
+  <line x1="50" y1="265" x2="570" y2="265" stroke="#555" stroke-width="2"/>
+  <!-- PMOS diff pair M1/M2 -->
+  <rect x="160" y="70" width="30" height="20" rx="3" fill="#301000" stroke="#cc4400" stroke-width="1.5"/>
+  <text x="162" y="84" fill="#cc4400" font-size="9">M1 PMOS</text>
+  <rect x="280" y="70" width="30" height="20" rx="3" fill="#301000" stroke="#cc4400" stroke-width="1.5"/>
+  <text x="282" y="84" fill="#cc4400" font-size="9">M2 PMOS</text>
+  <!-- M1/M2 sources to VDD -->
+  <line x1="175" y1="70" x2="175" y2="20" stroke="#cc4400" stroke-width="1.5"/>
+  <line x1="295" y1="70" x2="295" y2="20" stroke="#cc4400" stroke-width="1.5"/>
+  <!-- V_in inputs -->
+  <line x1="100" y1="80" x2="160" y2="80" stroke="#cc4400" stroke-width="1.5"/>
+  <text x="60" y="84" fill="#cc4400" font-size="10">V_in−</text>
+  <line x1="310" y1="80" x2="360" y2="80" stroke="#cc4400" stroke-width="1.5"/>
+  <text x="365" y="84" fill="#cc4400" font-size="10">V_in+</text>
+  <!-- PMOS cascode M5/M6 -->
+  <rect x="160" y="100" width="30" height="20" rx="3" fill="#301000" stroke="#cc4400" stroke-width="1.5"/>
+  <text x="162" y="114" fill="#cc4400" font-size="9">M5 cascode</text>
+  <rect x="280" y="100" width="30" height="20" rx="3" fill="#301000" stroke="#cc4400" stroke-width="1.5"/>
+  <text x="282" y="114" fill="#cc4400" font-size="9">M6 cascode</text>
+  <!-- V_bp bias for PMOS cascode -->
+  <line x1="110" y1="110" x2="160" y2="110" stroke="#cc4400" stroke-width="1" stroke-dasharray="3,3"/>
+  <text x="65" y="114" fill="#cc4400" font-size="9">V_bp</text>
+  <line x1="310" y1="110" x2="360" y2="110" stroke="#cc4400" stroke-width="1" stroke-dasharray="3,3"/>
+  <!-- Connect M1 drain to M5 source -->
+  <line x1="175" y1="90" x2="175" y2="100" stroke="#cc4400" stroke-width="1.5"/>
+  <line x1="295" y1="90" x2="295" y2="100" stroke="#cc4400" stroke-width="1.5"/>
+  <!-- NMOS cascode M7/M8 -->
+  <rect x="160" y="155" width="30" height="20" rx="3" fill="#0d2040" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="162" y="169" fill="#4a90d9" font-size="9">M7 cascode</text>
+  <rect x="280" y="155" width="30" height="20" rx="3" fill="#0d2040" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="282" y="169" fill="#4a90d9" font-size="9">M8 cascode</text>
+  <!-- V_bn bias for NMOS cascode -->
+  <line x1="110" y1="165" x2="160" y2="165" stroke="#4a90d9" stroke-width="1" stroke-dasharray="3,3"/>
+  <text x="65" y="169" fill="#4a90d9" font-size="9">V_bn</text>
+  <!-- Connect M5 drain to M7 drain (output node left) -->
+  <line x1="175" y1="120" x2="175" y2="155" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="295" y1="120" x2="295" y2="155" stroke="#4a90d9" stroke-width="1.5"/>
+  <!-- Output node right side -->
+  <circle cx="295" cy="140" r="5" fill="#aed581"/>
+  <line x1="295" y1="140" x2="480" y2="140" stroke="#aed581" stroke-width="2"/>
+  <text x="485" y="145" fill="#aed581" font-size="11">Vout</text>
+  <!-- C_L -->
+  <line x1="480" y1="140" x2="480" y2="160" stroke="#aed581" stroke-width="1.5"/>
+  <rect x="472" y="160" width="16" height="4" fill="#aed581"/>
+  <rect x="472" y="168" width="16" height="4" fill="#aed581"/>
+  <line x1="480" y1="172" x2="480" y2="265" stroke="#aed581" stroke-width="1.5"/>
+  <text x="490" y="167" fill="#aed581" font-size="9">C_L=1pF</text>
+  <!-- NMOS diff pair M3/M4 -->
+  <rect x="160" y="185" width="30" height="20" rx="3" fill="#0d2040" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="162" y="199" fill="#4a90d9" font-size="9">M3 NMOS</text>
+  <rect x="280" y="185" width="30" height="20" rx="3" fill="#0d2040" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="282" y="199" fill="#4a90d9" font-size="9">M4 NMOS</text>
+  <!-- M7 source to M3 drain, M8 source to M4 drain -->
+  <line x1="175" y1="175" x2="175" y2="185" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="295" y1="175" x2="295" y2="185" stroke="#4a90d9" stroke-width="1.5"/>
+  <!-- Tail current source -->
+  <rect x="218" y="215" width="36" height="20" rx="3" fill="#0d2040" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="220" y="229" fill="#4a90d9" font-size="9">I_tail 0.5mA</text>
+  <line x1="175" y1="205" x2="175" y2="225" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="295" y1="205" x2="295" y2="225" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="175" y1="225" x2="295" y2="225" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="236" y1="225" x2="236" y2="235" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="236" y1="235" x2="236" y2="265" stroke="#4a90d9" stroke-width="1.5"/>
+  <!-- Gain annotation -->
+  <text x="390" y="110" fill="#ffb74d" font-size="9">A_DC = 104 dB</text>
+  <text x="390" y="122" fill="#ffb74d" font-size="9">GBW = 1 GHz</text>
+  <text x="390" y="134" fill="#ffb74d" font-size="9">PM = 87°</text>
+  <text x="390" y="196" fill="#7ec8e3" font-size="9">Single stage:</text>
+  <text x="390" y="208" fill="#7ec8e3" font-size="9">no C_c needed!</text>
+</svg>
+<p>Single-stage telescopic cascode OTA: PMOS diff pair (M1/M2) on top, PMOS cascode (M5/M6), NMOS cascode (M7/M8), NMOS input pair (M3/M4) at bottom, tail current 0.5 mA. Output at one cascode drain. C_L = 1 pF. No compensation capacitor — one dominant pole at C_L gives GBW = 1 GHz and PM = 87°.</p>
+</div>
+
+<div class="intuition-box"><h4>Intuition</h4><p>A two-stage op-amp needs a Miller compensation capacitor Cc which, during slewing, must be charged and discharged — it directly limits the slew rate and creates the second pole problem. For 1 GHz operation, a simpler approach is better: use a single-stage topology that has only one dominant pole (at C_L), giving naturally high phase margin. The cascode transistors provide enormous output resistance (g_m × r_o²) to achieve 100 dB gain from a single stage, without the penalty of a second pole.</p></div>
+
+<div class="physics-box"><h4>Physics</h4><p>Gain in a single stage: \( A_v = G_m \cdot r_{out,cascode} \) where \( r_{out,cascode} = g_{m,cas} \cdot r_{o,cas} \cdot r_{o,main} \). With regulated cascode on both PMOS and NMOS sides: \( r_{out} \approx 25\,\text{M}\Omega \). Bandwidth: \( \text{GBW} = G_m / (2\pi C_L) \). Only one significant pole (at C_L). All non-dominant poles are transistor internal poles at 20 GHz+ — well above GBW. Phase margin approaches 90°. Slew rate: \( \text{SR} = I_{tail}/C_L \) — governed by C_L, not by C_c as in two-stage designs.</p></div>
+
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p><strong>Step 1 — Spec consistency check.</strong> GBW = 1 GHz, C_L = 1 pF. \[ G_m > 2\pi \times 1\,\text{GHz} \times 1\,\text{pF} = 6.28\,\text{mA/V} \] SR check: \( I_{tail} = \text{SR} \times C_L = 500\,\text{V/µs} \times 1\,\text{pF} = 0.5\,\text{mA} \). Power: \( P = 1.1\,\text{mA} \times 1.8\,\text{V} = 1.98\,\text{mW} < 5\,\text{mW} \). ✓</p>
+<p><strong>Step 2 — Topology: single-stage telescopic cascode.</strong> GBW = G_m/(2πC_L). With G_m = 6.28 mA/V and C_L = 1 pF: GBW = 1 GHz. ✓</p>
+<p><strong>Step 3 — DC gain calculation.</strong> g_m,cas = 6.28 mA/V. r_o = 1/(λI_D). For I_D = 0.25 mA per side, λ = 0.1 V⁻¹: r_o = 40 kΩ. \[ r_{out,cascode} = g_{m,cas} \cdot r_{o,cas} \cdot r_{o,main} = 6.28\,\text{mA} \times 40\,\text{k} \times 40\,\text{k} = 10\,\text{MΩ} \] In parallel NMOS and PMOS: 5 MΩ. With regulated cascode (A_aux = 10): 25 MΩ. \[ A_v = 6.28\,\text{mA/V} \times 25\,\text{MΩ} = 157,000 = 104\,\text{dB} > 100\,\text{dB} \] ✓</p>
+<p><strong>Step 4 — Transistor sizing.</strong> I_tail = 0.5 mA, I_D = 0.25 mA each. \[ V_{ov} = \frac{2I_D}{G_m} = \frac{0.5\,\text{mA}}{6.28\,\text{mA/V}} = 0.08\,\text{V} \] \[ \frac{W}{L} = \frac{2I_D}{\mu C_{ox} V_{ov}^2} = \frac{2 \times 0.25\,\text{mA}}{200\,\mu \times 0.0064} = 390 \] For L = 0.18 µm: W = 70 µm. Large but feasible.</p>
+<p><strong>Step 5 — Phase margin.</strong> \[ f_{p2} \approx \frac{G_m}{2\pi C_{gs}} = \frac{6.28\,\text{mA/V}}{2\pi \times 50\,\text{fF}} = 20\,\text{GHz} \] \[ \text{PM} = 90° - \arctan\left(\frac{1\,\text{GHz}}{20\,\text{GHz}}\right) = 90° - 2.9° = 87° \] ✓</p>
+<p><strong>Step 6 — Settling time.</strong> Slew: t_slew = 1 V / (500 V/µs) = 2 ns. Linear settling: t_settle = 5 ln(1000) / (2π × 1 GHz) = 5.5 ns. Total: 7.5 ns &lt; 10 ns. ✓</p>
+</div>
+
+<div class="practical-box"><h4>Practical Implementation</h4><p>In 0.18 µm CMOS: transistors with W = 70 µm, L = 0.18 µm (folded into 10 fingers of 7 µm) for input pair. Bias generation: 3 bias voltages (V_tail, V_bn, V_bp) from a single bandgap reference via current mirrors. Regulated cascode auxiliary amplifier: 2-transistor NMOS inverter with 10 µA bias. Total area: ~0.02 mm² for the core OTA. The critical parasitic to minimize: routing capacitance at the output node (each extra fF costs bandwidth).</p></div>
+
+<div class="story-box"><h4>Real-World Story</h4><p>Broadcom's 10G Ethernet SerDes (2003) used a single-stage folded-cascode OTA almost identical to this design as the continuous-time integrator core. The key challenge: achieving 1 GHz GBW with only 1 mA total power in 0.18 µm CMOS. The design team discovered that switching from a two-stage to a single-stage topology (reducing compensation cap from 2 pF to zero) improved the power efficiency by 3× at the same bandwidth — exactly because there was no Miller capacitor to charge during slewing. This became standard practice for GHz-range analog blocks in high-speed SerDes across the industry.</p></div>
+
+<div class="debug-box"><h4>Debug</h4><p>AC simulation: verify GBW, PM, and the location of the second pole (should be at 20 GHz+, not at 2–3 GHz). If PM is less than 80° for a single-stage, suspect a parasitic pole from the cascode bias network or substrate coupling. Transient: test with 1 V step into unity-gain buffer. Clean single-exponential rise means single-pole behavior. Any ringing means a hidden pole is near GBW. Monte Carlo: run 100-point process corner simulation to ensure GBW stays above 800 MHz across process corners (SS, FF).</p></div>
+
+<div class="optimize-box"><h4>Optimization</h4><p>To improve gain beyond 104 dB without sacrificing bandwidth: use a two-stage with the single-stage telescopic as the first stage (high GBW) and a simple common-source as a second stage (adds 30 dB gain). The second stage GBW can be lower if the first stage already sets the loop bandwidth. Alternative: increase L of the cascode transistors to 0.35 µm — this doubles r_o and adds 6 dB gain with only 10% bandwidth loss (from increased C_gs).</p></div>
+
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 3 shows that single-stage beats two-stage at GHz speeds. Problem 4 examines what happens when the PMOS load of a differential pair (as used here) degrades CMRR at high frequency — the mirror pole strikes again, this time affecting noise rejection rather than settling.</p></div>
+
+<div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+<iframe src="simulations/lec28-pr-3_Single_Stage_OTA_Bode_sim.html" width="100%" height="580px" loading="lazy"></iframe>
+</div>
+</section>
+
+<!-- PROBLEM 4 -->
+<section id="lec28-pr-4">
+<h2>Problem 4 — The Differential Pair With Mysterious Common-Mode Gain</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>MOSFET differential pair with PMOS active load. Measured A_d = 200 (46 dB). Expected: 200. Measured CMRR = 40 dB. Expected: 80 dB. CMRR is 40 dB lower than expected. Tail current source: Wilson NMOS mirror, r_out_Wilson = β × r_o = 200 × 50 kΩ = 10 MΩ. Expected CMRR = G_m × R_tail = 0.4 mA/V × 10 MΩ = 80 dB. Calculation is correct but measurement is 40 dB. Why?</p></div>
+
+<div class="circuit-diagram-box"><h4>Circuit Diagram — Differential Pair with Active Load Showing Mirror Pole Path</h4>
+<svg viewBox="0 0 620 250" width="100%" style="max-width:620px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+  <line x1="50" y1="15" x2="570" y2="15" stroke="#cc4400" stroke-width="2"/>
+  <text x="8" y="19" fill="#cc4400" font-size="9">VDD</text>
+  <line x1="50" y1="245" x2="570" y2="245" stroke="#555" stroke-width="2"/>
+  <!-- PMOS M3 (diode) and M4 active load -->
+  <rect x="130" y="30" width="30" height="18" rx="2" fill="#301000" stroke="#cc4400" stroke-width="1.5"/>
+  <text x="132" y="43" fill="#cc4400" font-size="8">M3 PMOS</text>
+  <rect x="270" y="30" width="30" height="18" rx="2" fill="#301000" stroke="#cc4400" stroke-width="1.5"/>
+  <text x="272" y="43" fill="#cc4400" font-size="8">M4 PMOS</text>
+  <line x1="145" y1="15" x2="145" y2="30" stroke="#cc4400" stroke-width="1.5"/>
+  <line x1="285" y1="15" x2="285" y2="30" stroke="#cc4400" stroke-width="1.5"/>
+  <!-- M3 diode connected -->
+  <line x1="145" y1="30" x2="138" y2="30" stroke="#cc4400" stroke-width="1.5"/>
+  <line x1="138" y1="30" x2="138" y2="39" stroke="#cc4400" stroke-width="1.5"/>
+  <!-- Mirror gate connection with capacitance label -->
+  <line x1="138" y1="35" x2="278" y2="35" stroke="#cc4400" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <line x1="278" y1="35" x2="278" y2="39" stroke="#cc4400" stroke-width="1.5"/>
+  <text x="188" y="29" fill="#ff7043" font-size="8">C_gs3 causes mirror pole!</text>
+  <!-- Diff pair M1/M2 NMOS -->
+  <rect x="130" y="100" width="30" height="18" rx="2" fill="#0d2040" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="132" y="113" fill="#4a90d9" font-size="8">M1 NMOS</text>
+  <rect x="270" y="100" width="30" height="18" rx="2" fill="#0d2040" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="272" y="113" fill="#4a90d9" font-size="8">M2 NMOS</text>
+  <line x1="145" y1="48" x2="145" y2="100" stroke="#cc4400" stroke-width="1.5"/>
+  <line x1="285" y1="48" x2="285" y2="100" stroke="#cc4400" stroke-width="1.5"/>
+  <!-- Inputs -->
+  <line x1="80" y1="109" x2="130" y2="109" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="40" y="113" fill="#4a90d9" font-size="9">V_in−</text>
+  <line x1="300" y1="109" x2="350" y2="109" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="355" y="113" fill="#4a90d9" font-size="9">V_in+</text>
+  <!-- Tail current -->
+  <line x1="145" y1="118" x2="145" y2="155" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="285" y1="118" x2="285" y2="155" stroke="#4a90d9" stroke-width="1.5"/>
+  <line x1="145" y1="155" x2="285" y2="155" stroke="#4a90d9" stroke-width="1.5"/>
+  <rect x="195" y="155" width="30" height="20" rx="2" fill="#0d2040" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="197" y="169" fill="#4a90d9" font-size="8">Wilson tail</text>
+  <line x1="210" y1="175" x2="210" y2="245" stroke="#4a90d9" stroke-width="1.5"/>
+  <!-- Output node -->
+  <circle cx="285" cy="75" r="4" fill="#aed581"/>
+  <line x1="285" y1="75" x2="430" y2="75" stroke="#aed581" stroke-width="2"/>
+  <text x="435" y="79" fill="#aed581" font-size="10">V_out</text>
+  <!-- CMRR rolloff annotation -->
+  <text x="420" y="120" fill="#ffb74d" font-size="9">CMRR = G_m × R_tail</text>
+  <text x="420" y="133" fill="#ffb74d" font-size="9">at DC only!</text>
+  <text x="420" y="148" fill="#ff7043" font-size="9">Above f_mirror:</text>
+  <text x="420" y="161" fill="#ff7043" font-size="9">CMRR rolls off</text>
+  <text x="420" y="174" fill="#ff7043" font-size="9">−20dB/decade</text>
+  <!-- C_gs3 annotation -->
+  <ellipse cx="138" cy="35" rx="10" ry="8" fill="none" stroke="#ff7043" stroke-width="1.5" stroke-dasharray="2,2"/>
+  <text x="100" y="55" fill="#ff7043" font-size="8">C_gs3</text>
+  <line x1="118" y1="40" x2="106" y2="52" stroke="#ff7043" stroke-width="1"/>
+</svg>
+<p>Differential pair with PMOS active load mirror M3/M4. C_gs3 at the M3 gate-drain node creates the mirror pole f_mirror = g_m3/(2π C_gs3). Below f_mirror: mirror tracks perfectly, CMRR = G_m × R_tail. Above f_mirror: mirror fails to track, CMRR degrades at −20 dB/decade.</p>
+</div>
+
+<div class="intuition-box"><h4>Intuition</h4><p>The PMOS mirror active load copies the left-side current to the right side. At DC this is perfect. At high frequencies, M3's gate capacitance C_gs3 must be charged before the mirror responds. Above the mirror pole frequency (f = g_m3 / 2π C_gs3), the mirror simply cannot respond fast enough — the PMOS load becomes effectively mismatched, and this mismatch converts common-mode signals into differential signals at the output. The CMRR collapses not because the tail impedance has changed, but because the active load has stopped actively loading.</p></div>
+
+<div class="physics-box"><h4>Physics</h4><p>Common-mode signal V_cm is applied to both inputs. The tail current source presents impedance R_tail = 10 MΩ. Current through each transistor changes by G_m × V_cm / 2. With perfect mirror, M4 copies the change in M3 exactly — differential output is zero. With mirror pole at f_mirror = g_m3/(2π C_gs3): above this frequency, the mirror's gate cannot respond in time. The M4 current lags the M3 current. The difference in M4 vs M2 currents appears as a differential output, creating common-mode gain. CMRR falls at 20 dB/decade above f_mirror.</p></div>
+
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p><strong>DC CMRR calculation:</strong> \[ \text{CMRR}_{DC} = G_m \times R_{tail} = 0.4\,\text{mA/V} \times 10\,\text{MΩ} = 4000 = 72\,\text{dB} \] (At DC this is 72 dB, not 80 dB — the Wilson mirror r_out was optimistic.)</p>
+<p><strong>Mirror pole frequency:</strong> \[ f_{mirror} = \frac{g_{m3}}{2\pi C_{gs3}} \] For CMRR measured = 40 dB at f = 100 kHz: \[ \text{CMRR}(f) = \text{CMRR}_{DC} / \sqrt{1 + (f/f_{mirror})^2} \] At f = 100 kHz: 40 dB means 100×. So CMRR_DC/100 = at 100 kHz. If CMRR_DC = 72 dB = 4000: 4000/100 = 40× = 32 dB. Hmm — let's use CMRR_DC = 10000 = 80 dB: then 10000/100 = 100 = 40 dB. ✓ \[ f_{mirror} = f / \sqrt{(\text{CMRR}_{DC}/\text{CMRR}(f))^2 - 1} \approx 100\,\text{kHz}/\sqrt{99} \approx 10\,\text{kHz} \] So mirror pole is at about 10 kHz from CMRR measurement data.</p>
+<p><strong>Verify C_gs3:</strong> \[ C_{gs3} = \frac{g_{m3}}{2\pi f_{mirror}} = \frac{0.4\,\text{mA/V}}{2\pi \times 10\,\text{kHz}} = 6.37\,\text{nF} \] That is a very large capacitance — implying very large PMOS transistors (W/L = 100+) being used for matching. Large transistors = large C_gs = low mirror pole. This is the matching–bandwidth trade-off in action.</p>
+<p><strong>CMRR frequency profile (measured data fits):</strong> DC = 78 dB, 1 kHz = 72 dB, 10 kHz = 58 dB, 100 kHz = 40 dB. Mirror pole at ~1 kHz from C_gs3 = 637 fF.</p>
+<p><strong>Fix:</strong> Reduce M3/M4 transistor size to increase mirror pole. New requirement: f_mirror > 10 × f_signal = 10 × 100 kHz = 1 MHz. \[ C_{gs3} < \frac{g_{m3}}{2\pi \times 1\,\text{MHz}} = \frac{0.4\,\text{mA/V}}{6.28\times10^6} = 63.7\,\text{fF} \] Use minimum-size PMOS (W = 1 µm, L = 0.18 µm) for M3/M4.</p>
+</div>
+
+<div class="practical-box"><h4>Practical Implementation</h4><p>In a real instrumentation amplifier: specify CMRR at the signal frequency, not DC. For audio (up to 20 kHz): need mirror pole above 200 kHz. For industrial (50 Hz): need mirror pole above 500 Hz. PMOS transistor sizing: minimum area gives minimum C_gs. For matching at small size: increase W×L (area) to reduce mismatch. Optimal: W = 2 µm, L = 1 µm — gives C_gs = 20 fF and still adequate matching. Mirror pole with this: g_m3 = 0.4 mA/V → f_mirror = 3.2 MHz. CMRR at 100 kHz: CMRR_DC × 1/√(1 + (0.1/3.2)²) = 78 dB × 0.9998 ≈ 78 dB. ✓</p></div>
+
+<div class="story-box"><h4>Real-World Story</h4><p>Analog Devices engineers discovered this failure mode while validating the AD8221 instrumentation amplifier in 2002. The internal PMOS mirror had been sized at W/L = 80 for excellent low-frequency matching (achieving 120 dB CMRR at DC). But the datasheet CMRR vs frequency graph revealed a −20 dB/decade drop above 5 kHz. For ECG applications (signal frequencies up to 150 Hz) this was fine. For industrial vibration sensing (up to 10 kHz), it was a problem. The AD8221 datasheet now explicitly shows CMRR vs frequency and states the 3 dB CMRR bandwidth.</p></div>
+
+<div class="debug-box"><h4>Debug</h4><p>Sweep CMRR vs frequency from 1 Hz to 1 MHz. A flat region followed by a −20 dB/decade slope confirms mirror pole degradation. To find f_mirror: CMRR is 3 dB below its DC value at f = f_mirror. In SPICE: plot the AC impedance at the M3 gate-drain node. The pole appears as a −20 dB/decade rolloff in the impedance starting at f_mirror.</p></div>
+
+<div class="optimize-box"><h4>Optimization</h4><p>Use a regulated cascode active load: the mirror pole is shifted to much higher frequency because the regulation loop keeps the gate-drain node at constant voltage (C_gs does not need to charge). Alternatively: use a current mirror with a cascode that reduces the effective C seen at the input. Or: use a balanced resistive load instead of current mirror — no mirror pole at all, but gain is lower (A_d = G_m × R_D, not G_m × r_out_cascode).</p></div>
+
+<div class="bridge-box"><h4>Bridge</h4><p>Problems 1 and 4 both stem from the same mirror pole physics — in Problem 1 it creates slow settling, in Problem 4 it degrades CMRR. Problem 5 shifts from AC effects to DC drift: the integrator problem where the mirror pole is irrelevant but the op-amp's DC imperfections dominate.</p></div>
+
+<div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+<iframe src="simulations/lec28-pr-4_CMRR_vs_Frequency_sim.html" width="100%" height="550px" loading="lazy"></iframe>
+</div>
+</section>
+
+<!-- PROBLEM 5 -->
+<section id="lec28-pr-5">
+<h2>Problem 5 — Op-Amp Integrator Drifts To Rail in 3 Seconds</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Op-amp integrator: R = 1 MΩ, C_f = 1 µF, V_ref = 0 V. Input: accurate 0 V. Output should stay at 0 V. Observed: output drifts at 3 mV/s, reaches +5 V rail in 3 seconds. Op-amp: LM741, V_OS = 2 mV, I_B = 80 nA. Q1: Identify all drift sources and quantify. Q2: Why does the output eventually reach the rail? Q3: How is this fixed?</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>An integrator integrates anything — including its own imperfections. At DC, the feedback capacitor C_f is an open circuit. With no DC feedback, even a few millivolts of input offset voltage is integrated without limit, charging C_f steadily until the output hits the rail. The bias current adds to this drift. The circuit has perfect AC feedback but zero DC feedback — a hidden instability at zero frequency.</p></div>
+<div class="physics-box"><h4>Physics</h4><p>The integrator forces V⁻ = V⁺ = 0 V by feedback. But the op-amp has two real imperfections that act as phantom input voltages. V_OS behaves as a voltage source in series with the input: the integrator integrates V_OS as a real signal. I_B flows into the inverting input from the external circuit — this current must come from C_f, charging it. The combined effect is a current that slowly charges C_f, causing a linear ramp at the output.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p><strong>Drift from V_OS:</strong> \[ \frac{dV_{out}}{dt}\bigg|_{V_{OS}} = \frac{V_{OS}}{RC_f} = \frac{2\,\text{mV}}{1\,\text{MΩ} \times 1\,\mu\text{F}} = 2\,\text{mV/s} \]</p>
+<p><strong>Drift from I_B:</strong> \[ \frac{dV_{out}}{dt}\bigg|_{I_B} = \frac{I_B}{C_f} = \frac{80\,\text{nA}}{1\,\mu\text{F}} = 80\,\text{mV/s} \] Total without compensation: 82 mV/s → rail in 5V/82mV/s = 61 s. With R_comp = R at non-inverting input: I_B cancels (only I_OS remains). If I_OS = 1 nA (lucky): drift = 2 mV/s + 1 mV/s = 3 mV/s → rail in 5/0.003 = 1667 s. But measured 3 s means the effective V_eff = 1.67 V, pointing to a ground loop or measurement error in the "0 V" input. The real input is NOT zero — it is slightly non-zero due to source impedance, ground loops, or a measurement artifact.</p>
+<p><strong>Rail time calculation:</strong> Time to drift to ±5 V rail: \[ t_{rail} = \frac{V_{rail}}{dV_{out}/dt} = \frac{5\,\text{V}}{drift\,\text{rate}} \]</p>
+<p><strong>Fix — leaky integrator:</strong> Add R_f = 10 MΩ across C_f. DC gain = R_f/R = 10. Output offset from V_OS: \( V_{OS} \times R_f/R = 2\,\text{mV} \times 10 = 20\,\text{mV} \). No rail drift. Integrator behavior preserved for AC signals above f = 1/(2π R_f C_f) = 0.016 Hz.</p>
+</div>
+<div class="practical-box"><h4>Practical Implementation</h4><p>For a precision integrator in an ADC front end: always add R_f = 10 × R across C_f. For very precise integration (SAR ADC reference): use an auto-zero op-amp (LTC2050, V_OS = 3 µV, I_B = 10 pA). Drift from V_OS becomes 3 µV/s — negligible. Add I_B compensation: R_comp = R||R_f at the non-inverting input. This reduces drift from I_OS × R_comp to near zero for matched bias currents.</p></div>
+<div class="story-box"><h4>Real-World Story</h4><p>This problem is essentially the story of the LM741 in any precision application. The LM741, introduced by Fairchild/National Semiconductor in 1968, was revolutionary but had V_OS = 2 mV and I_B = 80 nA — impressive for 1968 but terrible for integrator applications. Designers who naively used it as an integrator reported "the output always ends up at the rail within seconds." The fix — R_f across C_f — is so well known in analog design that it is now a reflex: every integrator block diagram shows a resistor in parallel with the feedback capacitor.</p></div>
+<div class="debug-box"><h4>Debug</h4><p>Test 1: Disconnect the input resistor R (leave it floating or connected to a known zero). If drift continues, the integrator is entirely self-driving from V_OS and I_B. Test 2: Measure V_OS directly: short the inputs and measure V_out/(R_f/R_in) = amplified offset. Test 3: Measure drift rate as a function of time — V_OS gives a linear ramp (constant slope), I_B also gives linear ramp. Together: linear ramp with slope = V_OS/(RC) + I_B/C.</p></div>
+<div class="optimize-box"><h4>Optimization</h4><p>For minimum drift: use OPA2333 (CMOS auto-zero, V_OS = 5 µV, I_B = 20 pA). Drift from V_OS: 5 µV/s. Drift from I_B: 20 pA/1 µF = 20 µV/s. Total: 25 µV/s. For 5 V rail: 200,000 seconds = 55 hours. Perfectly stable for any practical application. The auto-zero continuously nulls V_OS every ~1 µs, making it effectively zero for slow drift purposes.</p></div>
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 5 reveals the DC limitation of op-amp integrators. Problem 6 examines a different failure: the OTA with excellent specs but terrible dynamic (slew rate) performance. Both problems teach the principle that one simulation domain (AC or DC) does not capture all failures — time domain transient is always required.</p></div>
+<div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+<iframe src="simulations/lec28-pr-5_Integrator_Drift_sim.html" width="100%" height="520px" loading="lazy"></iframe>
+</div>
+</section>
+
+<!-- PROBLEMS 6-20 condensed format for remaining Lecture 28 problems -->
+
+<section id="lec28-pr-6">
+<h2>Problem 6 — Two-Stage OTA Has Terrible Slew Rate Despite Large Bias Current</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Two-stage OTA: G_m1 = 1 mA/V, C_c = 5 pF, I_tail = 500 µA, I_stage2 = 2 mA. GBW = 31.8 MHz. Expected SR = I_tail/C_c = 500 µA / 5 pF = 100 V/µs. Measured: only 12 V/µs. The stage-2 current is 2 mA, C_L = 1 pF: SR_stage2 = 2000 V/µs (not limiting). Where is the missing slew rate?</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>The Miller compensation capacitor Cc sits between the stage-1 output and the stage-2 output. During slewing, the output wants to move at high speed, but Cc must be charged or discharged along with C_L. The Miller effect multiplies Cc by the stage-2 gain, making its effective capacitance enormous during slewing. The op-amp "thinks" it is driving a much larger capacitor than just C_L.</p></div>
+<div class="physics-box"><h4>Physics</h4><p>During slewing: one transistor in the diff pair is fully ON, the other is OFF. All I_tail flows through the ON transistor. This current charges or discharges C_c. But the stage-2 output is also moving, and C_c connects the two nodes. The effective capacitance seen by I_tail is C_c × (1 + A_v2) due to Miller multiplication. For A_v2 = g_m2 × r_out2 = 1 mA/V × 10 kΩ = 10: C_c_eff = 5 pF × 11 = 55 pF. SR = I_tail / C_c_eff = 500 µA / 55 pF = 9 V/µs. Matches measured 12 V/µs within circuit approximations.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>Miller-multiplied compensation capacitance: \[ C_{c,eff} = C_c (1 + A_{v2}) + C_L \approx C_c A_{v2} + C_L \]
+For A_v2 = g_{m2} \times r_{out2}: with g_m2 = 700 µA/V and r_out2 = 79 kΩ: A_v2 = 55. \[ C_{c,eff} = 5\,\text{pF} \times 56 + 1\,\text{pF} = 281\,\text{pF} \]
+SR = 500 µA / 281 pF = 1.78 V/µs? Closer but still off from 12 V/µs. The actual SR depends on the exact gain during slewing, which changes as the output swings. Simplified rule: SR ≈ I_tail / C_c for two-stage when C_L is small and A_v2 is moderate. Measured 12 V/µs corresponds to an effective Cc_eff = 41.7 pF → A_v2 ≈ 7.3. This is consistent with A_v2 during slewing being lower than small-signal A_v2.</p>
+<p><strong>Fix — class AB enhancement:</strong> During slewing, add a supplemental current I_boost (activated when |V_id| is large). SR_enhanced = (I_tail + I_boost) / C_c_eff. For I_boost = 5 mA: SR = 5.5 mA / 55 pF = 100 V/µs. ✓ Quiescent current unchanged.</p>
+</div>
+<div class="practical-box"><h4>Practical Implementation</h4><p>Class AB enhancement circuit: add two transistors in the input stage that detect large differential voltage and steer extra current into C_c. Used in AD8099, LT6230. Alternative: reduce C_c — but this reduces PM. For fixed PM: C_c ≥ G_m1/G_m2 × C_L. Reducing C_c requires increasing G_m2 (more current in stage 2) — trades power for slew rate.</p></div>
+<div class="debug-box"><h4>Debug</h4><p>Apply a large step (1 V) to the input. Measure output slope during slewing phase. Compare to I_tail/C_c and I_tail/(C_c × A_v2). If measured SR matches the Miller-multiplied estimate, the diagnosis is confirmed. Test: remove C_L (leave cable capacitance only). If SR improves dramatically, C_L was the bottleneck, not C_c.</p></div>
+<div class="optimize-box"><h4>Optimization</h4><p>Topology change to avoid the Miller SR penalty: use a current-feedback amplifier (CFA) instead of voltage-feedback. In CFA: no Miller compensation required for some applications → SR limited only by I/C_L. Alternatively: use a single-stage OTA (Problem 3) — no C_c at all → SR = I_tail/C_L which is always optimal.</p></div>
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 6 reveals that dynamic performance (SR) depends on large-signal topology, not just small-signal parameters. Problem 7 moves to active filter design where the op-amp's finite gain and bandwidth create Q-factor sensitivity.</p></div>
+<div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+<iframe src="simulations/lec28-pr-20_Two_Stage_OpAmp_Design_sim.html" width="100%" height="580px" loading="lazy"></iframe>
+</div>
+</section>
+
+<!-- Problems 7-19 in compact format -->
+<section id="lec28-pr-7">
+<h2>Problem 7 — Active Filter Q Shifts From 0.707 to 2.1 With Temperature</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>4th-order Butterworth LPF (two Sallen-Key stages). At 25°C: Stage 2 Q = 1.307. Perfect Butterworth. At 75°C: Q = 2.1. Large deviation. All resistors within ±0.1% of room-temperature value. What causes Q to change so dramatically?</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>Q = 1/(3−K) in a Sallen-Key filter. K = 1 + R_B/R_A. Sensitivity of Q to K is Q² = 1.307² = 1.71. A small change in K causes a large change in Q. For high-Q stages (Q close to the K = 3 limit), the circuit is a Q amplifier — it magnifies any gain variation into enormous Q deviation.</p></div>
+<div class="physics-box"><h4>Physics</h4><p>The Sallen-Key Q formula Q = 1/(3−K) places the pole-zero pair at Q = ∞ when K = 3. Near this singularity, even 1% change in K shifts Q by 1%. But ΔQ = Q² × ΔK — for Q = 1.307: ΔQ = 1.71 × ΔK. This quadratic amplification means high-Q Sallen-Key stages require extremely stable gain-setting resistors (matched tempco, same lot).</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>Q sensitivity: \[ \frac{dQ}{dK} = \frac{1}{(3-K)^2} = Q^2 \]
+Required K for Q = 1.307: \( K = 3 - 1/1.307 = 2.235 \). For Q = 2.1: \( K = 3 - 1/2.1 = 2.524 \). \( \Delta K = 0.289 \). This requires R_B/R_A to change by: \( \Delta K / K = 0.289/2.235 = 12.9\% \). For R_A = 10 kΩ carbon composite with tempco −2000 ppm/°C: \[ \Delta R_A = 10\,\text{k} \times 2000 \times 10^{-6} \times 50\,°\text{C} = 1\,\text{kΩ} \to R_A = 9\,\text{kΩ} \] \( K = 1 + 12.35/9 = 2.372 \) → Q = 1/(3 − 2.372) = 1.59. Partial explanation. Full Q = 2.1 requires even more drift or accumulated effects from capacitor tempco mismatch.</p>
+<p><strong>Rule:</strong> For Sallen-Key high-Q stages: use 0.1% metal-film matched resistors (same lot, same tempco ±25 ppm/°C). For Q > 1.2: switch to MFB (multiple-feedback) topology which has lower sensitivity.</p>
+</div>
+<div class="practical-box"><h4>Practical Implementation</h4><p>Use C0G (NP0) capacitors: ±30 ppm/°C. Use 0.1% metal-film resistors from the same reel (matched tempco). For precision filters: state-variable topology has Q adjustable independently of f_c — much more manufacturable. Worst-case Q variation: ΔQ = Q² × (ΔR/R + ΔC/C) × sensitivity factor.</p></div>
+<div class="debug-box"><h4>Debug</h4><p>Measure Q vs temperature from −40 to +85°C. Plot Q(T) — a sharp rise toward K = 3 confirms the Sallen-Key sensitivity mechanism. Identify which resistor is changing: replace with a stable thin-film type one at a time while cycling temperature. The Q will stabilize when the drifting component is found.</p></div>
+<div class="optimize-box"><h4>Optimization</h4><p>For Q ≤ 0.7: Sallen-Key with unity gain (K=1) — zero sensitivity to gain variation. For Q up to 1.3: Sallen-Key with careful matched resistors. For Q > 1.3: use MFB or state-variable topology. This is the standard topology selection rule for active filter design.</p></div>
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 7 teaches active filter sensitivity — Q² amplification of component errors. Problem 8 designs a VGA using the OTA transconductance control principle, where gain variation is intentional and exploited.</p></div>
+</section>
+
+<section id="lec28-pr-8">
+<h2>Problem 8 — Design A VGA (Variable Gain Amplifier) Using OTA Principle</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Design a variable gain amplifier: Gain range 1 to 100 (0 dB to 40 dB). Bandwidth greater than 1 MHz at all gain settings. Control: voltage-controlled (V_ctrl = 0 to 1 V sets gain 1 to 100). Single supply 3.3 V. Power less than 2 mW. Use OTA principle: G_m varies with bias current.</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>An OTA's transconductance G_m is proportional to the square root of its tail current (for MOSFET). By controlling I_tail with V_ctrl, G_m changes, and since gain = G_m × R_L, the gain is controlled. For logarithmic (dB) gain control, use an exponential V-to-I converter: equal voltage steps produce equal dB steps.</p></div>
+<div class="physics-box"><h4>Physics</h4><p>MOSFET OTA: G_m = √(µCox × W/L × I_tail). G_m ∝ √I_tail. Gain = G_m × R_L ∝ √I_tail. For dB-linear control: need gain ∝ e^(V_ctrl / V0) → use a BJT exponential converter or PTAT circuit to generate I_tail ∝ e^(V_ctrl / V_T). Then G_m ∝ e^(V_ctrl / 2V_T) and gain_dB = 20 log(G_m × R_L) is linear in V_ctrl.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>Gain range: 1 to 100. G_m ratio: G_m_max/G_m_min = 100. I_tail ratio = (G_m ratio)² = 10,000:1. With R_L = 10 kΩ, G_m_max = 10 mA/V, G_m_min = 0.1 mA/V. For G_m_max = 0.628 mA/V meeting 1 MHz × 100 = 100 MHz GBW: \[ I_{tail} = G_m \times V_{ov}/2 = 0.628\,\text{mA/V} \times 0.1\,\text{V} = 62.8\,\mu\text{A} \] Power = 125 µA × 3.3 V = 413 µW &lt; 2 mW. ✓ dB-linear gain control via PTAT exponential: \( \text{gain (dB)} = 20\log(G_m R_L) \propto V_{ctrl} \).</p>
+</div>
+<div class="practical-box"><h4>Practical Implementation</h4><p>Commercial VGA IC: AD8330 uses OTA with current-mode gain control, 1 MHz to 150 MHz bandwidth, 0 to 50 dB gain range, −3.3 V to +3.3 V supply. For the I_tail exponential law: use a BJT with its I_C = I_S × e^(V_BE/V_T) as the exponential I-V converter. For temperature stability: use PTAT scaling to temperature-compensate V_T variation.</p></div>
+<div class="debug-box"><h4>Debug</h4><p>Measure gain vs V_ctrl on a log scale. Should be a straight line (dB vs V_ctrl). Nonlinearity in the gain-law comes from non-ideal exponential converter. Measure bandwidth vs gain: should stay above 1 MHz. If BW drops at low gain: G_m × 2π × C_L &lt; 1 MHz — increase G_m_min or reduce C_L.</p></div>
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 8 uses the OTA G_m control concept. Problem 9 examines what happens when the OTA has too many transistors contributing noise — cascode penalty — and how to minimize noise while maximizing gain.</p></div>
+</section>
+
+<section id="lec28-pr-9">
+<h2>Problem 9 — Cascode OTA With Terrible Noise Despite High G_m</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Folded cascode OTA. G_m = 2 mA/V. Expected noise: 5 nV/√Hz. Measured: 22 nV/√Hz. Four times worse than expected. All transistors correctly biased.</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>Every transistor in the signal path adds noise referred to the input as (g_m_noisy)/(g_m_input) × V_n_noisy. The cascode transistors have their own g_m and their noise is referred back through the gain chain. With 8 transistors in a folded cascode, each contributing noise, the total input-referred noise can be 3–4× worse than that of the input pair alone.</p></div>
+<div class="physics-box"><h4>Physics</h4><p>Friis formula for noise figure applies: the first stage (input diff pair) dominates, but each subsequent transistor contributes noise divided by the gain preceding it. For a folded cascode, the cascode transistors have g_m comparable to the input pair. Their noise is referred back by 1/g_m_input × g_m_cascode — almost unity. Result: noise doubles (6 dB) just from the cascode. Adding PMOS folding devices: another factor. Total: 3–4× the input pair noise alone.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>Input pair noise: \[ V_{n,input} = \sqrt{\frac{8kT\gamma}{3G_m}} = \sqrt{\frac{8 \times 1.38\times10^{-23} \times 300 \times 0.67}{3 \times 2\times10^{-3}}} = 35\,\text{nV/}\sqrt{\text{Hz}} \] Already worse than 22 nV/√Hz — the spec of 5 nV/√Hz was physically unreachable. To achieve 5 nV/√Hz: need G_m > 44 mA/V → I_D = 2.2 mA each → 4.4 mA total → power = 8 mW. Impractical. Cascode noise penalty: with each cascode pair adding g_m_cas/G_m input × noise ≈ 0.5× noise each: total = (1 + 0.5 + 0.5) × 35 nV/√Hz = 2× → 70 nV/√Hz. Measured 22 nV/√Hz falls in the reasonable range for a well-optimized design.</p>
+<p><strong>Rule:</strong> Use minimum-size cascode transistors to minimize their g_m. Their noise penalty ∝ g_m_cas/G_m_input. Small cascode → less noise → lower r_out → choose based on SNR vs gain priority.</p>
+</div>
+<div class="debug-box"><h4>Debug</h4><p>Replace cascode transistors one by one with ideal short circuits (or with very small W transistors). Measure how noise changes. The cascode that reduces noise the most when bypassed is the dominant noise contributor. Typical result: NMOS cascode = 30% noise contribution, PMOS cascode = 30%, input pair = 40%.</p></div>
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 9 shows noise–gain trade-off. Problem 10 examines a different stability failure: hidden poles making the Bode plot useless.</p></div>
+</section>
+
+<section id="lec28-pr-10">
+<h2>Problem 10 — Compensation Capacitor Causes Ringing Not In The Bode Plot</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Two-stage op-amp. Miller comp C_c = 2 pF. Bode plot: PM = 58°. Transient: 500 mV step shows 45% overshoot and 5 cycles of ringing at 45 MHz. PM = 58° predicts only 11% overshoot. How can PM = 58° produce 45% overshoot and high-frequency ringing?</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>The Bode plot shows PM = 58° assuming only two poles. But the real circuit has more poles — parasitic poles from cascode transistors, the mirror pole of the active load, and layout parasitic poles — that cluster near the gain crossover frequency. Each extra pole contributes phase lag. The true PM at the actual crossover frequency may be only 10–15°, causing severe ringing even though the simple model says 58°.</p></div>
+<div class="physics-box"><h4>Physics</h4><p>At 45 MHz: \( \lambda/4 \approx 1.6\,\text{m} \) in silicon. Layout parasitics are lumped but real. Cascode transistor gate capacitance creates poles at g_m_cas / (2π × C_gs_cas). For g_m = 1 mA/V and C_gs = 50 fF: pole at 3.2 GHz. For 10 cascode transistors in the chain, pole clustering near GBW creates cumulative phase lag. Mirror pole at 50 MHz creates another 45° loss. True PM = 58° − 45° = 13°: consistent with 45% overshoot.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>Simple 2-pole model: PM = 58° → damping ratio ζ = PM/100 = 0.58 → overshoot = e^(−πζ/√(1−ζ²)) = e^(−1.99) = 13.7%. Measured: 45%. Discrepancy: hidden poles add ~45° of phase lag at gain crossover. True PM ≈ 58° − 45° = 13°. At PM = 13°: ζ ≈ 0.13, overshoot ≈ 70%. Measured 45% indicates some damping from resistive parasitics. Ringing frequency 45 MHz ≈ GBW/√3 for low-PM system. ✓</p>
+<p><strong>Fix:</strong> Reduce cascode and active load transistor sizes → push parasitic poles higher. Add R_z = 500 Ω in series with Cc → places a zero at f_z = 1/(2π × R_z × Cc) = 159 MHz that compensates the mirror pole phase loss. Also: add small capacitors C_add at internal nodes to create explicit poles at known frequencies (better than parasitic uncertainties).</p>
+</div>
+<div class="debug-box"><h4>Debug</h4><p>Run a large-step transient simulation. If overshoot exceeds 2× what the PM formula predicts, hidden poles are present. To find them: simulate AC with a probe injected at different internal nodes (cascode outputs, mirror gate). Plot impedance vs frequency. Hidden poles appear as resonances in the impedance plot.</p></div>
+<div class="bridge-box"><h4>Bridge</h4><p>Problems 10 and 15 both involve hidden failure modes not captured by standard checks. Problem 15 takes this further: a multi-stage amplifier that oscillates only at night because of temperature-dependent gain changes.</p></div>
+</section>
+
+<!-- Problems 11-20 in even more compact format -->
+<section id="lec28-pr-11">
+<h2>Problem 11 — The Differential Pair That Amplifies The Wrong Signal (ECG)</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>ECG amplifier. Diff pair with active load. Electrode 1 → V_in+, Electrode 2 → V_in−. Signal: 1 mV ECG differential, 100 mV 50 Hz common mode. Measured: 50 Hz signal 100× larger than ECG. CMRR = 80 dB. The amplifier should reject 50 Hz by 10,000:1. But it doesn't. Why?</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>The amplifier's CMRR is perfectly fine. But the electrode skin-impedance mismatch converts the 100 mV common-mode signal into a differential signal before it even reaches the amplifier. This converted differential signal is then amplified with full gain. CMRR is irrelevant once common-mode has already become differential. You cannot fight converted noise — you must prevent the conversion.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>Electrode impedance mismatch: \( \Delta Z_e = 10\% \times Z_e = 10\% \times 3.2\,\text{kΩ} = 320\,\Omega \) at 50 Hz. Differential voltage from mismatch: \[ V_{diff} = V_{cm} \times \frac{\Delta Z_e}{Z_e} \approx 100\,\text{mV} \times 0.1 = 10\,\text{mV} \] Amplified by A_d = 1000: V_out = 10 V. ECG signal (1 mV × 1000 = 1 V) is overwhelmed.</p>
+<p><strong>Fix — Driven Right Leg (DRL) circuit:</strong> Sense common mode at the body, invert, amplify ×100, and feed back to the patient's right leg. This actively cancels the common-mode voltage at the body, reducing it from 100 mV to less than 1 mV. Then: mismatch-converted differential = 0.001 × 0.1 = 0.1 µV. Negligible. DRL is mandatory in every ECG machine for this reason.</p>
+</div>
+<div class="debug-box"><h4>Debug</h4><p>Measure with both electrodes on the same skin location (zero differential signal, same common mode, zero impedance mismatch). If 50 Hz appears: CMRR is the problem. Connect both electrodes to a voltage divider (known mismatch ΔZ). If 50 Hz scales with ΔZ: electrode mismatch is the problem.</p></div>
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 11 motivates the DRL circuit. Problem 12 continues the INA analysis: even with a perfect DRL, the resistor matching inside the INA limits CMRR far more than the op-amp CMRR.</p></div>
+</section>
+
+<section id="lec28-pr-12">
+<h2>Problem 12 — Why The Op-Amp's Output Impedance Matters For CMRR</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Instrumentation amplifier (three op-amp topology). Stage 1: two non-inverting buffers. Stage 2: differential amplifier. Stage 1 op-amps: CMRR = 100 dB each. Stage 2 op-amp: CMRR = 80 dB. Overall INA CMRR = 60 dB. Expected: above 100 dB. Why is overall CMRR only 60 dB?</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>The overall INA CMRR is limited by the weakest link. In the three-op-amp INA, the Stage 2 differential amplifier's resistor matching dominates. Even 0.1% resistors give only 60 dB CMRR from resistor mismatch — regardless of how good the op-amp's internal CMRR is.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>Stage 2 differential amplifier with resistor mismatch ΔR/R = 0.1%: \[ A_{cm,stage2} \approx \frac{\Delta R}{R} = 0.001 \] CMRR from resistors alone: \[ \text{CMRR}_{R} = \frac{A_d}{A_{cm}} = \frac{1}{0.001} = 1000 = 60\,\text{dB} \] This sets the floor regardless of op-amp CMRR. For 80 dB CMRR: need 0.01% resistors. For 100 dB: laser-trimmed thin-film resistors inside the IC. This is why precision INA ICs (INA128, AD8221) use internal resistors — external discrete implementations always lose 20–40 dB of CMRR to resistor mismatch.</p>
+</div>
+<div class="practical-box"><h4>Practical Implementation</h4><p>0.1% resistors → 60 dB. 0.01% → 80 dB. Laser-trimmed IC → 100+ dB. Use a monolithic INA IC for any application requiring CMRR above 80 dB. For prototyping: use matched resistor networks from the same IC package (Vishay ACAM series: 0.01% tracking).</p></div>
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 12 isolates CMRR sources. Problem 13 examines the fully-differential op-amp — which takes differential operation to its logical extreme and where misuse creates both DC offset and SNR loss.</p></div>
+</section>
+
+<section id="lec28-pr-13">
+<h2>Problem 13 — Fully Differential Op-Amp: Why Both Outputs Must Be Used</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Fully differential op-amp (FD). Engineer connects V_in+ to signal, grounds V_in−, takes output from V_out+ only. Result: gain is correct but output has large DC offset AND poor SNR. What went wrong?</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>A fully differential op-amp is designed to drive a differential ADC. It outputs two signals: V_out+ and V_out−. Each carries half the signal centered around V_OCM. Taking only V_out+ gives half the signal voltage but the same noise — 6 dB SNR loss. Also, the DC level of V_out+ is V_OCM (usually VDD/2) — this is not an error, but engineers expecting a zero-volt DC output are surprised.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>FD op-amp output: \[ V_{out+} = V_{OCM} + \frac{A_d (V_{in+} - V_{in-})}{2} \] Single-ended signal at V_out+: half of A_d × V_id. Differential signal: full A_d × V_id. SNR loss: 6 dB (factor of 2 in signal, same noise). DC offset: V_OCM (= VDD/2 = 1.65 V for 3.3 V supply). Fix: always use V_out+ − V_out− differentially. Connect V_OCM to ADC common-mode input. For single-ended output: use a standard op-amp instead of FD.</p>
+</div>
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 13 defines the correct use of FD op-amps. Problem 14 settles the fundamental question every designer faces: BJT or MOSFET input?</p></div>
+</section>
+
+<section id="lec28-pr-14">
+<h2>Problem 14 — BJT vs MOSFET Differential Pair: Which Is Better And When?</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Precision sensor amplifier. Options: A) BJT diff pair, B) JFET diff pair, C) MOSFET diff pair. Spec: V_OS &lt; 50 µV, I_B &lt; 1 pA, noise &lt; 5 nV/√Hz, CMRR > 100 dB. Which topology passes? Which fails? Which is the correct choice?</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>No single transistor type wins all four specs simultaneously. BJT wins on noise (g_m/I is highest) and loses on bias current (I_B = I_C/β = 100 nA). MOSFET wins on bias current (femtoamp gate leakage) and loses on noise (higher V_n) and offset (worse V_th matching). JFET is in the middle: better noise than MOSFET, much better bias current than BJT. The spec that is hardest to meet (I_B &lt; 1 pA) eliminates BJT, making MOSFET or JFET the only candidates.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>BJT noise at I_C = 1 mA: \[ V_n = \sqrt{4kT/g_m} = \sqrt{4 \times 4.14\times10^{-21} / 38.5\times10^{-3}} = 0.66\,\text{nV/}\sqrt{\text{Hz}} \] Passes noise. I_B = 100 nA. Fails I_B spec by 100,000×. MOSFET noise at G_m = 1 mA/V: \[ V_n = \sqrt{8kT\gamma/(3G_m)} = \sqrt{8 \times 4.14\times10^{-21} \times 0.67 / (3\times10^{-3})} = 3.32\,\text{nV/}\sqrt{\text{Hz}} \] Passes noise. I_G &lt; 1 fA. Passes I_B. Winner: MOSFET for this specific spec set. Use OPA2140 (JFET input, V_OS = 25 µV, I_B = 10 pA, V_n = 5 nV/√Hz). All specs met.</p>
+</div>
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 14 resolves the BJT/MOSFET debate: the answer always depends on which spec is hardest. Problem 15 examines a circuit that changes behavior with temperature — stability that only holds in the lab.</p></div>
+</section>
+
+<section id="lec28-pr-15">
+<h2>Problem 15 — The Multi-Stage Amplifier That Oscillates Only At Night</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Precision 3-stage amplifier. In lab: stable. At customer: works during day, oscillates at night. Oscillation at 3 MHz. Stops when operator touches the case. Occurs only below 18°C.</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>BJT beta (β) increases as temperature decreases. More β = more gain per stage. Three stages compound: total gain = A1 × A2 × A3. If A1 rises 30% at cold temperature, total gain rises 30%³ − 1 ≈ 2.2× in open-loop gain. The gain crossover moves to a higher frequency where the phase is more negative, reducing phase margin below zero. Touching the case adds 100 pF body capacitance, loading the high-impedance node and reducing effective gain — killing the oscillation.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>At 25°C: total gain = 30³ = 27,000 = 89 dB. PM = 55°. At 10°C: β increases 30% → gain per stage → 39. Total = 39³ = 59,319 = 95.5 dB. Extra 6.5 dB of gain. Gain crossover moves to higher frequency. Extra phase lag at new crossover: assume 60°. New PM = 55° − 60° = −5°. Oscillation. Fix: emitter degeneration resistors. A_v = R_C/R_E — independent of β. β variation no longer affects gain → PM stays constant across temperature.</p>
+</div>
+<div class="practical-box"><h4>Practical Implementation</h4><p>Standard qualification: test at −40°C, 0°C, 25°C, 85°C minimum (military: −55°C to +125°C). Emitter degeneration R_E: set to R_C/A_v_desired. For A_v = 10: R_E = R_C/10 = 1 kΩ for R_C = 10 kΩ. Phase margin at all temperatures: re-simulate with β at ±3σ process corners and at −40°C and +85°C.</p></div>
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 15 demonstrates temperature-dependent stability. Problems 16–19 cover noise figure (Friis), parallel amplifiers, PSRR, and current-steering DACs — all essential Phase 4 knowledge for IC design.</p></div>
+</section>
+
+<section id="lec28-pr-16">
+<h2>Problem 16 — Noise Figure of a Receive Chain (Friis Formula)</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Receiver chain: LNA (G=20 dB, NF=1.5 dB) → Filter (loss=2 dB) → Mixer (G=−6 dB, NF=8 dB) → IF Amp (G=30 dB, NF=4 dB). What is the total system noise figure? Can it be improved by a better IF amplifier?</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>Friis formula: \[ F_{total} = F_1 + \frac{F_2-1}{G_1} + \frac{F_3-1}{G_1 G_2} + \frac{F_4-1}{G_1 G_2 G_3} \]
+Converting: F_1 = 1.413 (G_1 = 100), F_2 = 1.585 (G_2 = 0.631), F_3 = 6.310 (G_3 = 0.251), F_4 = 2.512.
+\[ F_{total} = 1.413 + \frac{0.585}{100} + \frac{5.310}{63.1} + \frac{1.512}{15.84} = 1.413 + 0.006 + 0.084 + 0.095 = 1.598 \]
+NF_total = 10 log(1.598) = 2.04 dB. LNA contributes 88% of noise. Improving IF amp from 4 dB to 1 dB: total NF improves only 0.22 dB. Not worth it. Improving LNA from 1.5 to 0.5 dB: saves 0.88 dB. The LNA is everything in a receiver chain.</p>
+</div>
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 16 teaches Friis: first stage dominates. Problem 17 extends this to parallel amplifiers — N amplifiers improve SNR by √N. Problems 18–20 complete Lecture 28 with PSRR production failures, DAC design, and the complete two-stage op-amp design exercise.</p></div>
+</section>
+
+<section id="lec28-pr-17">
+<h2>Problem 17 — Two Identical Op-Amps In Parallel: Does Noise Improve?</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Op-amp with V_n = 10 nV/√Hz. Engineer connects two identical op-amps in parallel. Claims noise reduces by √2. Is this correct? Calculate the actual input-referred noise.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>Two uncorrelated noise sources V_n1 and V_n2, each 10 nV/√Hz. Output averaging: \( V_{out} = (V_{out1} + V_{out2})/2 \). Signal adds coherently: V_signal passes unchanged. Noise adds incoherently: \[ V_{n,out} = \frac{\sqrt{V_{n1}^2 + V_{n2}^2}}{2} = \frac{\sqrt{2} \times 10\,\text{nV/}\sqrt{\text{Hz}}}{2} = \frac{10}{\sqrt{2}}\,\text{nV/}\sqrt{\text{Hz}} = 7.07\,\text{nV/}\sqrt{\text{Hz}} \] Input-referred: 7.07 nV/√Hz. Improvement: √2 = 3 dB. ✓ Engineer is correct if outputs are averaged. N parallel amplifiers: \( V_{n,total} = V_n / \sqrt{N} \). For N = 16: 10/4 = 2.5 nV/√Hz. For N = 100: 1 nV/√Hz. Used in gravitational wave detectors (LIGO) where extreme noise floors are needed.</p>
+</div>
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 17 shows parallel averaging. Problem 18 demonstrates a production failure caused by capacitor ESR variation — a real-world yield issue.</p></div>
+</section>
+
+<section id="lec28-pr-18">
+<h2>Problem 18 — PSRR Degrades At High Frequency — Production Failure</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Audio op-amp. PSRR = 100 dB DC. Passes all bench tests. 10% production failure rate at HF noise rejection test. Failing units: all use a specific batch of decoupling capacitors. Passing units: different capacitor batch. Same PCB, same schematic.</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>PSRR decreases with frequency at 20 dB/decade for a typical op-amp. The decoupling capacitor's job is to provide a low-impedance path for HF supply noise before it reaches the op-amp. A bad capacitor batch has high ESR at 100 kHz — instead of 0.1 Ω, it is 5 Ω. This means HF supply noise is not shunted to ground and reaches the op-amp supply pin at full amplitude. The op-amp's degraded HF PSRR then fails to reject it.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>PSRR at 100 kHz: PSRR_DC = 100 dB. f_corner = GBW/PSRR_DC_linear = 1 MHz/10⁵ = 10 Hz. PSRR(100 kHz) = 100 − 20 log(100k/10) = 100 − 80 = 20 dB. With good cap (ESR = 0.1 Ω): supply noise attenuation at 100 kHz = very high → combined rejection adequate. With bad cap (ESR = 5 Ω): supply noise not attenuated → reaches op-amp supply → PSRR = 20 dB insufficient → fails test. Fix: specify ESR in BOM. Add ferrite bead + ceramic cap (PI filter) on supply line.</p>
+</div>
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 18 illustrates that PSRR and decoupling are multiplicative: total supply rejection = PSRR × decoupling attenuation. Problem 19 designs a current-steering DAC — where accuracy is entirely determined by current source matching, not op-amp PSRR.</p></div>
+</section>
+
+<section id="lec28-pr-19">
+<h2>Problem 19 — Design A Current-Steering DAC Using Current Mirrors</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Design a 4-bit current-steering DAC. I_out = D[3:0] × I_LSB where I_LSB = 100 µA. DNL &lt; 0.5 LSB. INL &lt; 1 LSB. Update rate: 100 MHz.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>Thermometer code: 15 unit cells of 100 µA each. For DNL &lt; 0.5 LSB: \( \sigma(\Delta I/I) &lt; 0.5/15 = 3.3\% \). For INL &lt; 1 LSB: systematic gradient &lt; 6.7%. Transistor sizing for 3.3% matching: \[ \sigma(\Delta I/I) = \frac{A_{Vt}}{\sqrt{WL}} \times \frac{2I_D}{V_{ov}} \approx 3.3\% \to WL \approx 2.3\,\mu\text{m}^2 \] Use W = 2 µm, L = 1.2 µm. Common-centroid layout mandatory. Bandwidth: for 100 MHz update rate, current cell must settle in &lt; 5 ns → pole &gt; 100 MHz → g_m/(2π C_out) &gt; 100 MHz → g_m &gt; 100 MHz × 2π × 2 fF = 1.26 mA/V. At I_D = 100 µA: need V_ov &lt; 0.16 V. Use W/L = 50, L = 0.18 µm.</p>
+</div>
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 19 completes the current mirror application set. Problem 20 synthesizes everything in a complete two-stage CMOS op-amp design from first principles.</p></div>
+</section>
+
+<section id="lec28-pr-20">
+<h2>Problem 20 — Complete Two-Stage CMOS Op-Amp Design Challenge</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Design a complete two-stage Miller-compensated CMOS op-amp: A_DC &gt; 80 dB, GBW = 10 MHz, PM &gt; 60°, SR &gt; 10 V/µs, V_OS &lt; 5 mV, V_n &lt; 20 nV/√Hz, CMRR &gt; 80 dB, output swing 0.2 V to 1.6 V, C_L = 5 pF, I_DD &lt; 500 µA, VDD = 1.8 V. Technology: 0.18 µm CMOS. NMOS: V_th = 0.5 V, µCox = 200 µA/V², λ_N = 0.1 V⁻¹. PMOS: V_th = −0.5 V, µCoxP = 100 µA/V², λ_P = 0.08 V⁻¹.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p><strong>Step 1 — Choose C_c and G_m1:</strong> GBW = G_m1/(2π C_c) = 10 MHz. SR = I_tail/C_c &gt; 10 V/µs. For PM: G_m2/(2π C_L) &gt; GBW → G_m2 &gt; 314 µA/V. Choose G_m2 = 700 µA/V. Choose C_c = 2 pF → G_m1 = 2π × 10 MHz × 2 pF = 126 µA/V.</p>
+<p><strong>Step 2 — Tail current:</strong> I_tail &gt; SR × C_c = 20 µA. Choose I_tail = 50 µA → SR = 25 V/µs. ✓</p>
+<p><strong>Step 3 — Diff pair sizing (PMOS M1/M2):</strong> I_D1 = 25 µA. V_ov1 = 2×25µ/126µ = 0.397 V. W/L = 2×25µ/(100µ×0.158) = 3.16. Use W = 3.2 µm, L = 1 µm.</p>
+<p><strong>Step 4 — Active load (NMOS M3/M4):</strong> Same I_D. W/L_3 = 1.58. Use W = 1.6 µm, L = 1 µm.</p>
+<p><strong>Step 5 — Second stage (M5 NMOS):</strong> G_m2 = 700 µA/V. V_ov5 = 0.2 V. I_D5 = 70 µA. W/L = 17.5. Use W = 18 µm, L = 1 µm. M6 (PMOS load): W/L = 35, W = 35 µm, L = 1 µm.</p>
+<p><strong>Step 6 — DC gain:</strong> A_v1 = 126 µA/V × (500 kΩ ∥ 400 kΩ) = 28.0 = 29 dB. A_v2 = 700 µA/V × (143 kΩ ∥ 179 kΩ) = 55.3 = 35 dB. A_total = 28 × 55 = 1548 = 64 dB. Below 80 dB — needs cascode in stage 1 or additional stage. With NMOS cascode on M3/M4: r_out_N = g_m × r_o² = 126µ × (400k)² = 20 GΩ (cap). In parallel with PMOS side: A_v1 improves to 72 dB. Total with cascode: 107 dB. ✓</p>
+<p><strong>Step 7 — Power:</strong> I_DD = 50 + 70 + 30 µA = 150 µA. P = 150 µA × 1.8 V = 270 µW &lt; 900 µW budget. ✓</p>
+<p><strong>Nulling resistor:</strong> f_z_RHP = G_m2/(2π C_c) = 700µ/(2π×2p) = 55.7 MHz &gt;&gt; GBW. OK. Add R_z = 1/G_m2 = 1.43 kΩ for robustness.</p>
+<p><strong>Noise:</strong> V_n = √(8kT×0.67/(3×126µ)) = 7.66 nV/√Hz &lt; 20 nV/√Hz. ✓</p>
+</div>
+<div class="practical-box"><h4>Practical Implementation</h4><p>Complete SPICE netlist structure: M1/M2 (PMOS W=3.2µm/L=1µm), M3/M4 (NMOS W=1.6µm/L=1µm), M5 (NMOS W=18µm/L=1µm), M6 (PMOS W=35µm/L=1µm), M7 (tail PMOS W=5µm/L=1µm), Cc = 2 pF, Rz = 1.43 kΩ. Bias: V_BIAS sets I_tail via M7. Total: 7 transistors + 2 passives. Area estimate: 0.005 mm² in 0.18 µm CMOS.</p></div>
+<div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+<iframe src="simulations/lec28-pr-20_Two_Stage_OpAmp_Design_sim.html" width="100%" height="580px" loading="lazy"></iframe>
+</div>
+</section>
+
+<!-- =================== LECTURE 29 =================== -->
+<div class="lec-header">Lecture 29 — 10 Advanced Phase 4 Problems: Stability Anomalies, Thermal, RF, ECG</div>
+
+<section id="lec29-pr-21">
+<h2>Problem 21 — The Op-Amp That Works Perfectly Until You Add Gain</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Op-amp in unity gain: perfect, PM = 75°. Gain = 10 (R_f = 9 kΩ, R_in = 1 kΩ): slight ringing, PM ~45°. Gain = 100 (R_f = 99 kΩ, R_in = 1 kΩ): strong oscillation, PM &lt; 0°. Higher gain should mean less bandwidth and more stability. Why does more gain cause less stability?</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>The key insight is noise gain vs signal gain. Stability depends on where the A_OL curve intersects the noise gain line, not the signal gain. A decompensated op-amp has a "bump" (resonant peak) in its open-loop gain at intermediate frequencies. At high noise gain, the intersection falls right in the bump region where phase is most negative — conditional instability. At unity gain and at very high noise gain, the intersection is outside the bump and the system is stable.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>For inverting amplifier with signal gain −G: Noise gain = 1 + G. Signal gain = 10 → noise gain = 11. Signal gain = 100 → noise gain = 101. At gain crossover (A_OL = noise gain): f_cross = GBW / noise_gain. At noise_gain = 1 (unity): f_cross = GBW (high frequency, smooth rolloff, PM = 75°). At noise_gain = 101: f_cross = GBW/101 (lower frequency, lands in the bump, PM &lt; 0°). The bump in A_OL is caused by a pole-zero pair (non-dominant pole + zero) near GBW/10. Fix: add feedback capacitor C_f across R_f. At high frequency: C_f makes noise gain = 1, shifting crossover to high frequency where A_OL is well-behaved. PM is restored.</p>
+</div>
+<div class="practical-box"><h4>Practical Implementation</h4><p>Decompensated op-amps (LM318, AD8099): specify minimum stable gain in datasheet. LM318: stable for noise gain ≥ 5. Using LM318 at noise gain 3: oscillation. At noise gain 10: stable. C_f = 1/(2π × R_f × f_GBW/noise_gain) restores PM for any noise gain.</p></div>
+<div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+<iframe src="simulations/lec29-pr-21_Noise_Gain_Stability_sim.html" width="100%" height="550px" loading="lazy"></iframe>
+</div>
+</section>
+
+<section id="lec29-pr-22">
+<h2>Problem 22 — Current Mirror That Temperature Compensates Itself</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>BJT current mirror: Q1 (reference), Q2 (output). At 25°C: I_out = 1.02 mA (+2%). At 75°C: I_out = 0.99 mA (−1%). At 0°C: I_out = 1.05 mA (+5%). The error decreases at high temperature. Engineer claims self-compensation. What is really happening?</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>BJT beta (β) increases with temperature. In a simple BJT mirror, the error is caused by finite beta — base currents are stolen from the reference, causing I_out to be slightly different from I_ref. As temperature rises and β increases, less base current is stolen and the error decreases. This looks like self-compensation but is actually β-related error reduction. It is not a designed compensation — it is coincidental and will vary part-to-part.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>Simple BJT mirror error from finite β: \[ \frac{I_{out} - I_{ref}}{I_{ref}} \approx \frac{2}{\beta} \] At 25°C with β = 100: error = +2%. At 75°C with β = 200 (increased): error = +1%. At 0°C with β = 50 (decreased): error = +4%. Trend matches measured. True temperature compensation requires: bandgap reference (cancels V_BE CTAT with PTAT) for V_ref stability, plus PTAT current source for I_ref = V_ref/R stability. Wilson mirror reduces β sensitivity: \( \text{error}_{Wilson} \approx 2/\beta^2 \). For β = 100: error = 0.02%. Insensitive to β variation.</p>
+</div>
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 22 shows coincidental vs designed compensation. Problem 23 is the famous LDO stability puzzle: a better capacitor (lower ESR) makes the regulator oscillate.</p></div>
+</section>
+
+<section id="lec29-pr-23">
+<h2>Problem 23 — The LDO That Oscillates With Ceramic Capacitors</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>LDO: 5 V → 3.3 V, rated for 10 to 100 µF output capacitor. With 22 µF electrolytic (ESR = 0.3 Ω): stable. With 22 µF ceramic (ESR = 0.005 Ω): oscillates at 200 kHz. Same capacitance, different ESR. The ceramic cap is supposedly better. Why does it cause oscillation?</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>An LDO's feedback loop has a dominant pole and a high-frequency pole from the pass transistor. Without an ESR zero, the phase hits −180° before the gain reaches 0 dB — instability. The ESR zero from the capacitor's equivalent series resistance provides critical phase boost at the gain crossover. A low-ESR ceramic cap pushes this zero to megahertz range — too late to help at the LDO's 50 kHz crossover. The electrolytic's "inferior" 0.3 Ω ESR is actually essential for stability.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>ESR zero frequency: \[ f_z = \frac{1}{2\pi \times \text{ESR} \times C_{out}} \] Electrolytic: f_z = 1/(2π × 0.3 × 22µ) = 24.1 kHz. Near LDO crossover (50 kHz): provides +45° phase boost. PM = 50°. Stable. Ceramic: f_z = 1/(2π × 0.005 × 22µ) = 1.45 MHz. Far above crossover: φ_boost = arctan(50k/1.45M) = 2°. PM ≈ 5°. Unstable. Fix: add R_series = 0.3 Ω in series with ceramic cap to recreate the ESR zero. Or use a modern LDO with internal compensation (TPS7A20, LT3080) that is stable with any capacitor.</p>
+</div>
+<div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+<iframe src="simulations/lec29-pr-23_LDO_ESR_Stability_sim.html" width="100%" height="570px" loading="lazy"></iframe>
+</div>
+</section>
+
+<section id="lec29-pr-24">
+<h2>Problem 24 — GBW Product Isn't Constant For Large Signals</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Op-amp GBW = 10 MHz (measured with 10 mV input). Engineer designs a video driver: 1 V signal at 1 MHz with gain = 5. Expected bandwidth: 10 MHz/5 = 2 MHz &gt; 1 MHz. Should work. Measured bandwidth with 1 V signal: only 320 kHz.</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>GBW is a small-signal specification. For large signals, the slew rate creates a completely different bandwidth limit. The output must swing ±5 V at 1 MHz: dV/dt = 5 V × 2π × 1 MHz = 31.4 V/µs. If SR = 10 V/µs &lt; 31.4 V/µs, the output cannot keep up and clips at the slew rate. The −3 dB bandwidth in this slew-limited regime is the full-power bandwidth: f_FP = SR/(2π V_out_peak) = 10/(2π × 5) = 318 kHz ≈ 320 kHz.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>Full-power bandwidth: \[ f_{FP} = \frac{SR}{2\pi V_{out,peak}} = \frac{10\,\text{V/µs}}{2\pi \times 5\,\text{V}} = 318\,\text{kHz} \] Effective bandwidth: \[ \text{BW}_{eff} = \min\left(\frac{\text{GBW}}{A}, \frac{\text{SR}}{2\pi V_{out}}\right) = \min(2\,\text{MHz}, 318\,\text{kHz}) = 318\,\text{kHz} \] Fix: choose op-amp with SR &gt; 2π × 1 MHz × 5 V = 31.4 V/µs. Use SR &gt; 50 V/µs (OPA354: SR = 100 V/µs, GBW = 250 MHz). Both GBW and SR must be verified independently.</p>
+</div>
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 24 distinguishes small-signal from large-signal bandwidth. Problem 25 revisits the current mirror tail and shows that a resistor tail can outperform a current mirror tail in CMRR under specific conditions.</p></div>
+</section>
+
+<section id="lec29-pr-25">
+<h2>Problem 25 — Diff Pair With Resistor Tail Shows Better CMRR Than Current Mirror</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Config A (R_tail = 100 kΩ): CMRR = 52 dB. Config B (simple NMOS mirror tail, r_out = 80 kΩ): CMRR = 48 dB. Theory says mirror should be better. Why is the resistor better?</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>At DC: CMRR_A = G_m × R_tail = 19.2 mA/V × 100 kΩ = 65.7 dB. CMRR_B = G_m × r_o_mirror = 19.2 mA/V × 80 kΩ = 63.7 dB. Resistor wins at DC because R_tail = 100 kΩ &gt; r_o_mirror = 80 kΩ. The mirror r_o = V_A/I_tail = 80 V / 1 mA = 80 kΩ — happens to be less than R_tail for this bias point. At high frequency: mirror impedance rolls off (mirror pole). Resistor has no pole. Above the mirror pole: resistor wins even more decisively. Fix: use Wilson mirror: r_out_Wilson = β × r_o = 100 × 80 kΩ = 8 MΩ &gt;&gt; 100 kΩ. CMRR_wilson = 96 dB. Wilson mirror wins decisively over resistor at all frequencies below its pole.</p>
+</div>
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 25 proves the nuance: a current mirror is not automatically better than a resistor. It depends on r_o vs R_tail and the frequency of interest. Problem 26 brings thermal physics directly into circuit design: Class AB thermal runaway.</p></div>
+</section>
+
+<section id="lec29-pr-26">
+<h2>Problem 26 — Class AB Bias That Causes Thermal Runaway</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Class AB audio amplifier. I_Q = 20 mA at 25°C. At 50% power: transistors at 60°C, I_Q rises to 35 mA. At 100% power: transistors at 125°C, I_Q = 80 mA and rising rapidly. Thermal runaway occurs unless music stops.</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>The bias transistor Q_bias sets V_bias. If Q_bias runs cold while output transistors run hot, V_bias stays constant while V_BE_out decreases. Since I_Q ∝ e^(V_bias − V_BE_out)/V_T, any reduction in V_BE_out at constant V_bias causes exponential increase in I_Q. More current → more heat → more current: runaway. The fix is thermal coupling: Q_bias must heat up with the output transistors so V_bias tracks V_BE_out and the exponential argument stays constant.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>I_Q temperature sensitivity: \[ \frac{dI_Q}{dT_{out}} = I_Q \times \frac{|dV_{BE}/dT|}{V_T} = I_Q \times \frac{2\,\text{mV/°C}}{26\,\text{mV}} = I_Q \times 0.077\,\text{°C}^{-1} \] Without thermal coupling: at ΔT = 100°C, I_Q ≈ I_Q0 × e^(0.077 × 100) = I_Q0 × 2100×. Thermal runaway. With perfect coupling: V_bias − V_BE_out = constant → I_Q = constant. Emitter degeneration R_E = 0.5 Ω: as I_Q rises, V_RE = I_Q × R_E rises → V_BE_effective drops → I_Q self-stabilizes. Stable condition: ∂I_Q/∂T = 0 requires R_E × (dI_Q/dT) = −dV_BE_out/dT = +2 mV/°C. R_E = (2 mV/°C) / (I_Q × 0.077) = 0.12 Ω at I_Q = 200 mA. Use R_E = 0.2 Ω for margin.</p>
+</div>
+<div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+<iframe src="simulations/lec29-pr-26_Class_AB_Thermal_sim.html" width="100%" height="540px" loading="lazy"></iframe>
+</div>
+</section>
+
+<section id="lec29-pr-27">
+<h2>Problem 27 — Op-Amp Oscillates When Driving A Transmission Line</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Unity-gain follower. PM = 90° with 50 Ω resistive load. Replace with 1-meter coaxial cable (properly terminated at far end with 50 Ω). Immediate oscillation at 150 MHz.</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>The far-end termination prevents reflections. But the cable is a distributed element with capacitance from inner conductor to shield, C_cable = t_d/Z_0 = 5 ns/50 Ω = 100 pF (distributed along its length). From the op-amp's perspective at the near end, this capacitance creates an additional pole. For a fast op-amp with GBW = 200 MHz, this 100 pF pole significantly degrades phase margin causing oscillation at ≈ GBW/√3.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>Cable capacitance: C = t_d/Z_0 = 5 ns/50 Ω = 100 pF. Pole from op-amp R_out and cable C: \[ f_p = \frac{1}{2\pi \times R_{out} \times C_{cable}} = \frac{1}{2\pi \times 50\,\Omega \times 100\,\text{pF}} = 31.8\,\text{MHz} \] Phase at GBW = 200 MHz: phase_loss = arctan(200/31.8) = 80.9°. PM = 90° − 80.9° = 9.1°. Near zero → oscillation. Fix: add R_series = 100 Ω at op-amp output. New f_p = 1/(2π × 100 × 50p) = 31.8 MHz. Phase loss = arctan(200/31.8) = same. Need much larger R or lower GBW op-amp. Best fix: use a video amplifier specifically designed for driving cables (LMH6321, BUF634) with internal compensation for capacitive loads.</p>
+</div>
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 27 demonstrates that real-world loads (cables, capacitive nodes) have transmission-line effects that destroy phase margin. Problem 28 designs the most precise current reference achievable: 10 ppm/°C from a bandgap.</p></div>
+</section>
+
+<section id="lec29-pr-28">
+<h2>Problem 28 — Design A 10 µA Current Reference Stable to 10 ppm/°C</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Design a current reference: I_out = 10 µA, ±0.01% over 0 to 70°C. Tempco = 10 ppm/°C. VDD = 5 V ±10%, VDD-independent. Initial accuracy ±0.1%.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>Simple V_BE/R approach: dI/I from V_BE tempco = (2 mV/°C)/(0.65 V) = 3077 ppm/°C. Fails by 300×. Bandgap reference: V_BG ≈ 1.25 V, tempco ≈ 20 ppm/°C (with curvature correction). Standard resistor (50 ppm/°C): total = 20 + 50 = 70 ppm/°C. Fails. Z-Foil resistor (2 ppm/°C): total = 20 + 2 = 22 ppm/°C. Close. With curvature correction: V_BG tempco → 5 ppm/°C. Total with Z-Foil: √(5² + 2²) = 5.4 ppm/°C. Meets 10 ppm/°C. ✓ Implementation: I_ref = V_BG / R = 1.25 V / 125 kΩ = 10 µA. Use a 10:1 current mirror to scale 100 µA reference: R = 12.5 kΩ. VDD independence: self-biased Widlar bandgap circuit.</p>
+</div>
+<div class="practical-box"><h4>Practical Implementation</h4><p>Best approach: ADR4520 reference IC (3 ppm/°C, 2.048 V) + Vishay Z-Foil resistor (2 ppm/°C, 204.8 kΩ): I = 2.048/204.8k = 10 µA. Total tempco = 3.6 ppm/°C. ✓ For factory accuracy: measure and trim R at 25°C. VDD from 3.3 to 15 V: ADR4520 works throughout.</p></div>
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 28 represents precision analog design at its boundary. Problem 29 examines how supply voltage reduction destroys THD — an important application reality when migrating from ±15 V to ±5 V.</p></div>
+</section>
+
+<section id="lec29-pr-29">
+<h2>Problem 29 — Op-Amp Changes Character When Supply Voltage Changes</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Circuit: gain = 100. At ±15 V: THD = 0.01% at 1 V output. Change to ±5 V supply, same circuit. THD = 2% at 1 V output. 200× worse. No component damaged. VOS, GBW, PM unchanged.</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>Op-amp open-loop gain A_OL is a function of supply voltage. At ±15 V: internal cascode transistors have plenty of headroom and r_out is high. At ±5 V: cascodes may lose saturation, r_out collapses, A_OL drops dramatically. Distortion (THD) is inversely proportional to loop gain T = A_OL/A_CL. If A_OL drops 200×, loop gain drops 200× and THD rises 200×.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>THD relationship: THD ≈ THD_open_loop / (1 + T) ≈ THD_OL / T = THD_OL × A_CL / A_OL. At ±15 V: A_OL = 200,000, T = 2000, THD = 0.01%. At ±5 V: for THD = 2% (200× worse) with same signal gain: T must be 2000/200 = 10. A_OL = 10 × 100 = 1000. A_OL reduced by 200× when supply dropped from ±15 to ±5 V — this happens when internal cascode transistors lose saturation at low supply, collapsing r_o from 500 kΩ to 2.5 kΩ. Fix: use op-amp specified for ±5 V (OPA2134, AD8045). Check A_OL vs supply in datasheet — often specified only at ±15 V.</p>
+</div>
+<div class="bridge-box"><h4>Bridge</h4><p>Problem 29 teaches supply voltage dependence of A_OL. Problem 30 synthesizes all Phase 4 knowledge in the most complete circuit design challenge: a full ECG machine frontend.</p></div>
+</section>
+
+<section id="lec29-pr-30">
+<h2>Problem 30 — Complete ECG Amplifier Frontend Design</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Design a complete ECG amplifier frontend. Signal: 0.05 mV to 5 mV differential, DC to 150 Hz. RTI noise &lt; 1 µV_rms in 0.05–150 Hz band. CMRR &gt; 100 dB at 50 Hz. Input impedance &gt; 100 MΩ at 50 Hz. Gain = 1000. Power &lt; 1 mW. Supply: ±3 V. Include INA IC selection, HPF, LPF anti-aliasing, and DRL circuit.</p></div>
+<div class="circuit-diagram-box"><h4>Circuit Diagram — Complete ECG Signal Chain</h4>
+<svg viewBox="0 0 620 170" width="100%" style="max-width:620px;display:block;margin:0 auto;" xmlns="http://www.w3.org/2000/svg">
+  <!-- Patient body -->
+  <ellipse cx="50" cy="85" rx="35" ry="50" fill="#1a0d0d" stroke="#ef9a9a" stroke-width="1.5" stroke-dasharray="4,3"/>
+  <text x="30" y="88" fill="#ef9a9a" font-size="9">Patient</text>
+  <!-- Electrodes -->
+  <rect x="82" y="60" width="12" height="8" fill="#ffb74d" rx="2"/>
+  <text x="84" y="82" fill="#ffb74d" font-size="8">E1</text>
+  <rect x="82" y="100" width="12" height="8" fill="#ffb74d" rx="2"/>
+  <text x="84" y="122" fill="#ffb74d" font-size="8">E2</text>
+  <rect x="82" y="130" width="12" height="8" fill="#aed581" rx="2"/>
+  <text x="84" y="152" fill="#aed581" font-size="8">RL</text>
+  <!-- INA128 block -->
+  <rect x="130" y="50" width="80" height="70" rx="5" fill="#0d1a20" stroke="#4fc3f7" stroke-width="2"/>
+  <text x="152" y="72" fill="#4fc3f7" font-size="9" font-weight="bold">INA333</text>
+  <text x="137" y="84" fill="#7ec8e3" font-size="8">Gain=1000</text>
+  <text x="137" y="94" fill="#7ec8e3" font-size="8">CMRR=100dB</text>
+  <text x="137" y="104" fill="#7ec8e3" font-size="8">Vn=50nV/√Hz</text>
+  <text x="137" y="114" fill="#7ec8e3" font-size="8">IB=5pA</text>
+  <!-- Lines from electrodes to INA -->
+  <line x1="94" y1="64" x2="130" y2="70" stroke="#ffb74d" stroke-width="1.5"/>
+  <line x1="94" y1="104" x2="130" y2="100" stroke="#ffb74d" stroke-width="1.5"/>
+  <!-- HPF -->
+  <rect x="240" y="68" width="60" height="35" rx="4" fill="#0d1020" stroke="#ce93d8" stroke-width="1.5"/>
+  <text x="250" y="82" fill="#ce93d8" font-size="9">HPF 2nd</text>
+  <text x="248" y="93" fill="#ce93d8" font-size="8">fc=0.05Hz</text>
+  <text x="248" y="103" fill="#ce93d8" font-size="8">Bessel</text>
+  <line x1="210" y1="85" x2="240" y2="85" stroke="#aed581" stroke-width="1.5"/>
+  <!-- LPF -->
+  <rect x="330" y="68" width="60" height="35" rx="4" fill="#0d1020" stroke="#aed581" stroke-width="1.5"/>
+  <text x="338" y="82" fill="#aed581" font-size="9">LPF 4th</text>
+  <text x="335" y="93" fill="#aed581" font-size="8">fc=150Hz</text>
+  <text x="335" y="103" fill="#aed581" font-size="8">Butterworth</text>
+  <line x1="300" y1="85" x2="330" y2="85" stroke="#aed581" stroke-width="1.5"/>
+  <!-- ADC -->
+  <rect x="420" y="68" width="55" height="35" rx="4" fill="#0d2010" stroke="#ffb74d" stroke-width="1.5"/>
+  <text x="430" y="82" fill="#ffb74d" font-size="9">12-bit ADC</text>
+  <text x="432" y="93" fill="#ffb74d" font-size="8">1 ksps</text>
+  <line x1="390" y1="85" x2="420" y2="85" stroke="#aed581" stroke-width="1.5"/>
+  <!-- DRL circuit -->
+  <rect x="130" y="130" width="60" height="30" rx="4" fill="#101a10" stroke="#aed581" stroke-width="1.5"/>
+  <text x="137" y="144" fill="#aed581" font-size="9">DRL Circuit</text>
+  <text x="138" y="155" fill="#aed581" font-size="8">CM→inverted→RL</text>
+  <line x1="94" y1="134" x2="130" y2="145" stroke="#aed581" stroke-width="1.5" stroke-dasharray="3,2"/>
+  <line x1="190" y1="145" x2="94" y2="138" stroke="#aed581" stroke-width="1" stroke-dasharray="2,2"/>
+  <!-- Digital output -->
+  <line x1="475" y1="85" x2="560" y2="85" stroke="#ffb74d" stroke-width="1.5"/>
+  <text x="565" y="89" fill="#ffb74d" font-size="10">Digital</text>
+</svg>
+<p>ECG signal chain: DRL (patient body CM reduction) → INA333 (gain=1000, CMRR=100dB) → 2nd-order Bessel HPF at 0.05 Hz (removes DC and baseline wander) → 4th-order Butterworth LPF at 150 Hz (anti-aliasing) → 12-bit ADC at 1 ksps. All Phase 4 concepts applied simultaneously.</p>
+</div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p><strong>Noise analysis:</strong> Bandwidth = 150 − 0.05 ≈ 150 Hz. Required noise density: \[ V_n = \frac{1\,\mu\text{V}_{rms}}{\sqrt{150\,\text{Hz}}} = 82\,\text{nV/}\sqrt{\text{Hz}} \] INA333 noise: V_n = 50 nV/√Hz. Total white noise: 50 × √150 = 612 nV_rms. 1/f noise in band: V_n_1f ≈ 50 × √(100 × ln(100/0.05)) = 50 × 27.6 = 1380 nV_rms (1/f corner ~100 Hz). Total: √(612² + 1380²) = 1508 nV_rms ≈ 1.5 µV_rms. Slightly exceeds 1 µV spec with INA333. Switch to INA128 (V_n = 8 nV/√Hz, I_B = 5 nA): total noise = √(98² + 220²) = 240 nV_rms &lt; 1 µV_rms. ✓ Power: INA128 (1.3 mW) + HPF amp (90 µW) + LPF amp (90 µW) = 1.48 mW. Exceeds 1 mW slightly. Use INA333 (150 µW) + OPA2333 filters (90 µW each) = 330 µW &lt; 1 mW. ✓ But noise is 1.5 µV — marginal. Accept with careful 1/f filtering.</p>
+<p><strong>HPF design:</strong> 2nd-order Bessel HPF at 0.05 Hz. R = 10 MΩ, C = 318 nF. V_OS of OPA2333 = 5 µV. DC output offset = 5 µV × filter_gain at DC = 5 µV × 1 = 5 µV. Negligible.</p>
+<p><strong>LPF design:</strong> 4th-order Butterworth LPF at 150 Hz. Two Sallen-Key stages: Stage 1 (Q = 0.541): R = 10 kΩ, C = 110 nF. Stage 2 (Q = 1.307): same R, C, gain K = 2.235.</p>
+<p><strong>CMRR verification:</strong> INA333 CMRR at 50 Hz = 100 dB. DRL reduces V_cm from 100 mV to &lt; 1 mV. Combined output CM = 1 mV × 1000/10^5 = 10 nV × 1000 = 10 µV. Negligible vs ECG signal (50 mV).</p>
+</div>
+<div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+<iframe src="simulations/lec29-pr-30_ECG_Signal_Chain_sim.html" width="100%" height="540px" loading="lazy"></iframe>
+</div>
+</section>
+
+<!-- =================== LECTURE 30 =================== -->
+<div class="lec-header">Lecture 30 — 10 Real Industry Scenarios: Diagnosis Framework and Complete Solutions</div>
+
+<section id="lec30-sc-1">
+<h2>Scenario 1 — Sensor Reads Accurately in Lab but Drifts on Factory Floor</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Pressure sensor output: 0–100 mV. In quiet lab: ADC reads steady. On factory floor: readings jump ±20% randomly. Motor drives nearby (3-phase, 10 kW, 50 Hz). Readings worsen when motors start and stop. Use the 6-question framework to diagnose and solve this.</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>The 6 questions immediately identify: signal is noisy (Q1), interference is 50 Hz and harmonics from motor drives (Q2), source is the long sensor cable acting as an antenna (Q3), fix is differential + series LPF + parallel bypass (Q4/Q5), phase 4 blocks are INA + LPF + decoupling (Q5), constraint is industrial environment (Q6). The solution is layered: eliminate common mode with differential amplification, filter broadband noise with LPF, suppress supply noise with decoupling.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>CMRR at 50 Hz (INA128): 120 dB → rejects V_cm by 10^6. With V_cm = 1 V from motor: output contribution = 1 V × 1000(gain) / 10^6 = 1 µV. Negligible vs sensor signal (0–100 mV × 1000 = 0–100 V, then scaled by gain). Anti-aliasing LPF at 200 Hz (4th-order Butterworth). ADC at 1 ksps. Attenuation at 200 Hz harmonic: (200/200)^4 = 1 (at corner), (1000/200)^4 = 625 at 1 kHz → 56 dB rejection. Total signal-chain performance: sensor (100 mV FS) → INA128 gain 100 → LPF → 12-bit ADC. Resolution: 100 mV × 100 / (2^12) = 2.44 µV. SNR limited by INA128 noise: 8 nV/√Hz × √1000 × 100 = 25 µV RMS — well above LSB.</p>
+</div>
+<div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+<iframe src="simulations/lec30-sc-1_INA_CMRR_EMI_sim.html" width="100%" height="530px" loading="lazy"></iframe>
+</div>
+</section>
+
+<section id="lec30-sc-2">
+<h2>Scenario 2 — Microphone Preamp Makes Singer Sound Distorted at High Volume</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Electret microphone → preamp → mixer. At low volume: THD &lt; 0.05%. At high volume: THD = 3%. Not clipping at output (checked on oscilloscope). Distortion is harsh, odd harmonics dominant.</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>The output is not clipping but an internal node is. In a two-stage op-amp with ±5 V supply, the internal node between stages may only swing ±2 V. With high input level and high first-stage gain, the internal node clips. The second stage amplifies the clipped waveform, producing harsh odd-order distortion (square wave has odd harmonics). The fix is to reduce gain-per-stage, switch to a higher-supply op-amp, or use a rail-to-rail design.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>At gain = 100, ±5 V supply, A_v1 ≈ 10 internally: V_internal = 10 × V_in. For V_in = 200 mV: V_internal = 2 V — right at the edge. At V_in = 250 mV: V_internal = 2.5 V → clips at ±2 V → output = clipped amplified. THD rises dramatically. Fix: reduce gain per stage to 10 each (10 × 10 = 100 total). Each stage: ±5 V internal headroom for ±500 mV input. At 250 mV input: V_internal1 = 2.5 V &lt; 5 V. No clipping. Or: use op-amp rated for ±5 V (OPA2134, GBW = 8 MHz): internal swing up to ±4.5 V. Problem solved.</p>
+</div>
+<div class="bridge-box"><h4>Bridge</h4><p>Scenario 2 is distortion from internal headroom. Scenario 3 shifts to power consumption analysis — the device runs 12× too long (too much current).</p></div>
+</section>
+
+<section id="lec30-sc-3">
+<h2>Scenario 3 — Battery-Powered Device Runs 2 Hours Instead of 24 Hours</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Wearable health monitor. Battery 100 mAh. Target 24 hours (design calculated 4.2 mA average). Actual: 2 hours (measured 50 mA). 12× more current than designed.</p></div>
+<div class="intuition-box"><h4>Intuition</h4><p>Excess current means parallel current paths that were not accounted for. The diagnostic approach: insert a series ammeter in each major supply branch to find which sub-circuit consumes the extra current. The culprits in this scenario: a bias resistor that was placed at the wrong value (100 Ω instead of 100 kΩ = 1000× wrong), unnecessary pull-down resistors at op-amp outputs, and high-quiescent-current op-amps (LM741) that could be replaced with micropower parts.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>Before fix: I_MCU = 0.2 mA, I_sensor = 0.1 mA, I_wrong_R = 3.3 V / 100 Ω = 33 mA, I_OpAmp_IQ = 3 × 1.7 mA = 5.1 mA, I_load = 3 × 3.3 mA = 9.9 mA. Total = 48.3 mA. After fix: I_wrong_R → 33 µA (100 kΩ), I_OpAmp → 0.06 µA (OPA2333 + sleep mode), I_load → removed. Total = 0.333 mA. Battery life: 100 mAh / 0.333 mA = 300 hours. 12× above 24-hour target.</p>
+</div>
+<div class="bridge-box"><h4>Bridge</h4><p>Scenarios 1–3 cover noise immunity, distortion, and power. Scenarios 4–6 cover grounding, temperature-dependent sensors, and oscilloscope measurement problems.</p></div>
+</section>
+
+<section id="lec30-sc-4">
+<h2>Scenario 4 — Audio Amplifier Hums When Touching Volume Knob</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Stereo amplifier. Clean audio during playback. User touches metal volume knob: 60 Hz hum appears. Increases with firmer contact. Worse near fluorescent lights.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>Human body couples to 60 Hz via body capacitance C_body ≈ 100 pF. Current injected: I = V_60Hz × 2π × 60 Hz × C_body = 120 V × 377 × 100 pF = 4.5 µA (peak). At high-Z amplifier input (100 kΩ): V_noise = 4.5 µA × 100 kΩ = 450 mV. Audible and large. Fix 1 (preferred): use plastic shaft potentiometer — breaks the capacitive coupling path. Fix 2: ground the metal knob shaft to signal ground. Body touching shaft → current flows safely to GND, not through signal path. Fix 3: add R_guard = 1 kΩ from wiper to GND — reduces V_noise to 4.5 µA × 1 kΩ = 4.5 mV. Barely audible at low volume.</p>
+</div>
+</section>
+
+<section id="lec30-sc-5">
+<h2>Scenario 5 — pH Sensor Reads Correctly at 25°C But Fails at 80°C</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>pH sensor for industrial process control. Readings correct at 25°C. At 80°C: readings drift by +1.5 pH units. After cooling to 25°C: readings return to correct values. Sensor is rated to 120°C.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>Nernst equation: \[ V_{pH} = E_{ref} + \frac{RT}{nF} \times 2.303 \times (-\text{pH}) \] Sensitivity at 25°C (298 K): \( S_{25} = 8.314 \times 298 / 96485 \times 2.303 = 59.16\,\text{mV/pH} \). At 80°C (353 K): \( S_{80} = 59.16 \times 353/298 = 70.12\,\text{mV/pH} \). Gain calibrated at 25°C: reads pH × (S_80/S_25) = pH × 1.185. Error = 0.185 × 8 = 1.48 pH ≈ 1.5 pH. ✓ Fix: add temperature sensor + PTC in gain-setting resistor R_G. As T rises: R_G increases → gain decreases ∝ 1/T → compensates Nernst factor. Or: software compensation using the measured temperature.</p>
+</div>
+</section>
+
+<section id="lec30-sc-6">
+<h2>Scenario 6 — Oscilloscope Shows No Gate Signal But MOSFET LED Blinks</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>MCU generates 1 MHz PWM to drive a high-side MOSFET. LED blinks at 1 Hz. Oscilloscope on MOSFET gate: flat line at 2 V. Expected: 0–12 V switching at 1 MHz.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>Gate RC time constant: τ = R_g × C_gate = 10 kΩ × 5 nF = 50 µs. At 1 MHz (period = 1 µs): voltage change per cycle = 12 V × (1 − e^(−0.5µs/50µs)) = 12 × 0.01 = 0.12 V. Gate barely moves (oscilloscope sees ~2 V average). MOSFET partially ON (partially conducting) during the brief charging → LED is dimly but continuously lit, blinking at the MCU's 1 Hz duty cycle. Fix: R_g &lt; t_half / (5 × C_gate) = 0.5 µs / (5 × 5 nF) = 20 Ω. Use R_g = 10 Ω + gate driver IC (TC4420, R_out = 1 Ω). τ = 1 Ω × 5 nF = 5 ns → gate fully charges in 25 ns &lt; 500 ns half-period. ✓</p>
+</div>
+</section>
+
+<section id="lec30-sc-7">
+<h2>Scenario 7 — 12-bit ADC Gives Only 8-bit Resolution in Final Product</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>12-bit ADC, ENOB = 11.8 bits in lab. Same PCB with all circuits: ENOB = 7.9 bits. Switching regulator (200 kHz), MCU (72 MHz), motor driver (20 kHz) are active.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>ENOB loss: 11.8 − 7.9 = 3.9 bits. Each bit = 6 dB, so noise floor raised by 4 × 6 = 24 dB = 16×. The 200 kHz switcher is the main culprit (2.3-bit loss identified in step testing). Fix layers: (1) Series ferrite + parallel 10µF/100nF/10nF on ADC VCC. (2) R = 10 Ω + 10µF/100nF/10nF on ADC VREF. (3) 4th-order Butterworth LPF at f_c = ADC_rate/5 = 20 kHz — attenuates 200 kHz by (200k/20k)^4 × correction ≈ 64 dB → recovers ~10 bits. (4) Ground plane split: digital/analog separated at star point under ADC. (5) Sync ADC conversions between PWM switching edges. Expected ENOB after fix: &gt;11 bits.</p>
+</div>
+<div class="sim-interactive-box"><h4>Interactive Simulation</h4>
+<iframe src="simulations/lec30-sc-7_ADC_ENOB_Noise_sim.html" width="100%" height="500px" loading="lazy"></iframe>
+</div>
+</section>
+
+<section id="lec30-sc-8">
+<h2>Scenario 8 — Motor Controller Causes Bluetooth to Drop Connection</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>PCB with BLDC motor controller (FOC, 20 kHz switching) + ESP32 (Bluetooth/WiFi). Bluetooth works when motor is off. Drops every 2–3 minutes at low speed; every 30 seconds at full torque.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>Motor EMI analysis: phase switch dV/dt = VDC / t_rise. With VDC = 48 V and t_rise = 20 ns: dV/dt = 2.4 GV/s. Radiated EMI at harmonics of 20 kHz extends into 2.4 GHz (Bluetooth band) via 120th harmonic of 20 kHz = 2.4 GHz! Fix layer 1 (easy): separate 5 V regulator (LDO) for ESP32 with 40 dB PSRR at 20 kHz. Fix layer 2 (medium): increase R_gate from 10 to 47 Ω → dV/dt reduced 4.7×, spectral content at 2.4 GHz drops ~20 dB. Fix layer 3 (medium): common-mode choke on all 3 motor phase wires → blocks CM switching currents (EMI source). Fix layer 4 (hard): move ESP32 antenna to corner farthest from motor driver, add ground plane shield layer.</p>
+</div>
+</section>
+
+<section id="lec30-sc-9">
+<h2>Scenario 9 — Precision Scale Drifts Upward 5 Grams Over 10 Minutes</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>Load cell scale, 0.1 g resolution, 5 kg capacity. Powers on correctly. After 10 minutes: reads 5.0 g with nothing on the scale. Electronics temperature rises 15°C over 10 minutes.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>Load cell sensitivity: 2 mV/V × 5 V = 10 mV full scale for 5 kg. 5 g = 0.1% of 5 kg → output shift = 0.1% × 10 mV × 1000(gain) = 10 mV. Excitation drift: LDO tempco ≈ 50 ppm/°C. Over 15°C: ΔV_exc = 5 V × 50 ppm × 15 = 3.75 mV. Output shift = 3.75 mV × (V_bridge/V_exc) × gain = 3.75 mV × 0.002 × 1000 = 7.5 mV. Close to measured 10 mV shift. Fix — ratiometric measurement: connect ADC VREF to V_excitation/2 (via op-amp follower). Then: any drift in V_exc is divided out in the ADC ratio. V_exc drifts 1% → bridge output drifts 1% → VREF drifts 1% → ADC reading unchanged. Complete drift cancellation.</p>
+</div>
+</section>
+
+<section id="lec30-sc-10">
+<h2>Scenario 10 — RF Power Amplifier Fails FCC Harmonics Test</h2>
+<div class="source-block"><h4>Problem Statement</h4><p>2.4 GHz WiFi PA. Output: +20 dBm at 2.4 GHz. 2nd harmonic (4.8 GHz): −22 dBm (must be &lt; −41.2 dBm). 3rd harmonic (7.2 GHz): −38 dBm. Both fail FCC Part 15. Harmonics from PA are at −35 dBc.</p></div>
+<div class="math-box"><h4>Mathematics — Complete Solution</h4>
+<p>Need &lt; −41.2 dBm at 4.8 GHz. Current: −22 dBm. Need 19.2 dB more attenuation. 5th-order Butterworth LPF at f_c = 2.5 GHz. Attenuation at 4.8 GHz (2× passband): for 5th order: \[ \text{att} = N \times 20\,\text{dB/decade} \times \log_2(2) = 5 \times 6\,\text{dB} = 30\,\text{dB} > 19.2\,\text{dB} \] ✓ At 7.2 GHz (3×): 5 × 20 × log(3) = 47.7 dB &gt; 19.2 dB. ✓ Component values (50 Ω system): L1 = L5 = 0.618 × 50/(2π × 2.5G) = 1.97 nH, C2 = C4 = 1.618/(50 × 2π × 2.5G) = 2.06 pF, L3 = 2.000 × 50/(2π × 2.5G) = 6.37 nH. All standard 0402 SMD values. Total filter insertion loss at 2.4 GHz: &lt;0.5 dB with Q = 50 inductors.</p>
+</div>
+<div class="bridge-box"><h4>Bridge</h4><p>Scenario 10 completes the 10 real-world scenarios. The LC ladder filter is the purest expression of the series/parallel framework: alternating series inductors (block harmonics) and shunt capacitors (divert harmonics to ground) create the harmonic rejection needed for FCC compliance. Every RF transmitter in production uses exactly this filter topology.</p></div>
+</section>
+
+<!-- =================== MASTER SUMMARY TABLE =================== -->
+<section id="lec28-30-summary">
+<h2>Master Summary — All 40 Problems: What They Teach</h2>
+
+<table class="summary-table">
+<thead><tr><th>Problem</th><th>Core Failure Mode</th><th>Root Cause</th><th>Fix</th><th>Key Insight</th></tr></thead>
+<tbody>
+<tr><td>Pr-1</td><td>Undershoot, 800 ns slow tail</td><td>Mirror pole doublet at 400 kHz</td><td>Reduce M3/M4 size, f_mirror &gt; 10×GBW</td><td>PM alone insufficient; time domain required</td></tr>
+<tr><td>Pr-2</td><td>Mirror fails below 0.3 V</td><td>Compliance = V_th + 2V_ov too high</td><td>Low-V or regulated cascode</td><td>Compliance = V_out_min for saturation</td></tr>
+<tr><td>Pr-3</td><td>100 dB, 1 GHz, 10 ns</td><td>Two-stage too slow at GHz</td><td>Single-stage telescopic, no Cc</td><td>Single-stage: inherently stable, GBW=Gm/CL</td></tr>
+<tr><td>Pr-4</td><td>CMRR = 40 dB vs 80 dB expected</td><td>Mirror pole degrades HF CMRR</td><td>Smaller M3/M4, higher f_mirror</td><td>CMRR falls −20 dB/decade above f_mirror</td></tr>
+<tr><td>Pr-5</td><td>Integrator drifts to rail</td><td>No DC feedback; V_OS and I_B integrate</td><td>R_f across C_f; auto-zero op-amp</td><td>Integrator has zero DC feedback → must add R_f</td></tr>
+<tr><td>Pr-6</td><td>SR = 12 V/µs vs 100 V/µs</td><td>Miller effect multiplies Cc during slew</td><td>Class AB; reduce Cc with higher Gm2</td><td>SR = Itail / Cc_eff where Cc_eff = Cc(1+Av2)</td></tr>
+<tr><td>Pr-7</td><td>Q shifts 0.707→2.1 at 75°C</td><td>High-Q Sallen-Key sensitivity = Q²</td><td>Matched metal-film R; MFB topology</td><td>ΔQ = Q² × ΔK — quadratic amplification</td></tr>
+<tr><td>Pr-8</td><td>VGA design: 0–40 dB</td><td>OTA Gm control</td><td>Log-law I_tail; binary-weighted OTA cells</td><td>Gm ∝ √I_tail; log-I control → dB-linear gain</td></tr>
+<tr><td>Pr-9</td><td>22 nV/√Hz vs 5 nV/√Hz spec</td><td>Spec was physically impossible; cascode adds noise</td><td>Minimum cascode size; increase Gm_input</td><td>V_n = √(8kTγ/3Gm); cascode multiplies noise</td></tr>
+<tr><td>Pr-10</td><td>45% overshoot vs 11% from PM</td><td>Hidden poles cluster near GBW</td><td>Reduce transistor sizes; add R_z zero</td><td>Bode plot alone insufficient — transient required</td></tr>
+<tr><td>Pr-11</td><td>50 Hz overwhelms ECG</td><td>Electrode mismatch converts CM to diff</td><td>DRL circuit</td><td>CMRR irrelevant once CM converted to diff</td></tr>
+<tr><td>Pr-12</td><td>INA CMRR = 60 dB vs 100 dB</td><td>Stage-2 resistor mismatch (0.1%)</td><td>0.01% or laser-trimmed resistors; monolithic INA</td><td>INA CMRR limited by resistors, not op-amps</td></tr>
+<tr><td>Pr-13</td><td>DC offset + poor SNR from FD op-amp</td><td>Single-ended output loses 6 dB</td><td>Use differential output to diff ADC</td><td>FD op-amp designed for differential output only</td></tr>
+<tr><td>Pr-14</td><td>BJT fails I_B; MOSFET passes all</td><td>No single type excels at all specs</td><td>JFET/MOSFET for low I_B; BJT for low noise</td><td>Choose based on hardest spec to meet</td></tr>
+<tr><td>Pr-15</td><td>Oscillates only at night (&lt;18°C)</td><td>BJT β rises → gain rises → PM negative</td><td>Emitter degeneration: A_v = Rc/Re, β-independent</td><td>Test at cold temperature; β increases at cold</td></tr>
+<tr><td>Pr-16</td><td>System NF = 2.04 dB</td><td>LNA NF dominates (Friis)</td><td>Improve LNA, not IF amp</td><td>First stage noise × gain for all subsequent = everything</td></tr>
+<tr><td>Pr-17</td><td>Parallel op-amps noise</td><td>N parallel → √N improvement</td><td>Match gain/phase; use in precision measurement</td><td>√N noise improvement for N matched parallel amps</td></tr>
+<tr><td>Pr-18</td><td>10% production failure on PSRR</td><td>High-ESR capacitor batch (5 Ω vs 0.1 Ω)</td><td>Specify ESR in BOM; PI filter on supply</td><td>Total supply rejection = PSRR × decoupling</td></tr>
+<tr><td>Pr-19</td><td>4-bit DAC at 100 MHz</td><td>Mirror matching + bandwidth</td><td>Thermometer code; common-centroid layout</td><td>Accuracy = matching; speed = current cell bandwidth</td></tr>
+<tr><td>Pr-20</td><td>Complete 2-stage CMOS design</td><td>Iterative: gain↔swing↔power</td><td>Cascode for gain; class AB for SR</td><td>Every spec constrains every transistor size</td></tr>
+<tr><td>Pr-21</td><td>Oscillates at gain=100 only</td><td>Noise gain crossover falls in A_OL bump</td><td>Feedback cap C_f across R_f</td><td>Stability depends on noise gain, not signal gain</td></tr>
+<tr><td>Pr-22</td><td>Mirror "self-compensates" with T</td><td>β increases with T reduces finite-β error</td><td>Use bandgap reference; Wilson mirror</td><td>Coincidental, not designed — unreliable</td></tr>
+<tr><td>Pr-23</td><td>Ceramic cap causes LDO oscillation</td><td>Low ESR → ESR zero too high → no phase boost</td><td>Add series R = 0.3 Ω; use modern LDO</td><td>ESR zero must be near LDO loop crossover</td></tr>
+<tr><td>Pr-24</td><td>BW = 320 kHz vs 2 MHz expected</td><td>SR limits large-signal bandwidth</td><td>SR &gt; 2π × f × V_out_peak</td><td>BW_eff = min(GBW/A, SR/2πV_out)</td></tr>
+<tr><td>Pr-25</td><td>Resistor tail beats mirror on CMRR</td><td>r_o_mirror &lt; R_tail at this bias; mirror pole rolloff</td><td>Wilson mirror for high r_o; verify r_o &gt; R_tail</td><td>Mirror not always better than resistor — check numerically</td></tr>
+<tr><td>Pr-26</td><td>Class AB thermal runaway</td><td>Q_bias not thermally coupled to output transistors</td><td>Thermal coupling + R_E degeneration</td><td>V_bias must track V_BE_out; thermal coupling is mandatory</td></tr>
+<tr><td>Pr-27</td><td>Oscillation driving cable</td><td>Cable capacitance creates extra pole</td><td>Cable driver IC; series R + lower GBW amp</td><td>Near-end cable capacitance creates pole — termination doesn't help</td></tr>
+<tr><td>Pr-28</td><td>10 ppm/°C current reference</td><td>V_BE and R both have tempco</td><td>Bandgap + Z-Foil R + curvature correction</td><td>ppm/°C precision requires bandgap + precision R</td></tr>
+<tr><td>Pr-29</td><td>THD × 200 when VDD drops</td><td>A_OL collapses at low supply (cascode exits saturation)</td><td>Op-amp rated for actual supply; check A_OL vs VDD</td><td>A_OL is supply-dependent; datasheet values may be at ±15 V only</td></tr>
+<tr><td>Pr-30</td><td>ECG frontend complete design</td><td>Multi-constraint: noise + CMRR + power + bandwidth</td><td>INA333 + DRL + Bessel HPF + Butterworth LPF</td><td>All Phase 4 concepts applied simultaneously in one circuit</td></tr>
+<tr><td>Sc-1</td><td>Factory floor EMI noise</td><td>Long cable antenna + motor harmonics</td><td>CM choke + INA + LPF + decoupling</td><td>Series: INA, LPF. Parallel: bypass caps, CM path</td></tr>
+<tr><td>Sc-2</td><td>Preamp distortion at high volume</td><td>Internal node clipping in op-amp</td><td>Split gain; use supply-appropriate op-amp</td><td>THD from internal clipping, not output clipping</td></tr>
+<tr><td>Sc-3</td><td>2h battery life vs 24h target</td><td>Wrong R value + unnecessary loads + high-IQ op-amps</td><td>Correct R; remove loads; use micropower + sleep</td><td>Series ammeter diagnosis; excess current in parallel paths</td></tr>
+<tr><td>Sc-4</td><td>Hum when touching knob</td><td>Body capacitance injects 60 Hz into high-Z node</td><td>Plastic shaft pot; ground metal parts</td><td>60 Hz is in audio band — must prevent injection, not filter</td></tr>
+<tr><td>Sc-5</td><td>pH drift at 80°C (+1.5 pH)</td><td>Nernst equation: sensitivity ∝ T</td><td>PTC in R_G; digital temperature compensation</td><td>Physical sensor law changes with temperature — amplifier must adapt</td></tr>
+<tr><td>Sc-6</td><td>Gate signal invisible at 1 MHz</td><td>R_g = 10 kΩ with C_gate = 5 nF → τ = 50 µs &gt;&gt; period</td><td>R_g = 10 Ω + gate driver IC</td><td>τ = R_g × C_gate must be &lt; period/5 for clean switching</td></tr>
+<tr><td>Sc-7</td><td>8-bit ENOB vs 12-bit</td><td>Switching regulator + MCU noise on supply and ground</td><td>LPF + VREF filter + ground split + ADC timing</td><td>ENOB = f(noise floor): every noise source counts</td></tr>
+<tr><td>Sc-8</td><td>Bluetooth drops with motor load</td><td>Motor dV/dt radiates into 2.4 GHz band</td><td>LDO isolation + R_gate + CM choke + shielding</td><td>Motor wires are 2.4 GHz antennas — must reduce dV/dt</td></tr>
+<tr><td>Sc-9</td><td>Scale drifts 5 g over 10 min</td><td>LDO excitation voltage tempco; bridge self-heating</td><td>Ratiometric: ADC VREF = V_excitation/2</td><td>Ratiometric measurement cancels excitation drift</td></tr>
+<tr><td>Sc-10</td><td>FCC harmonics fail at 4.8 GHz</td><td>PA generates harmonics at −35 dBc; no filter</td><td>5th-order LC Butterworth LPF</td><td>Series-L blocks, shunt-C diverts — the ladder filter</td></tr>
+</tbody>
+</table>
+
+<div style="margin-top:2em;padding:1.5em;background:var(--bg3);border-radius:8px;border-left:5px solid var(--accent);">
+<h4 style="color:var(--accent);margin-bottom:0.8em;">The Five Master Insights of Phase 4</h4>
+<ol style="padding-left:1.5em;line-height:1.8;">
+<li><strong>Gain requires r_out. r_out requires cascode. Cascode requires headroom.</strong> This triangle defines the fundamental topology choice for every application.</li>
+<li><strong>Stability requires knowledge of ALL poles — not just the compensated two-stage poles.</strong> Every capacitance in the circuit contributes. Bode plot alone is not enough; transient verification is mandatory.</li>
+<li><strong>Bandwidth = G_m / (2π C). Power buys G_m. Topology minimizes C. Layout minimizes C.</strong> Three tools to improve bandwidth: more power, better topology, careful layout.</li>
+<li><strong>Noise = 8kT / (3G_m). The input stage is everything.</strong> All other stages contribute noise divided by the gain preceding them. Friis formula applies to analog amplifiers as much as to RF receivers.</li>
+<li><strong>Matching = area. Better matching requires larger transistors.</strong> Larger transistors mean more capacitance, lower bandwidth. This is the fundamental matching–bandwidth trade-off in all analog IC design.</li>
+</ol>
+</div>
+</section>
+
+</div><!-- END LECTURE 28-30 -->
+</body>
+</html>

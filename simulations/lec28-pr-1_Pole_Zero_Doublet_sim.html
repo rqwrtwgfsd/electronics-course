@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec28 Pr1 — Pole-Zero Doublet Settling Simulation</title>
+<style>
+  body{margin:0;padding:10px;font-family:sans-serif;background:#1a1a2e;color:#e0e0e0;}
+  canvas{display:block;border:1px solid #444;border-radius:6px;background:#0f0f1e;}
+  .ctrl{margin:8px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  label{min-width:200px;font-size:0.85em;}
+  input[type=range]{flex:1;min-width:120px;}
+  .val{min-width:60px;font-size:0.85em;color:#7ec8e3;}
+  .result-box{background:#162032;border:1px solid #2a4a6a;border-radius:6px;padding:10px;margin-top:8px;font-size:0.85em;}
+  h3{color:#7ec8e3;margin:4px 0 10px;}
+</style>
+</head>
+<body>
+<h3>Problem 1 — Pole-Zero Doublet: Step Response &amp; Settling</h3>
+<canvas id="cv"></canvas>
+<div class="ctrl">
+  <label>Mirror pole freq f_p (kHz):</label>
+  <input type="range" id="fp" min="50" max="2000" value="400" step="10">
+  <span class="val" id="fp_v">400</span>
+</div>
+<div class="ctrl">
+  <label>Doublet separation ratio (p/z):</label>
+  <input type="range" id="ratio" min="1.05" max="5" value="2" step="0.05">
+  <span class="val" id="ratio_v">2.0</span>
+</div>
+<div class="ctrl">
+  <label>GBW (MHz):</label>
+  <input type="range" id="gbw" min="5" max="100" value="50" step="1">
+  <span class="val" id="gbw_v">50</span>
+</div>
+<div class="result-box" id="result">Results will appear here</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function resizeCanvas(){
+  const w = cv.parentElement.getBoundingClientRect().width - 20;
+  cv.width = Math.max(300, w);
+  cv.height = Math.round(cv.width * 0.45);
+}
+
+function getVals(){
+  const fp = parseFloat(document.getElementById('fp').value) * 1e3;
+  const ratio = parseFloat(document.getElementById('ratio').value);
+  const gbw = parseFloat(document.getElementById('gbw').value) * 1e6;
+  return {fp, fz: fp/ratio, ratio, gbw};
+}
+
+function updateLabels(){
+  const fp = parseFloat(document.getElementById('fp').value);
+  const ratio = parseFloat(document.getElementById('ratio').value);
+  const gbw = parseFloat(document.getElementById('gbw').value);
+  document.getElementById('fp_v').textContent = fp + ' kHz';
+  document.getElementById('ratio_v').textContent = ratio.toFixed(2);
+  document.getElementById('gbw_v').textContent = gbw + ' MHz';
+}
+
+function computeStep(fp, fz, gbw, tMax, nPts){
+  // Simplified model: main exp + doublet slow tail
+  // H(s) ≈ A * (1+s/wz) / ((1+s/wp)(1+s/w_gbw))
+  // Step response: main fast settling + doublet tail
+  const wz = 2*Math.PI*fz;
+  const wp = 2*Math.PI*fp;
+  const wgbw = 2*Math.PI*gbw;
+  const dt = tMax / nPts;
+  const out = [];
+  for(let i=0;i<=nPts;i++){
+    const t = i*dt;
+    // Main settling: exp decay governed by GBW
+    const main = 1 - Math.exp(-wgbw * t / (2*Math.PI));
+    // Doublet tail: amplitude proportional to (wp-wz)/wp, decays at |wp-wz|
+    const doubletAmp = (wp - wz)/(wp);
+    const doubletTail = doubletAmp * Math.exp(-(wp-wz)*t) * (t > 0 ? 1 : 0);
+    // Undershoot/slow recovery signature
+    const val = main - 0.05 * doubletTail * Math.cos(wz * t);
+    out.push({t, v: Math.min(1.05, Math.max(-0.1, val))});
+  }
+  return out;
+}
+
+function draw(){
+  const W = cv.width, H = cv.height;
+  ctx.clearRect(0,0,W,H);
+  const {fp, fz, ratio, gbw} = getVals();
+
+  // Axes
+  const mx=55, my=20, bx=W-20, by=H-35;
+  const pw = bx-mx, ph = by-my;
+
+  ctx.strokeStyle='#333'; ctx.lineWidth=1;
+  ctx.beginPath();
+  ctx.moveTo(mx,my); ctx.lineTo(mx,by); ctx.lineTo(bx,by);
+  ctx.stroke();
+
+  // Grid
+  ctx.strokeStyle='#252540'; ctx.lineWidth=0.5;
+  for(let i=0;i<=4;i++){
+    const y = my + i*ph/4;
+    ctx.beginPath(); ctx.moveTo(mx,y); ctx.lineTo(bx,y); ctx.stroke();
+    const val = 1 - i*0.25;
+    ctx.fillStyle='#888'; ctx.font='10px sans-serif';
+    ctx.fillText(val.toFixed(2), mx-42, y+4);
+  }
+
+  // Time axis labels
+  const tSettle = 1 / (Math.abs(fp - fz));
+  const tMax = Math.max(10 * tSettle, 5e-6);
+  const nPts = 400;
+
+  for(let i=0;i<=5;i++){
+    const x = mx + i*pw/5;
+    const t = tMax * i / 5;
+    ctx.strokeStyle='#252540'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(x,my); ctx.lineTo(x,by); ctx.stroke();
+    ctx.fillStyle='#888'; ctx.font='10px sans-serif';
+    const tLabel = t < 1e-6 ? (t*1e9).toFixed(0)+'ns' : t < 1e-3 ? (t*1e6).toFixed(1)+'µs' : (t*1e3).toFixed(2)+'ms';
+    ctx.fillText(tLabel, x-12, by+14);
+  }
+
+  // Step response
+  const data = computeStep(fp, fz, gbw, tMax, nPts);
+  ctx.strokeStyle='#4fc3f7'; ctx.lineWidth=2;
+  ctx.beginPath();
+  let first=true;
+  for(const d of data){
+    const x = mx + (d.t/tMax)*pw;
+    const y = by - (d.v/1.1)*ph;
+    if(first){ctx.moveTo(x,y); first=false;}
+    else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // 0.01% settling line
+  ctx.strokeStyle='#ff7043'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+  const y99 = by - (0.9999/1.1)*ph;
+  ctx.beginPath(); ctx.moveTo(mx,y99); ctx.lineTo(bx,y99); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#ff7043'; ctx.font='9px sans-serif';
+  ctx.fillText('99.99%', bx-42, y99-2);
+
+  // Label
+  ctx.fillStyle='#7ec8e3'; ctx.font='11px sans-serif';
+  ctx.fillText('Vout (normalized)', mx+10, my+14);
+  ctx.fillText('Time →', bx-50, by+28);
+
+  // Results
+  const doubletSep = Math.abs(fp-fz);
+  const tSlowTail = doubletSep > 0 ? 1/doubletSep : Infinity;
+  const tSlowTail_ns = tSlowTail * 1e9;
+  const gbwToDoublet = gbw / fp;
+  document.getElementById('result').innerHTML =
+    `<b>Doublet Analysis:</b><br>
+    Mirror pole: ${(fp/1e3).toFixed(0)} kHz | Zero: ${(fz/1e3).toFixed(1)} kHz<br>
+    Doublet separation |ω_p − ω_z| = 2π × ${(doubletSep/1e3).toFixed(1)} kHz<br>
+    Slow settling time constant τ_doublet = ${tSlowTail > 1e-3 ? (tSlowTail*1e3).toFixed(2)+'ms' : tSlowTail_ns.toFixed(0)+'ns'}<br>
+    GBW/f_mirror = ${gbwToDoublet.toFixed(0)}× ${gbwToDoublet>10?'✓ doublet above 10×GBW (invisible)':'⚠ doublet visible — slow settling tail'}<br>
+    <b>Fix:</b> Need f_mirror_pole > 10 × GBW = ${(gbw/1e3*10).toFixed(0)} kHz`;
+}
+
+['fp','ratio','gbw'].forEach(id=>{
+  document.getElementById(id).addEventListener('input', ()=>{updateLabels();draw();});
+});
+
+resizeCanvas(); updateLabels(); draw();
+window.addEventListener('resize', ()=>{resizeCanvas();draw();});
+</script>
+</body>
+</html>

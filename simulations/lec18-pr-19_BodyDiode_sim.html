@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec18 Pr19 — Body Diode Reverse Recovery</title>
+<style>
+  :root{--bg:#f8f8f8;--fg:#222;--accent:#4a90d9;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a2e;--fg:#e0e0e0;--accent:#7ab4f5;}}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:Arial,sans-serif;padding:10px;}
+  h3{margin:6px 0;color:var(--accent);}
+  canvas{border:1px solid #555;border-radius:4px;display:block;width:100%;}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;font-size:13px;}
+  input[type=range]{width:130px;accent-color:var(--accent);}
+  .vals{background:#0002;border-radius:4px;padding:8px;font-size:13px;margin:6px 0;}
+  .vals span{color:var(--accent);font-weight:bold;}
+</style>
+</head>
+<body>
+<h3>Problem 19 — Body Diode Reverse Recovery: Current Spike vs Solution</h3>
+<div class="controls">
+  <label>t_rr (ns): <input type="range" id="trr" min="5" max="300" value="150" step="5"> <b id="trrV">150</b></label>
+  <label>Dead time (ns): <input type="range" id="tdead" min="10" max="500" value="100" step="10"> <b id="tdeadV">100</b></label>
+  <label>I_L (A): <input type="range" id="IL" min="0.5" max="20" value="2" step="0.5"> <b id="ILV">2.0</b></label>
+  <label>V_in (V): <input type="range" id="Vin" min="5" max="100" value="48" step="1"> <b id="VinV">48</b></label>
+</div>
+<canvas id="cv"></canvas>
+<div class="vals" id="info"></div>
+<script>
+const cv=document.getElementById('cv');const ctx=cv.getContext('2d');
+function resizeCanvas(){const w=cv.parentElement.getBoundingClientRect().width||480;cv.width=Math.round(w);cv.height=Math.round(w*0.52);}
+function draw(){
+  resizeCanvas();
+  const W=cv.width,H=cv.height;
+  const trr=+document.getElementById('trr').value*1e-9;
+  const tdead=+document.getElementById('tdead').value*1e-9;
+  const IL=+document.getElementById('IL').value;
+  const Vin=+document.getElementById('Vin').value;
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  ctx.fillStyle=isDark?'#1a1a2e':'#f8f8f8';ctx.fillRect(0,0,W,H);
+  // Body diode conducts during dead time: if trr > tdead, recovery spike occurs
+  const rr_issue=trr>tdead;
+  const Irr_peak=rr_issue?IL*(trr/tdead-1)*0.5:0;
+  const tmax=600e-9;
+  const padL=65,padR=20,padT=35,padB=50;
+  const gW=W-padL-padR,gH=H-padT-padB;
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,padT);ctx.lineTo(padL,padT+gH);ctx.lineTo(padL+gW,padT+gH);ctx.stroke();
+  function xp(t){return padL+(t/tmax)*gW;}
+  const Ipeakmax=Math.max(IL*3,Irr_peak*1.5+1);
+  function yp(I){return padT+gH/2-(I/Ipeakmax)*gH/2;}
+  const Vmid=padT+gH/2;
+  ctx.strokeStyle='#3334';ctx.lineWidth=0.5;
+  for(let t=0;t<=tmax;t+=100e-9){ctx.beginPath();ctx.moveTo(xp(t),padT);ctx.lineTo(xp(t),padT+gH);ctx.stroke();}
+  for(let I=-Ipeakmax;I<=Ipeakmax;I+=Ipeakmax/4){ctx.beginPath();ctx.moveTo(padL,yp(I));ctx.lineTo(padL+gW,yp(I));ctx.stroke();}
+  const fg=isDark?'#aaa':'#555';ctx.fillStyle=fg;ctx.font='10px Arial';
+  for(let t=0;t<=tmax;t+=100e-9)ctx.fillText((t*1e9).toFixed(0)+'ns',xp(t)-10,padT+gH+13);
+  for(let I=-Ipeakmax;I<=Ipeakmax;I+=Ipeakmax/4)ctx.fillText(I.toFixed(1)+'A',padL-30,yp(I)+4);
+  ctx.beginPath();ctx.moveTo(padL,Vmid);ctx.lineTo(padL+gW,Vmid);ctx.strokeStyle='#555';ctx.lineWidth=0.5;ctx.stroke();
+  // Si body diode scenario
+  const t_off=50e-9;
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2.5;ctx.beginPath();let first=true;
+  for(let t=0;t<=tmax;t+=tmax/1000){
+    let I;
+    if(t<t_off) I=IL; // body diode conducting forward
+    else if(t<t_off+tdead){
+      // body diode reverse biased but still conducting (minority carriers)
+      I=IL*Math.exp(-(t-t_off)/(trr*0.5));
+      if(rr_issue&&t>t_off+tdead-10e-9) I=-Irr_peak*(1-Math.exp(-(t-(t_off+tdead-10e-9))/(5e-9)));
+    } else {
+      // Q_H turns on: reverse recovery spike
+      const t_rr_start=t_off+tdead;
+      const spike=rr_issue?-Irr_peak*Math.exp(-(t-t_rr_start)/(trr*0.5)):0;
+      I=spike+IL*(1-Math.exp(-(t-t_rr_start)/(20e-9)));
+    }
+    const clamped=Math.max(-Ipeakmax,Math.min(Ipeakmax,I));
+    if(first){ctx.moveTo(xp(t),yp(clamped));first=false;}else ctx.lineTo(xp(t),yp(clamped));
+  }ctx.stroke();
+  ctx.fillStyle='#e53935';ctx.font='10px Arial';ctx.fillText('Si body diode',padL+4,padT+gH*0.12);
+  // With Schottky bypass (no recovery)
+  ctx.strokeStyle='#43a047';ctx.lineWidth=2;ctx.setLineDash([4,3]);ctx.beginPath();first=true;
+  for(let t=0;t<=tmax;t+=tmax/1000){
+    let I;
+    if(t<t_off) I=IL;
+    else if(t<t_off+tdead) I=IL*Math.exp(-(t-t_off)/(5e-9));
+    else I=IL*(1-Math.exp(-(t-(t_off+tdead))/(20e-9)));
+    const clamped=Math.max(-Ipeakmax,Math.min(Ipeakmax,I));
+    if(first){ctx.moveTo(xp(t),yp(clamped));first=false;}else ctx.lineTo(xp(t),yp(clamped));
+  }ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#43a047';ctx.font='10px Arial';ctx.fillText('With Schottky (no recovery)',padL+4,padT+gH*0.20);
+  // Dead time annotation
+  ctx.strokeStyle='#ff9800';ctx.lineWidth=1;ctx.setLineDash([3,2]);
+  ctx.beginPath();ctx.moveTo(xp(t_off),padT+8);ctx.lineTo(xp(t_off+tdead),padT+8);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#ff9800';ctx.font='10px Arial';ctx.fillText('Dead t='+tdead*1e9+'ns',xp(t_off),padT+20);
+  if(rr_issue){
+    ctx.strokeStyle='#9c27b0';ctx.lineWidth=1;ctx.setLineDash([3,2]);
+    ctx.beginPath();ctx.moveTo(xp(t_off+tdead),padT+28);ctx.lineTo(xp(t_off+tdead+trr),padT+28);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#9c27b0';ctx.font='10px Arial';ctx.fillText('t_rr='+trr*1e9+'ns',xp(t_off+tdead),padT+40);
+  }
+  ctx.fillStyle=isDark?'#e0e0e0':'#222';ctx.font='bold 11px Arial';ctx.fillText('Body Diode Reverse Recovery — Current Waveform',padL+2,padT-8);
+  const Qrr=IL*trr/2;
+  const P_rr=Qrr*Vin*500e3; // at 500kHz
+  document.getElementById('info').innerHTML=
+    `t_rr=<span>${(trr*1e9).toFixed(0)}ns</span> vs dead time=<span>${(tdead*1e9).toFixed(0)}ns</span> | `+
+    (rr_issue?`<span style="color:#e05">t_rr > t_dead → Recovery spike = ${Irr_peak.toFixed(1)}A</span>`:`<span style="color:#43a047">t_rr < t_dead → No spike</span>`)+
+    `<br>Q_rr≈<span>${(Qrr*1e9).toFixed(0)}nC</span> | P_recovery@500kHz≈<span>${(P_rr*1000).toFixed(0)}mW</span> | Fix: Schottky bypass or GaN FET`;
+}
+['trr','tdead','IL','Vin'].forEach(id=>{
+  const el=document.getElementById(id);const vl=document.getElementById(id+'V');
+  el.addEventListener('input',()=>{vl.textContent=id==='IL'?parseFloat(el.value).toFixed(1):el.value;draw();});
+});
+window.addEventListener('resize',draw);resizeCanvas();draw();
+</script>
+</body></html>

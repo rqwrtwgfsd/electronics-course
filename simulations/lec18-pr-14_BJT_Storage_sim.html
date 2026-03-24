@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec18 Pr14 — BJT Storage Time</title>
+<style>
+  :root{--bg:#f8f8f8;--fg:#222;--accent:#4a90d9;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a2e;--fg:#e0e0e0;--accent:#7ab4f5;}}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:Arial,sans-serif;padding:10px;}
+  h3{margin:6px 0;color:var(--accent);}
+  canvas{border:1px solid #555;border-radius:4px;display:block;width:100%;}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;font-size:13px;}
+  input[type=range]{width:130px;accent-color:var(--accent);}
+  .vals{background:#0002;border-radius:4px;padding:8px;font-size:13px;margin:6px 0;}
+  .vals span{color:var(--accent);font-weight:bold;}
+</style>
+</head>
+<body>
+<h3>Problem 14 — BJT Switch: Rise &amp; Fall Time with Saturation</h3>
+<div class="controls">
+  <label>I_C (mA): <input type="range" id="IC" min="1" max="50" value="10" step="1"> <b id="ICV">10</b></label>
+  <label>I_B (mA): <input type="range" id="IB" min="0.05" max="5" value="0.5" step="0.05"> <b id="IBV">0.50</b></label>
+  <label>β: <input type="range" id="beta" min="20" max="300" value="100" step="5"> <b id="betaV">100</b></label>
+  <label>τ_F (ns): <input type="range" id="tauF" min="0.1" max="20" value="1" step="0.1"> <b id="tauFV">1.0</b></label>
+</div>
+<canvas id="cv"></canvas>
+<div class="vals" id="info"></div>
+<script>
+const cv=document.getElementById('cv');const ctx=cv.getContext('2d');
+function resizeCanvas(){const w=cv.parentElement.getBoundingClientRect().width||480;cv.width=Math.round(w);cv.height=Math.round(w*0.52);}
+function draw(){
+  resizeCanvas();
+  const W=cv.width,H=cv.height;
+  const IC_mA=+document.getElementById('IC').value;
+  const IB_mA=+document.getElementById('IB').value;
+  const beta=+document.getElementById('beta').value;
+  const tauF_ns=+document.getElementById('tauF').value;
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  ctx.fillStyle=isDark?'#1a1a2e':'#f8f8f8';ctx.fillRect(0,0,W,H);
+  const IC=IC_mA*1e-3,IB=IB_mA*1e-3,tauF=tauF_ns*1e-9;
+  const IBmin=IC/beta; // minimum IB for active region
+  const saturated=IB>IBmin;
+  // Storage time
+  const overdrive=IB/IBmin;
+  const ts=saturated?beta*tauF*Math.log(1+IB/IB):0;
+  const ts_approx=beta*tauF*Math.log(overdrive)*0.8;
+  // Fall time: tf ~ tauF * 2.2 / (1 - IBmin/IB)
+  const tf_base=tauF*2.2;
+  const tr=tauF*2.2; // rise time ~ 5*tauF * RC negligible
+  // Create waveform
+  const total_t=Math.max((ts_approx+tf_base)*8, tr*10);
+  const padL=50,padR=20,padT=35,padB=50;
+  const gW=W-padL-padR,gH=H-padT-padB;
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,padT);ctx.lineTo(padL,padT+gH);ctx.lineTo(padL+gW,padT+gH);ctx.stroke();
+  function xp(t){return padL+(t/total_t)*gW;}
+  function yp(v){return padT+gH-(v)*gH;}
+  ctx.strokeStyle='#3334';ctx.lineWidth=0.5;
+  const Vmid=padT+gH/2;
+  ctx.beginPath();ctx.moveTo(padL,Vmid);ctx.lineTo(padL+gW,Vmid);ctx.stroke();
+  // Gate pulse (base current pulse)
+  const t_on=total_t*0.1, t_off=total_t*0.55;
+  ctx.strokeStyle='#43a047';ctx.lineWidth=1.5;ctx.beginPath();
+  ctx.moveTo(xp(0),padT+gH*0.85);ctx.lineTo(xp(t_on),padT+gH*0.85);
+  ctx.lineTo(xp(t_on),padT+gH*0.15);ctx.lineTo(xp(t_off),padT+gH*0.15);
+  ctx.lineTo(xp(t_off),padT+gH*0.85);ctx.lineTo(xp(total_t),padT+gH*0.85);
+  ctx.stroke();
+  ctx.fillStyle='#43a047';ctx.font='10px Arial';ctx.fillText('V_B (gate)',padL+2,padT+gH*0.10+10);
+  // Collector current response
+  const t_rise_end=t_on+tr;
+  const t_fall_start=t_off+ts_approx;
+  const t_fall_end=t_fall_start+tf_base;
+  ctx.strokeStyle='#4a90d9';ctx.lineWidth=2.5;ctx.beginPath();
+  ctx.moveTo(xp(0),padT+gH*0.95);
+  // Rise
+  for(let t=t_on;t<=t_rise_end;t+=total_t/500){
+    const tau_r=tr/2.2;const frac=1-Math.exp(-(t-t_on)/tau_r);
+    ctx.lineTo(xp(t),padT+gH*(0.95-0.8*frac));
+  }
+  ctx.lineTo(xp(t_off),padT+gH*0.15);
+  // Storage + fall
+  ctx.lineTo(xp(t_fall_start),padT+gH*0.15);
+  for(let t=t_fall_start;t<=t_fall_end;t+=total_t/500){
+    const tau_f=tf_base/2.2;const frac=Math.exp(-(t-t_fall_start)/tau_f);
+    ctx.lineTo(xp(t),padT+gH*(0.15+0.8*(1-frac)));
+  }
+  ctx.lineTo(xp(total_t),padT+gH*0.95);
+  ctx.stroke();
+  ctx.fillStyle='#4a90d9';ctx.font='10px Arial';ctx.fillText('I_C',padL+gW*0.35,padT+gH*0.12);
+  // Storage time annotation
+  if(saturated){
+    ctx.strokeStyle='#e53935';ctx.lineWidth=1.5;ctx.setLineDash([3,2]);
+    ctx.beginPath();ctx.moveTo(xp(t_off),padT+gH*0.05);ctx.lineTo(xp(t_fall_start),padT+gH*0.05);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#e53935';ctx.font='10px Arial';ctx.fillText('t_storage',xp((t_off+t_fall_start)/2)-15,padT+gH*0.04);
+  }
+  // Rise/fall annotations
+  ctx.strokeStyle='#ff9800';ctx.lineWidth=1.5;ctx.setLineDash([3,2]);
+  ctx.beginPath();ctx.moveTo(xp(t_on),padT+gH+8);ctx.lineTo(xp(t_rise_end),padT+gH+8);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#ff9800';ctx.font='9px Arial';ctx.fillText('t_r='+(tr*1e9).toFixed(0)+'ns',xp(t_on),padT+gH+20);
+  ctx.beginPath();ctx.moveTo(xp(t_fall_start),padT+gH+8);ctx.lineTo(xp(t_fall_end),padT+gH+8);ctx.stroke();
+  ctx.fillText('t_f='+(tf_base*1e9).toFixed(0)+'ns',xp(t_fall_start),padT+gH+20);
+  ctx.fillStyle=isDark?'#e0e0e0':'#222';ctx.font='bold 11px Arial';ctx.fillText('BJT Switch — Waveform with Saturation Storage Time',padL+2,padT-8);
+  document.getElementById('info').innerHTML=
+    `I_B/I_B_min = <span>${overdrive.toFixed(1)}×</span> ${saturated?'(saturated)':'(active — no storage)'} | `+
+    `t_storage ≈ <span>${(ts_approx*1e9).toFixed(0)} ns</span> | t_rise = <span>${(tr*1e9).toFixed(0)} ns</span> | t_fall = <span>${(tf_base*1e9).toFixed(0)} ns</span><br>`+
+    `Asymmetry = t_storage/t_rise = <span>${(ts_approx/tr).toFixed(0)}×</span> | Fix: Baker clamp (BAT54 B-C) or speed-up cap`;
+}
+['IC','IB','beta','tauF'].forEach(id=>{
+  const el=document.getElementById(id);const vl=document.getElementById(id+'V');
+  el.addEventListener('input',()=>{vl.textContent=id==='IB'||id==='tauF'?parseFloat(el.value).toFixed(2):el.value;draw();});
+});
+window.addEventListener('resize',draw);resizeCanvas();draw();
+</script>
+</body></html>

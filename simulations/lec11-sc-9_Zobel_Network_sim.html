@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zobel Network — Speaker Impedance</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}
+  h1{font-size:18px;margin:4px 0}
+  .layout{display:grid;grid-template-columns:1fr 260px;gap:16px}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}
+  .ctrl-group{margin-bottom:12px}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}
+  .result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}
+  @media(max-width:600px){.layout{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 11 | Scenario 9</div>
+  <h1>Zobel Network: Speaker Impedance Flattening</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Speaker R (Ω) <span class="ctrl-value" id="lbl-rs">8 Ω</span></div>
+      <input type="range" id="sl-rs" min="4" max="16" value="8" step="0.5">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Speaker L (mH) <span class="ctrl-value" id="lbl-ls">1.0 mH</span></div>
+      <input type="range" id="sl-ls" min="0.1" max="5" value="1" step="0.1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Zobel C (µF) <span class="ctrl-value" id="lbl-zc">1.0 µF</span></div>
+      <input type="range" id="sl-zc" min="0.1" max="10" value="1" step="0.1">
+    </div>
+    <div class="result-box" id="result">Adjust to flatten speaker impedance</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slRs=document.getElementById('sl-rs'),slLs=document.getElementById('sl-ls'),slZc=document.getElementById('sl-zc');
+const lblRs=document.getElementById('lbl-rs'),lblLs=document.getElementById('lbl-ls'),lblZc=document.getElementById('lbl-zc');
+const result=document.getElementById('result');
+
+function draw(){
+  const W=cv.width,H=cv.height;
+  const Rs=parseFloat(slRs.value);
+  const Ls=parseFloat(slLs.value)*1e-3;
+  const Cz=parseFloat(slZc.value)*1e-6;
+  const Rz=Rs; // Zobel R = speaker nominal impedance
+  lblRs.textContent=parseFloat(slRs.value).toFixed(1)+' Ω';
+  lblLs.textContent=parseFloat(slLs.value).toFixed(1)+' mH';
+  lblZc.textContent=parseFloat(slZc.value).toFixed(1)+' µF';
+  ctx.clearRect(0,0,W,H);
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  const fMin=20,fMax=20000;
+  // Speaker impedance without Zobel: Zspk(f) = sqrt(Rs^2 + (2pi*f*Ls)^2)
+  function Zspk(f){return Math.sqrt(Rs*Rs+Math.pow(2*Math.PI*f*Ls,2))}
+  // Zobel branch impedance: Rz + 1/(j*2pi*f*Cz) → |Zz|=sqrt(Rz^2+(1/(2pi*f*Cz))^2)
+  function Ztotal(f){
+    const w=2*Math.PI*f;
+    // Speaker: Rs + j*w*Ls
+    const ZspkRe=Rs,ZspkIm=w*Ls;
+    // Zobel: Rz + 1/(j*w*Cz) = Rz - j/(w*Cz)
+    const ZzRe=Rz,ZzIm=-1/(w*Cz);
+    // Parallel: 1/Z = 1/Zspk + 1/Zz
+    const dSpk=ZspkRe*ZspkRe+ZspkIm*ZspkIm;
+    const dZz=ZzRe*ZzRe+ZzIm*ZzIm;
+    const reSum=ZspkRe/dSpk+ZzRe/dZz;
+    const imSum=-ZspkIm/dSpk-ZzIm/dZz;
+    const dSum=reSum*reSum+imSum*imSum;
+    if(dSum===0)return Zspk(f);
+    return 1/Math.sqrt(dSum);
+  }
+  const yMin=0,yMax=Math.max(Zspk(20000)*1.2,20);
+  function yPx(z){return pad+plotH*(1-(z-yMin)/(yMax-yMin))}
+  function xPx(f){return pad+plotW*(Math.log10(f)-Math.log10(fMin))/(Math.log10(fMax)-Math.log10(fMin))}
+  // Grid
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  for(let z=0;z<=yMax;z+=4){ctx.beginPath();ctx.moveTo(pad,yPx(z));ctx.lineTo(W-pad,yPx(z));ctx.stroke()}
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  // Nominal impedance line
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,yPx(Rs));ctx.lineTo(W-pad,yPx(Rs));ctx.stroke();
+  ctx.fillStyle='#888';ctx.font='10px system-ui';ctx.textAlign='left';
+  ctx.fillText('Nominal '+Rs+'Ω',pad+4,yPx(Rs)-4);
+  ctx.setLineDash([]);
+  // Speaker without Zobel
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const logF=Math.log10(fMin)+(px/plotW)*(Math.log10(fMax)-Math.log10(fMin));
+    const f=Math.pow(10,logF);
+    const z=Math.min(yMax,Zspk(f));
+    px===0?ctx.moveTo(pad+px,yPx(z)):ctx.lineTo(pad+px,yPx(z));
+  }ctx.stroke();
+  // With Zobel
+  ctx.strokeStyle='#2e7d32';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const logF=Math.log10(fMin)+(px/plotW)*(Math.log10(fMax)-Math.log10(fMin));
+    const f=Math.pow(10,logF);
+    const z=Math.min(yMax,Ztotal(f));
+    px===0?ctx.moveTo(pad+px,yPx(z)):ctx.lineTo(pad+px,yPx(z));
+  }ctx.stroke();
+  // Labels
+  ctx.fillStyle='#888';ctx.textAlign='right';ctx.font='10px system-ui';
+  [0,4,8,12,16,20].filter(v=>v<=yMax).forEach(v=>ctx.fillText(v+'Ω',pad-4,yPx(v)+3));
+  ctx.textAlign='center';
+  ['20Hz','100Hz','1kHz','10kHz','20kHz'].forEach(lbl=>{
+    const f=parseFloat(lbl);ctx.fillText(lbl,xPx(f),H-pad+14);
+  });
+  ctx.textAlign='left';ctx.font='11px system-ui';
+  ctx.fillStyle='#e53935';ctx.fillText('Speaker alone (rising at HF)',pad+8,pad+16);
+  ctx.fillStyle='#2e7d32';ctx.fillText('With Zobel (flattened)',pad+8,pad+30);
+  const z20k=Zspk(20000),zt20k=Ztotal(20000);
+  result.innerHTML='<b>At 20kHz:</b><br>Speaker alone: <b>'+z20k.toFixed(1)+'Ω</b><br>With Zobel: <b>'+zt20k.toFixed(1)+'Ω</b><br>Flatten factor: <b>'+( z20k/zt20k).toFixed(1)+'×</b><br>Optimal C = L/R² = '+(Ls/(Rs*Rs)*1e6).toFixed(2)+'µF';
+}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slRs,slLs,slZc].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});
+resizeCanvas();draw();
+</script>
+</body>
+</html>

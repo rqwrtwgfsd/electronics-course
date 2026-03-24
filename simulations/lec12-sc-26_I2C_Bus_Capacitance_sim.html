@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>I2C Bus Capacitance</title>
+<style>:root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}@media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}.module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}h1{font-size:18px;margin:4px 0}.layout{display:grid;grid-template-columns:1fr 260px;gap:16px}canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}.controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}.ctrl-group{margin-bottom:12px}.ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}.ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}.result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}@media(max-width:600px){.layout{grid-template-columns:1fr}}</style>
+</head>
+<body>
+<header><div class="module-id">Lecture 12 | Scenario 26</div><h1>I2C Bus: Pull-up R vs Bus Capacitance Rise Time</h1></header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group"><div class="ctrl-label">Pull-up R (kΩ) <span class="ctrl-value" id="lbl-r">4.7 kΩ</span></div><input type="range" id="sl-r" min="0.5" max="10" value="4.7" step="0.1"></div>
+    <div class="ctrl-group"><div class="ctrl-label">Devices (count) <span class="ctrl-value" id="lbl-n">4</span></div><input type="range" id="sl-n" min="1" max="8" value="4" step="1"></div>
+    <div class="ctrl-group"><div class="ctrl-label">I2C Speed (kHz) <span class="ctrl-value" id="lbl-f">400 kHz</span></div><input type="range" id="sl-f" min="100" max="400" value="400" step="100"></div>
+    <div class="result-box" id="result">Adjust to check I2C signal integrity</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slR=document.getElementById('sl-r'),slN=document.getElementById('sl-n'),slF=document.getElementById('sl-f');
+const lblR=document.getElementById('lbl-r'),lblN=document.getElementById('lbl-n'),lblF=document.getElementById('lbl-f');
+const result=document.getElementById('result');
+function draw(){
+  const W=cv.width,H=cv.height;
+  const Rpu=parseFloat(slR.value)*1e3;const N=parseInt(slN.value);const fi2c=parseFloat(slF.value)*1e3;
+  lblR.textContent=parseFloat(slR.value).toFixed(1)+' kΩ';lblN.textContent=N;lblF.textContent=slF.value+' kHz';
+  ctx.clearRect(0,0,W,H);
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  // Bus capacitance: 10pF per device + 20pF trace
+  const Cbus=(N*10+20)*1e-12;
+  const tau=Rpu*Cbus;
+  const t_rise=2.2*tau; // 10%-90% rise time
+  const bitPeriod=1/fi2c;
+  const i2cSpec_rise=fi2c===400e3?300e-9:1e-6; // fast=300ns, std=1µs
+  const VCC=3.3;const VIH=0.7*VCC,VIL=0.3*VCC;
+  const tTotal=2.5*bitPeriod;
+  const vMin=0,vMax=VCC;
+  function yPx(v){return pad+plotH*(1-(v-vMin)/(vMax-vMin))}
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  [0,VIL,VCC*0.5,VIH,VCC].forEach(v=>{ctx.beginPath();ctx.moveTo(pad,yPx(v));ctx.lineTo(W-pad,yPx(v));ctx.stroke()});
+  ctx.strokeStyle='#888';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  // Threshold lines
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#f57c00';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,yPx(VIH));ctx.lineTo(W-pad,yPx(VIH));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(pad,yPx(VIL));ctx.lineTo(W-pad,yPx(VIL));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#f57c00';ctx.font='10px system-ui';ctx.textAlign='left';
+  ctx.fillText('V_IH '+VIH.toFixed(2)+'V',W-pad-80,yPx(VIH)-4);ctx.fillText('V_IL '+VIL.toFixed(2)+'V',W-pad-80,yPx(VIL)+12);
+  // I2C waveform: show open-drain pull-up behavior
+  // Bit pattern: 1,0,1 (SDA going high after low)
+  const t_low=bitPeriod*0.5;const t_high_start=bitPeriod;
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2;ctx.beginPath();
+  let vCap=VCC;
+  const dt=tTotal/plotW;
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    let vIn;
+    if(t<t_low)vIn=VCC; // HIGH (pull-up charging)
+    else if(t<t_high_start)vIn=0; // LOW (device pulls down)
+    else vIn=VCC; // HIGH (pull-up again)
+    vCap+=(vIn-vCap)*dt/tau;
+    vCap=Math.max(0,Math.min(VCC,vCap));
+    px===0?ctx.moveTo(pad+px,yPx(vCap)):ctx.lineTo(pad+px,yPx(vCap));
+  }ctx.stroke();
+  // Rise time annotation
+  const xTrans=pad+(t_high_start/tTotal)*plotW;
+  const xRise=pad+((t_high_start+t_rise)/tTotal)*plotW;
+  ctx.strokeStyle='#e53935';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(xTrans,yPx(VIL));ctx.lineTo(xRise,yPx(VIL));ctx.stroke();
+  ctx.fillStyle='#e53935';ctx.font='10px system-ui';ctx.textAlign='center';
+  ctx.fillText('t_rise='+(t_rise*1e6).toFixed(1)+'µs',( xTrans+xRise)/2,yPx(VIL)+14);
+  ctx.fillStyle='#888';ctx.textAlign='right';ctx.font='10px system-ui';
+  [0,VIL,VIH,VCC].forEach(v=>ctx.fillText(v.toFixed(2)+'V',pad-4,yPx(v)+3));
+  const ticks=(fi2c===400?300:1000);const ok=t_rise*1e9<ticks;
+  result.innerHTML='<b>Bus C = '+N+' devices × 10pF + 20pF = '+(Cbus*1e12).toFixed(0)+'pF</b><br>τ = R × C = '+(tau*1e6).toFixed(2)+'µs<br>Rise time (2.2τ) = <b>'+(t_rise*1e9).toFixed(0)+'ns</b><br>I2C spec ('+slF.value+'kHz): max <b>'+ticks+'ns</b><br>Status: <b>'+(ok?'✅ OK':'⚠️ Too slow! Reduce R_pullup')+'</b><br><b>Formula: R = t_rise / (0.847 × C_bus)</b>';
+}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slR,slN,slF].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});resizeCanvas();draw();
+</script>
+</body>
+</html>

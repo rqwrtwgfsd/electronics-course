@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sim: Series RLC Bandpass Filter</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Arial,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:12px;}
+canvas{display:block;border:1px solid #444;border-radius:6px;background:#0d0d1a;}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0;}
+.ctrl{display:flex;flex-direction:column;gap:3px;font-size:12px;}
+label{color:#aaa;}
+input[type=range]{width:140px;}
+.vals{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#ccc;margin:6px 0;}
+.val-item{background:#222;border-radius:4px;padding:4px 8px;}
+h3{font-size:13px;color:#90caf9;margin-bottom:6px;}
+@media(prefers-color-scheme:light){body{background:#f5f5f5;color:#111;}canvas{background:#fff;border-color:#ccc;}.val-item{background:#eee;color:#222;}label{color:#555;}h3{color:#005a9c;}}
+</style>
+</head>
+<body>
+<h3>Problem 7 — Series RLC Bandpass Filter Response</h3>
+<p style="font-size:11px;color:#aaa;margin-bottom:8px;">Adjust L, C, R to tune center frequency and Q. Red lines show -20dB rejection target at 500Hz and 2kHz.</p>
+<canvas id="cv"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>L (mH)</label><input type="range" id="L" min="1" max="200" value="100" step="1"><span id="LV">100</span></div>
+  <div class="ctrl"><label>C (nF)</label><input type="range" id="C" min="10" max="2000" value="253" step="1"><span id="CV">253</span></div>
+  <div class="ctrl"><label>R_total (Ohm)</label><input type="range" id="R" min="1" max="500" value="95" step="1"><span id="RV">95</span></div>
+  <div class="ctrl"><label>R_load (kOhm)</label><input type="range" id="Rl" min="1" max="100" value="10" step="1"><span id="RlV">10</span></div>
+</div>
+<div class="vals">
+  <div class="val-item">f0: <strong id="f0v">-</strong></div>
+  <div class="val-item">Q: <strong id="Qv">-</strong></div>
+  <div class="val-item">BW (-3dB): <strong id="bwv">-</strong></div>
+  <div class="val-item">Atten at 500Hz: <strong id="a500">-</strong></div>
+  <div class="val-item">Atten at 2kHz: <strong id="a2k">-</strong></div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+function resizeCanvas(){
+  const w=cv.parentElement.getBoundingClientRect().width;
+  cv.width=Math.min(w-24,700);
+  cv.height=Math.round(cv.width*0.48);
+}
+function get(id){return parseFloat(document.getElementById(id).value);}
+function draw(){
+  const W=cv.width,H=cv.height;
+  const L=get('L')*1e-3,C=get('C')*1e-9,R=get('R'),Rl=get('Rl')*1e3;
+  document.getElementById('LV').textContent=get('L');
+  document.getElementById('CV').textContent=get('C');
+  document.getElementById('RV').textContent=get('R');
+  document.getElementById('RlV').textContent=get('Rl');
+  const f0=1/(2*Math.PI*Math.sqrt(L*C));
+  const Q=2*Math.PI*f0*L/R;
+  const BW=f0/Q;
+  function H_mag(f){
+    const w=2*Math.PI*f;
+    const ZL=w*L,ZC=1/(w*C);
+    const Z_series_imag=ZL-ZC;
+    // Series RLC, output across R_load (at resonance, Z_L+Z_C=0, only R)
+    const Z_total_re=R,Z_total_im=Z_series_imag;
+    const Z_total_mag=Math.sqrt(Z_total_re*Z_total_re+Z_total_im*Z_total_im);
+    // Transfer function: V_Rl / V_in = Rl / (Rl + Z_series)
+    const Zs=Math.sqrt(R*R+Z_series_imag*Z_series_imag);
+    return Rl/Math.sqrt((Rl+R)*(Rl+R)+Z_series_imag*Z_series_imag);
+  }
+  const H500=H_mag(500),H2k=H_mag(2000);
+  document.getElementById('f0v').textContent=f0>=1000?(f0/1000).toFixed(2)+'kHz':f0.toFixed(0)+'Hz';
+  document.getElementById('Qv').textContent=Q.toFixed(2);
+  document.getElementById('bwv').textContent=BW>=1000?(BW/1000).toFixed(1)+'kHz':BW.toFixed(0)+'Hz';
+  document.getElementById('a500').textContent=(20*Math.log10(H500)).toFixed(1)+'dB';
+  document.getElementById('a2k').textContent=(20*Math.log10(H2k)).toFixed(1)+'dB';
+  ctx.clearRect(0,0,W,H);
+  const pad={l:52,r:20,t:28,b:40};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const f_min=100,f_max=100e3;
+  function fx(f){return pad.l+Math.log10(f/f_min)/Math.log10(f_max/f_min)*pw;}
+  function fy(db){const dbmin=-60,dbmax=5;return pad.t+ph*(1-(db-dbmin)/(dbmax-dbmin));}
+  ctx.strokeStyle='#1e2a3a';ctx.lineWidth=0.5;
+  [-60,-40,-20,-3,0].forEach(db=>{
+    ctx.beginPath();ctx.moveTo(pad.l,fy(db));ctx.lineTo(W-pad.r,fy(db));ctx.stroke();
+    ctx.fillStyle='#555';ctx.font='10px Arial';ctx.fillText(db,2,fy(db)+4);
+  });
+  [200,500,1e3,2e3,5e3,10e3,50e3].forEach(f=>{
+    ctx.beginPath();ctx.moveTo(fx(f),pad.t);ctx.lineTo(fx(f),H-pad.b);ctx.stroke();
+    ctx.fillStyle='#555';ctx.font='10px Arial';
+    const lbl=f>=1000?(f/1000)+'k':f;
+    ctx.fillText(lbl,fx(f)-8,H-pad.b+14);
+  });
+  // -20dB target line
+  ctx.strokeStyle='#ff4444';ctx.lineWidth=0.8;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,fy(-20));ctx.lineTo(W-pad.r,fy(-20));ctx.stroke();
+  ctx.fillStyle='#ff6666';ctx.font='9px Arial';ctx.fillText('-20dB target',pad.l+3,fy(-20)-4);
+  // 500Hz and 2kHz markers
+  ctx.strokeStyle='#ffaa33';ctx.lineWidth=0.8;
+  [500,2000].forEach(f=>{
+    ctx.beginPath();ctx.moveTo(fx(f),pad.t);ctx.lineTo(fx(f),H-pad.b);ctx.stroke();
+  });
+  ctx.setLineDash([]);
+  // Filter response
+  ctx.beginPath();ctx.strokeStyle='#55aaff';ctx.lineWidth=2.5;
+  for(let i=0;i<=500;i++){
+    const f=f_min*Math.pow(f_max/f_min,i/500);
+    const H=H_mag(f);
+    const db=20*Math.log10(Math.max(H,1e-8));
+    if(i===0)ctx.moveTo(fx(f),fy(db));else ctx.lineTo(fx(f),fy(db));
+  }
+  ctx.stroke();
+  // f0 marker
+  ctx.strokeStyle='#55ffaa';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(fx(f0),pad.t);ctx.lineTo(fx(f0),H-pad.b);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#55ffaa';ctx.font='10px Arial';ctx.fillText('f0='+Math.round(f0)+'Hz',fx(f0)+3,pad.t+14);
+  ctx.strokeStyle='#666';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,H-pad.b);ctx.lineTo(W-pad.r,H-pad.b);ctx.stroke();
+  ctx.fillStyle='#aaa';ctx.font='10px Arial';ctx.fillText('Frequency (Hz)',W/2-30,H-5);
+  ctx.fillStyle='#90caf9';ctx.font='bold 11px Arial';
+  ctx.fillText('L='+get('L')+'mH  C='+get('C')+'nF  R='+get('R')+'O  Q='+Q.toFixed(1),pad.l+5,pad.t-8);
+  // Atten dots at 500Hz and 2kHz
+  [500,2000].forEach(f=>{
+    const Hf=H_mag(f);
+    const db=20*Math.log10(Math.max(Hf,1e-8));
+    ctx.beginPath();ctx.arc(fx(f),fy(db),4,0,2*Math.PI);
+    ctx.fillStyle=db<=-20?'#55ff88':'#ff5555';ctx.fill();
+  });
+}
+['L','C','R','Rl'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>{resizeCanvas();draw();});
+resizeCanvas();draw();
+</script>
+</body>
+</html>

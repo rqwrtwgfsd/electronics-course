@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec18 Pr9 — Gate Driver Frequency Limit</title>
+<style>
+  :root{--bg:#f8f8f8;--fg:#222;--accent:#4a90d9;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a2e;--fg:#e0e0e0;--accent:#7ab4f5;}}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:Arial,sans-serif;padding:10px;}
+  h3{margin:6px 0;color:var(--accent);}
+  canvas{border:1px solid #555;border-radius:4px;display:block;width:100%;}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;font-size:13px;}
+  input[type=range]{width:130px;accent-color:var(--accent);}
+  .vals{background:#0002;border-radius:4px;padding:8px;font-size:13px;margin:6px 0;}
+  .vals span{color:var(--accent);font-weight:bold;}
+  .warn{color:#e05;font-weight:bold;}
+</style>
+</head>
+<body>
+<h3>Problem 9 — Gate Driver: V_GS Achieved vs Switching Frequency</h3>
+<div class="controls">
+  <label>Q_g (nC): <input type="range" id="Qg" min="1" max="200" value="121" step="1"> <b id="QgV">121</b></label>
+  <label>C_iss (nF): <input type="range" id="Ciss" min="0.5" max="20" value="8.1" step="0.1"> <b id="CissV">8.1</b></label>
+  <label>R_g (Ω): <input type="range" id="Rg" min="0.5" max="20" value="2" step="0.5"> <b id="RgV">2</b></label>
+  <label>t_pd (ns): <input type="range" id="tpd" min="5" max="100" value="55" step="5"> <b id="tpdV">55</b></label>
+</div>
+<canvas id="cv"></canvas>
+<div class="vals" id="info"></div>
+<script>
+const cv=document.getElementById('cv');const ctx=cv.getContext('2d');
+function resizeCanvas(){const w=cv.parentElement.getBoundingClientRect().width||480;cv.width=Math.round(w);cv.height=Math.round(w*0.52);}
+function draw(){
+  resizeCanvas();
+  const W=cv.width,H=cv.height;
+  const Qg=+document.getElementById('Qg').value*1e-9;
+  const Ciss=+document.getElementById('Ciss').value*1e-9;
+  const Rg=+document.getElementById('Rg').value;
+  const tpd=+document.getElementById('tpd').value*1e-9;
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  ctx.fillStyle=isDark?'#1a1a2e':'#f8f8f8';ctx.fillRect(0,0,W,H);
+  const VDD=12, I_avg_max=1, tau=Rg*Ciss;
+  const padL=65,padR=20,padT=35,padB=50;
+  const gW=W-padL-padR,gH=H-padT-padB;
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,padT);ctx.lineTo(padL,padT+gH);ctx.lineTo(padL+gW,padT+gH);ctx.stroke();
+  const fmin=1e4,fmax=10e6;
+  function xp(f){return padL+(Math.log10(f)-Math.log10(fmin))/(Math.log10(fmax)-Math.log10(fmin))*gW;}
+  const Vmax=VDD+1;
+  function yp(v){return padT+gH-(v/Vmax)*gH;}
+  ctx.strokeStyle='#3334';ctx.lineWidth=0.5;
+  [1e4,1e5,1e6,1e7].forEach(f=>{ctx.beginPath();ctx.moveTo(xp(f),padT);ctx.lineTo(xp(f),padT+gH);ctx.stroke();});
+  for(let v=0;v<=VDD;v+=2){ctx.beginPath();ctx.moveTo(padL,yp(v));ctx.lineTo(padL+gW,yp(v));ctx.stroke();}
+  const fg=isDark?'#aaa':'#555';ctx.fillStyle=fg;ctx.font='10px Arial';
+  ['10k','100k','1M','10M'].forEach((s,i)=>{ctx.fillText(s,xp([1e4,1e5,1e6,1e7][i])-10,padT+gH+13);});
+  for(let v=0;v<=VDD;v+=2)ctx.fillText(v+'V',padL-25,yp(v)+4);
+  ctx.fillStyle=isDark?'#ccc':'#333';ctx.font='11px Arial';
+  ctx.fillText('Switching Frequency',padL+gW/2-50,H-5);
+  ctx.save();ctx.translate(12,padT+gH/2);ctx.rotate(-Math.PI/2);ctx.fillText('V_GS peak (V)',0,0);ctx.restore();
+  // V_GS = VDD * (1 - exp(-t_on/(5*tau))) where t_on = 0.5/f - tpd
+  ctx.strokeStyle='#4a90d9';ctx.lineWidth=2.5;ctx.beginPath();let first=true;
+  for(let lf=Math.log10(fmin);lf<=Math.log10(fmax);lf+=0.02){
+    const f=Math.pow(10,lf);
+    const ton=0.5/f-tpd;
+    let Vgs=ton>0?VDD*(1-Math.exp(-ton/(tau))): 0;
+    Vgs=Math.max(0,Math.min(VDD,Vgs));
+    if(first){ctx.moveTo(xp(f),yp(Vgs));first=false;}else ctx.lineTo(xp(f),yp(Vgs));
+  }ctx.stroke();
+  // V_th line (typ 3V for IPP023N10N)
+  ctx.strokeStyle='#e53935';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(padL,yp(3));ctx.lineTo(padL+gW,yp(3));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#e53935';ctx.font='10px Arial';ctx.fillText('V_th = 3V',padL+4,yp(3)-4);
+  // f_max_pd marker
+  const f_max_pd=1/(20*tpd);
+  if(f_max_pd>=fmin&&f_max_pd<=fmax){
+    ctx.strokeStyle='#ff9800';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(xp(f_max_pd),padT);ctx.lineTo(xp(f_max_pd),padT+gH);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#ff9800';ctx.font='10px Arial';
+    const fs=f_max_pd>=1e6?(f_max_pd/1e6).toFixed(2)+'MHz':(f_max_pd/1000).toFixed(0)+'kHz';
+    ctx.fillText('f_max_pd='+fs,xp(f_max_pd)+2,padT+22);
+  }
+  ctx.fillStyle=isDark?'#e0e0e0':'#222';ctx.font='bold 11px Arial';ctx.fillText('V_GS Peak vs Switching Frequency (TC4420 + IPP023N10N)',padL+2,padT-8);
+  const f_test=1e6;
+  const ton1M=0.5/f_test-tpd;
+  const Vgs1M=ton1M>0?VDD*(1-Math.exp(-ton1M/tau)):0;
+  const Iavg=Qg*f_test;
+  document.getElementById('info').innerHTML=
+    `τ_gate=<span>${(tau*1e9).toFixed(1)}ns</span> | t_pd=<span>${(tpd*1e9).toFixed(0)}ns</span> | `+
+    `V_GS @ 1MHz=<span class="${Vgs1M<6?'warn':''}">${Math.max(0,Vgs1M).toFixed(1)}V</span> | `+
+    `f_max_pd=<span>${(f_max_pd/1e3).toFixed(0)}kHz</span> | I_avg@1MHz=<span>${(Iavg*1000).toFixed(0)}mA</span>`;
+}
+['Qg','Ciss','Rg','tpd'].forEach(id=>{
+  const el=document.getElementById(id);const vl=document.getElementById(id+'V');
+  el.addEventListener('input',()=>{vl.textContent=id==='Ciss'||id==='Rg'?parseFloat(el.value).toFixed(1):el.value;draw();});
+});
+window.addEventListener('resize',draw);resizeCanvas();draw();
+</script>
+</body></html>

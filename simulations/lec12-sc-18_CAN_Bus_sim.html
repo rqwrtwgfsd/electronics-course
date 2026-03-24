@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scenario 18 — CAN Bus Automotive EMI</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto;}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px;}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;}
+  h1{font-size:18px;margin:4px 0;}
+  .layout{display:grid;grid-template-columns:1fr 280px;gap:16px;}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%;}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px;}
+  .ctrl-group{margin-bottom:12px;}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;display:flex;justify-content:space-between;}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace;}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;}
+  .result-box{background:rgba(0,102,204,0.08);border:1px solid rgba(0,102,204,0.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.5;}
+  @media(max-width:600px){.layout{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 12 | Scenario 18</div>
+  <h1>CAN Bus — Common-Mode Noise in Automotive</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">CM Choke <span class="ctrl-value" id="p1-val">No</span></div>
+      <input type="range" id="p1" min="0" max="1" step="1" value="0">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">TVS Diodes <span class="ctrl-value" id="p2-val">No</span></div>
+      <input type="range" id="p2" min="0" max="1" step="1" value="0">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Ignition Spike (V) <span class="ctrl-value" id="p3-val">50</span></div>
+      <input type="range" id="p3" min="10" max="200" value="50">
+    </div>
+    <div class="result-box" id="result">Adjust protection levels</div>
+  </div>
+</div>
+<script>
+const canvas=document.getElementById('cv');
+const ctx=canvas.getContext('2d');
+function isDark(){return window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches;}
+function draw(){
+  const choke=+document.getElementById('p1').value;
+  const tvs=+document.getElementById('p2').value;
+  const spike=+document.getElementById('p3').value;
+  document.getElementById('p1-val').textContent=choke?'Yes':'No';
+  document.getElementById('p2-val').textContent=tvs?'Yes':'No';
+  document.getElementById('p3-val').textContent=spike+' V';
+
+  const V_can_h=3.5, V_can_l=1.5; // CAN dominant
+  const V_tvs=12; // TVS clamp voltage
+  const cm_reduction=choke?0.05:1; // 95% reduction with choke
+  const spike_after_tvs=tvs?Math.min(spike,V_tvs):spike;
+  const cm_at_rx=spike*cm_reduction;
+  const V_transceiver_max=12;
+  const fails=spike_after_tvs>V_transceiver_max*(1-cm_reduction*0.9);
+
+  canvas.width=canvas.parentElement.getBoundingClientRect().width||600;
+  canvas.height=380;
+  const W=canvas.width,H=canvas.height;
+  const dark=isDark();
+  const bg=dark?'#2a2a2a':'#f5f5f5';
+  const fg=dark?'#e8e8e8':'#1a1a1a';
+  const ac=dark?'#4499ff':'#0066cc';
+  const gr=dark?'#444':'#ddd';
+  const red='#e53935',grn='#43a047',orange='#ff9800';
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=fg;ctx.font='bold 13px system-ui';ctx.textAlign='center';
+  ctx.fillText('CAN Bus Differential Signal with Common-Mode Noise',W/2,22);
+
+  const mx=60,my=40,mw=W-80,mh=H-120;
+  const bits=[1,0,1,1,0,0,1,0,1,1];
+  const totalT=bits.length*0.4; // µs (500kbps)
+  const toX=t=>mx+mw*t/totalT;
+  const Vmin=-5,Vmax=20,Vscale=Vmax-Vmin;
+  const toY=v=>my+mh*(1-(v-Vmin)/Vscale);
+
+  ctx.strokeStyle=gr;ctx.lineWidth=1;
+  [-5,0,3.5,12,20].forEach(v=>{
+    const y=toY(v);
+    if(y<my||y>my+mh)return;
+    ctx.beginPath();ctx.moveTo(mx,y);ctx.lineTo(mx+mw,y);ctx.stroke();
+    ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='right';
+    ctx.fillText(v+'V',mx-3,y+4);
+  });
+
+  // Transceiver max
+  ctx.strokeStyle=red;ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(mx,toY(V_transceiver_max));ctx.lineTo(mx+mw,toY(V_transceiver_max));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=red;ctx.font='10px system-ui';ctx.textAlign='left';
+  ctx.fillText('Transceiver max ('+V_transceiver_max+'V)',mx+4,toY(V_transceiver_max)-3);
+
+  // CAN_H and CAN_L with common-mode spike
+  const bitAt=t=>bits[Math.min(bits.length-1,Math.floor(t/(totalT/bits.length)))];
+  // spike occurs at t=1µs
+  const spikeT=totalT*0.3;
+  const spikeDur=0.1; // µs
+
+  const getVH=(t)=>{
+    const b=bitAt(t);
+    const base=b?V_can_h:2.5; // dominant or recessive
+    const cm_spike=Math.abs(t-spikeT)<spikeDur?spike_after_tvs*cm_reduction*Math.exp(-Math.abs(t-spikeT)/0.02):0;
+    return base+cm_spike;
+  };
+  const getVL=(t)=>{
+    const b=bitAt(t);
+    const base=b?V_can_l:2.5;
+    const cm_spike=Math.abs(t-spikeT)<spikeDur?spike_after_tvs*cm_reduction*Math.exp(-Math.abs(t-spikeT)/0.02):0;
+    return base+cm_spike;
+  };
+
+  ctx.strokeStyle=ac;ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=400;i++){
+    const t=i/400*totalT;
+    const v=getVH(t);
+    i===0?ctx.moveTo(toX(t),toY(Math.max(Vmin,Math.min(Vmax,v)))):ctx.lineTo(toX(t),toY(Math.max(Vmin,Math.min(Vmax,v))));
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle=orange;ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=400;i++){
+    const t=i/400*totalT;
+    const v=getVL(t);
+    i===0?ctx.moveTo(toX(t),toY(Math.max(Vmin,Math.min(Vmax,v)))):ctx.lineTo(toX(t),toY(Math.max(Vmin,Math.min(Vmax,v))));
+  }
+  ctx.stroke();
+
+  // Differential (what transceiver sees)
+  ctx.strokeStyle=grn;ctx.lineWidth=1.5;
+  ctx.beginPath();
+  for(let i=0;i<=400;i++){
+    const t=i/400*totalT;
+    const diff=getVH(t)-getVL(t);
+    i===0?ctx.moveTo(toX(t),toY(diff)):ctx.lineTo(toX(t),toY(diff));
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle=fg;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx,my+mh);ctx.lineTo(mx+mw,my+mh);ctx.stroke();
+
+  ctx.font='10px system-ui';ctx.textAlign='left';
+  ctx.fillStyle=ac;ctx.fillRect(mx,my+mh+28,12,2);ctx.fillStyle=fg;ctx.fillText('CAN_H',mx+16,my+mh+33);
+  ctx.fillStyle=orange;ctx.fillRect(mx+70,my+mh+28,12,2);ctx.fillStyle=fg;ctx.fillText('CAN_L',mx+86,my+mh+33);
+  ctx.fillStyle=grn;ctx.fillRect(mx+140,my+mh+28,12,2);ctx.fillStyle=fg;ctx.fillText('Differential',mx+156,my+mh+33);
+
+  const cm_peak=spike_after_tvs*cm_reduction;
+  const ok=(choke&&tvs)||(cm_peak<V_transceiver_max);
+  document.getElementById('result').innerHTML=
+    `<b>Ignition spike: ${spike}V</b><br>`+
+    `After TVS: ${spike_after_tvs}V<br>`+
+    `After CM choke: ${cm_peak.toFixed(0)}V common-mode at RX<br>`+
+    `Transceiver limit: ${V_transceiver_max}V<br>`+
+    (ok?'<span style="color:green">✓ Transceiver protected</span>':
+     '<span style="color:red">⚠ Exceeds transceiver rating — add CM choke + TVS</span>');
+}
+['p1','p2','p3'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>draw());
+draw();
+</script>
+</body>
+</html>

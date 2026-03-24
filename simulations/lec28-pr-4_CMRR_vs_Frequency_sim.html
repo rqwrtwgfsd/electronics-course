@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec28 Pr4 — CMRR vs Frequency</title>
+<style>
+  body{margin:0;padding:10px;font-family:sans-serif;background:#1a1a2e;color:#e0e0e0;}
+  canvas{display:block;border:1px solid #444;border-radius:6px;background:#0f0f1e;}
+  .ctrl{margin:7px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  label{min-width:200px;font-size:0.85em;}
+  input[type=range]{flex:1;min-width:120px;}
+  .val{min-width:70px;font-size:0.85em;color:#7ec8e3;}
+  .result-box{background:#162032;border:1px solid #2a4a6a;border-radius:6px;padding:10px;margin-top:8px;font-size:0.85em;}
+  h3{color:#7ec8e3;margin:4px 0 10px;}
+</style>
+</head>
+<body>
+<h3>Problem 4 — CMRR vs Frequency: Mirror Pole Effect</h3>
+<canvas id="cv"></canvas>
+<div class="ctrl">
+  <label>Gm_input (mA/V):</label>
+  <input type="range" id="gm" min="0.1" max="2" value="0.4" step="0.05">
+  <span class="val" id="gm_v">0.4 mA/V</span>
+</div>
+<div class="ctrl">
+  <label>R_tail (MOhm):</label>
+  <input type="range" id="rtail" min="0.1" max="20" value="10" step="0.1">
+  <span class="val" id="rtail_v">10 MΩ</span>
+</div>
+<div class="ctrl">
+  <label>Mirror pole freq f_mirror (kHz):</label>
+  <input type="range" id="fm" min="0.5" max="500" value="1" step="0.5">
+  <span class="val" id="fm_v">1 kHz</span>
+</div>
+<div class="result-box" id="result">Results</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+function resizeCanvas(){
+  const w=cv.parentElement.getBoundingClientRect().width-20;
+  cv.width=Math.max(300,w); cv.height=Math.round(cv.width*0.45);
+}
+function getVals(){
+  return {
+    gm:parseFloat(document.getElementById('gm').value)*1e-3,
+    rtail:parseFloat(document.getElementById('rtail').value)*1e6,
+    fm:parseFloat(document.getElementById('fm').value)*1e3
+  };
+}
+function updateLabels(){
+  document.getElementById('gm_v').textContent=parseFloat(document.getElementById('gm').value).toFixed(2)+' mA/V';
+  document.getElementById('rtail_v').textContent=parseFloat(document.getElementById('rtail').value).toFixed(1)+' MΩ';
+  document.getElementById('fm_v').textContent=parseFloat(document.getElementById('fm').value).toFixed(1)+' kHz';
+}
+function draw(){
+  const W=cv.width, H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  const {gm,rtail,fm}=getVals();
+
+  const mx=60,my=15,bx=W-15,by=H-30;
+  const pw=bx-mx, ph=by-my;
+  const fMin=1, fMax=10e6;
+  const fRange=Math.log10(fMax/fMin);
+
+  // DC CMRR
+  const CMRR_DC=gm*rtail;
+  const CMRR_DC_dB=20*Math.log10(CMRR_DC);
+  const yMax_dB=Math.max(CMRR_DC_dB+10, 90);
+  const yMin_dB=0;
+
+  // Axes
+  ctx.strokeStyle='#444'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(mx,my); ctx.lineTo(mx,by); ctx.lineTo(bx,by); ctx.stroke();
+
+  // Grid freq
+  for(let exp=0;exp<=7;exp++){
+    const f=Math.pow(10,exp);
+    if(f<fMin||f>fMax) continue;
+    const x=mx+(Math.log10(f/fMin)/fRange)*pw;
+    ctx.strokeStyle='#2a2a45'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(x,my); ctx.lineTo(x,by); ctx.stroke();
+    ctx.fillStyle='#666'; ctx.font='9px sans-serif';
+    const lbl=exp>=6?'1MHz':exp>=5?'100k':exp>=4?'10k':exp>=3?'1k':exp>=2?'100':exp>=1?'10':'1';
+    ctx.fillText(lbl+'Hz', x-12, by+14);
+  }
+  for(let g=0;g<=yMax_dB;g+=20){
+    const y=by-(g-yMin_dB)/(yMax_dB-yMin_dB)*ph;
+    if(y<my||y>by) continue;
+    ctx.strokeStyle='#2a2a45'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(mx,y); ctx.lineTo(bx,y); ctx.stroke();
+    ctx.fillStyle='#666'; ctx.font='9px sans-serif';
+    ctx.fillText(g+'dB', mx-40, y+4);
+  }
+
+  // CMRR(f): CMRR_DC / sqrt(1 + (f/fm)^2)
+  ctx.strokeStyle='#4fc3f7'; ctx.lineWidth=2.5;
+  ctx.beginPath(); let first=true;
+  for(let i=0;i<=500;i++){
+    const f=fMin*Math.pow(fMax/fMin,i/500);
+    const cmrr_lin=CMRR_DC/Math.sqrt(1+(f/fm)**2);
+    const cmrr_dB=20*Math.log10(cmrr_lin);
+    const x=mx+(Math.log10(f/fMin)/fRange)*pw;
+    const y=by-(cmrr_dB-yMin_dB)/(yMax_dB-yMin_dB)*ph;
+    if(first){ctx.moveTo(x,Math.max(my,Math.min(by,y)));first=false;}
+    else ctx.lineTo(x,Math.max(my,Math.min(by,y)));
+  }
+  ctx.stroke();
+
+  // DC CMRR flat line
+  ctx.strokeStyle='#aed58199'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+  const yDC=by-(CMRR_DC_dB-yMin_dB)/(yMax_dB-yMin_dB)*ph;
+  ctx.beginPath(); ctx.moveTo(mx,yDC); ctx.lineTo(bx,yDC); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#aed581'; ctx.font='9px sans-serif';
+  ctx.fillText('CMRR_DC='+CMRR_DC_dB.toFixed(0)+'dB', bx-120, yDC-4);
+
+  // Mirror pole marker
+  const xm=mx+(Math.log10(fm/fMin)/fRange)*pw;
+  ctx.strokeStyle='#ff7043'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(xm,my); ctx.lineTo(xm,by); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#ff7043'; ctx.font='10px sans-serif';
+  const fmLabel=fm>=1e3?(fm/1e3).toFixed(0)+'kHz':fm.toFixed(0)+'Hz';
+  ctx.fillText('f_mirror='+fmLabel, Math.min(xm+4, bx-90), my+14);
+
+  // Measurement frequency marker (100kHz example)
+  const fmeas=100e3;
+  if(fmeas>fMin && fmeas<fMax){
+    const xmeas=mx+(Math.log10(fmeas/fMin)/fRange)*pw;
+    const cmrr_at_meas=20*Math.log10(CMRR_DC/Math.sqrt(1+(fmeas/fm)**2));
+    ctx.strokeStyle='#ffb74d'; ctx.lineWidth=1; ctx.setLineDash([2,2]);
+    ctx.beginPath(); ctx.moveTo(xmeas,my); ctx.lineTo(xmeas,by); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#ffb74d'; ctx.font='9px sans-serif';
+    ctx.fillText('100kHz: '+cmrr_at_meas.toFixed(0)+'dB', Math.min(xmeas+3,bx-100), my+26);
+  }
+
+  ctx.fillStyle='#7ec8e3'; ctx.font='11px sans-serif';
+  ctx.fillText('CMRR (dB)', mx+5, my+10);
+  ctx.fillText('Frequency →', bx-70, by+26);
+
+  const cmrr_100k=20*Math.log10(CMRR_DC/Math.sqrt(1+(1e5/fm)**2));
+  document.getElementById('result').innerHTML=
+    `<b>CMRR Analysis:</b><br>
+    DC CMRR = Gm × R_tail = ${(gm*1e3).toFixed(2)}mA/V × ${(rtail/1e6).toFixed(0)}MΩ = ${CMRR_DC_dB.toFixed(0)}dB<br>
+    Mirror pole f_mirror = ${fmLabel} → CMRR rolls off at −20dB/decade above this<br>
+    CMRR at 100kHz = ${cmrr_100k.toFixed(0)}dB<br>
+    ${fm<=1e3?'⚠ Mirror pole < 1kHz — large PMOS transistors! Reduce M3/M4 size.':'✓ Mirror pole is high enough for audio/industrial frequencies'}`;
+}
+
+['gm','rtail','fm'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{updateLabels();draw();}));
+resizeCanvas(); updateLabels(); draw();
+window.addEventListener('resize',()=>{resizeCanvas();draw();});
+</script>
+</body>
+</html>

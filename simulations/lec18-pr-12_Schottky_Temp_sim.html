@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec18 Pr12 — Schottky Temperature</title>
+<style>
+  :root{--bg:#f8f8f8;--fg:#222;--accent:#4a90d9;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a2e;--fg:#e0e0e0;--accent:#7ab4f5;}}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:Arial,sans-serif;padding:10px;}
+  h3{margin:6px 0;color:var(--accent);}
+  canvas{border:1px solid #555;border-radius:4px;display:block;width:100%;}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;font-size:13px;}
+  input[type=range]{width:130px;accent-color:var(--accent);}
+  .vals{background:#0002;border-radius:4px;padding:8px;font-size:13px;margin:6px 0;}
+  .vals span{color:var(--accent);font-weight:bold;}
+  .warn{color:#e05;font-weight:bold;}
+</style>
+</head>
+<body>
+<h3>Problem 12 — Schottky vs PN Diode Leakage vs Temperature</h3>
+<div class="controls">
+  <label>V_reverse (V): <input type="range" id="Vr" min="5" max="200" value="100" step="5"> <b id="VrV">100</b></label>
+  <label>I_leak_25°C (µA): <input type="range" id="Ilk" min="1" max="1000" value="1000" step="10"> <b id="IlkV">1000</b></label>
+  <label>Double/°C: <input type="range" id="dbl" min="5" max="15" value="10" step="1"> <b id="dblV">10</b></label>
+</div>
+<canvas id="cv"></canvas>
+<div class="vals" id="info"></div>
+<script>
+const cv=document.getElementById('cv');const ctx=cv.getContext('2d');
+function resizeCanvas(){const w=cv.parentElement.getBoundingClientRect().width||480;cv.width=Math.round(w);cv.height=Math.round(w*0.52);}
+function draw(){
+  resizeCanvas();
+  const W=cv.width,H=cv.height;
+  const Vr=+document.getElementById('Vr').value;
+  const Ilk25=+document.getElementById('Ilk').value*1e-6;
+  const dbl=+document.getElementById('dbl').value;
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  ctx.fillStyle=isDark?'#1a1a2e':'#f8f8f8';ctx.fillRect(0,0,W,H);
+  const padL=65,padR=20,padT=35,padB=50;
+  const gW=W-padL-padR,gH=H-padT-padB;
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,padT);ctx.lineTo(padL,padT+gH);ctx.lineTo(padL+gW,padT+gH);ctx.stroke();
+  const Tmin=25,Tmax=150;
+  function xp(T){return padL+(T-Tmin)/(Tmax-Tmin)*gW;}
+  // Log scale for current
+  const Imin=1e-8,Imax_plot=100;
+  function yp(I){const lo=Math.log10(Math.max(I,Imin)),hi=Math.log10(Imax_plot);return padT+gH-(lo-Math.log10(Imin))/(hi-Math.log10(Imin))*gH;}
+  ctx.strokeStyle='#3334';ctx.lineWidth=0.5;
+  for(let T=25;T<=150;T+=25){ctx.beginPath();ctx.moveTo(xp(T),padT);ctx.lineTo(xp(T),padT+gH);ctx.stroke();}
+  [1e-6,1e-5,1e-4,1e-3,0.01,0.1,1,10,100].forEach(v=>{ctx.beginPath();ctx.moveTo(padL,yp(v));ctx.lineTo(padL+gW,yp(v));ctx.stroke();});
+  const fg=isDark?'#aaa':'#555';ctx.fillStyle=fg;ctx.font='10px Arial';
+  for(let T=25;T<=150;T+=25)ctx.fillText(T+'°C',xp(T)-10,padT+gH+13);
+  ['1nA','10nA','100nA','1µA','10µA','100µA','1mA','10mA','100mA'].forEach((s,i)=>{
+    ctx.fillText(s,padL-38,yp([1e-9,1e-8,1e-7,1e-6,1e-5,1e-4,1e-3,0.01,0.1][i])+4);
+  });
+  ctx.fillStyle=isDark?'#ccc':'#333';ctx.font='11px Arial';
+  ctx.fillText('Temperature (°C)',padL+gW/2-35,H-5);
+  ctx.save();ctx.translate(12,padT+gH/2);ctx.rotate(-Math.PI/2);ctx.fillText('I_reverse (A)',0,0);ctx.restore();
+  // Schottky leakage
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2.5;ctx.beginPath();let first=true;
+  for(let T=Tmin;T<=Tmax;T+=0.5){
+    const I=Ilk25*Math.pow(2,(T-25)/dbl);
+    if(first){ctx.moveTo(xp(T),yp(I));first=false;}else ctx.lineTo(xp(T),yp(I));
+  }ctx.stroke();
+  ctx.fillStyle='#e53935';ctx.font='11px Arial';ctx.fillText('Schottky (doubles/'+dbl+'°C)',xp(40),yp(Ilk25*Math.pow(2,15/dbl))-8);
+  // PN diode (much lower, ~100x less leakage)
+  const Ipn25=Ilk25/100;
+  ctx.strokeStyle='#4a90d9';ctx.lineWidth=2.5;ctx.beginPath();first=true;
+  for(let T=Tmin;T<=Tmax;T+=0.5){
+    const I=Ipn25*Math.pow(2,(T-25)/10);
+    if(first){ctx.moveTo(xp(T),yp(I));first=false;}else ctx.lineTo(xp(T),yp(I));
+  }ctx.stroke();
+  ctx.fillStyle='#4a90d9';ctx.font='11px Arial';ctx.fillText('PN Diode (UF4007)',xp(60),yp(Ipn25*Math.pow(2,35/10))-8);
+  // Thermal runaway threshold: P = V*I > package thermal limit
+  const P_thresh=0.5; // 500mW package limit
+  const I_thresh=P_thresh/Vr;
+  ctx.strokeStyle='#ff9800';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(padL,yp(I_thresh));ctx.lineTo(padL+gW,yp(I_thresh));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#ff9800';ctx.font='10px Arial';ctx.fillText('Thermal runaway threshold ('+P_thresh+'W/'+Vr+'V='+((I_thresh*1000).toFixed(0))+'mA)',padL+4,yp(I_thresh)-4);
+  ctx.fillStyle=isDark?'#e0e0e0':'#222';ctx.font='bold 11px Arial';ctx.fillText('Reverse Leakage Current vs Temperature',padL+2,padT-8);
+  const I100=Ilk25*Math.pow(2,(100-25)/dbl);
+  const P100=I100*Vr;
+  document.getElementById('info').innerHTML=
+    `Schottky I_leak @ 25°C=<span>${(Ilk25*1e6).toFixed(0)}µA</span> | @ 100°C=<span class="${I100>I_thresh?'warn':''}">${(I100*1000).toFixed(1)}mA</span> | `+
+    `P @ 100°C=<span class="${P100>P_thresh?'warn':''}">${P100.toFixed(2)}W</span> | `+
+    (P100>P_thresh?'<span class="warn">⚠ THERMAL RUNAWAY!</span>':'<span style="color:#43a047">✓ Safe</span>');
+}
+['Vr','Ilk','dbl'].forEach(id=>{
+  const el=document.getElementById(id);const vl=document.getElementById(id+'V');
+  el.addEventListener('input',()=>{vl.textContent=el.value;draw();});
+});
+window.addEventListener('resize',draw);resizeCanvas();draw();
+</script>
+</body></html>

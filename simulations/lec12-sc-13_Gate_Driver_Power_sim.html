@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MOSFET Gate Driver Power Dissipation</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}
+  h1{font-size:18px;margin:4px 0}
+  .layout{display:grid;grid-template-columns:1fr 260px;gap:16px}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}
+  .ctrl-group{margin-bottom:12px}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}
+  .result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}
+  @media(max-width:600px){.layout{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 12 | Scenario 13</div>
+  <h1>Gate Driver Heat: Power Dissipation vs Frequency</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Gate Cap C_g (nF) <span class="ctrl-value" id="lbl-cg">10 nF</span></div>
+      <input type="range" id="sl-cg" min="1" max="100" value="10" step="1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Gate Voltage (V) <span class="ctrl-value" id="lbl-vg">10 V</span></div>
+      <input type="range" id="sl-vg" min="5" max="15" value="10" step="0.5">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Gate R (Ω) <span class="ctrl-value" id="lbl-rg">10 Ω</span></div>
+      <input type="range" id="sl-rg" min="1" max="100" value="10" step="1">
+    </div>
+    <div class="result-box" id="result">Adjust to see driver power budget</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slCg=document.getElementById('sl-cg'),slVg=document.getElementById('sl-vg'),slRg=document.getElementById('sl-rg');
+const lblCg=document.getElementById('lbl-cg'),lblVg=document.getElementById('lbl-vg'),lblRg=document.getElementById('lbl-rg');
+const result=document.getElementById('result');
+
+function draw(){
+  const W=cv.width,H=cv.height;
+  const Cg=parseFloat(slCg.value)*1e-9;
+  const Vg=parseFloat(slVg.value);
+  const Rg=parseFloat(slRg.value);
+  lblCg.textContent=slCg.value+' nF';
+  lblVg.textContent=Vg.toFixed(1)+' V';
+  lblRg.textContent=Rg+' Ω';
+  ctx.clearRect(0,0,W,H);
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  // P = C*V^2*f (gate drive power)
+  // Show P vs frequency, with and without gate R (Rg affects switching time, not total energy)
+  const fMin=1e3,fMax=1e6;
+  const E_per_cycle=0.5*Cg*Vg*Vg; // energy per charge/discharge
+  const P_max=E_per_cycle*fMax;
+  function P(f){return E_per_cycle*f}
+  const yMin=0,yMax=P_max*1.1;
+  function yPx(p){return pad+plotH*(1-p/yMax)}
+  function xPx(f){return pad+plotW*(Math.log10(f)-Math.log10(fMin))/(Math.log10(fMax)-Math.log10(fMin))}
+  // Grid
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  for(let i=0;i<=5;i++){const yp=pad+(i/5)*plotH;ctx.beginPath();ctx.moveTo(pad,yp);ctx.lineTo(W-pad,yp);ctx.stroke()}
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  // Power curve (linear on log-freq axis = curve)
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2.5;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const logF=Math.log10(fMin)+(px/plotW)*(Math.log10(fMax)-Math.log10(fMin));
+    const f=Math.pow(10,logF);
+    const p=Math.min(yMax,P(f));
+    px===0?ctx.moveTo(pad+px,yPx(p)):ctx.lineTo(pad+px,yPx(p));
+  }ctx.stroke();
+  // Max thermal limit (e.g., 1W)
+  const Plimit=1.0;
+  if(Plimit<=yMax){
+    ctx.setLineDash([5,3]);ctx.strokeStyle='#f57c00';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(pad,yPx(Plimit));ctx.lineTo(W-pad,yPx(Plimit));ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#f57c00';ctx.font='10px system-ui';ctx.textAlign='left';
+    ctx.fillText('Driver thermal limit 1W',pad+4,yPx(Plimit)-4);
+    // Intersection frequency
+    const f_limit=Plimit/E_per_cycle;
+    if(f_limit>=fMin&&f_limit<=fMax){
+      const xl=xPx(f_limit);
+      ctx.setLineDash([5,3]);ctx.strokeStyle='#f57c00';
+      ctx.beginPath();ctx.moveTo(xl,pad);ctx.lineTo(xl,H-pad);ctx.stroke();ctx.setLineDash([]);
+      ctx.fillStyle='#f57c00';ctx.fillText(_fmtHz(f_limit)+' max',xl+3,pad+20);
+    }
+  }
+  // Current marker at user freq (100kHz)
+  const f_mark=100e3;const xm=xPx(f_mark);
+  ctx.setLineDash([3,3]);ctx.strokeStyle='#2e7d32';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(xm,pad);ctx.lineTo(xm,H-pad);ctx.stroke();ctx.setLineDash([]);
+  // Labels
+  ctx.fillStyle='#888';ctx.textAlign='right';ctx.font='10px system-ui';
+  for(let i=0;i<=5;i++){const p=(i/5)*yMax;ctx.fillText((_fmtW(p)),pad-4,yPx(p)+3)}
+  ctx.textAlign='center';
+  ['1kHz','10kHz','100kHz','1MHz'].forEach((lbl,i)=>{ctx.fillText(lbl,xPx(Math.pow(10,i+3)),H-pad+14)});
+  const Pmark=P(f_mark);
+  const switchT=2.2*Rg*Cg;
+  result.innerHTML='<b>Energy per cycle: E = ½CV² = '+(E_per_cycle*1e9).toFixed(0)+'nJ</b><br>At 100kHz: P = <b>'+Pmark.toFixed(0)+'mW per MOSFET</b><br>Switch time τ=R_g×C_g: <b>'+(switchT*1e9).toFixed(0)+'ns</b><br>Max freq before 1W: <b>'+_fmtHz(Plimit/E_per_cycle)+'</b><br><b>Rule: P = C×V²×f — every factor of 2 in freq doubles driver heat</b>';
+}
+function _fmtHz(f){if(f>=1e6)return(f/1e6).toFixed(2)+'MHz';if(f>=1e3)return(f/1e3).toFixed(0)+'kHz';return f.toFixed(0)+'Hz'}
+function _fmtW(p){if(p>=1)return p.toFixed(1)+'W';return(p*1000).toFixed(0)+'mW'}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slCg,slVg,slRg].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});
+resizeCanvas();draw();
+</script>
+</body>
+</html>

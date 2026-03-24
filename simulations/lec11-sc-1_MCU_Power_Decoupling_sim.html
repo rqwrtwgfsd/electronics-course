@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCU Power Rail Decoupling</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}
+  h1{font-size:18px;margin:4px 0}
+  .layout{display:grid;grid-template-columns:1fr 260px;gap:16px}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}
+  .ctrl-group{margin-bottom:12px}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}
+  .result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}
+  @media(max-width:600px){.layout{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 11 | Scenario 1</div>
+  <h1>MCU Power Rail: Motor Inrush &amp; Decoupling</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Bulk Cap <span class="ctrl-value" id="lbl-bulk">10 µF</span></div>
+      <input type="range" id="sl-bulk" min="1" max="100" value="10" step="1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Motor Inrush <span class="ctrl-value" id="lbl-inrush">2.0 A</span></div>
+      <input type="range" id="sl-inrush" min="0.5" max="5" value="2" step="0.1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Rail Impedance <span class="ctrl-value" id="lbl-imp">0.5 Ω</span></div>
+      <input type="range" id="sl-imp" min="0.05" max="2.0" value="0.5" step="0.05">
+    </div>
+    <div class="result-box" id="result">Adjust parameters to see rail behavior</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slBulk=document.getElementById('sl-bulk'),slInrush=document.getElementById('sl-inrush'),slImp=document.getElementById('sl-imp');
+const lblBulk=document.getElementById('lbl-bulk'),lblInrush=document.getElementById('lbl-inrush'),lblImp=document.getElementById('lbl-imp');
+const result=document.getElementById('result');
+
+function draw(){
+  const W=cv.width,H=cv.height;
+  const bulk=parseFloat(slBulk.value)*1e-6;
+  const inrush=parseFloat(slInrush.value);
+  const imp=parseFloat(slImp.value);
+  lblBulk.textContent=slBulk.value+' µF';
+  lblInrush.textContent=inrush.toFixed(1)+' A';
+  lblImp.textContent=imp.toFixed(2)+' Ω';
+  ctx.clearRect(0,0,W,H);
+  const VCC=3.3,Vbrown=2.7,tTotal=0.002;
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  const yMin=1.4,yMax=3.6;
+  function yPx(v){return pad+plotH*(1-(v-yMin)/(yMax-yMin))}
+  function tPx(t){return pad+(t/tTotal)*plotW}
+  // grid
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  for(let v=1.5;v<=3.6;v+=0.3){ctx.beginPath();ctx.moveTo(pad,yPx(v));ctx.lineTo(W-pad,yPx(v));ctx.stroke()}
+  // axes
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  // brownout line
+  ctx.setLineDash([6,3]);ctx.strokeStyle='#e53935';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(pad,yPx(Vbrown));ctx.lineTo(W-pad,yPx(Vbrown));ctx.stroke();
+  ctx.fillStyle='#e53935';ctx.font='10px system-ui';ctx.fillText('Brownout 2.7V',pad+4,yPx(Vbrown)-4);
+  ctx.setLineDash([]);
+  // without cap - large sag
+  const sagNo=Math.min(inrush*imp,VCC-yMin-0.1);
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal,t0=0.0002,td=0.0004;
+    let v=VCC;
+    if(t>=t0&&t<t0+td)v=VCC-sagNo*(t-t0)/td;
+    else if(t>=t0+td)v=VCC-sagNo*Math.exp(-(t-t0-td)/0.0003);
+    v=Math.max(v,yMin);
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  // with cap - reduced sag
+  const tau=imp*bulk;
+  const sagCap=sagNo*Math.exp(-1/(imp*bulk*1e5+1))*0.6;
+  ctx.strokeStyle='#2e7d32';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal,t0=0.0002,td=0.0004;
+    let v=VCC;
+    if(t>=t0&&t<t0+td)v=VCC-sagCap*(t-t0)/td;
+    else if(t>=t0+td)v=VCC-sagCap*Math.exp(-(t-t0-td)/(0.0001+bulk*1000));
+    v=Math.max(v,yMin);
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  // labels
+  ctx.fillStyle='#888';ctx.font='10px system-ui';ctx.textAlign='right';
+  for(let v=1.5;v<=3.5;v+=0.3)ctx.fillText(v.toFixed(1)+'V',pad-4,yPx(v)+3);
+  ctx.textAlign='center';
+  ctx.fillText('0',pad,H-pad+14);ctx.fillText('1ms',tPx(0.001),H-pad+14);ctx.fillText('2ms',tPx(0.002),H-pad+14);
+  ctx.fillStyle='var(--text)';ctx.font='11px system-ui';ctx.textAlign='left';
+  ctx.fillStyle='#e53935';ctx.fillText('Without cap — sags to '+(VCC-sagNo).toFixed(2)+'V',pad+8,pad+16);
+  ctx.fillStyle='#2e7d32';ctx.fillText('With '+slBulk.value+'µF — sags to '+(VCC-sagCap).toFixed(2)+'V',pad+8,pad+30);
+  const minV=(VCC-sagNo).toFixed(2),minC=(VCC-sagCap).toFixed(2);
+  result.innerHTML='<b>No cap:</b> Rail drops to <b>'+minV+'V</b> '+(parseFloat(minV)<Vbrown?'⚠️ BROWNOUT!':'✅ OK')+'<br><b>With '+slBulk.value+'µF:</b> Drops to <b>'+minC+'V</b> '+(parseFloat(minC)>=Vbrown?'✅ Safe':'⚠️ Still risky')+'<br><b>Energy stored:</b> ½CV² = '+(0.5*bulk*VCC*VCC*1e6).toFixed(1)+' µJ<br><b>Rule:</b> Place cap within 5mm of VCC pin';
+}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slBulk,slInrush,slImp].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});
+resizeCanvas();draw();
+</script>
+</body>
+</html>

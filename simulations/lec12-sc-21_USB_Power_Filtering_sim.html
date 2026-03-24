@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>USB Power Filtering</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}
+  *{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}.module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}h1{font-size:18px;margin:4px 0}
+  .layout{display:grid;grid-template-columns:1fr 260px;gap:16px}canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}.ctrl-group{margin-bottom:12px}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}.ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}.result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}
+  @media(max-width:600px){.layout{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><div class="module-id">Lecture 12 | Scenario 21</div><h1>USB Power: Adapter Quality &amp; Input Filter</h1></header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group"><div class="ctrl-label">Adapter R_th (Ω) <span class="ctrl-value" id="lbl-r">2.0 Ω</span></div><input type="range" id="sl-r" min="0.1" max="5" value="2" step="0.1"></div>
+    <div class="ctrl-group"><div class="ctrl-label">Bulk Cap (µF) <span class="ctrl-value" id="lbl-c">100 µF</span></div><input type="range" id="sl-c" min="1" max="470" value="100" step="1"></div>
+    <div class="ctrl-group"><div class="ctrl-label">Load Current (mA) <span class="ctrl-value" id="lbl-i">200 mA</span></div><input type="range" id="sl-i" min="10" max="500" value="200" step="10"></div>
+    <div class="result-box" id="result">Adjust to see supply response</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slR=document.getElementById('sl-r'),slC=document.getElementById('sl-c'),slI=document.getElementById('sl-i');
+const lblR=document.getElementById('lbl-r'),lblC=document.getElementById('lbl-c'),lblI=document.getElementById('lbl-i');
+const result=document.getElementById('result');
+function draw(){
+  const W=cv.width,H=cv.height;
+  const Rth=parseFloat(slR.value);const C=parseFloat(slC.value)*1e-6;const I=parseFloat(slI.value)*1e-3;
+  lblR.textContent=parseFloat(slR.value).toFixed(1)+' Ω';lblC.textContent=slC.value+' µF';lblI.textContent=slI.value+' mA';
+  ctx.clearRect(0,0,W,H);
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  const Vnom=5,Vmin=4.75,tTotal=0.01;
+  const tau=Rth*C;const Vsag=I*Rth;
+  const vMin=4.0,vMax=5.2;
+  function yPx(v){return pad+plotH*(1-(v-vMin)/(vMax-vMin))}
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  [4.0,4.25,4.5,4.75,5.0,5.2].forEach(v=>{ctx.beginPath();ctx.moveTo(pad,yPx(v));ctx.lineTo(W-pad,yPx(v));ctx.stroke()});
+  ctx.strokeStyle='#888';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#f57c00';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(pad,yPx(Vmin));ctx.lineTo(W-pad,yPx(Vmin));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#f57c00';ctx.font='10px system-ui';ctx.textAlign='left';ctx.fillText('USB min 4.75V',pad+4,yPx(Vmin)-4);
+  const t_load=0.001;
+  // Without cap
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    let v=t<t_load?Vnom:Vnom-Vsag*(1-Math.exp(-(t-t_load)/tau));
+    v=Math.max(vMin,Math.min(vMax,v));
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  // With cap
+  const Vsag2=Vsag*Math.exp(-1/(Rth*C*1e4));
+  ctx.strokeStyle='#2e7d32';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    let v=t<t_load?Vnom:Vnom-Vsag2*(1-Math.exp(-(t-t_load)/(tau*0.1+0.001)));
+    v=Math.max(vMin,Math.min(vMax,v));
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  ctx.fillStyle='#888';ctx.textAlign='right';ctx.font='10px system-ui';
+  [4.0,4.5,4.75,5.0].forEach(v=>ctx.fillText(v.toFixed(2)+'V',pad-4,yPx(v)+3));
+  ctx.textAlign='left';ctx.font='11px system-ui';
+  ctx.fillStyle='#e53935';ctx.fillText('Cheap adapter (R_th='+Rth+'Ω): sags to '+(Vnom-Vsag).toFixed(2)+'V',pad+8,pad+16);
+  ctx.fillStyle='#2e7d32';ctx.fillText('With '+slC.value+'µF bulk cap: '+(Vnom-Vsag2).toFixed(2)+'V',pad+8,pad+30);
+  const ok=(Vnom-Vsag)>=Vmin;const ok2=(Vnom-Vsag2)>=Vmin;
+  result.innerHTML='<b>Adapter R_th = '+Rth+'Ω</b><br>Load '+(I*1000).toFixed(0)+'mA drops: <b>'+( Vsag).toFixed(2)+'V</b><br>No cap: <b>'+(Vnom-Vsag).toFixed(2)+'V</b> '+(ok?'✅':'⚠️ Below spec!')+'<br>With '+slC.value+'µF: <b>'+(Vnom-Vsag2).toFixed(2)+'V</b> '+(ok2?'✅':'⚠️')+'<br><b>Rule: Design for worst-case high-impedance supply</b>';
+}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slR,slC,slI].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});resizeCanvas();draw();
+</script>
+</body>
+</html>

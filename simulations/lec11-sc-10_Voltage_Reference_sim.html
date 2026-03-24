@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voltage Reference Drift — Temperature &amp; Load</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}
+  h1{font-size:18px;margin:4px 0}
+  .layout{display:grid;grid-template-columns:1fr 260px;gap:16px}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}
+  .ctrl-group{margin-bottom:12px}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}
+  .result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}
+  @media(max-width:600px){.layout{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 11 | Scenario 10</div>
+  <h1>Voltage Reference: Tempco Drift &amp; Capacitor Stabilization</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Tempco (ppm/°C) <span class="ctrl-value" id="lbl-tc">100 ppm/°C</span></div>
+      <input type="range" id="sl-tc" min="10" max="500" value="100" step="10">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">R mismatch (%) <span class="ctrl-value" id="lbl-mm">2.0%</span></div>
+      <input type="range" id="sl-mm" min="0" max="10" value="2" step="0.1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Filter Cap (µF) <span class="ctrl-value" id="lbl-cap">10 µF</span></div>
+      <input type="range" id="sl-cap" min="0" max="100" value="10" step="1">
+    </div>
+    <div class="result-box" id="result">Adjust to see reference drift</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slTc=document.getElementById('sl-tc'),slMm=document.getElementById('sl-mm'),slCap=document.getElementById('sl-cap');
+const lblTc=document.getElementById('lbl-tc'),lblMm=document.getElementById('lbl-mm'),lblCap=document.getElementById('lbl-cap');
+const result=document.getElementById('result');
+
+function draw(){
+  const W=cv.width,H=cv.height;
+  const tc=parseFloat(slTc.value)*1e-6; // per °C
+  const mm=parseFloat(slMm.value)/100; // mismatch fraction
+  const cap=parseFloat(slCap.value)*1e-6;
+  lblTc.textContent=slTc.value+' ppm/°C';
+  lblMm.textContent=parseFloat(slMm.value).toFixed(1)+'%';
+  lblCap.textContent=slCap.value+' µF';
+  ctx.clearRect(0,0,W,H);
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  const VCC=3.3,Vnom=1.65;
+  const Tmin=20,Tmax=80;
+  // Drift due to mismatch tempco
+  function Vref(T){
+    const dT=T-25;
+    // If R1 has tempco tc and R2 has tc*(1+mm), ratio shifts
+    const R1=10e3*(1+tc*dT);
+    const R2=10e3*(1+tc*dT*(1+mm));
+    return VCC*R2/(R1+R2);
+  }
+  const yMin=Vnom-0.2,yMax=Vnom+0.2;
+  function yPx(v){return pad+plotH*(1-(v-yMin)/(yMax-yMin))}
+  function xPx(T){return pad+(T-Tmin)/(Tmax-Tmin)*plotW}
+  // Grid
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  for(let v=yMin;v<=yMax;v+=0.02){ctx.beginPath();ctx.moveTo(pad,yPx(v));ctx.lineTo(W-pad,yPx(v));ctx.stroke()}
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  // Nominal line
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#0066cc';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,yPx(Vnom));ctx.lineTo(W-pad,yPx(Vnom));ctx.stroke();
+  ctx.setLineDash([]);
+  // Without filter cap
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const T=Tmin+(px/plotW)*(Tmax-Tmin);
+    const v=Math.max(yMin,Math.min(yMax,Vref(T)));
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  // With matched resistors (1/10 mismatch)
+  ctx.strokeStyle='#f57c00';ctx.lineWidth=2;ctx.beginPath();
+  const slMm2=mm*0.1;
+  for(let px=0;px<=plotW;px++){
+    const T=Tmin+(px/plotW)*(Tmax-Tmin);
+    const dT=T-25;
+    const R1=10e3*(1+tc*dT);
+    const R2=10e3*(1+tc*dT*(1+slMm2));
+    const v=Math.max(yMin,Math.min(yMax,VCC*R2/(R1+R2)));
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  // Labels
+  ctx.fillStyle='#888';ctx.textAlign='right';ctx.font='10px system-ui';
+  for(let v=yMin;v<=yMax;v+=0.05)ctx.fillText(v.toFixed(2)+'V',pad-4,yPx(v)+3);
+  ctx.textAlign='center';
+  [20,30,40,50,60,70,80].forEach(T=>ctx.fillText(T+'°C',xPx(T),H-pad+14));
+  ctx.textAlign='left';ctx.font='11px system-ui';
+  ctx.fillStyle='#e53935';ctx.fillText('Mismatched R ('+parseFloat(slMm.value).toFixed(1)+'% diff)',pad+8,pad+16);
+  ctx.fillStyle='#f57c00';ctx.fillText('1% tolerance matched R',pad+8,pad+30);
+  ctx.fillStyle='#0066cc';ctx.fillText('Ideal (1.650V)',pad+8,pad+44);
+  const driftAt60=Math.abs(Vref(60)-Vnom)*1000;
+  const driftPpm=driftAt60/Vnom*1000;
+  result.innerHTML='<b>At 60°C drift: '+driftAt60.toFixed(1)+'mV</b><br>In ppm: <b>'+driftPpm.toFixed(0)+' ppm</b><br>Cap '+slCap.value+'µF filters AC noise<br>Tempco fix: use matched resistors<br><b>Ultimate fix: dedicated Vref IC (e.g., LM4040)</b>';
+}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slTc,slMm,slCap].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});
+resizeCanvas();draw();
+</script>
+</body>
+</html>

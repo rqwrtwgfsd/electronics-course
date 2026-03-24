@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Servo Jitter — Decoupling</title>
+<style>:root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}@media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}.module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}h1{font-size:18px;margin:4px 0}.layout{display:grid;grid-template-columns:1fr 260px;gap:16px}canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}.controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}.ctrl-group{margin-bottom:12px}.ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}.ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}.result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}@media(max-width:600px){.layout{grid-template-columns:1fr}}</style>
+</head>
+<body>
+<header><div class="module-id">Lecture 12 | Scenario 24</div><h1>Servo Jitter: Shared Supply Current Bursts</h1></header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group"><div class="ctrl-label">Servos (count) <span class="ctrl-value" id="lbl-n">4</span></div><input type="range" id="sl-n" min="1" max="8" value="4" step="1"></div>
+    <div class="ctrl-group"><div class="ctrl-label">Local Cap (µF) <span class="ctrl-value" id="lbl-c">1000 µF</span></div><input type="range" id="sl-c" min="0" max="4700" value="1000" step="100"></div>
+    <div class="ctrl-group"><div class="ctrl-label">Servo Current (mA) <span class="ctrl-value" id="lbl-i">500 mA</span></div><input type="range" id="sl-i" min="100" max="2000" value="500" step="100"></div>
+    <div class="result-box" id="result">Adjust to stop servo jitter</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slN=document.getElementById('sl-n'),slC=document.getElementById('sl-c'),slI=document.getElementById('sl-i');
+const lblN=document.getElementById('lbl-n'),lblC=document.getElementById('lbl-c'),lblI=document.getElementById('lbl-i');
+const result=document.getElementById('result');
+function draw(){
+  const W=cv.width,H=cv.height;
+  const N=parseInt(slN.value);const C=parseFloat(slC.value)*1e-6;const I=parseFloat(slI.value)*1e-3;
+  lblN.textContent=N;lblC.textContent=slC.value+' µF';lblI.textContent=slI.value+' mA';
+  ctx.clearRect(0,0,W,H);
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  const VCC=5,Rtrace=0.5; // 0.5Ω supply impedance
+  const Itotal=N*I;const Vsag_no=Itotal*Rtrace;
+  // With cap: energy storage reduces sag
+  const tPWM=0.02;const tBurst=0.003; // 3ms burst
+  const Vsag_cap=C>0?Math.min(Vsag_no,Itotal*tBurst/(C)):Vsag_no;
+  const vMin=Math.max(0,VCC-2),vMax=VCC+0.3;
+  function yPx(v){return pad+plotH*(1-(v-vMin)/(vMax-vMin))}
+  const tTotal=tPWM*2;
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  [4,4.5,5].filter(v=>v>=vMin&&v<=vMax).forEach(v=>{ctx.beginPath();ctx.moveTo(pad,yPx(v));ctx.lineTo(W-pad,yPx(v));ctx.stroke()});
+  ctx.strokeStyle='#888';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  // Jitter threshold
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#f57c00';ctx.lineWidth=1;
+  const jitter_thresh=VCC-0.3;ctx.beginPath();ctx.moveTo(pad,yPx(jitter_thresh));ctx.lineTo(W-pad,yPx(jitter_thresh));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#f57c00';ctx.font='10px system-ui';ctx.textAlign='left';ctx.fillText('Jitter threshold '+jitter_thresh.toFixed(1)+'V',pad+4,yPx(jitter_thresh)-4);
+  // Without local cap
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2;ctx.beginPath();
+  let tBurstStart=0.005;
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    let v=VCC;
+    for(let s=0;s<N;s++){const ts=tBurstStart+(s%3)*0.002;if(t>=ts&&t<ts+tBurst){v-=I*Rtrace*N;break;}}
+    v=Math.max(vMin,Math.min(vMax,v));
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  // With local caps
+  ctx.strokeStyle='#2e7d32';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    let v=VCC;
+    for(let s=0;s<N;s++){const ts=tBurstStart+(s%3)*0.002;if(t>=ts&&t<ts+tBurst){v-=Math.min(I*Rtrace*N,Vsag_cap);break;}}
+    v=Math.max(vMin,Math.min(vMax,v));
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  ctx.fillStyle='#888';ctx.textAlign='right';ctx.font='10px system-ui';
+  [vMin,VCC-0.5,VCC].filter(v=>v>=vMin).forEach(v=>ctx.fillText(v.toFixed(1)+'V',pad-4,yPx(v)+3));
+  ctx.textAlign='left';ctx.font='11px system-ui';
+  ctx.fillStyle='#e53935';ctx.fillText(N+' servos, no local cap: sags to '+(VCC-Vsag_no).toFixed(2)+'V',pad+8,pad+16);
+  ctx.fillStyle='#2e7d32';ctx.fillText('With '+slC.value+'µF/servo: '+(VCC-Vsag_cap).toFixed(2)+'V',pad+8,pad+30);
+  result.innerHTML='<b>'+N+' servos × '+slI.value+'mA = '+Itotal.toFixed(0)+'mA burst</b><br>Without cap: sags <b>'+( Vsag_no).toFixed(2)+'V</b> '+(Vsag_no>0.3?'⚠️ Causes jitter!':'✅')+'<br>With '+slC.value+'µF local: sags <b>'+( Vsag_cap).toFixed(2)+'V</b> '+(Vsag_cap<=0.3?'✅ No jitter':'⚠️ Still jitters')+'<br><b>Rule: Place caps as close as possible to each servo — trace L matters</b>';
+}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slN,slC,slI].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});resizeCanvas();draw();
+</script>
+</body>
+</html>

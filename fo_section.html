@@ -1,0 +1,476 @@
+
+<!-- ============================================================ -->
+<!-- PHASE 2 — FIRST-ORDER SYSTEMS                                -->
+<!-- ============================================================ -->
+<h1 id="phase2-first-order">Phase 2 — First-Order Systems</h1>
+<p class="chapter-hook">A single RC circuit — one resistor, one capacitor — governs the speed of half the electronic systems ever built. Every op-amp slew-rate limit, every digital signal rise time, every power-supply settling delay traces back to the same first-order differential equation. Master it once and you have the skeleton key to all of them.</p>
+
+<!-- ==================== P2-FO-3.1.1 ==================== -->
+<section id="P2-FO-3.1.1">
+  <h2>3.1.1 — Differential Equation Form</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>The first-order ODE governing any RC or RL network driven by an input x(t) with output y(t) is:</p>
+    <p>\[ \tau \frac{dy}{dt} + y = K \cdot x(t) \]</p>
+    <p>For an RC low-pass filter: \(\tau = RC\), \(K = 1\). For an RL circuit: \(\tau = L/R\), \(K = 1\). The characteristic equation is \(\tau s + 1 = 0\), giving the single real root \(s = -1/\tau\). The water-tank analogy: voltage is water level, current is flow rate, resistance is pipe constriction — narrower pipe (higher R) means slower filling (larger \(\tau\)).</p>
+    <p><strong>Industry Examples:</strong> TI OPA627 (τ = R_f·C_f feedback filter), ADI ADXL345 (RC anti-alias), Infineon IR2110 (bootstrap RC), ST L6390 (gate drive RC), Murata BLM18AG102SN1D (ferrite bead + C PDN), Coilcraft SER2014 (RL), TI INA219 (averaging RC on current sense).</p>
+    <p><strong>Common Mistakes:</strong> (1) Confusing RC time constant with frequency (τ is in seconds, f_c = 1/(2πτ) is in Hz). (2) Using τ = RC when the driving source has non-zero output resistance. (3) Assuming K = 1 always — in a voltage divider + capacitor, K = R2/(R1+R2). (4) Ignoring the source resistance as part of R. (5) Mixing rad/s and Hz in calculations.</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>The time constant τ is the system's "memory span." A small τ means the system forgets its past quickly and tracks inputs eagerly. A large τ means it clings to history and resists change. Every RC, every RL, every first-order digital filter has exactly one memory — the single stored energy in C or L. The differential equation τ·dy/dt + y = Kx says: the output resists change proportional to τ, but is always dragged toward Kx.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>Kirchhoff's voltage law around an RC series circuit with a step input V_in gives V_R + V_C = V_in, so R·C·(dV_C/dt) + V_C = V_in. This is exactly τ·dy/dt + y = x with τ = RC, K = 1. The same derivation for an RL circuit gives L/R·(dI/dt) + I = V_in/R, yielding τ = L/R. The physics is simply KVL plus the component constitutive relations (V = Ri, V = C·dV/dt for capacitor, V = L·di/dt for inductor).</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>The characteristic root s = −1/τ means the homogeneous solution is e^(−t/τ). At t = τ, the response has decayed to e^(−1) = 36.8% of its initial value — or risen to 63.2% of its final value for a step. The Laplace transform gives H(s) = K/(τs + 1), a single real pole at s = −1/τ on the negative real axis. Gain at DC: H(0) = K. Gain at s = j/τ (the −3 dB frequency): |H(j/τ)| = K/√2.</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>Always account for source output impedance when calculating τ. A 1 kΩ source driving an RC where R = 1 kΩ and C = 100 nF gives τ = (R_source + R) × C = 200 ns, not 100 ns. Parasitic resistance (PCB trace, contact resistance) shifts τ the same way. In ADC anti-aliasing filters, the ADC input impedance appears in parallel with the filter capacitor, shifting f_c and τ — always simulate with the real ADC input model.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>Claude Shannon's 1937 master's thesis showed that relay circuits (resistors and capacitors switching in logic combinations) could implement boolean algebra. Every RC time constant in those relay networks determined how fast logic could change state — the world's first digital circuits were governed by τ = RC, exactly as described here. When the transistor replaced the relay in 1947, the same first-order ODE still ruled the rise time of every gate. Sixty years later, CMOS gates with pF-scale capacitances and Ω-scale on-resistances still obey τ = RC — just at nanosecond scale.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>For distributed RC networks (like a long PCB trace modeled as a transmission line), the effective time constant scales as τ_distributed = R·C/3 (one-third of the lumped RC), because the distributed model averages the resistance and capacitance along the line. This is why long DDR traces must use controlled-impedance routing rather than lumped RC models — the lumped first-order equation breaks down when the physical length exceeds λ/10 at the highest signal frequency.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Computing τ = RC and ignoring that R is the Thévenin resistance seen by C from all sources. <strong>Fix:</strong> Short all voltage sources and open all current sources, then measure R from C's terminals. Every resistor in the path to any supply or ground contributes.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If your measured time constant differs from calculated: (1) Measure τ from the waveform at the 63.2% point of a step response. (2) Compare to RC calculated from component values. If measured τ is longer: check for parasitic series resistance (trace, connector). If shorter: check for parasitic parallel capacitance bleeding charge.</p></div>
+
+  <div class="sim-interactive-box">
+    <h4>🖥️ Interactive Simulation</h4>
+    <iframe src="simulations/P2-FO-3.1.1_Differential_Equation_Form_sim.html" width="100%" height="600px" frameborder="0"></iframe>
+  </div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>The differential equation form is the grammar of first-order systems. Every subsequent module in this section is a sentence written in that grammar. The exponential solution (3.1.2) solves the equation; the step response (3.2.1) applies a specific input; rise time and settling time (3.3.x) quantify the solution's performance. Understanding τ as the system's single degree of freedom makes every later formula inevitable rather than arbitrary.</p></div>
+</section>
+
+<!-- ==================== P2-FO-3.1.2 ==================== -->
+<section id="P2-FO-3.1.2">
+  <h2>3.1.2 — Exponential Solution</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>The universal solution to any first-order linear ODE with constant coefficients is:</p>
+    <p>\[ y(t) = y(\infty) + [y(0) - y(\infty)] \cdot e^{-t/\tau} \]</p>
+    <p>This holds for any initial condition y(0) and any final value y(∞). Derivation by separation of variables: let u = y − y(∞), then τ·du/dt + u = 0, so du/u = −dt/τ, integrating: ln|u| = −t/τ + C, giving u = u(0)·e^(−t/τ). Spring analogy: y(∞) is the spring's rest length; y(0) − y(∞) is the initial displacement; e^(−t/τ) is the exponential relaxation back to rest with time constant τ.</p>
+    <p><strong>Industry Examples:</strong> TI TLV3201 (comparator threshold RC), ADI ADA4004 (precision RC settling), Infineon TLE4276G (LDO soft-start RC), ST STA350BW (audio amp power-on RC), Murata GRM188R61A (bypass settling), Coilcraft XFL4020 (inductor current decay), TI ADS1115 (averaging filter).</p>
+    <p><strong>Common Mistakes:</strong> (1) Forgetting that y(∞) is the forced (particular) solution, not zero. (2) Applying the formula for t &lt; 0. (3) Ignoring that for a ramp input, the steady-state error is τ·(ramp rate). (4) Confusing the initial slope dy/dt|₀ = [y(∞)−y(0)]/τ with the final value. (5) Not recognising that the formula applies to current as well as voltage.</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>The universal formula says: start at y(0), end at y(∞), travel exponentially between them with time constant τ. The output never reaches y(∞) exactly — it asymptotically approaches it. At t = τ, it has covered 63.2% of the gap. At t = 5τ, it is within 0.67% — close enough for most purposes. The formula is the same whether the system is charging up, discharging, or making a partial transition from any starting point to any ending point.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>Separation of variables works because the equation is linear and has constant coefficients. The exponential e^(−t/τ) is the unique function that equals its own derivative (up to a scale factor) — which is exactly what the ODE τ·dy/dt + y = constant requires. No other function satisfies this property. This is why exponentials are the eigenfunctions of linear time-invariant systems: every sinusoidal input produces a sinusoidal output at the same frequency (scaled and phase-shifted), and every exponential input produces an exponential output.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>The initial slope is dy/dt|_{t=0} = [y(∞) − y(0)]/τ. This means: draw a tangent to the exponential at t = 0 — it intersects the final value y(∞) exactly at t = τ. This is the "tangent method" for measuring τ on an oscilloscope: draw the tangent at t = 0 and read off where it crosses the final value. For a ramp input x(t) = At, the particular solution is y_p(t) = KA(t − τ), so the steady-state error is K·A·τ — the output always lags the ramp by τ seconds multiplied by the ramp rate.</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>Three ways to measure τ from an oscilloscope: (1) Tangent method — draw the initial slope tangent, read intersection with final value. (2) 63.2% method — find the time at which the response is at 63.2% of its total excursion. (3) Rise time — measure t10 to t90 and divide by 2.197 (since t_r = 2.197τ). The 63.2% method is most intuitive; the tangent method works even when the full transient is not visible on screen.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>Jacob Bernoulli discovered in 1683 that compound interest approaches a limit as the compounding period shrinks to zero — that limit is e = 2.71828..., the base of natural logarithms. The same mathematics governs an RC circuit's approach to steady state. When Jacob plotted the limit of (1 + 1/n)^n, he was unknowingly deriving the step response of every RC filter that would ever be built. The number e is not an accident of mathematics — it is the natural unit of exponential decay, appearing wherever a quantity changes at a rate proportional to itself.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>For a first-order system with a non-zero initial condition and a sinusoidal input x(t) = sin(ωt), the complete solution is y(t) = y_transient·e^(−t/τ) + A·sin(ωt + φ), where A = K/√(1+(ωτ)²) and φ = −arctan(ωτ). The transient term decays with time constant τ, regardless of the input frequency. After 5τ, only the sinusoidal steady-state term remains. This is why amplifier gain and phase specifications are stated "at steady state" — they describe the surviving sinusoidal term only.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Applying y(∞) as the open-circuit or no-load voltage without checking if the load affects the Thévenin equivalent. <strong>Fix:</strong> Always compute y(∞) from the full circuit including all loads at DC (capacitors open, inductors short). y(∞) is the DC steady-state value in the modified circuit.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If the measured final value differs from y(∞) calculated from the formula: (1) Check for DC leakage paths across the capacitor. (2) Verify the input source has reached its final value before measuring y(∞). (3) For an RL circuit, ensure the current source (or its equivalent) is truly constant at DC — inductors are short circuits at DC steady state.</p></div>
+
+  <div class="sim-interactive-box">
+    <h4>🖥️ Interactive Simulation</h4>
+    <iframe src="simulations/P2-FO-3.1.2_Exponential_Solution_sim.html" width="100%" height="600px" frameborder="0"></iframe>
+  </div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>The universal exponential formula is the foundation every later result builds on. The step response (3.2.1) is the universal formula with y(0) = 0 and x(t) = A·u(t). The impulse response (3.2.2) is the derivative of the step response. Rise time (3.3.1) and settling time (3.3.2) are just specific thresholds applied to the same exponential. Learn this formula once and all the specific performance metrics follow automatically.</p></div>
+</section>
+
+<!-- ==================== P2-FO-3.2.1 ==================== -->
+<section id="P2-FO-3.2.1">
+  <h2>3.2.1 — Step Response</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>The step response of a first-order system (y(0) = 0, input = A·u(t)) is:</p>
+    <p>\[ y(t) = K \cdot A \cdot \left(1 - e^{-t/\tau}\right) \]</p>
+    <p>10% crossing: t₁₀ = 0.1054τ. 90% crossing: t₉₀ = 2.3026τ. Rise time: t_r = t₉₀ − t₁₀ = 2.197τ ≈ 2.2τ. Bandwidth: f_c = 1/(2πτ). Bandwidth-rise time product: BW × t_r = 2.197/(2π) = 0.3497 ≈ 0.35. Three τ-measurement methods: 63.2% point, rise time ÷ 2.2, or initial tangent intersection.</p>
+    <p><strong>Industry Examples:</strong> TI ADS8866 (16-bit SAR ADC anti-alias settling), ADI LTC6268 (transimpedance amplifier step response), Infineon TDA21472 (gate drive step), ST TSX3702 (comparator response), Murata SFE10.7MA45 (ceramic filter), Coilcraft SRR1260 (buck inductor current ramp), TI OPA211 (feedback network settling).</p>
+    <p><strong>Common Mistakes:</strong> (1) Forgetting the BW × t_r = 0.35 product — if you know bandwidth, rise time is determined. (2) Measuring rise time incorrectly at 0–100% instead of 10–90%. (3) Assuming a faster rise time is always better (it may violate settling requirements or increase noise bandwidth). (4) Ignoring that cascaded stages have quadrature rise time addition: t_r_total = √(t_r1² + t_r2² + ...). (5) Confusing the −3 dB frequency (f_c) with the Nyquist frequency.</p>
+  </div>
+
+  <div class="circuit-box">
+    <h4>⚡ NGSpice 3-Stage Netlist — Wrong τ → Intermediate τ → Correct τ</h4>
+    <pre>
+* Step Response — Three RC Values Showing Wrong τ, Intermediate τ, Correct τ
+* Target: settle to 1% within 10 µs → τ_target = 10µs/4.605 = 2.17 µs
+* Wrong:       τ = 10 µs (too slow, settles at t = 46 µs)
+* Intermediate: τ = 4 µs (still misses spec)
+* Correct:     τ = 2 µs (settles in 9.2 µs — just within 10 µs)
+
+.step param Rval LIST 100k 40k 20k
+.param C_val = 100n
+* τ = Rval * C_val: 10µs, 4µs, 2µs respectively
+
+Vstep  IN  0  PULSE(0 1 0 1n 1n 100m 200m)
+R1     IN  N1  {Rval}
+C1     N1  0   {C_val}  IC=0
+
+.tran  20n  50u  0  UIC
+
+.measure TRAN tau_meas   WHEN V(N1)=0.632  RISE=1
+.measure TRAN t_settle1pct  WHEN V(N1)=0.99  RISE=1
+
+.control
+run
+echo "R = " &Rval " Ohm, tau = " &tau_meas " s, settle = " &t_settle1pct " s"
+plot allsteps v(n1) title "Step Response: Wrong, Intermediate, Correct tau"
+.endc
+.end
+    </pre>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>The step response is the system's answer to "go from here to there." The BW × t_r = 0.35 product is a conservation law: you cannot have both wide bandwidth and slow rise time simultaneously. A faster rise time requires wider bandwidth. Every ADC sampling circuit, every digital output driver, every power supply transient response obeys this product. Knowing one fixes the other.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>The 10–90% rise time measures how long it takes charge to redistribute through the resistance into the capacitance. The 10% point at t = 0.1054τ occurs because ln(0.9) = −0.1054. The 90% point at t = 2.3026τ because ln(0.1) = −2.3026. These numbers are just the natural logarithm evaluated at the relevant fractions — the physics is charge redistribution, the math is the logarithm of the remaining gap.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>BW × t_r = (1/2πτ) × 2.197τ = 2.197/2π = 0.3497. This product is universal for all first-order low-pass systems. For a cascade of n identical first-order stages each with bandwidth f_c: total rise time t_r_total = √n × t_r_single, so BW_total = 0.35/t_r_total = 0.35/(√n × t_r_single) = f_c/√n. Each added stage reduces bandwidth by √n and increases rise time by √n.</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>When measuring step response on an oscilloscope: ensure the oscilloscope's own bandwidth is at least 5× the signal bandwidth (otherwise the scope adds to the rise time). A 100 MHz scope has t_r_scope ≈ 3.5 ns. The measured rise time is t_r_measured = √(t_r_true² + t_r_scope²) — the quadrature sum. Subtract the scope contribution to get the true rise time.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>In the 1930s, radar engineers at Bell Labs needed to specify how quickly a cathode-ray tube display could respond to a return pulse. They defined rise time as the 10–90% interval precisely because the 0–10% and 90–100% regions are dominated by nonlinearities at the extremes of the signal swing. The 10–90% interval captures the linear region of the exponential. This definition became the global standard, encoded in IEEE 181-2011, because it works for any waveform shape — not just RC exponentials but also LC-filtered ramps and op-amp slew-limited transitions.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>Large-signal step response differs from small-signal when the op-amp output slew rate limits. Large-signal rise time: t_r = ΔV/SR where SR is the slew rate in V/µs. For a 10 V step with SR = 5 V/µs: t_r = 10/5 = 2 µs. Compare this to the small-signal result: t_r = 0.35/BW. If BW = 10 MHz: t_r_small = 35 ns. The slew-rate-limited rise time (2 µs) is 57× longer. Slew rate dominates for large signals; bandwidth dominates for small signals. The crossover occurs at ΔV = 2π × BW × SR × t_r_small = 2π × 10M × 5 × 35n = 11 mV — only 11 mV before slew rate takes over for this op-amp.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Claiming the system has settled when the output visually "looks flat" on the oscilloscope. <strong>Fix:</strong> Calculate the actual settling time to the required accuracy band (1%, 0.1%, etc.) using t_s = −τ·ln(ε/100). A 1 MHz bandwidth system (τ = 159 ns) takes t_s(0.1%) = 7τ = 1.11 µs — not the 350 ns rise time.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If measured BW × t_r product significantly exceeds 0.35 (e.g., you get 0.6): parasitic capacitance is widening the effective τ. Check for PCB trace capacitance to ground, probe capacitance, or IC pin capacitance in parallel with the signal node. Each adds to C in τ = RC.</p></div>
+
+  <div class="sim-interactive-box">
+    <h4>🖥️ Interactive Simulation</h4>
+    <iframe src="simulations/P2-FO-3.2.1_Step_Response_sim.html" width="100%" height="600px" frameborder="0"></iframe>
+  </div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>The step response is the most practically useful single test of a first-order system. It simultaneously reveals τ (from the 63.2% crossing), bandwidth (from BW = 0.35/t_r), and settling time (from t_s = −τ·ln(ε)). The impulse response (3.2.2) is the derivative of this step response, connecting the two fundamental excitation types. Rise time (3.3.1) formalises the 10–90% measurement introduced here into a design specification.</p></div>
+</section>
+
+<!-- ==================== P2-FO-3.2.2 ==================== -->
+<section id="P2-FO-3.2.2">
+  <h2>3.2.2 — Impulse Response</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>The impulse response is the derivative of the step response. For a first-order system:</p>
+    <p>\[ h(t) = \frac{K}{\tau} e^{-t/\tau} \cdot u(t) \]</p>
+    <p>Key properties: (1) Initial value h(0) = K/τ. (2) Area under h(t) = ∫₀^∞ (K/τ)e^(−t/τ)dt = K. (3) An impulse is a valid approximation when pulse duration t_p &lt; τ/10 — if the pulse is wider, the impulse approximation overestimates the peak by a factor up to e^(t_p/τ)/(e^(t_p/τ)−1). For t_p = τ: true peak = 1 − e^(−1) = 63.2% of the step response; impulse approximation would give 100% — overestimate by 58%.</p>
+    <p>Convolution: y(t) = ∫₋∞^t h(t−τ') x(τ') dτ'. For the first-order system, this integral can be evaluated in closed form for piecewise constant inputs.</p>
+    <p><strong>Industry Examples:</strong> TI OPA657 (ESD impulse response), ADI ADA4817 (transimpedance amplifier impulse), Infineon BSC014N04LS (gate charge impulse), ST TSX911 (comparator propagation impulse), Murata BLM18EG121TN1D (EMI filter impulse), Coilcraft WBC1-1TL (transformer pulse response), TI INA126 (instrumentation amp kickback).</p>
+    <p><strong>Common Mistakes:</strong> (1) Assuming any short pulse can be treated as an impulse — validate t_p &lt; τ/10. (2) Forgetting that the area under h(t) equals the DC gain K, not 1. (3) Applying convolution with h(t) to a nonlinear system. (4) Confusing impulse response (delta function input) with pulse response (finite-width pulse input). (5) Not recognising that for t_p ≈ τ, the impulse approximation overestimates the peak by 28%.</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>Think of the impulse response as the system's "fingerprint" — it uniquely characterises the system. Any input can be decomposed into a sum of scaled, delayed impulses. Convolve each impulse with h(t), sum them up, and you have the output for any input whatsoever. The impulse response is the Rosetta stone of linear systems: know h(t) and you can compute the output for any input without solving the ODE again.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>An impulse delivers charge Q = I·Δt instantaneously to the capacitor, raising its voltage by ΔV = Q/C. This initial condition ΔV then decays exponentially with time constant τ = RC. The decay peak K/τ is the product of the charge deposited (proportional to 1/τ) and the gain K. For an RL circuit, an impulse of voltage momentarily forces a current change ΔI = V·Δt/L, which then decays as I(t) = ΔI·e^(−Rt/L) — the same mathematical form, dual physics.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>The impulse response is the derivative of the step response: h(t) = d/dt[K(1−e^(−t/τ))] = (K/τ)e^(−t/τ). Verify: ∫₀^∞ h(t)dt = ∫₀^∞ (K/τ)e^(−t/τ)dt = K[−e^(−t/τ)]₀^∞ = K(0−(−1)) = K. The area equals the DC gain, as required by the final value theorem (since H(0) = K for the DC gain).</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>ESD pulses (IEC 61000-4-2: 8/20 µs shape) must be checked against τ of the protection RC filter. If the RC filter has τ = 1 µs and the ESD pulse is 8 µs, the impulse approximation fails — use the full step response formula for the rising portion and a decaying exponential for the falling tail. For clock signal overshoot due to PCB trace reflections, the reflection appears as a negative impulse — compute h(t) to find the induced voltage perturbation on adjacent signals.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>Norbert Wiener developed convolution theory during World War II to predict aircraft trajectories for anti-aircraft gun prediction. He modeled the aircraft's future position as the convolution of its past positions (the input signal) with a prediction filter's impulse response. The same convolution integral that aimed anti-aircraft guns in 1943 is used today in digital audio equalizers, medical imaging reconstruction, and every FIR digital filter — the mathematics is identical.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>In switched-capacitor circuits (common in precision ADCs and audio DACs), the "sampling" operation is equivalent to multiplying the input by a train of impulses. The output spectrum is the convolution of the input spectrum with the sampling impulse train — producing images at multiples of f_s. The anti-aliasing filter before sampling must have its impulse response duration (settling time) much shorter than 1/f_s to avoid inter-sample interference. This is why SAR ADC input filters require t_settle(n-bit) &lt; 1/f_s.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Using h(t) from one topology in a circuit that has a different topology after the impulse. For example, an ESD impulse causes the protection diode to clamp, making the circuit nonlinear during the impulse — the linear h(t) does not apply during clamping. <strong>Fix:</strong> Split the analysis into the linear portion (after clamping ends) and the nonlinear clamping phase.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If measured impulse response peak is much lower than K/τ: the test pulse may be too narrow relative to the oscilloscope bandwidth, or the test pulse may have significant rise time (non-ideal impulse). Verify by integrating the measured response — the area must equal K. If measured area &lt; K, the oscilloscope bandwidth is attenuating the fast initial portion of h(t).</p></div>
+
+  <div class="sim-interactive-box">
+    <h4>🖥️ Interactive Simulation</h4>
+    <iframe src="simulations/P2-FO-3.2.2_Impulse_Response_sim.html" width="100%" height="600px" frameborder="0"></iframe>
+  </div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>The impulse response is the foundation of linear system theory: convolve any input with h(t) to get any output. In the frequency domain, convolution becomes multiplication — H(f) × X(f) = Y(f). This frequency-domain multiplication is the basis of all filter design in module 3.4.1 and beyond. The duality between step and impulse responses (step is the integral of the impulse; impulse is the derivative of the step) recurs as a structural principle throughout signal processing.</p></div>
+</section>
+
+<!-- ==================== P2-FO-3.3.1 ==================== -->
+<section id="P2-FO-3.3.1">
+  <h2>3.3.1 — Rise Time</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>Rise time is defined as the interval from 10% to 90% of the final value of a step response:</p>
+    <p>\[ t_r = t_{90} - t_{10} = \tau \ln(9) = 2.197\tau \approx 2.2\tau \]</p>
+    <p>Derivation: t₁₀ = −τ·ln(0.9) = 0.1054τ; t₉₀ = −τ·ln(0.1) = 2.3026τ; t_r = (2.3026 − 0.1054)τ = 2.197τ. BW × t_r = 0.3497 ≈ 0.35. Large-signal rise time limited by slew rate: t_r = ΔV/SR. Cascaded stages: t_r_total = √(t_r1² + t_r2² + ... + t_rn²) — quadrature addition.</p>
+    <p><strong>Industry Examples:</strong> TI THS4031 (1.4 GHz op-amp, t_r ≈ 250 ps), ADI AD8001 (800 MHz, t_r ≈ 438 ps), Infineon TLE4252D (LDO step response), ST M48Z08 (NVRAM access time), Murata GQM22M5C2H470FB01L (HF bypass settling), Coilcraft XAL1060 (power inductor saturation transition), TI ISO7741 (digital isolator propagation).</p>
+    <p><strong>Common Mistakes:</strong> (1) Using 0–100% instead of 10–90% for rise time. (2) Forgetting quadrature addition for cascaded stages. (3) Treating slew-rate-limited and bandwidth-limited rise times as interchangeable (they are not — slew rate sets a floor on large-signal rise time). (4) Not accounting for oscilloscope rise time in measurements. (5) Confusing rise time with propagation delay (t_50 = 0.693τ).</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>Rise time is the system's speed limit for responding to step changes. Bandwidth is the same speed limit expressed in frequency. BW × t_r = 0.35 is the exchange rate between these two units of speed. A 350 MHz oscilloscope has t_r = 1 ns. A digital logic gate with t_r = 500 ps has effective bandwidth = 700 MHz. These numbers are not coincidentally round — they all trace back to the same 0.35 product and the 2.197 factor in t_r = 2.2τ.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>Quadrature addition of rise times arises because bandwidth limits multiply in frequency domain: f_total = 1/√(1/f₁² + 1/f₂² + ...). Since t_r = 0.35/BW, this gives t_r_total = √(t_r1² + t_r2²). The quadrature rule assumes all stages are first-order and their bandwidths are independently set. If two stages are not independent (e.g., they share a common node impedance), the quadrature rule underestimates total rise time.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>For n identical cascaded stages each with time constant τ: total rise time t_r = √n × 2.2τ (quadrature of n identical terms). Total bandwidth = f_c/√n. For n = 3: t_r_total = 1.732 × 2.2τ = 3.81τ; BW = 1/(2πτ) / 1.732 = 0.578/τ × (1/2π). The rise time grows as √n while bandwidth shrinks as 1/√n — both express the same slowdown from cascading.</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>To correct oscilloscope rise time measurements: t_r_true = √(t_r_measured² − t_r_scope²). For a 500 ps scope measuring a 700 ps signal: t_r_true = √(700² − 500²) = √(490k − 250k) = √240k = 490 ps. The scope introduces 30% error in this example. Always check: if t_r_measured is within 2× of t_r_scope, the measurement is significantly affected by the scope's own bandwidth.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>The 10–90% rise time convention was codified in US military specification MIL-HDBK-217 in the 1960s as part of reliability prediction for radar and missile guidance electronics. Engineers at RCA, Motorola, and Texas Instruments needed a single number to characterize amplifier speed for automatic testing. The 10–90% interval was chosen because it excludes the top and bottom 10% where slew rate limiting, diode clamping, and other nonlinearities occur — leaving only the linear exponential portion. IEEE 181 standardized the definition in 2003, making it the global language for signal timing.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>For Gaussian-shaped filters (common in optical communications), the bandwidth-rise time product is BW × t_r = 0.312, slightly less than the 0.35 for a first-order filter. For a 4th-order Butterworth filter, BW × t_r ≈ 0.366. The product is a filter-shape constant — it tells you how "efficient" the filter is in converting bandwidth to rise time. A Gaussian filter is the most efficient (smallest product); higher-order brick-wall filters have larger products due to their ringing.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Designing for minimum rise time by maximising bandwidth in every stage of a signal chain, only to find the total rise time is dominated by the slowest stage. <strong>Fix:</strong> Apply quadrature rule before building. If one stage has t_r = 10 ns and another has t_r = 1 ns, the total is √(100+1) = 10.05 ns — the fast stage contributes less than 0.5%.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If rise time exceeds expected value: (1) Identify which stage is the bottleneck using the quadrature rule — the stage with the largest t_r² term dominates. (2) Verify the bandwidth of that stage with a frequency sweep. (3) Check for load capacitance (PCB traces, connector, scope probe) in parallel with the output node — it adds C and increases τ = R_out·C_load.</p></div>
+
+  <div class="sim-interactive-box">
+    <h4>🖥️ Interactive Simulation</h4>
+    <iframe src="simulations/P2-FO-3.3.1_Rise_Time_sim.html" width="100%" height="600px" frameborder="0"></iframe>
+  </div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>Rise time is the temporal face of bandwidth. The BW × t_r = 0.35 relationship is the single most useful design shortcut in analog electronics — learn it and you can estimate bandwidth from a scope capture in seconds. Settling time (3.3.2) extends the analysis beyond 90% to the precision band required by ADCs and DACs. Propagation delay (3.3.3) shifts focus from the 10–90% transition to the 50% crossing, the relevant threshold for digital logic timing.</p></div>
+</section>
+
+<!-- ==================== P2-FO-3.3.2 ==================== -->
+<section id="P2-FO-3.3.2">
+  <h2>3.3.2 — Settling Time</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>Settling time to accuracy ε% of final value:</p>
+    <p>\[ t_s = -\tau \ln\!\left(\frac{\varepsilon}{100}\right) = \tau \ln\!\left(\frac{100}{\varepsilon}\right) \]</p>
+    <p>ADC settling table (n-bit, settle to 1 LSB = 2^(−n) × 100%): 8-bit: ε = 0.39%, t_s = 5.54τ; 10-bit: 6.93τ; 12-bit: 8.32τ; 16-bit: 11.09τ; 20-bit: 13.86τ; 24-bit: 16.63τ. Rule: t_s(n) ≈ 0.693n × τ (since ln(2^n) = n·ln2 = 0.693n).</p>
+    <p><strong>Industry Examples:</strong> TI ADS8881 (18-bit, t_s = 12.47τ), ADI AD5791 (20-bit DAC settling), Infineon TLE8242-2 (solenoid current settling), ST STTS22H (temperature sensor averaging), Murata LXES15AAA1 (LDO settling), Coilcraft SRF0703A (RF filter settling), TI DAC8551 (16-bit DAC output settling).</p>
+    <p><strong>Common Mistakes:</strong> (1) Designing for 5τ settling and forgetting that 5τ only reaches 99.3% accuracy (not 12-bit precision which needs 8.3τ). (2) Not distinguishing between slew-limited and bandwidth-limited settling — they have different dependencies on component values. (3) Treating the settling-time formula as applying to large-signal steps when slew rate is limiting. (4) Ignoring op-amp output stage nonlinearity near the final value (long-tail settling). (5) Measuring settling time from the input step edge rather than from the output beginning to move.</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>Settling time is rise time's precision-demanding cousin. Rise time asks "how fast do you get close?" Settling time asks "how long until you are accurate enough?" For a 16-bit ADC, being 99% of the way there is not good enough — you need to be within 0.0015%. That demands 11τ, not 5τ. The rule t_s ≈ 0.693n × τ for n-bit settling is one of the most useful design rules in precision electronics: every extra bit of resolution costs 0.693τ of settling time.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>The settling time formula is the inverse of the exponential decay: solve (ε/100) = e^(−t_s/τ) for t_s. The logarithm extracts the time. For ADC settling, ε = 100/2^n (one LSB as a fraction of full scale). Substituting: t_s = τ·ln(2^n) = n·τ·ln(2) = 0.693n·τ. This derivation reveals why each extra bit adds a fixed time: each doubling of precision (1 more bit) adds exactly τ·ln(2) = 0.693τ of settling time.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>The settling time inequality for n-bit accuracy: τ &lt; t_available / (0.693n). For a 16-bit ADC at 1 MSPS (t_available = 1 µs per sample), τ &lt; 1µs / 11.09 = 90.2 ns. This means BW &gt; 1/(2π × 90.2 ns) = 1.76 MHz. The ADC input filter must have at least 1.76 MHz bandwidth to settle to 16-bit accuracy in one sample period. This is the fundamental constraint linking ADC sample rate to input filter bandwidth.</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>Precision DAC output filters present a settling challenge: the filter must reject noise (wants small bandwidth, large τ) but must settle to full accuracy within the update period (wants small τ). The tension is resolved by maximising bandwidth while still meeting noise requirements. When these constraints conflict — τ_max from settling &lt; τ_min from noise — a higher-order filter is needed to achieve better noise rejection per unit of settling time.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>The original Tektronix 547 oscilloscope (1964) had a 30 MHz bandwidth and a settling time specification: after a large-signal step, the trace was specified to settle to within 1% of final value within 50 ns. The engineers at Tektronix discovered that achieving this required τ &lt; 50/(4.605) = 10.9 ns — equivalent to 14.6 MHz bandwidth. But the amplifier needed 30 MHz BW for signal fidelity. The solution was the "overdrive recovery" specification — a separate measurement for large signals where slew rate limited the initial transient, followed by the small-signal exponential settling. This two-phase settling behaviour is still present in every high-speed op-amp datasheet today.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>Long-tail settling in precision op-amps is caused by thermal gradients in the input stage: a large-signal step heats one side of the differential pair slightly more than the other, creating a slowly decaying offset voltage that takes microseconds to equilibrate. This thermal settling is not predicted by the RC time constant but appears as an exponential tail with τ ≈ 1–100 µs depending on the die geometry. For 20-bit precision (ε = 0.0001%), the theoretical settling time is 13.86τ = 2.2 µs for a 160 ns time constant — but the thermal tail can persist for 10–100× longer. High-precision DAC and ADC manufacturers characterize this as "long-term settling" and specify it separately from the main settling.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Using t_s = 5τ as a universal settling criterion for all applications. <strong>Fix:</strong> Always compute t_s = τ·ln(100/ε) for the specific accuracy required. For 0.1% (10-bit): t_s = 6.91τ. For 0.01% (13-bit equivalent): t_s = 9.21τ. The 5τ rule only applies to 0.67% accuracy — roughly 7-bit precision.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If settling time is much longer than τ·ln(100/ε): (1) Check for long-tail nonlinearity near the final value (diode clamp releasing, transistor coming out of saturation). (2) Measure the last 1–2% of settling on a slower time scale — this region may have a different, longer time constant. (3) For op-amp circuits, check for input stage thermal settling by repeating the measurement with a temperature-controlled IC.</p></div>
+
+  <div class="sim-interactive-box">
+    <h4>🖥️ Interactive Simulation</h4>
+    <iframe src="simulations/P2-FO-3.3.2_Settling_Time_sim.html" width="100%" height="600px" frameborder="0"></iframe>
+  </div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>Settling time links first-order dynamics to precision system design. The formula t_s = 0.693nτ is the bridge between bandwidth (τ) and digital resolution (n bits). Propagation delay (3.3.3) addresses the complementary timing question — not when does the output reach its final value, but when does it cross the logic threshold. Speed-noise trade-offs (3.4.1) then show that extending τ to improve noise bandwidth comes at the direct cost of slower settling.</p></div>
+</section>
+
+<!-- ==================== P2-FO-3.3.3 ==================== -->
+<section id="P2-FO-3.3.3">
+  <h2>3.3.3 — Delay</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>Propagation delay (50% crossing time) for a first-order step response:</p>
+    <p>\[ t_{50} = \tau \ln(2) = 0.693\tau \]</p>
+    <p>Group delay (frequency-domain measure of phase linearity):</p>
+    <p>\[ \tau_g(\omega) = \frac{\tau}{1 + (\omega\tau)^2} \]</p>
+    <p>Phase response: φ(ω) = −arctan(ωτ). The first-order RC filter does NOT have linear phase — group delay varies from τ at DC to 0 at high frequency. Phase delay at ω = 1/τ: 45°, with τ_g = τ/2. Total phase swing from DC to infinity: 90°. For digital signals, this non-constant group delay causes pulse distortion.</p>
+    <p><strong>Industry Examples:</strong> TI SN74LVC1G04 (logic gate propagation delay), ADI ADCMP608 (comparator delay), Infineon XMC4500 (timer input capture delay), ST STM32H7 (ADC trigger delay), Murata BLM21PG221SN1D (ferrite bead delay), Coilcraft SRF5025C (RF filter group delay), TI OPA189 (precision op-amp delay).</p>
+    <p><strong>Common Mistakes:</strong> (1) Confusing propagation delay (50% threshold) with rise time (10–90% interval) — they are different measurements. (2) Assuming RC filters have linear phase — they do not (unlike FIR digital filters or Bessel analog filters). (3) Applying group delay analysis to large-signal responses where the 50% threshold crossing is nonlinearly related to the analog waveform. (4) Forgetting that propagation delay decreases with increasing input overdrive (comparators). (5) Ignoring that t_50 = 0.693τ assumes a zero initial condition and a full step — partial steps give different t_50.</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>Propagation delay t_50 = 0.693τ tells you when the output crosses the midpoint — the "halfway there" time. It is always shorter than the rise time because the rise time covers 10–90% while propagation delay measures the single 50% crossing. For a logic signal, t_50 is the gate delay; for an analog signal, it measures the latency before the signal "commits" to its new direction. The factor 0.693 is ln(2) — the same constant that appears in RC half-life problems.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>Group delay τ_g(ω) = −dφ/dω is the derivative of phase with respect to frequency. For H(jω) = 1/(1 + jωτ), phase is φ = −arctan(ωτ), and dφ/dω = −τ/(1 + (ωτ)²), giving τ_g = τ/(1 + (ωτ)²). At ω = 0: τ_g = τ (maximum delay). As ω → ∞: τ_g → 0 (high-frequency signals pass with negligible delay). This frequency-dependence of delay means different frequency components of a pulse arrive at different times — causing waveform distortion even in a perfectly linear circuit.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>The 0.693 factor: t_50 = −τ·ln(1 − 0.5) = −τ·ln(0.5) = τ·ln(2) = 0.693τ. The RC circuit does not have linear phase because φ(ω) = −arctan(ωτ) is not proportional to ω. A filter with linear phase satisfies φ(ω) = −ωτ₀ for constant τ₀. The Bessel (Thomson) filter is the standard linear-phase filter design, optimised for constant group delay (maximally flat group delay).</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>For timing-sensitive signals (clock distribution, data signals through filters), non-constant group delay causes inter-symbol interference (ISI). The eye diagram closes when the group delay variation across the signal bandwidth exceeds about 0.2 × UI (unit interval). For a 1 Gbps signal (UI = 1 ns), group delay variation must be &lt; 200 ps across the 500 MHz signal bandwidth. This is why clock distribution networks use Bessel filters or transmission lines (constant group delay) rather than RC filters.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>The development of Bessel filters in the 1940s (by Wilhelm Bessel, adapted for electrical filter design by W.E. Thomson in 1952) was driven precisely by this non-linear phase problem. Thomson was designing filters for television broadcast equipment — colour television required that the luminance and chrominance components of the video signal arrive at the receiver with the same delay, or the colour would smear horizontally. RC filters failed this test. Thomson's solution was a filter whose poles are the roots of Bessel polynomials, producing maximally flat group delay — all frequencies delayed by the same amount. Every video and audio system since has used Bessel or similar linear-phase filters for time-sensitive signal paths.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>In sampled-data systems (switched-capacitor filters, delta-sigma ADCs), group delay is defined discretely as the phase slope of the z-domain transfer function H(e^jω). The group delay determines the latency from input to output in samples. For a delta-sigma ADC with a sinc^3 decimation filter, the group delay is 1.5 × OSR samples — about 4–8 µs at 192 kHz sample rate. This deterministic latency must be accounted for in closed-loop control systems that include the ADC in the feedback path.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Assuming that if two signals both pass through the same RC filter, their relative timing is preserved. <strong>Fix:</strong> If the two signals have different frequency content, the non-constant group delay of the RC filter introduces differential delay between them. Use a Bessel filter or matched transmission line when relative timing between channels must be preserved.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If a digital signal shows "smearing" or reduced eye opening after passing through an RC filter: the group delay variation is distorting the waveform. Measure group delay with a VNA or a dedicated TDR (time-domain reflectometer) in phase-measurement mode. The group delay vs. frequency plot should be flat across the signal bandwidth. Pronounced group delay peaking near f_c indicates the filter is marginal for this data rate.</p></div>
+
+  <div class="sim-interactive-box">
+    <h4>🖥️ Interactive Simulation</h4>
+    <iframe src="simulations/P2-FO-3.3.3_Delay_sim.html" width="100%" height="600px" frameborder="0"></iframe>
+  </div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>Delay, rise time, and settling time form the three temporal faces of a first-order system: t_50 = 0.693τ (when the output half-commits), t_r = 2.2τ (when it is mostly there), and t_s = nτ·ln(2) (when it is precisely there). Together, they define all timing specifications encountered in digital systems, data converters, and communication links. Module 3.4.1 on speed vs. noise adds the fourth face: how bandwidth choices affect noise performance, completing the characterization of first-order systems.</p></div>
+</section>
+
+<!-- ==================== P2-FO-3.4.1 ==================== -->
+<section id="P2-FO-3.4.1">
+  <h2>3.4.1 — Speed vs. Stability Insight</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>Peak drive current for a capacitive load during a step response:</p>
+    <p>\[ I_0 = \frac{C \cdot V_{step}}{\tau} \]</p>
+    <p>Noise bandwidth of a first-order system:</p>
+    <p>\[ BW_{noise} = \frac{1}{4\tau} = \frac{\pi}{2} \cdot f_c \approx 1.571 \cdot f_c \]</p>
+    <p>The noise bandwidth is 57% wider than the −3 dB bandwidth because the noise power integral ∫₀^∞ |H(jω)|² df captures the tail of the roll-off beyond f_c. A first-order system with a single pole is always stable in open-loop — the pole is always in the left half-plane. Speed-noise trade-off: doubling τ (halving bandwidth) reduces noise power by 2× (3 dB improvement), but doubles settling time.</p>
+    <p><strong>Industry Examples:</strong> TI LMG3422R030 (GaN FET, peak gate current), ADI ADA4870 (60 V output driver peak current), Infineon IRS2113 (gate driver current), ST TSV6392 (rail-to-rail op-amp drive current), Murata GRM21BR71C226ME51L (bypass capacitor charge current), Coilcraft MSS1048T (inductor peak current), TI INA240 (current sense amplifier).</p>
+    <p><strong>Common Mistakes:</strong> (1) Underestimating peak current for fast switching — I₀ = C·V/τ can be 10–100× average current. (2) Treating noise bandwidth as equal to −3 dB bandwidth — noise power is 57% higher than calculated from f_c alone. (3) Not recognising that a first-order open-loop system is always stable. (4) Confusing bandwidth with noise bandwidth in noise density calculations. (5) Ignoring peak drive current stress on the driving stage.</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>Noise bandwidth BW_noise = 1/(4τ) is wider than the signal bandwidth f_c = 1/(2πτ) because noise is not bandlimited — it keeps entering the filter at all frequencies above f_c, and the filter's gradual roll-off allows some of it through. The 57% excess is the "cost" of the gradual first-order roll-off. Every extra dB of noise rejection you want from the filter costs extra settling time (larger τ), because you are literally slowing down the system to reject more noise. This is the fundamental speed-noise trade-off encoded in BW_noise = 1/(4τ).</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>The noise bandwidth calculation: BW_noise = ∫₀^∞ |H(f)|² df = ∫₀^∞ 1/(1+(2πfτ)²) df. Substituting u = 2πfτ: BW_noise = (1/2πτ)·∫₀^∞ 1/(1+u²) du = (1/2πτ)·[π/2] = 1/(4τ). The factor π/2 comes from the integral of 1/(1+u²) from 0 to ∞ — a standard result from complex analysis (the arctan integral). The peak current I₀ = C·ΔV/τ comes from the initial slope of the step response: dV/dt|₀ = ΔV/τ, so I = C·dV/dt|₀ = C·ΔV/τ.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>The speed-noise power trade-off: output noise power v_n² = S_n × BW_noise = S_n/(4τ), where S_n is the input noise spectral density. Doubling τ halves the noise power (3 dB reduction). The SNR improvement per decade of τ: 10 dB per decade. This is because noise power ∝ 1/τ = BW_noise, so a 10× increase in τ gives 10× reduction in noise power = 10 dB. Settling time increases 10× for the same 10× increase in τ.</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>When designing a front-end filter for a precision ADC: (1) Calculate required noise bandwidth from ADC input noise spec: BW_noise = (V_n_max)² / S_n. (2) Convert to τ: τ = 1/(4·BW_noise). (3) Verify settling time: t_s = 0.693n × τ ≤ available time. (4) Calculate peak drive current: I_peak = C_ADC × V_ref / τ. If I_peak exceeds the driving op-amp's output current rating, a buffer is needed. These four steps are the complete first-order front-end design.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>The speed-noise trade-off is the electronic analogue of Heisenberg's uncertainty principle — not in the quantum mechanical sense, but in the information-theoretic sense. Claude Shannon proved in 1948 that channel capacity (bits per second) is proportional to bandwidth. More bandwidth = faster data rate. But more bandwidth also means more noise admitted (since noise power ∝ BW). The SNR = signal power / (noise × BW) improves as you narrow bandwidth — but at the cost of slower signalling. Every receiver designer since Shannon has lived inside this trade-off.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>The noise bandwidth result BW_noise = π/2 × f_c holds only for a single-pole system. For an n-pole Butterworth filter: BW_noise = π/(2n·sin(π/(2n))) × f_c. As n → ∞ (brick-wall filter): BW_noise → f_c (noise bandwidth equals signal bandwidth, the ideal case). The ratio BW_noise/f_c decreases from 1.571 (1-pole) to 1.111 (2-pole) to 1.043 (4-pole) to 1.000 (∞-pole) — showing the practical benefit of higher-order filters for noise rejection.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Specifying τ based on noise requirements alone and then discovering settling time is too long. <strong>Fix:</strong> Design the feasibility window: τ_max from settling = t_available / (0.693n); τ_min from noise = 1/(4·BW_noise_max). If τ_min > τ_max, the specification is self-contradictory and a higher-order filter is required.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If a filter shows higher noise than the thermal noise floor suggests: (1) Recalculate using BW_noise = 1/(4τ), not f_c = 1/(2πτ). Noise power = S_n × BW_noise = S_n/(4τ) — 57% more than if you mistakenly used f_c. (2) Check for power supply noise coupling — an LDO with a small output capacitor has higher output noise above its loop bandwidth (where it is open-loop). (3) Check for clock coupling into the analog signal path via substrate or PCB traces.</p></div>
+
+  <div class="sim-interactive-box">
+    <h4>🖥️ Interactive Simulation</h4>
+    <iframe src="simulations/P2-FO-3.4.1_Speed_vs_Stability_sim.html" width="100%" height="600px" frameborder="0"></iframe>
+  </div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>Speed versus noise is the central design trade-off in first-order systems. The noise bandwidth formula BW_noise = 1/(4τ) connects settling time, bandwidth, and noise into a single constraint triangle. Module 3.4.2 on engineering trade-offs formalizes this into a 6-step methodology, turning the qualitative tension between speed and noise into quantitative feasibility boundaries that guide component selection.</p></div>
+</section>
+
+<!-- ==================== P2-FO-3.4.2 ==================== -->
+<section id="P2-FO-3.4.2">
+  <h2>3.4.2 — Engineering Trade-offs</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>First-order design methodology (6 steps):</p>
+    <ol>
+      <li>Determine required bandwidth or maximum allowable rise time.</li>
+      <li>Compute τ from f_c or t_r: τ = 1/(2πf_c) or τ = t_r/2.2.</li>
+      <li>Check noise bandwidth: BW_noise = 1/(4τ); verify output noise meets spec.</li>
+      <li>Calculate peak drive current: I_peak = C·V_step/τ; verify against driver rating.</li>
+      <li>Verify settling time: t_s = −τ·ln(ε/100) ≤ available settling time.</li>
+      <li>Check loop stability margin if the stage is inside a feedback loop (single pole → always stable open-loop).</li>
+    </ol>
+    <p>Feasibility window: τ_max from settling time = t_available / ln(100/ε). τ_min from noise = 1/(4·BW_noise_max). If τ_min > τ_max: contradictory requirements — use higher-order filter. The 6-step methodology applies to op-amp feedback filters, ADC anti-aliasing filters, power supply output filters, and any single-RC signal path.</p>
+    <p><strong>Industry Examples:</strong> TI INA128 (instrumentation amp input filter), ADI ADA2200 (synchronous demodulator), Infineon TLF35584 (automotive SBC), ST L6599 (LLC resonant controller), Murata NFM31KC223R1H3L (common-mode filter), Coilcraft SRR6038 (power inductor), TI OPT3001 (ambient light sensor RC).</p>
+    <p><strong>Common Mistakes:</strong> (1) Designing for bandwidth without checking settling. (2) Designing for settling without checking noise. (3) Ignoring the peak drive current (often the first hardware failure mode). (4) Not documenting the τ_min and τ_max window — if it is narrow, component tolerances may violate it. (5) Forgetting that adding a buffer between filter and load changes the driving impedance and may require a new filter time constant.</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>The feasibility window [τ_min, τ_max] is the engineer's canvas. If τ_min > τ_max, the specifications are physically impossible with a single RC — you need a second-order or higher filter to independently control noise and settling. A narrow window means tight tolerances — small resistor and capacitor variations will push the design outside the window. A wide window means robust design with plenty of margin. Always know the width of your window before selecting component values.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>The fundamental conflict: noise wants a large τ (slow, heavily filtered) while settling wants a small τ (fast response). These demands pull in opposite directions and cannot both be satisfied simultaneously with a single pole. A second-order filter (two poles) introduces an extra degree of freedom — the second pole can provide extra noise rejection without increasing the settling time of the dominant first pole, breaking the trade-off.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>When τ_min > τ_max from the feasibility check, the required noise bandwidth BW_noise_max < 1/(4τ_max_settling). For a 2nd-order Butterworth filter with cutoff frequency f_c: the noise bandwidth is BW_noise = π/2 × 1.111 × f_c = 1.745/f_c instead of π/2 × f_c = 1.571/f_c for first-order. The improvement is only 11% — not dramatic. For a 4th-order Butterworth: BW_noise = 1.043 × f_c — 4% improvement. Higher-order filters are most useful when the settling time specification is much stricter than the noise specification, not when both are tight.</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>Document the design calculation formally: "τ_target = X ns. τ_max from settling (n-bit, t_s = Y µs): τ &lt; Y/(0.693n) = Z ns. τ_min from noise (v_n ≤ W µV RMS, S_n = P nV/√Hz): τ > 1/(4·(W/P)²) = Q ns. Window: [Q ns, Z ns]. Nominal τ = (Q+Z)/2." This documentation makes the tolerance analysis straightforward: component variation of ±x% translates directly to τ variation of ±x%, and you can immediately see if this pushes τ outside the window.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>The 1970 design of the Apollo lunar surface gravimeter (for the Apollo 17 mission) faced exactly this constraint. The instrument needed to measure gravitational changes due to lunar tides with nano-g resolution while settling in under 1 minute after the astronaut walked away (vibration). The noise requirement demanded τ > 30 seconds; the settling requirement demanded τ &lt; 13 seconds. The feasibility window was empty — the design was physically impossible as a single RC. The solution was a 3rd-order Butterworth filter that independently controlled noise bandwidth and settling time, enabling the instrument to detect the tidal deformation of the Moon.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>In closed-loop control systems, the first-order filter inside the feedback path does more than set noise and settling — it also contributes phase at the crossover frequency. Each RC in the forward path adds phase lag (−arctan(f/f_c) degrees at frequency f). Multiple RC filters in series can push the total phase beyond 180° at the crossover frequency, causing oscillation. The 6-step methodology becomes 7 steps for closed-loop systems: add "verify phase margin at loop crossover with all filters in series."</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Adding multiple RC stages for additional noise filtering and inadvertently creating a second-order (or higher) system that oscillates. <strong>Fix:</strong> For each additional RC stage inside a feedback loop, calculate its phase contribution at the loop crossover. If two RC filters together contribute &gt;100° at crossover, the loop is at risk. Use a single dominant pole design where possible, or actively compensate the additional phase.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If a precision measurement system has higher noise than expected: (1) Identify every RC in the signal path (explicit filters, op-amp bandwidth limit, parasitic RC at nodes). (2) Calculate BW_noise for each stage. (3) Sum noise powers from all stages: v_n_total² = Σ (S_n_i × BW_noise_i). (4) The dominant noise source is the stage with the largest S_n × BW_noise product — focus noise reduction there first.</p></div>
+
+  <div class="sim-interactive-box">
+    <h4>🖥️ Interactive Simulation</h4>
+    <iframe src="simulations/P2-FO-3.4.2_Engineering_Tradeoffs_sim.html" width="100%" height="600px" frameborder="0"></iframe>
+  </div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>The engineering trade-offs module completes the analysis framework for first-order systems. The simulation modules (3.5.1 and 3.5.2) now apply NGSpice to verify the analytical results from 3.3 and 3.4 numerically, closing the theory-to-simulation loop. After simulation, the course transitions to second-order systems (Chapter 4), where two energy storage elements create qualitatively new behaviour — oscillation, overshoot, and resonance — that the first-order framework cannot predict.</p></div>
+</section>
+
+<!-- ==================== P2-FO-3.5.1 ==================== -->
+<section id="P2-FO-3.5.1">
+  <h2>3.5.1 — Transient Analysis Simulation</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>NGSpice transient simulation setup rules for first-order systems:</p>
+    <ul>
+      <li>.tran tstep tstop: time resolution and simulation duration</li>
+      <li>tstep ≤ τ/100 (at least 100 points per time constant for accuracy)</li>
+      <li>tstop ≥ 5τ (captures 99.3% of the transient)</li>
+      <li>PULSE rise/fall time ≤ τ/100 (so the source acts as a true step)</li>
+    </ul>
+    <p>Automatic τ measurement: .meas TRAN tau_val WHEN V(node)=0.632 RISE=1. Also available: .meas TRAN trise TRIG V(node) VAL=0.1 RISE=1 TARG V(node) VAL=0.9 RISE=1.</p>
+    <p>Example netlist (RC first-order, step response):</p>
+    <pre>
+V1  IN  0  PULSE(0 1 0 1n 1n 100m 200m)
+R1  IN  N1  {R}
+C1  N1  0   {C}  IC=0
+.param R=1k C=100n
+.tran {R*C/100}  {5*R*C}  0  UIC
+.meas TRAN tau_meas  WHEN V(N1)=0.632 RISE=1
+    </pre>
+    <p><strong>Industry Examples:</strong> TI TINA-TI (TLV3201 simulations), ADI LTspice (ADS8866 anti-alias), Infineon BSC014N04LS (gate charge), ST STM32L4 (timer accuracy), Murata BLM18AG102SN1D (ferrite bead), Coilcraft SER2014 (power inductor), TI TLV3201 (settling verification).</p>
+    <p><strong>Common Mistakes:</strong> (1) Setting tstep = τ/10 — too coarse, misses the exponential peak. (2) Not using UIC keyword — NGSpice computes DC operating point and the transient may appear immediate. (3) Using too-slow PULSE rise time — the source's own RC rolls off the step. (4) Forgetting that .meas WHEN V=0.632 gives τ only for a normalised step from 0 to 1 V. (5) Running tstop = 2τ and missing the tail of settling.</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>Simulation is the first hardware — it lets you fail cheaply. Before soldering a single component, NGSpice can tell you whether τ meets the settling specification, whether the peak drive current exceeds the driving stage rating, and whether the noise bandwidth satisfies the ADC input requirement. The 5 minutes spent writing the netlist save 5 days of hardware debug. The discipline of making tstep ≤ τ/100 is like choosing sufficient map resolution — too coarse and you miss the important features.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>NGSpice integrates the ODE numerically using Gear or trapezoidal methods. These methods have truncation error proportional to (tstep)² — doubling tstep quadruples the integration error. For an exponential with time constant τ, the significant curvature occurs near t = 0 (where |d²y/dt²| is maximum). Setting tstep = τ/100 ensures the truncation error is below 0.01% — sufficient for verifying component-level designs but insufficient for tight absolute accuracy requirements (use tstep = τ/1000 for critical simulations).</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>The .meas WHEN V(N1) = 0.632 RISE=1 command finds the time at which the output first crosses 0.632 V during a rising edge. For a step response from 0 to 1 V: V(t) = 1 − e^(−t/τ) = 0.632 when t = τ. The measurement is exact. For a step from V1 to V2: the 63.2% point is V1 + 0.632×(V2−V1) = 0.632 × V2 for V1 = 0. Adjust the WHEN threshold to 0.632 × V_final for non-normalised steps.</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>NGSpice .meas commands run inside the .tran simulation and output results to the terminal. For a first-order verification, run three measurements: (1) tau_meas to verify τ matches RC. (2) trise_meas to verify t_r ≈ 2.2τ. (3) t_settle_meas to verify settling time meets the required accuracy. If all three match theory within 2%, the simulation is correctly set up and the design can proceed to layout.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>Berkeley SPICE (the ancestor of NGSpice) was created by Laurence Nagel and Don Pederson at UC Berkeley in 1971 as part of a class project. The original assignment was to write a simulation program for transistor circuits — the result was SPICE1, which Nagel documented in his 1975 PhD thesis. The program was released into the public domain by Berkeley, leading to dozens of commercial (LTspice, PSpice, TINA-TI) and open-source (NGSpice) derivatives. Today, NGSpice has been downloaded millions of times and is used in universities, startups, and large companies worldwide. Every .tran command executed today traces back to Nagel's 1971 assignment.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>For circuits with very different time scales (e.g., a 1 GHz RF circuit with a 100 µs settling time), the wide ratio of time scales makes simulation extremely slow — tstep must be small enough for the fast dynamics but tstop must cover the slow settling. The technique of hierarchical simulation addresses this: run the fast simulation at tstep = 100 ps with tstop = 100 ns to characterize the fast behaviour, then extract an equivalent model (a behavioral model with the same τ) and run the slow simulation at tstep = 1 µs with tstop = 1 ms. This reduces simulation time by 10⁶× for a representative circuit.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Running simulation without UIC and observing that V(C1) starts at the DC steady state (1 V for a 1 V input with C in steady state) rather than 0 V. The transient appears instantaneous. <strong>Fix:</strong> Add "0 UIC" at the end of the .tran line: ".tran {tstep} {tstop} 0 UIC". The "UIC" keyword forces NGSpice to use the IC= initial conditions specified on capacitors and inductors.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If the simulated τ differs from R×C: (1) Check that the source has low enough rise time (tr ≤ R×C/100). If the PULSE rise time is 10× τ, the simulation gives a slew-rate-limited rise, not an exponential. (2) Check that no other resistances are in series (internal source resistance, parasitic resistance). (3) Verify IC=0 is set on C1 and UIC is in the .tran command.</p></div>
+
+  <div class="sim-interactive-box">
+    <h4>🖥️ Interactive Simulation</h4>
+    <iframe src="simulations/P2-FO-3.5.1_Transient_Analysis_sim.html" width="100%" height="600px" frameborder="0"></iframe>
+  </div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>Transient simulation closes the loop between first-order theory and numerical verification. The parameter sweep in module 3.5.2 extends single-point simulation to a family of curves, directly previewing the second-order system behaviour in Chapter 4 — where sweeping resistance through the critical damping point reveals the qualitative change from overdamped to underdamped responses, each with distinct time-domain signatures invisible in first-order systems.</p></div>
+</section>
+
+<!-- ==================== P2-FO-3.5.2 ==================== -->
+<section id="P2-FO-3.5.2">
+  <h2>3.5.2 — Parameter Sweep Simulation</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>NGSpice parameter sweep commands:</p>
+    <ul>
+      <li>.step param name LIST val1 val2 val3 — explicit values</li>
+      <li>.step param name DEC n start stop — n values per decade, logarithmic</li>
+      <li>.step param name LIN n start stop — n values, linear spacing</li>
+      <li>.step param name OCT n start stop — n values per octave</li>
+    </ul>
+    <p>Example: sweep R from 1 kΩ to 100 kΩ (C = 100 nF), logarithmic: .step param R DEC 3 1k 100k. tstop must cover the largest τ = R_max × C = 10 ms. .meas commands execute inside the loop, collecting results for each R value.</p>
+    <p>Second-order preview: L = 10 µH, C = 10 nF gives Z₀ = √(L/C) = √(10µ/10n) = 31.62 Ω. Critical resistance: R_crit = 2Z₀ = 63.24 Ω. At R = R_crit/√2 = 44.7 Ω: ζ = 44.7/(2×31.62) = 0.707, the Butterworth condition. Below R_crit: underdamped ringing; above: overdamped, no ringing — the second-order preview.</p>
+    <p><strong>Industry Examples:</strong> TI OPA2277 (tolerance analysis), ADI AD8571 (precision settling), Infineon TLE9879 (automotive timing), ST L6490 (gate drive), Murata GRT21BR60J226ME01L (capacitor tolerance), Coilcraft SRR1210 (inductor DCR sweep), TI ADS131M04 (delta-sigma filter sweep).</p>
+    <p><strong>Common Mistakes:</strong> (1) Setting tstop based on τ at nominal R but using R_max in the sweep — the slow R values need longer tstop. (2) Forgetting that .meas WHEN commands fail if the signal does not reach the threshold within tstop. (3) Not naming the .step parameter distinctively (avoid using names like "R" that conflict with element prefixes). (4) Missing the second-order transition when sweeping through R_crit — plan to observe the qualitative change. (5) Not verifying .meas results against theory for at least one sweep point.</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>A parameter sweep is a design space map. Instead of simulating one design point, you simulate 10 or 20 simultaneously and observe how performance changes across the design space. The overlaid waveforms immediately reveal the sensitivity of the design: a dense cluster of waveforms means low sensitivity (robust design); widely spread waveforms mean high sensitivity (tight tolerances required). The second-order preview — where the sweep crosses R_crit and ringing appears — shows in a single plot why second-order systems need different analysis tools.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>The transition from first-order to second-order behaviour at R = R_crit = 2Z₀ = 2√(L/C) is a qualitative phase transition in the system's dynamics. Below R_crit, the two poles of the characteristic equation are complex conjugates — the system oscillates. Above R_crit, the poles are both real and negative — the system decays without oscillation. At R_crit exactly, the poles are a repeated real root — critically damped. This transition is invisible in a first-order parameter sweep but becomes the dominant feature when L is added to the circuit.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>For the LC circuit preview: ω₀ = 1/√(LC) = 1/√(10µ × 10n) = 1/√(10⁻¹³) = 3.162 × 10⁶ rad/s → f₀ = 503 kHz. Z₀ = √(10µ/10n) = 31.62 Ω. ζ = R/(2Z₀) = R/63.24. Critical at R = 63.24 Ω. Butterworth at ζ = 0.707: R = 0.707 × 63.24 = 44.7 Ω. At ζ = 0.1 (R = 6.3 Ω): OS% = 73%. The entire second-order design space is parameterised by ζ = R/(2Z₀) — a single dimensionless ratio that determines the entire character of the response.</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>For tolerance analysis sweeps: sweep component values at ±5%, ±10%, ±20% of nominal simultaneously using a grid. A 3×3 grid (nominal ± 20% on both R and C) gives 9 simulations that cover all corner combinations. The worst-case settling time and best-case noise bandwidth can be read directly from the .meas results table. This is the standard pre-production verification technique — simulate corners before characterizing hardware.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>Monte Carlo simulation — running thousands of randomised parameter combinations — was invented by Stanislaw Ulam and John von Neumann in 1946 for nuclear weapon design (neutron diffusion calculations). The method was named after Monaco's Monte Carlo Casino because of its random sampling nature. By the 1980s, SPICE implementations included Monte Carlo analysis for electronic component tolerance modelling. Today, a designer at TI or ADI runs 1,000-point Monte Carlo sweeps of a precision analog circuit in under 5 minutes, predicting yield before a single prototype is built — the same statistical method that was once too slow to run on a 1940s computer without a casino reference in the name.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>Sensitivity analysis — the partial derivative of a performance metric with respect to each component value — is more informative than a full sweep in many cases. For a first-order filter: ∂τ/∂R = C (τ increases linearly with R); ∂τ/∂C = R (τ increases linearly with C). So ΔτV/τ = ΔR/R + ΔC/C — the fractional τ variation equals the sum of fractional component variations. For 1% resistors and 5% capacitors: Δτ/τ ≤ 6% worst case. A 6% τ variation against a 5% feasibility window (τ_max − τ_min ≈ 5% of centre τ) means the design will fail in production — the analysis directly identifies this risk.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Running a logarithmic R sweep with tstop set to 5 × τ_nominal, but forgetting that at R_max = 100k the time constant is 10 ms while tstop = 500 µs — the slow curves never settle within the simulation window. <strong>Fix:</strong> Always set tstop = 5 × τ_max = 5 × R_max × C = 50 ms for this sweep. The simulation is longer but all curves are captured.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If sweep results show "measurement not found" for large R values: tstop is too short. Calculate τ_max = R_max × C, set tstop = 5 × τ_max, and re-run. For nested sweeps (sweeping both R and C), use a flat LIST of all combinations rather than trying to nest .step commands — NGSpice does not support nested .step in standard mode.</p></div>
+
+  <div class="sim-interactive-box">
+    <h4>🖥️ Interactive Simulation</h4>
+    <iframe src="simulations/P2-FO-3.5.2_Parameter_Sweep_sim.html" width="100%" height="600px" frameborder="0"></iframe>
+  </div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>The parameter sweep preview of second-order behaviour — ringing that emerges when R drops below R_crit = 2Z₀ — is the perfect transition into Chapter 4. Two energy storage elements create a system that can oscillate, overshoot, and resonate. The single degree of freedom τ in first-order systems expands to three in second-order systems: ω₀ (natural frequency), ζ (damping ratio), and K (DC gain). Chapter 4 characterises each of these and shows how they determine the full richness of second-order transient behaviour.</p></div>
+</section>

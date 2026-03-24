@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 18 Pr 9 — Gate Driver Frequency Limit</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  h1 { font-size:18px; margin-bottom:12px; border-bottom:2px solid var(--accent); padding-bottom:8px; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; display:flex; justify-content:space-between; margin-bottom:4px; }
+  .val { color:var(--accent); font-family:monospace; font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .info { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.2); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.6; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<h1>Pr 9 — Gate Driver Limits: Q_g × f_sw vs Driver Capability</h1>
+<div class="layout">
+  <canvas id="cv" height="380"></canvas>
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>Q_g (nC) <span class="val" id="v-qg">121</span></label>
+      <input type="range" id="qg" min="1" max="300" value="121" step="1">
+    </div>
+    <div class="ctrl-group">
+      <label>Driver I_avg max (A) <span class="val" id="v-idrv">1</span></label>
+      <input type="range" id="idrv" min="0.1" max="5" value="1" step="0.1">
+    </div>
+    <div class="ctrl-group">
+      <label>t_pd propagation (ns) <span class="val" id="v-tpd">55</span></label>
+      <input type="range" id="tpd" min="5" max="200" value="55" step="5">
+    </div>
+    <div class="info" id="info">Adjust to find max switching frequency.</div>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function resizeCanvas() {
+  cv.width = cv.parentElement.getBoundingClientRect().width || 600;
+  cv.height = 380;
+}
+
+function draw() {
+  resizeCanvas();
+  const W = cv.width, H = cv.height;
+  const dark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const bg = dark ? '#1a1a1a' : '#ffffff';
+  const fg = dark ? '#e8e8e8' : '#1a1a1a';
+  const gridC = dark ? '#333' : '#eee';
+
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const Qg = +document.getElementById('qg').value * 1e-9;
+  const Idrv = +document.getElementById('idrv').value;
+  const tpd = +document.getElementById('tpd').value * 1e-9;
+
+  document.getElementById('v-qg').textContent = (Qg*1e9).toFixed(0) + ' nC';
+  document.getElementById('v-idrv').textContent = Idrv.toFixed(1) + ' A';
+  document.getElementById('v-tpd').textContent = (tpd*1e9).toFixed(0) + ' ns';
+
+  const f_current_limit = Idrv / Qg;
+  const f_delay_limit = 1 / (20 * tpd);
+  const f_max = Math.min(f_current_limit, f_delay_limit);
+
+  const pad = { l: 60, r: 20, t: 40, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  // X: frequency 10kHz to 100MHz (log)
+  const fMin = 1e4, fMax = 1e8;
+  const logXMin = Math.log10(fMin), logXMax = Math.log10(fMax);
+  const yMax_I = 1.5; // A average current needed
+
+  ctx.strokeStyle = gridC; ctx.lineWidth = 1;
+  for (let i = 0; i <= 6; i++) {
+    const y = pad.t + ph * i / 6;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '11px monospace'; ctx.textAlign = 'right';
+    ctx.fillText((yMax_I * (6-i) / 6).toFixed(2) + ' A', pad.l - 4, y + 4);
+  }
+  [1e4,1e5,1e6,1e7,1e8].forEach(f => {
+    const x = pad.l + pw * (Math.log10(f) - logXMin) / (logXMax - logXMin);
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    const lbl = f >= 1e6 ? (f/1e6).toFixed(0)+'M' : (f/1e3).toFixed(0)+'k';
+    ctx.fillText(lbl + 'Hz', x, pad.t + ph + 18);
+  });
+
+  ctx.fillStyle = fg; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Switching Frequency f_sw (Hz)', pad.l + pw / 2, H - 6);
+  ctx.save(); ctx.translate(14, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Avg Gate Current (A)', 0, 0); ctx.restore();
+
+  // I_avg = Qg * fsw line
+  ctx.beginPath();
+  ctx.strokeStyle = '#1565c0';
+  ctx.lineWidth = 2.5;
+  let first = true;
+  for (let i = 0; i <= 300; i++) {
+    const lf = logXMin + (logXMax - logXMin) * i / 300;
+    const f = Math.pow(10, lf);
+    const I_avg = Qg * f;
+    const x = pad.l + pw * (lf - logXMin) / (logXMax - logXMin);
+    const y = pad.t + ph * (1 - Math.min(I_avg, yMax_I) / yMax_I);
+    if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Driver I_max limit
+  const iLimitY = pad.t + ph * (1 - Idrv / yMax_I);
+  ctx.setLineDash([5, 5]);
+  ctx.strokeStyle = '#e53935'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pad.l, iLimitY); ctx.lineTo(pad.l + pw, iLimitY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#e53935'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('Driver I_avg limit = ' + Idrv + 'A', pad.l + 4, iLimitY - 4);
+
+  // f_delay limit
+  if (f_delay_limit < fMax) {
+    const xDel = pad.l + pw * (Math.log10(f_delay_limit) - logXMin) / (logXMax - logXMin);
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = '#fb8c00'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(xDel, pad.t); ctx.lineTo(xDel, pad.t + ph); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#fb8c00'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('t_pd limit', xDel, pad.t + 14);
+  }
+
+  // f_max marker
+  if (f_max < fMax && f_max > fMin) {
+    const xMax_pt = pad.l + pw * (Math.log10(f_max) - logXMin) / (logXMax - logXMin);
+    ctx.beginPath(); ctx.arc(xMax_pt, iLimitY, 7, 0, Math.PI*2);
+    ctx.fillStyle = '#43a047'; ctx.fill();
+    ctx.fillStyle = '#43a047'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('f_max', xMax_pt, pad.t + ph + 32);
+  }
+
+  ctx.fillStyle = fg; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('I_avg = Q_g × f_sw  (blue curve)', pad.l, pad.t - 10);
+
+  const limiting = f_current_limit < f_delay_limit ? 'Current limit' : 'Propagation delay limit';
+  document.getElementById('info').innerHTML =
+    `<b>Limits for Q_g = ${(Qg*1e9).toFixed(0)} nC:</b><br>` +
+    `Current limit: ${(f_current_limit/1e6).toFixed(2)} MHz<br>` +
+    `Delay limit (1/20t_pd): ${(f_delay_limit/1e6).toFixed(2)} MHz<br>` +
+    `<b>f_max = ${(f_max/1e6).toFixed(2)} MHz (${limiting})</b><br>` +
+    `Gate energy/cycle = Q_g×V_GS = ${(Qg*1e9*12).toFixed(0)} nJ`;
+}
+
+['qg','idrv','tpd'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+window.addEventListener('resize', draw);
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec30 Sc1 — INA + LPF: Sensor Signal vs EMI</title>
+<style>
+  body{margin:0;padding:10px;font-family:sans-serif;background:#1a1a2e;color:#e0e0e0;}
+  canvas{display:block;border:1px solid #444;border-radius:6px;background:#0f0f1e;}
+  .ctrl{margin:6px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  label{min-width:200px;font-size:0.85em;}
+  input[type=range]{flex:1;min-width:120px;}
+  .val{min-width:80px;font-size:0.85em;color:#7ec8e3;}
+  .result-box{background:#162032;border:1px solid #2a4a6a;border-radius:6px;padding:10px;margin-top:8px;font-size:0.85em;line-height:1.6;}
+  h3{color:#7ec8e3;margin:4px 0 10px;}
+</style>
+</head>
+<body>
+<h3>Scenario 1 — Industrial Sensor: INA + LPF vs EMI Rejection</h3>
+<canvas id="cv"></canvas>
+<div class="ctrl">
+  <label>INA gain:</label>
+  <input type="range" id="gain" min="10" max="1000" value="100" step="10">
+  <span class="val" id="gain_v">100×</span>
+</div>
+<div class="ctrl">
+  <label>CMRR (dB):</label>
+  <input type="range" id="cmrr" min="60" max="140" value="120" step="5">
+  <span class="val" id="cmrr_v">120 dB</span>
+</div>
+<div class="ctrl">
+  <label>LPF cutoff (Hz):</label>
+  <input type="range" id="lpf" min="10" max="1000" value="200" step="10">
+  <span class="val" id="lpf_v">200 Hz</span>
+</div>
+<div class="result-box" id="result">Results</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+function resizeCanvas(){
+  const w=cv.parentElement.getBoundingClientRect().width-20;
+  cv.width=Math.max(300,w); cv.height=Math.round(cv.width*0.45);
+}
+function getVals(){
+  return {
+    gain:parseFloat(document.getElementById('gain').value),
+    cmrr:parseFloat(document.getElementById('cmrr').value),
+    lpf:parseFloat(document.getElementById('lpf').value)
+  };
+}
+function updateLabels(){
+  document.getElementById('gain_v').textContent=parseFloat(document.getElementById('gain').value).toFixed(0)+'×';
+  document.getElementById('cmrr_v').textContent=parseFloat(document.getElementById('cmrr').value).toFixed(0)+' dB';
+  document.getElementById('lpf_v').textContent=parseFloat(document.getElementById('lpf').value).toFixed(0)+' Hz';
+}
+function draw(){
+  const W=cv.width, H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  const {gain,cmrr,lpf}=getVals();
+
+  const mx=60,my=15,bx=W-15,by=H-30;
+  const pw=bx-mx,ph=by-my;
+  const fMin=0.1, fMax=10000;
+  const fRange=Math.log10(fMax/fMin);
+
+  const cmrr_lin=Math.pow(10,cmrr/20);
+  const gain_dB=20*Math.log10(gain);
+  const gainMin_dB=-20, gainMax_dB=gain_dB+10;
+
+  ctx.strokeStyle='#444'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(mx,my); ctx.lineTo(mx,by); ctx.lineTo(bx,by); ctx.stroke();
+
+  // Freq grid
+  for(let exp=-1;exp<=4;exp++){
+    const f=Math.pow(10,exp);
+    if(f<fMin||f>fMax) continue;
+    const x=mx+(Math.log10(f/fMin)/fRange)*pw;
+    ctx.strokeStyle='#252540'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(x,my); ctx.lineTo(x,by); ctx.stroke();
+    ctx.fillStyle='#666'; ctx.font='9px sans-serif';
+    const lbl=exp>=4?'10k':exp>=3?'1k':exp>=2?'100':exp>=1?'10':exp>=0?'1':'0.1';
+    ctx.fillText(lbl+'Hz', x-12, by+14);
+  }
+  for(let g=gainMin_dB;g<=gainMax_dB;g+=20){
+    const y=by-(g-gainMin_dB)/(gainMax_dB-gainMin_dB)*ph;
+    if(y<my||y>by) continue;
+    ctx.strokeStyle='#252540'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(mx,y); ctx.lineTo(bx,y); ctx.stroke();
+    ctx.fillStyle='#666'; ctx.font='9px sans-serif';
+    ctx.fillText(g+'dB', mx-42, y+4);
+  }
+
+  // 4th order Butterworth LPF
+  function lpf4(f, fc){
+    const w=2*Math.PI*f, wc=2*Math.PI*fc;
+    const q1=0.5412, q2=1.3066;
+    function stage(Q){ return (wc**2)/Math.sqrt((wc**2-w**2)**2+(w*wc/Q)**2); }
+    return stage(q1)*stage(q2);
+  }
+
+  // Differential signal path: gain × LPF
+  ctx.strokeStyle='#4fc3f7'; ctx.lineWidth=2;
+  ctx.beginPath(); let first=true;
+  for(let i=0;i<=400;i++){
+    const f=fMin*Math.pow(fMax/fMin,i/400);
+    const mag=gain*lpf4(f,lpf);
+    const mag_dB=20*Math.log10(Math.max(mag,1e-4));
+    const x=mx+(Math.log10(f/fMin)/fRange)*pw;
+    const y=by-(mag_dB-gainMin_dB)/(gainMax_dB-gainMin_dB)*ph;
+    if(first){ctx.moveTo(x,Math.max(my,Math.min(by,y)));first=false;}
+    else ctx.lineTo(x,Math.max(my,Math.min(by,y)));
+  }
+  ctx.stroke();
+  ctx.fillStyle='#4fc3f7'; ctx.font='9px sans-serif';
+  ctx.fillText('Differential (signal) path', mx+8, my+14);
+
+  // Common-mode rejection (gain/CMRR × LPF at higher freq CMRR degrades)
+  const fmirror=500; // CMRR rolls off above mirror pole
+  ctx.strokeStyle='#ff7043'; ctx.lineWidth=2;
+  ctx.beginPath(); first=true;
+  for(let i=0;i<=400;i++){
+    const f=fMin*Math.pow(fMax/fMin,i/400);
+    const cmrr_f=cmrr_lin/Math.sqrt(1+(f/fmirror)**2);
+    const cm_output=gain/cmrr_f*lpf4(f,lpf);
+    const mag_dB=20*Math.log10(Math.max(cm_output,1e-4));
+    const x=mx+(Math.log10(f/fMin)/fRange)*pw;
+    const y=by-(mag_dB-gainMin_dB)/(gainMax_dB-gainMin_dB)*ph;
+    if(first){ctx.moveTo(x,Math.max(my,Math.min(by,y)));first=false;}
+    else ctx.lineTo(x,Math.max(my,Math.min(by,y)));
+  }
+  ctx.stroke();
+  ctx.fillStyle='#ff7043'; ctx.font='9px sans-serif';
+  ctx.fillText('CM noise path (gain/CMRR × LPF)', mx+8, my+26);
+
+  // Markers: 50Hz EMI, 250Hz EMI harmonic
+  for(const [f,label] of [[50,'50Hz'],[150,'150Hz'],[250,'250Hz']]){
+    const x=mx+(Math.log10(f/fMin)/fRange)*pw;
+    ctx.strokeStyle='rgba(255,183,77,0.4)'; ctx.lineWidth=1; ctx.setLineDash([2,2]);
+    ctx.beginPath(); ctx.moveTo(x,my); ctx.lineTo(x,by); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#ffb74d'; ctx.font='8px sans-serif';
+    ctx.fillText(label, x+1, my+38);
+  }
+
+  ctx.fillStyle='#7ec8e3'; ctx.font='11px sans-serif';
+  ctx.fillText('Gain (dB)', mx+5, my+10);
+  ctx.fillText('Frequency →', bx-70, by+26);
+
+  const cmrr_50hz=cmrr-20*Math.log10(Math.sqrt(1+(50/fmirror)**2));
+  const sig_50=20*Math.log10(gain*lpf4(50,lpf));
+  const cm_50=20*Math.log10(gain/Math.pow(10,cmrr_50hz/20)*lpf4(50,lpf));
+  const lpf_at_motor=20*Math.log10(lpf4(200,lpf));
+
+  document.getElementById('result').innerHTML=
+    `<b>Industrial Sensor Chain Analysis:</b><br>
+    INA gain = ${gain}× | CMRR at DC = ${cmrr} dB | CMRR at 50Hz = ${cmrr_50hz.toFixed(0)} dB<br>
+    Signal gain at 50Hz = ${sig_50.toFixed(0)} dB | CM noise at 50Hz output = ${cm_50.toFixed(0)} dB<br>
+    LPF attenuation at 200Hz EMI: ${lpf_at_motor.toFixed(0)} dB<br>
+    ${cmrr>110?'✓ CMRR excellent — 50Hz motor noise < 1µV referred to input':'⚠ CMRR marginal — consider CMRR > 110 dB for heavy industrial'}`;
+}
+
+['gain','cmrr','lpf'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{updateLabels();draw();}));
+resizeCanvas(); updateLabels(); draw();
+window.addEventListener('resize',()=>{resizeCanvas();draw();});
+</script>
+</body>
+</html>

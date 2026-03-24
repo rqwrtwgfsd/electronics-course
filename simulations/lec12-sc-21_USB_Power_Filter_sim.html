@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scenario 21 — USB Power Filtering</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto;}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px;}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;}
+  h1{font-size:18px;margin:4px 0;}
+  .layout{display:grid;grid-template-columns:1fr 280px;gap:16px;}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%;}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px;}
+  .ctrl-group{margin-bottom:12px;}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;display:flex;justify-content:space-between;}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace;}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;}
+  .result-box{background:rgba(0,102,204,0.08);border:1px solid rgba(0,102,204,0.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.5;}
+  @media(max-width:600px){.layout{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 12 | Scenario 21</div>
+  <h1>USB Power Filtering — Cheap Adapter Compatibility</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Adapter Quality <span class="ctrl-value" id="p1-val">Cheap</span></div>
+      <input type="range" id="p1" min="0" max="2" step="1" value="0">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Ferrite + Caps <span class="ctrl-value" id="p2-val">No</span></div>
+      <input type="range" id="p2" min="0" max="1" step="1" value="0">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Load Current (mA) <span class="ctrl-value" id="p3-val">200</span></div>
+      <input type="range" id="p3" min="10" max="500" value="200">
+    </div>
+    <div class="result-box" id="result">Adjust parameters</div>
+  </div>
+</div>
+<script>
+const canvas=document.getElementById('cv');
+const ctx=canvas.getContext('2d');
+function isDark(){return window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches;}
+function draw(){
+  const qual=+document.getElementById('p1').value; // 0=cheap,1=decent,2=laptop
+  const filter=+document.getElementById('p2').value;
+  const Iload=+document.getElementById('p3').value; // mA
+  const qualNames=['Cheap','Good','Laptop USB'];
+  document.getElementById('p1-val').textContent=qualNames[qual];
+  document.getElementById('p2-val').textContent=filter?'Yes':'No';
+  document.getElementById('p3-val').textContent=Iload+' mA';
+
+  // Adapter models: Rth (output impedance), ripple
+  const adapters=[
+    {Rth:3, ripple:0.2, noise:0.15},    // cheap
+    {Rth:0.5, ripple:0.05, noise:0.03}, // good
+    {Rth:0.1, ripple:0.02, noise:0.01}  // laptop
+  ];
+  const adap=adapters[qual];
+  const Vnom=5.0;
+  const Vsag=adap.Rth*Iload/1000; // voltage drop under load
+  const ripple_filtered=filter?adap.ripple*0.05:adap.ripple;
+  const noise_filtered=filter?adap.noise*0.02:adap.noise;
+  const Vmin=Vnom-Vsag-ripple_filtered;
+
+  canvas.width=canvas.parentElement.getBoundingClientRect().width||600;
+  canvas.height=380;
+  const W=canvas.width,H=canvas.height;
+  const dark=isDark();
+  const bg=dark?'#2a2a2a':'#f5f5f5';
+  const fg=dark?'#e8e8e8':'#1a1a1a';
+  const ac=dark?'#4499ff':'#0066cc';
+  const gr=dark?'#444':'#ddd';
+  const red='#e53935',grn='#43a047',orange='#ff9800';
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=fg;ctx.font='bold 13px system-ui';ctx.textAlign='center';
+  ctx.fillText('USB VBUS — '+qualNames[qual]+' Adapter'+(filter?' + Filtering':''),W/2,22);
+
+  const mx=60,my=40,mw=W-80,mh=H-100;
+  const totalT=20; // ms
+  const toX=t=>mx+mw*t/totalT;
+  const Vmin_scale=4.0, Vmax_scale=5.6;
+  const toY=v=>my+mh*(1-(v-Vmin_scale)/(Vmax_scale-Vmin_scale));
+
+  ctx.strokeStyle=gr;ctx.lineWidth=1;
+  [4.0,4.5,5.0,5.5].forEach(v=>{
+    const y=toY(v);
+    ctx.beginPath();ctx.moveTo(mx,y);ctx.lineTo(mx+mw,y);ctx.stroke();
+    ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='right';
+    ctx.fillText(v.toFixed(1)+'V',mx-3,y+4);
+  });
+
+  // USB min spec (4.4V)
+  const V_min_spec=4.4;
+  ctx.strokeStyle=red;ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(mx,toY(V_min_spec));ctx.lineTo(mx+mw,toY(V_min_spec));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=red;ctx.font='10px system-ui';ctx.textAlign='left';
+  ctx.fillText('USB min spec (4.4V)',mx+4,toY(V_min_spec)-3);
+
+  // Simulate voltage trace
+  let rng=42;
+  const rand=()=>{rng=(rng*6364136223846793005n||rng*1103515245+12345)&0x7fffffff;return (rng%10000)/10000*2-1;};
+  const noise=()=>(Math.random()*2-1)*noise_filtered;
+
+  ctx.strokeStyle=Vmin<V_min_spec?red:grn;ctx.lineWidth=2;
+  ctx.beginPath();
+  let prevV=Vnom-Vsag;
+  for(let i=0;i<=500;i++){
+    const t=i/500*totalT;
+    // Ripple + noise + load sag
+    const rippleV=ripple_filtered*Math.sin(2*Math.PI*100*t/1000);
+    const noiseV=noise();
+    const v=Vnom-Vsag+rippleV+noiseV;
+    const y=toY(Math.max(Vmin_scale,Math.min(Vmax_scale,v)));
+    i===0?ctx.moveTo(toX(t),y):ctx.lineTo(toX(t),y);
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle=fg;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx,my+mh);ctx.lineTo(mx+mw,my+mh);ctx.stroke();
+
+  // Time axis
+  ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='center';
+  [0,5,10,15,20].forEach(t=>ctx.fillText(t+'ms',toX(t),my+mh+14));
+
+  const ok=Vmin>=V_min_spec;
+  document.getElementById('result').innerHTML=
+    `<b>Adapter: ${qualNames[qual]}, R_th=${adap.Rth}Ω</b><br>`+
+    `Voltage sag at ${Iload}mA: ${(Vsag*1000).toFixed(0)}mV<br>`+
+    `Ripple: ${(ripple_filtered*1000).toFixed(0)}mV p-p<br>`+
+    `V_min = ${Vmin.toFixed(2)}V<br>`+
+    (ok?'<span style="color:green">✓ Above 4.4V spec — device works</span>':
+     `<span style="color:red">⚠ Below 4.4V — device resets! Add ferrite+caps</span>`);
+}
+['p1','p2','p3'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>draw());
+draw();
+</script>
+</body>
+</html>

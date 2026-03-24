@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec29 Pr23 — LDO Stability vs ESR</title>
+<style>
+  body{margin:0;padding:10px;font-family:sans-serif;background:#1a1a2e;color:#e0e0e0;}
+  canvas{display:block;border:1px solid #444;border-radius:6px;background:#0f0f1e;}
+  .ctrl{margin:7px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  label{min-width:200px;font-size:0.85em;}
+  input[type=range]{flex:1;min-width:120px;}
+  .val{min-width:80px;font-size:0.85em;color:#7ec8e3;}
+  .result-box{background:#162032;border:1px solid #2a4a6a;border-radius:6px;padding:10px;margin-top:8px;font-size:0.85em;}
+  h3{color:#7ec8e3;margin:4px 0 10px;}
+</style>
+</head>
+<body>
+<h3>Problem 23 — LDO Stability: ESR Zero vs Loop Gain Crossover</h3>
+<canvas id="cv"></canvas>
+<div class="ctrl">
+  <label>Output cap C_out (µF):</label>
+  <input type="range" id="cout" min="1" max="100" value="22" step="1">
+  <span class="val" id="cout_v">22 µF</span>
+</div>
+<div class="ctrl">
+  <label>ESR (Ohm):</label>
+  <input type="range" id="esr" min="0.001" max="2" value="0.3" step="0.005">
+  <span class="val" id="esr_v">0.300 Ω</span>
+</div>
+<div class="ctrl">
+  <label>LDO loop GBW (kHz):</label>
+  <input type="range" id="lgbw" min="10" max="500" value="50" step="5">
+  <span class="val" id="lgbw_v">50 kHz</span>
+</div>
+<div class="result-box" id="result">Results</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+function resizeCanvas(){
+  const w=cv.parentElement.getBoundingClientRect().width-20;
+  cv.width=Math.max(300,w); cv.height=Math.round(cv.width*0.5);
+}
+function getVals(){
+  return {
+    cout:parseFloat(document.getElementById('cout').value)*1e-6,
+    esr:parseFloat(document.getElementById('esr').value),
+    lgbw:parseFloat(document.getElementById('lgbw').value)*1e3
+  };
+}
+function updateLabels(){
+  document.getElementById('cout_v').textContent=parseFloat(document.getElementById('cout').value).toFixed(0)+' µF';
+  document.getElementById('esr_v').textContent=parseFloat(document.getElementById('esr').value).toFixed(3)+' Ω';
+  document.getElementById('lgbw_v').textContent=parseFloat(document.getElementById('lgbw').value).toFixed(0)+' kHz';
+}
+function draw(){
+  const W=cv.width, H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  const {cout,esr,lgbw}=getVals();
+
+  // ESR zero frequency
+  const fz_esr=1/(2*Math.PI*esr*cout);
+  // LDO output pole (from pass transistor)
+  const Rout_pass=0.5; // Ohm, pass transistor output impedance
+  const fp_out=1/(2*Math.PI*Rout_pass*cout);
+  // Error amp dominant pole (very low)
+  const fp_ea=10; // Hz
+
+  const mx=60,my=15,bx=W-15,by=H-30;
+  const pw=bx-mx,ph=by-my;
+  const phH=ph*0.6, phaseY0=my+phH+8;
+  const fMin=1, fMax=Math.max(lgbw*20, fz_esr*10, 1e6);
+  const fRange=Math.log10(fMax/fMin);
+
+  const ADC=5000; // open loop DC gain
+  const gainMin_dB=-10, gainMax_dB=20*Math.log10(ADC)+10;
+
+  ctx.strokeStyle='#444'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(mx,my); ctx.lineTo(mx,by); ctx.lineTo(bx,by);
+  ctx.moveTo(mx,phaseY0); ctx.lineTo(bx,phaseY0); ctx.stroke();
+
+  for(let exp=0;exp<=7;exp++){
+    const f=Math.pow(10,exp);
+    if(f>fMax||f<fMin) continue;
+    const x=mx+(Math.log10(f/fMin)/fRange)*pw;
+    ctx.strokeStyle='#252540'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(x,my); ctx.lineTo(x,by); ctx.stroke();
+    ctx.fillStyle='#666'; ctx.font='9px sans-serif';
+    const lbl=exp>=6?'1M':exp>=5?'100k':exp>=4?'10k':exp>=3?'1k':exp>=2?'100':exp>=1?'10':'1';
+    ctx.fillText(lbl+'Hz', x-12, by+14);
+  }
+  for(let g=gainMin_dB;g<=gainMax_dB;g+=20){
+    const y=my+phH-(g-gainMin_dB)/(gainMax_dB-gainMin_dB)*phH;
+    if(y<my||y>my+phH) continue;
+    ctx.strokeStyle='#252540'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(mx,y); ctx.lineTo(bx,y); ctx.stroke();
+    ctx.fillStyle='#666'; ctx.font='9px sans-serif';
+    ctx.fillText(g+'dB', mx-40, y+4);
+  }
+  for(let ph_val=-180;ph_val<=0;ph_val+=45){
+    const y=phaseY0+(0-ph_val)/200*(by-phaseY0);
+    if(y>by||y<phaseY0) continue;
+    ctx.strokeStyle='#252540'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(mx,y); ctx.lineTo(bx,y); ctx.stroke();
+    ctx.fillStyle='#666'; ctx.font='9px sans-serif';
+    ctx.fillText(ph_val+'°', mx-38, y+4);
+  }
+
+  // LDO loop transfer function: poles at fp_ea, fp_out; zero at fz_esr
+  function loopGain(f){
+    const w=2*Math.PI*f;
+    let mag=ADC;
+    mag/=Math.sqrt(1+(w/(2*Math.PI*fp_ea))**2);
+    mag/=Math.sqrt(1+(w/(2*Math.PI*fp_out))**2);
+    mag*=Math.sqrt(1+(w/(2*Math.PI*fz_esr))**2);
+    return mag;
+  }
+  function loopPhase(f){
+    const w=2*Math.PI*f;
+    return -Math.atan(w/(2*Math.PI*fp_ea))*180/Math.PI
+           -Math.atan(w/(2*Math.PI*fp_out))*180/Math.PI
+           +Math.atan(w/(2*Math.PI*fz_esr))*180/Math.PI;
+  }
+
+  // Gain
+  ctx.strokeStyle='#4fc3f7'; ctx.lineWidth=2;
+  ctx.beginPath(); let first=true;
+  for(let i=0;i<=500;i++){
+    const f=fMin*Math.pow(fMax/fMin,i/500);
+    const mag_dB=20*Math.log10(Math.max(loopGain(f),1e-4));
+    const x=mx+(Math.log10(f/fMin)/fRange)*pw;
+    const y=my+phH-(mag_dB-gainMin_dB)/(gainMax_dB-gainMin_dB)*phH;
+    if(first){ctx.moveTo(x,Math.max(my,Math.min(my+phH,y)));first=false;}
+    else ctx.lineTo(x,Math.max(my,Math.min(my+phH,y)));
+  }
+  ctx.stroke();
+
+  // Phase
+  ctx.strokeStyle='#aed581'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+  ctx.beginPath(); first=true;
+  for(let i=0;i<=500;i++){
+    const f=fMin*Math.pow(fMax/fMin,i/500);
+    const ph=loopPhase(f);
+    const x=mx+(Math.log10(f/fMin)/fRange)*pw;
+    const y=phaseY0+(0-ph)/200*(by-phaseY0);
+    if(first){ctx.moveTo(x,Math.max(phaseY0,Math.min(by,y)));first=false;}
+    else ctx.lineTo(x,Math.max(phaseY0,Math.min(by,y)));
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+
+  // ESR zero marker
+  if(fz_esr>fMin && fz_esr<fMax){
+    const xz=mx+(Math.log10(fz_esr/fMin)/fRange)*pw;
+    ctx.strokeStyle='#ffb74d'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(xz,my); ctx.lineTo(xz,phaseY0); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#ffb74d'; ctx.font='9px sans-serif';
+    const fzLabel=fz_esr>=1e3?(fz_esr/1e3).toFixed(0)+'kHz':fz_esr.toFixed(0)+'Hz';
+    ctx.fillText('ESR zero='+fzLabel, Math.min(xz+2,bx-90), my+12);
+  }
+
+  // Find PM
+  let pmVal=90, crossF=null;
+  for(let i=0;i<=10000;i++){
+    const f=fMin*Math.pow(fMax/fMin,i/10000);
+    if(loopGain(f)<=1){
+      crossF=f;
+      pmVal=180+loopPhase(f);
+      break;
+    }
+  }
+
+  ctx.fillStyle='#7ec8e3'; ctx.font='11px sans-serif';
+  ctx.fillText('LDO Loop Gain', mx+5, my+10);
+  ctx.fillText('Phase', mx+5, phaseY0+12);
+
+  const stable=pmVal>30;
+  const fzLabel=fz_esr>=1e3?(fz_esr/1e3).toFixed(1)+'kHz':fz_esr.toFixed(0)+'Hz';
+  document.getElementById('result').innerHTML=
+    `<b>LDO Stability Analysis:</b><br>
+    C_out=${(cout*1e6).toFixed(0)}µF, ESR=${esr.toFixed(3)}Ω → f_z(ESR) = ${fzLabel}<br>
+    Phase margin ≈ ${pmVal.toFixed(0)}° ${stable?'✓ Stable':'⚠ UNSTABLE — will oscillate!'}<br>
+    ${esr<0.05?'⚠ Very low ESR (ceramic cap) — ESR zero too high, no phase boost at crossover. Add series R or use electrolytic.':
+    esr>0.5?'✓ High enough ESR — zero provides phase lead. Stable but high transient spikes.':
+    '✓ Good ESR range for stability.'}<br>
+    Optimal ESR range: ${(1/(2*Math.PI*(lgbw/3)*cout)).toFixed(3)}–${(1/(2*Math.PI*(lgbw*3)*cout)).toFixed(3)} Ω`;
+}
+
+['cout','esr','lgbw'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{updateLabels();draw();}));
+resizeCanvas(); updateLabels(); draw();
+window.addEventListener('resize',()=>{resizeCanvas();draw();});
+</script>
+</body>
+</html>

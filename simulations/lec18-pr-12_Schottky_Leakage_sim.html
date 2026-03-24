@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 18 Pr 12 — Schottky vs PN Diode Leakage vs Temperature</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  h1 { font-size:18px; margin-bottom:12px; border-bottom:2px solid var(--accent); padding-bottom:8px; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; display:flex; justify-content:space-between; margin-bottom:4px; }
+  .val { color:var(--accent); font-family:monospace; font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .info { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.2); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.6; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<h1>Pr 12 — Schottky vs PN Diode: Reverse Leakage vs Temperature</h1>
+<div class="layout">
+  <canvas id="cv" height="380"></canvas>
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>Schottky I_rev @ 25°C (mA) <span class="val" id="v-is0">1</span></label>
+      <input type="range" id="is0" min="0.01" max="10" value="1" step="0.1">
+    </div>
+    <div class="ctrl-group">
+      <label>PN diode I_rev @ 25°C (µA) <span class="val" id="v-ip0">10</span></label>
+      <input type="range" id="ip0" min="1" max="100" value="10" step="1">
+    </div>
+    <div class="ctrl-group">
+      <label>V_reverse (V) <span class="val" id="v-vr">100</span></label>
+      <input type="range" id="vr" min="10" max="200" value="100" step="10">
+    </div>
+    <div class="info" id="info">I_S doubles every 10°C for both types.</div>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function resizeCanvas() {
+  cv.width = cv.parentElement.getBoundingClientRect().width || 600;
+  cv.height = 380;
+}
+
+function draw() {
+  resizeCanvas();
+  const W = cv.width, H = cv.height;
+  const dark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const bg = dark ? '#1a1a1a' : '#fff';
+  const fg = dark ? '#e8e8e8' : '#1a1a1a';
+  const gridC = dark ? '#333' : '#eee';
+
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  const Is0_mA = +document.getElementById('is0').value;  // Schottky at 25°C (mA)
+  const Ip0_uA = +document.getElementById('ip0').value;  // PN at 25°C (µA)
+  const Vr = +document.getElementById('vr').value;
+
+  document.getElementById('v-is0').textContent = Is0_mA.toFixed(2) + ' mA';
+  document.getElementById('v-ip0').textContent = Ip0_uA.toFixed(0) + ' µA';
+  document.getElementById('v-vr').textContent = Vr + ' V';
+
+  const pad = { l: 70, r: 20, t: 40, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  const tMin = 25, tMax = 150;
+  // P_max for Schottky at 150°C
+  const s_max = Is0_mA * Math.pow(2, (tMax - 25) / 10) * Vr / 1000; // W
+  const yMax_W = Math.max(10, s_max * 1.2);
+
+  ctx.strokeStyle = gridC; ctx.lineWidth = 1;
+  for (let i = 0; i <= 5; i++) {
+    const y = pad.t + ph * i / 5;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText((yMax_W * (5-i) / 5).toFixed(1) + 'W', pad.l - 4, y + 4);
+  }
+  for (let t = tMin; t <= tMax; t += 25) {
+    const x = pad.l + pw * (t - tMin) / (tMax - tMin);
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(t + '°C', x, pad.t + ph + 18);
+  }
+
+  ctx.fillStyle = fg; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Temperature (°C)', pad.l + pw / 2, H - 6);
+  ctx.save(); ctx.translate(14, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Power Dissipated (W)', 0, 0); ctx.restore();
+
+  // Schottky
+  ctx.beginPath();
+  ctx.strokeStyle = '#e53935';
+  ctx.lineWidth = 2.5;
+  for (let t = tMin; t <= tMax; t++) {
+    const I_mA = Is0_mA * Math.pow(2, (t - 25) / 10);
+    const P = I_mA / 1000 * Vr;
+    const x = pad.l + pw * (t - tMin) / (tMax - tMin);
+    const y = pad.t + ph * (1 - Math.min(P, yMax_W) / yMax_W);
+    if (t === tMin) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // PN diode
+  ctx.beginPath();
+  ctx.strokeStyle = '#1565c0';
+  ctx.lineWidth = 2.5;
+  for (let t = tMin; t <= tMax; t++) {
+    const I_uA = Ip0_uA * Math.pow(2, (t - 25) / 10);
+    const P = I_uA / 1e6 * Vr;
+    const x = pad.l + pw * (t - tMin) / (tMax - tMin);
+    const y = pad.t + ph * (1 - Math.min(P, yMax_W) / yMax_W);
+    if (t === tMin) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Safe limit line 1W
+  const limitY = pad.t + ph * (1 - 1 / yMax_W);
+  ctx.setLineDash([5,4]); ctx.strokeStyle = '#fb8c00'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(pad.l, limitY); ctx.lineTo(pad.l+pw, limitY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#fb8c00'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('1W thermal limit', pad.l+4, limitY-3);
+
+  // Legend
+  ctx.fillStyle = '#e53935'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('Schottky', pad.l + pw - 80, pad.t + 16);
+  ctx.fillStyle = '#1565c0';
+  ctx.fillText('PN diode', pad.l + pw - 80, pad.t + 30);
+
+  ctx.fillStyle = fg; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('Reverse Leakage Power vs Temperature', pad.l, pad.t - 10);
+
+  const Is_100 = Is0_mA * Math.pow(2, 75/10);
+  const Ip_100 = Ip0_uA * Math.pow(2, 75/10) / 1000;
+  document.getElementById('info').innerHTML =
+    `<b>At 100°C (ΔT=75°C from 25°C):</b><br>` +
+    `Schottky I_rev = ${Is_100.toFixed(1)} mA → P = ${(Is_100/1000*Vr).toFixed(2)} W<br>` +
+    `PN diode I_rev = ${Ip_100.toFixed(3)} mA → P = ${(Ip_100/1000*Vr).toFixed(4)} W<br>` +
+    `Schottky: 2^7.5 = ${Math.pow(2,7.5).toFixed(0)}× higher leakage<br>` +
+    `<b>Use PN (UF4007) for high-temp reverse-biased apps!</b>`;
+}
+
+['is0','ip0','vr'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+window.addEventListener('resize', draw);
+draw();
+</script>
+</body>
+</html>

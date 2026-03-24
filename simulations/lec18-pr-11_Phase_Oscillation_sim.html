@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 18 Pr 11 — Phase Shift and Oscillation Condition</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  h1 { font-size:18px; margin-bottom:12px; border-bottom:2px solid var(--accent); padding-bottom:8px; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; display:flex; justify-content:space-between; margin-bottom:4px; }
+  .val { color:var(--accent); font-family:monospace; font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .info { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.2); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.6; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<h1>Pr 11 — Amplifier Phase Shift: When Phase = 180° → Oscillation</h1>
+<div class="layout">
+  <canvas id="cv" height="380"></canvas>
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>f_c1 (kHz) — C_in <span class="val" id="v-f1">73</span></label>
+      <input type="range" id="f1" min="1" max="500" value="73" step="1">
+    </div>
+    <div class="ctrl-group">
+      <label>f_c2 (kHz) — C_bypass <span class="val" id="v-f2">87</span></label>
+      <input type="range" id="f2" min="1" max="500" value="87" step="1">
+    </div>
+    <div class="ctrl-group">
+      <label>f_c3 (kHz) — C_out <span class="val" id="v-f3">5</span></label>
+      <input type="range" id="f3" min="1" max="500" value="5" step="1">
+    </div>
+    <div class="info" id="info">Three poles accumulate phase. 180° = oscillation risk.</div>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function resizeCanvas() {
+  cv.width = cv.parentElement.getBoundingClientRect().width || 600;
+  cv.height = 380;
+}
+
+function draw() {
+  resizeCanvas();
+  const W = cv.width, H = cv.height;
+  const dark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const bg = dark ? '#1a1a1a' : '#fff';
+  const fg = dark ? '#e8e8e8' : '#1a1a1a';
+  const gridC = dark ? '#333' : '#eee';
+
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  const fc1 = +document.getElementById('f1').value * 1e3;
+  const fc2 = +document.getElementById('f2').value * 1e3;
+  const fc3 = +document.getElementById('f3').value * 1e3;
+
+  document.getElementById('v-f1').textContent = (fc1/1e3).toFixed(0) + ' kHz';
+  document.getElementById('v-f2').textContent = (fc2/1e3).toFixed(0) + ' kHz';
+  document.getElementById('v-f3').textContent = (fc3/1e3).toFixed(0) + ' kHz';
+
+  const pad = { l: 60, r: 20, t: 40, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  const fMin = 1e2, fMax = 1e7;
+  const logMin = Math.log10(fMin), logMax = Math.log10(fMax);
+  const phMin = 0, phMax = 360;
+
+  ctx.strokeStyle = gridC; ctx.lineWidth = 1;
+  [0,45,90,135,180,225,270,315,360].forEach(p => {
+    const y = pad.t + ph * (1 - p / 360);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(p + '°', pad.l - 4, y + 4);
+  });
+  [100,1e3,1e4,1e5,1e6,1e7].forEach(f => {
+    const x = pad.l + pw * (Math.log10(f) - logMin) / (logMax - logMin);
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    const lbl = f >= 1e6 ? (f/1e6)+'M' : f >= 1e3 ? (f/1e3)+'k' : f;
+    ctx.fillText(lbl, x, pad.t + ph + 18);
+  });
+
+  ctx.fillStyle = fg; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Frequency (Hz)', pad.l + pw / 2, H - 6);
+  ctx.save(); ctx.translate(14, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Total Phase (°)', 0, 0); ctx.restore();
+
+  // 180° danger line
+  const line180y = pad.t + ph * (1 - 180 / 360);
+  ctx.setLineDash([6, 4]);
+  ctx.strokeStyle = '#e53935'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pad.l, line180y); ctx.lineTo(pad.l + pw, line180y); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#e53935'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('180° oscillation threshold', pad.l + 4, line180y - 4);
+
+  // CE amplifier: starts at 180° (midband inversion), drops at low freq due to HP poles
+  // Each HP pole contributes −90° to 0° as f sweeps from 0 to ∞
+  // Phase = 180 - (90-arctan(f/fc1)) - (90-arctan(f/fc2)) - (90-arctan(f/fc3))
+  // = 180 - 270 + arctan(f/fc1) + arctan(f/fc2) + arctan(f/fc3)
+  // = arctan(f/fc1) + arctan(f/fc2) + arctan(f/fc3) - 90
+
+  ctx.beginPath();
+  ctx.strokeStyle = '#1565c0';
+  ctx.lineWidth = 2.5;
+  let first = true;
+  let f_180 = null;
+  for (let i = 0; i <= 400; i++) {
+    const lf = logMin + (logMax - logMin) * i / 400;
+    const f = Math.pow(10, lf);
+    const ph1 = Math.atan(f / fc1) * 180 / Math.PI;
+    const ph2 = Math.atan(f / fc2) * 180 / Math.PI;
+    const ph3 = Math.atan(f / fc3) * 180 / Math.PI;
+    const totalPhase = ph1 + ph2 + ph3 - 90 + 180; // CE 180° midband + 3 poles
+    if (!f_180 && totalPhase >= 360) f_180 = f;
+    const x = pad.l + pw * (lf - logMin) / (logMax - logMin);
+    const y = pad.t + ph * (1 - Math.min(360, Math.max(0, totalPhase)) / 360);
+    if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = fg; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('CE Amplifier Total Phase (3 high-pass poles)', pad.l, pad.t - 10);
+
+  // Find f where phase hits 180 (oscillation) — look for where total = 360
+  let osc_f = null;
+  for (let i = 0; i <= 4000; i++) {
+    const lf = logMin + (logMax - logMin) * i / 4000;
+    const f = Math.pow(10, lf);
+    const ph1 = Math.atan(f/fc1)*180/Math.PI;
+    const ph2 = Math.atan(f/fc2)*180/Math.PI;
+    const ph3 = Math.atan(f/fc3)*180/Math.PI;
+    const totalPhase = ph1 + ph2 + ph3 + 90;
+    if (totalPhase >= 180 && !osc_f) { osc_f = f; break; }
+  }
+
+  document.getElementById('info').innerHTML =
+    `<b>Three poles contribute phase:</b><br>` +
+    `Each HP pole: 0° to +90° (for CE, results in phase decrease toward midband 180°)<br>` +
+    `At DC (f→0): Phase = 90° (no inversion yet)<br>` +
+    `At midband: Phase = 180° (CE inversion)<br>` +
+    `With feedback: if loop phase = 360°, oscillation occurs<br>` +
+    `<b>Gain reduction needed if phase margin < 45°</b>`;
+}
+
+['f1','f2','f3'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+window.addEventListener('resize', draw);
+draw();
+</script>
+</body>
+</html>

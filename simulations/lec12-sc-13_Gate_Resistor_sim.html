@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scenario 13 — MOSFET Gate Resistor</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto;}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px;}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;}
+  h1{font-size:18px;margin:4px 0;}
+  .layout{display:grid;grid-template-columns:1fr 280px;gap:16px;}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%;}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px;}
+  .ctrl-group{margin-bottom:12px;}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;display:flex;justify-content:space-between;}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace;}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;}
+  .result-box{background:rgba(0,102,204,0.08);border:1px solid rgba(0,102,204,0.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.5;}
+  @media(max-width:600px){.layout{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 12 | Scenario 13</div>
+  <h1>MOSFET Gate Resistor — Driver Heating &amp; EMI Control</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Gate R (Ω) <span class="ctrl-value" id="p1-val">10</span></div>
+      <input type="range" id="p1" min="0" max="100" value="10">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Switching Freq (kHz) <span class="ctrl-value" id="p2-val">100</span></div>
+      <input type="range" id="p2" min="1" max="500" value="100">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Gate Cap (nF) <span class="ctrl-value" id="p3-val">10</span></div>
+      <input type="range" id="p3" min="1" max="50" value="10">
+    </div>
+    <div class="result-box" id="result">Adjust parameters</div>
+  </div>
+</div>
+<script>
+const canvas=document.getElementById('cv');
+const ctx=canvas.getContext('2d');
+function isDark(){return window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches;}
+function draw(){
+  const Rg=+document.getElementById('p1').value;
+  const fsw=+document.getElementById('p2').value*1000;
+  const Cg=+document.getElementById('p3').value*1e-9;
+  document.getElementById('p1-val').textContent=Rg+' Ω';
+  document.getElementById('p2-val').textContent=(fsw/1000).toFixed(0)+' kHz';
+  document.getElementById('p3-val').textContent=(Cg*1e9).toFixed(0)+' nF';
+
+  const Vg=10, Rdriver=2;
+  const R_total=Rg+Rdriver;
+  const E_per_cycle=0.5*Cg*Vg*Vg;
+  const P_driver=E_per_cycle*fsw;
+  const t_rise=2.2*R_total*Cg*1e9; // ns
+  const I_peak=Vg/R_total;
+  // EMI: proportional to dI/dt = Vg/(Rg*Cg) — rate of gate current
+  const dIdt=Vg/(R_total*Cg)*1e-9; // A/ns — normalized
+
+  canvas.width=canvas.parentElement.getBoundingClientRect().width||600;
+  canvas.height=380;
+  const W=canvas.width,H=canvas.height;
+  const dark=isDark();
+  const bg=dark?'#2a2a2a':'#f5f5f5';
+  const fg=dark?'#e8e8e8':'#1a1a1a';
+  const ac=dark?'#4499ff':'#0066cc';
+  const gr=dark?'#444':'#ddd';
+  const red='#e53935',grn='#43a047',orange='#ff9800';
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=fg;ctx.font='bold 13px system-ui';ctx.textAlign='center';
+  ctx.fillText('Gate Voltage & Current — Charge/Discharge Cycle',W/2,22);
+
+  const mx=60,my=40,mw=W-80,mh=(H-110)/2;
+  const totalT_ns=Math.max(50,t_rise*4);
+  const toX=t=>mx+mw*t/totalT_ns;
+  const row1Y=my,row2Y=my+mh+25;
+
+  // Grid
+  ctx.strokeStyle=gr;ctx.lineWidth=1;
+  [0,0.5,1].forEach(f=>{
+    const y1=row1Y+mh*(1-f);
+    ctx.beginPath();ctx.moveTo(mx,y1);ctx.lineTo(mx+mw,y1);ctx.stroke();
+    ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='right';
+    ctx.fillText((f*Vg).toFixed(0)+'V',mx-3,y1+4);
+    const y2=row2Y+mh*(1-f);
+    ctx.beginPath();ctx.moveTo(mx,y2);ctx.lineTo(mx+mw,y2);ctx.stroke();
+    ctx.fillText((f*I_peak).toFixed(2)+'A',mx-3,y2+4);
+  });
+
+  ctx.fillStyle=fg;ctx.font='11px system-ui';ctx.textAlign='left';
+  ctx.fillText('Gate Voltage V_GS',mx+4,row1Y+14);
+  ctx.fillText('Gate Current',mx+4,row2Y+14);
+
+  // VGS curve (charging)
+  const tau_ns=R_total*Cg*1e9;
+  ctx.strokeStyle=ac;ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=300;i++){
+    const t=i/300*totalT_ns;
+    const v=Vg*(1-Math.exp(-t/tau_ns));
+    i===0?ctx.moveTo(toX(t),row1Y+mh*(1-v/Vg)):ctx.lineTo(toX(t),row1Y+mh*(1-v/Vg));
+  }
+  ctx.stroke();
+
+  // Vth marker
+  const Vth=2.5;
+  ctx.strokeStyle=orange;ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(mx,row1Y+mh*(1-Vth/Vg));ctx.lineTo(mx+mw,row1Y+mh*(1-Vth/Vg));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=orange;ctx.font='10px system-ui';ctx.textAlign='left';
+  ctx.fillText('V_th',mx+4,row1Y+mh*(1-Vth/Vg)-3);
+
+  // Current curve
+  ctx.strokeStyle=grn;ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=300;i++){
+    const t=i/300*totalT_ns;
+    const ig=I_peak*Math.exp(-t/tau_ns);
+    i===0?ctx.moveTo(toX(t),row2Y+mh*(1-ig/I_peak)):ctx.lineTo(toX(t),row2Y+mh*(1-ig/I_peak));
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle=fg;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx,row1Y);ctx.lineTo(mx,row1Y+mh);ctx.lineTo(mx+mw,row1Y+mh);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(mx,row2Y);ctx.lineTo(mx,row2Y+mh);ctx.lineTo(mx+mw,row2Y+mh);ctx.stroke();
+
+  // Time markers
+  ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='center';
+  [0,totalT_ns/4,totalT_ns/2,3*totalT_ns/4,totalT_ns].forEach(t=>{
+    ctx.fillText(t.toFixed(0)+'ns',toX(t),row2Y+mh+14);
+  });
+
+  const hot=P_driver>0.1;
+  document.getElementById('result').innerHTML=
+    `<b>R_gate = ${Rg}Ω, C_gate = ${(Cg*1e9).toFixed(0)}nF</b><br>`+
+    `Rise time: ${t_rise.toFixed(1)} ns<br>`+
+    `Peak gate current: ${I_peak.toFixed(2)} A<br>`+
+    `Energy/cycle: ${(E_per_cycle*1e9).toFixed(0)} nJ<br>`+
+    `<b>Driver power at ${(fsw/1000).toFixed(0)}kHz: ${(P_driver*1000).toFixed(0)} mW</b><br>`+
+    (hot?`<span style="color:red">⚠ Driver overheating! Use Rg≥10Ω or reduce frequency</span>`:
+     `<span style="color:green">✓ Driver power OK</span>`);
+}
+['p1','p2','p3'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>draw());
+draw();
+</script>
+</body>
+</html>

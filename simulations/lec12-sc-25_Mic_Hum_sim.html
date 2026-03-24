@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scenario 25 — Microphone 50Hz Hum</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto;}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px;}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;}
+  h1{font-size:18px;margin:4px 0;}
+  .layout{display:grid;grid-template-columns:1fr 280px;gap:16px;}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%;}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px;}
+  .ctrl-group{margin-bottom:12px;}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;display:flex;justify-content:space-between;}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace;}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;}
+  .result-box{background:rgba(0,102,204,0.08);border:1px solid rgba(0,102,204,0.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.5;}
+  @media(max-width:600px){.layout{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 12 | Scenario 25</div>
+  <h1>Microphone 50Hz Hum — Grounding vs Filtering</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Case Grounded <span class="ctrl-value" id="p1-val">No</span></div>
+      <input type="range" id="p1" min="0" max="1" step="1" value="0">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Shield Connected <span class="ctrl-value" id="p2-val">No</span></div>
+      <input type="range" id="p2" min="0" max="1" step="1" value="0">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">HP Filter (cutoff Hz) <span class="ctrl-value" id="p3-val">Off</span></div>
+      <input type="range" id="p3" min="0" max="300" value="0">
+    </div>
+    <div class="result-box" id="result">Adjust grounding and shielding</div>
+  </div>
+</div>
+<script>
+const canvas=document.getElementById('cv');
+const ctx=canvas.getContext('2d');
+function isDark(){return window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches;}
+function draw(){
+  const grounded=+document.getElementById('p1').value;
+  const shielded=+document.getElementById('p2').value;
+  const hp_fc=+document.getElementById('p3').value;
+  document.getElementById('p1-val').textContent=grounded?'Yes':'No';
+  document.getElementById('p2-val').textContent=shielded?'Yes':'No';
+  document.getElementById('p3-val').textContent=hp_fc?hp_fc+'Hz':'Off';
+
+  // Hum amplitude model
+  const hum_amp=0.8*(grounded?0.05:1)*(shielded?0.1:1);
+  const signal_amp=0.1; // audio signal 100mV
+  // HP filter: blocks below fc
+  const atten_signal=hp_fc>0?Math.sqrt(1-Math.pow(Math.min(1,hp_fc/200),2)):1;
+  const atten_hum=hp_fc>0?Math.max(0,1-hp_fc/50):1; // HP kills 50Hz if fc>50
+
+  canvas.width=canvas.parentElement.getBoundingClientRect().width||600;
+  canvas.height=380;
+  const W=canvas.width,H=canvas.height;
+  const dark=isDark();
+  const bg=dark?'#2a2a2a':'#f5f5f5';
+  const fg=dark?'#e8e8e8':'#1a1a1a';
+  const ac=dark?'#4499ff':'#0066cc';
+  const gr=dark?'#444':'#ddd';
+  const red='#e53935',grn='#43a047',orange='#ff9800';
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=fg;ctx.font='bold 13px system-ui';ctx.textAlign='center';
+  ctx.fillText('Mic Preamp Output Spectrum',W/2,22);
+
+  const mx=60,my=40,mw=W-80,mh=H-110;
+  const fMin=10,fMax=20000;
+  const logMin=Math.log10(fMin),logMax=Math.log10(fMax);
+  const Vscale=1;
+  const toX=f=>mx+mw*(Math.log10(f)-logMin)/(logMax-logMin);
+  const toY=v=>my+mh*(1-v/Vscale);
+
+  ctx.strokeStyle=gr;ctx.lineWidth=1;
+  [0,0.2,0.4,0.6,0.8,1].forEach(v=>{
+    const y=toY(v);
+    ctx.beginPath();ctx.moveTo(mx,y);ctx.lineTo(mx+mw,y);ctx.stroke();
+    ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='right';
+    ctx.fillText((v*1000).toFixed(0)+'mV',mx-3,y+4);
+  });
+  [10,100,1000,10000].forEach(f=>{
+    const x=toX(f);
+    ctx.beginPath();ctx.moveTo(x,my);ctx.lineTo(x,my+mh);ctx.stroke();
+    ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='center';
+    ctx.fillText(f>=1000?(f/1000)+'kHz':f+'Hz',x,my+mh+14);
+  });
+
+  // Draw frequency spikes
+  const spikes=[
+    {f:50,v:hum_amp*atten_hum,color:red,label:'50Hz hum'},
+    {f:200,v:signal_amp*atten_signal,color:grn,label:'voice ~200Hz'},
+    {f:800,v:signal_amp*0.7*atten_signal,color:grn,label:''},
+    {f:3000,v:signal_amp*0.4*atten_signal,color:grn,label:''},
+    {f:8000,v:signal_amp*0.2,color:grn,label:''},
+  ];
+
+  spikes.forEach(s=>{
+    const x=toX(s.f);
+    const h=mh*s.v/Vscale;
+    ctx.fillStyle=s.color;
+    ctx.fillRect(x-3,my+mh-h,6,h);
+    if(s.label){
+      ctx.fillStyle=s.color;ctx.font='10px system-ui';ctx.textAlign='center';
+      ctx.fillText(s.label,x,my+mh-h-5);
+    }
+  });
+
+  // HP filter response curve
+  if(hp_fc>0){
+    ctx.strokeStyle=orange;ctx.lineWidth=1.5;ctx.globalAlpha=0.7;
+    ctx.beginPath();
+    for(let i=0;i<=300;i++){
+      const logf=logMin+i/300*(logMax-logMin);
+      const f=Math.pow(10,logf);
+      const hp=f/hp_fc/Math.sqrt(1+Math.pow(f/hp_fc,2));
+      const x=mx+mw*i/300;
+      const y=toY(hp);
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();ctx.globalAlpha=1;
+  }
+
+  ctx.strokeStyle=fg;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx,my+mh);ctx.lineTo(mx+mw,my+mh);ctx.stroke();
+
+  const snr=signal_amp*atten_signal/Math.max(hum_amp*atten_hum,0.001);
+  const audio_ok=atten_signal>0.7;
+  document.getElementById('result').innerHTML=
+    `<b>50Hz hum: ${(hum_amp*atten_hum*1000).toFixed(0)}mV</b><br>`+
+    `Audio signal (200Hz): ${(signal_amp*atten_signal*1000).toFixed(0)}mV<br>`+
+    `SNR: ${(20*Math.log10(snr)).toFixed(0)} dB<br>`+
+    (hp_fc>0&&!grounded?`<span style="color:orange">⚠ HP filter at ${hp_fc}Hz cuts audio below ${hp_fc}Hz!</span><br>`:``) +
+    (grounded&&shielded?'<span style="color:green">✓ Grounded + shielded — hum eliminated properly</span>':
+     grounded?'<span style="color:green">✓ Grounding helps — also add cable shield</span>':
+     '<span style="color:red">⚠ Not grounded — hum path active. Ground the case!</span>');
+}
+['p1','p2','p3'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>draw());
+draw();
+</script>
+</body>
+</html>

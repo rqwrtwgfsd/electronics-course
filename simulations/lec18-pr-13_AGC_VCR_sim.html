@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec18 Pr13 — MOSFET AGC VCR</title>
+<style>
+  :root{--bg:#f8f8f8;--fg:#222;--accent:#4a90d9;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a2e;--fg:#e0e0e0;--accent:#7ab4f5;}}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:Arial,sans-serif;padding:10px;}
+  h3{margin:6px 0;color:var(--accent);}
+  canvas{border:1px solid #555;border-radius:4px;display:block;width:100%;}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;font-size:13px;}
+  input[type=range]{width:130px;accent-color:var(--accent);}
+  .vals{background:#0002;border-radius:4px;padding:8px;font-size:13px;margin:6px 0;}
+  .vals span{color:var(--accent);font-weight:bold;}
+</style>
+</head>
+<body>
+<h3>Problem 13 — MOSFET as VCR: R_DS vs V_GS (Linear Region)</h3>
+<div class="controls">
+  <label>V_th (V): <input type="range" id="Vth" min="0.5" max="4" value="2" step="0.1"> <b id="VthV">2.0</b></label>
+  <label>µCox·W/L (mA/V²): <input type="range" id="kn" min="10" max="500" value="100" step="5"> <b id="knV">100</b></label>
+  <label>V_GS control: <input type="range" id="Vgs" min="2" max="8" value="3" step="0.1"> <b id="VgsV">3.0</b></label>
+  <label>R_fixed (kΩ): <input type="range" id="Rfx" min="1" max="100" value="10" step="1"> <b id="RfxV">10</b></label>
+</div>
+<canvas id="cv"></canvas>
+<div class="vals" id="info"></div>
+<script>
+const cv=document.getElementById('cv');const ctx=cv.getContext('2d');
+function resizeCanvas(){const w=cv.parentElement.getBoundingClientRect().width||480;cv.width=Math.round(w);cv.height=Math.round(w*0.55);}
+function draw(){
+  resizeCanvas();
+  const W=cv.width,H=cv.height;
+  const Vth=+document.getElementById('Vth').value;
+  const kn=+document.getElementById('kn').value*1e-3;
+  const Vgs_ctrl=+document.getElementById('Vgs').value;
+  const Rfx=+document.getElementById('Rfx').value*1e3;
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  ctx.fillStyle=isDark?'#1a1a2e':'#f8f8f8';ctx.fillRect(0,0,W,H);
+  const padL=65,padR=20,padT=35,padB=50;
+  const gW=W-padL-padR,gH=H-padT-padB;
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,padT);ctx.lineTo(padL,padT+gH);ctx.lineTo(padL+gW,padT+gH);ctx.stroke();
+  // Show R_DS vs V_GS
+  const Vgs_min=Vth,Vgs_max=Vth+6;
+  function xp(v){return padL+(v-Vgs_min)/(Vgs_max-Vgs_min)*gW;}
+  const Rmin=0,Rmax=10000;
+  function yp(r){return padT+gH-(Math.min(r,Rmax)/Rmax)*gH;}
+  ctx.strokeStyle='#3334';ctx.lineWidth=0.5;
+  for(let v=Vgs_min;v<=Vgs_max;v+=1){ctx.beginPath();ctx.moveTo(xp(v),padT);ctx.lineTo(xp(v),padT+gH);ctx.stroke();}
+  for(let r=0;r<=Rmax;r+=1000){ctx.beginPath();ctx.moveTo(padL,yp(r));ctx.lineTo(padL+gW,yp(r));ctx.stroke();}
+  const fg=isDark?'#aaa':'#555';ctx.fillStyle=fg;ctx.font='10px Arial';
+  for(let v=Vgs_min;v<=Vgs_max;v+=1)ctx.fillText(v.toFixed(0)+'V',xp(v)-8,padT+gH+13);
+  for(let r=0;r<=Rmax;r+=1000)ctx.fillText((r/1000).toFixed(0)+'k',padL-25,yp(r)+4);
+  ctx.fillStyle=isDark?'#ccc':'#333';ctx.font='11px Arial';
+  ctx.fillText('V_GS (V)',padL+gW/2-20,H-5);
+  ctx.save();ctx.translate(12,padT+gH/2);ctx.rotate(-Math.PI/2);ctx.fillText('R_DS (Ω)',0,0);ctx.restore();
+  // R_DS = 1/(kn*(VGS-Vth))
+  ctx.strokeStyle='#4a90d9';ctx.lineWidth=2.5;ctx.beginPath();let first=true;
+  for(let v=Vth+0.01;v<=Vgs_max;v+=0.05){
+    const Rds=1/(kn*(v-Vth));
+    const clamped=Math.min(Rds,Rmax);
+    if(first){ctx.moveTo(xp(v),yp(clamped));first=false;}else ctx.lineTo(xp(v),yp(clamped));
+  }ctx.stroke();
+  // Voltage divider gain A = Rfx/(Rfx+RDS) → show gain vs VGS
+  // Current operating point
+  if(Vgs_ctrl>Vth){
+    const Rds_cur=1/(kn*(Vgs_ctrl-Vth));
+    const gain=Rfx/(Rfx+Rds_cur);
+    const gain_dB=20*Math.log10(Math.max(gain,0.001));
+    ctx.beginPath();ctx.arc(xp(Vgs_ctrl),yp(Math.min(Rds_cur,Rmax)),8,0,2*Math.PI);
+    ctx.fillStyle='#ff9800';ctx.fill();
+    ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.stroke();
+    // Vertical line
+    ctx.strokeStyle='#ff9800';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(xp(Vgs_ctrl),padT);ctx.lineTo(xp(Vgs_ctrl),padT+gH);ctx.stroke();ctx.setLineDash([]);
+    document.getElementById('info').innerHTML=
+      `V_GS=<span>${Vgs_ctrl.toFixed(1)}V</span> | R_DS=<span>${Rds_cur.toFixed(0)}Ω</span> | `+
+      `Divider gain = R_fixed/(R_fixed+R_DS) = ${Rfx/1000}k/(${(Rfx/1000).toFixed(0)}k+${Rds_cur.toFixed(0)}) = <span>${(gain*100).toFixed(1)}%</span> = <span>${gain_dB.toFixed(1)}dB</span>`;
+  } else {
+    document.getElementById('info').innerHTML=`V_GS < V_th — MOSFET OFF: R_DS → ∞`;
+  }
+  ctx.fillStyle=isDark?'#e0e0e0':'#222';ctx.font='bold 11px Arial';ctx.fillText('MOSFET Linear Region: R_DS vs V_GS',padL+2,padT-8);
+}
+['Vth','kn','Vgs','Rfx'].forEach(id=>{
+  const el=document.getElementById(id);const vl=document.getElementById(id+'V');
+  el.addEventListener('input',()=>{vl.textContent=id==='Vth'||id==='Vgs'?parseFloat(el.value).toFixed(1):el.value;draw();});
+});
+window.addEventListener('resize',draw);resizeCanvas();draw();
+</script>
+</body></html>

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LCD Ghost Image — Pixel Discharge</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}
+  h1{font-size:18px;margin:4px 0}
+  .layout{display:grid;grid-template-columns:1fr 260px;gap:16px}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}
+  .ctrl-group{margin-bottom:12px}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}
+  .result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}
+  @media(max-width:600px){.layout{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 12 | Scenario 20</div>
+  <h1>LCD Ghost Image: Pixel Capacitor Discharge Rate</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">VCOM Resistance (kΩ) <span class="ctrl-value" id="lbl-r">100 kΩ</span></div>
+      <input type="range" id="sl-r" min="0.1" max="500" value="100" step="1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Pixel Cap (pF) <span class="ctrl-value" id="lbl-c">10 pF</span></div>
+      <input type="range" id="sl-c" min="1" max="100" value="10" step="1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Active Discharge R (kΩ) <span class="ctrl-value" id="lbl-ra">1 kΩ</span></div>
+      <input type="range" id="sl-ra" min="0.1" max="100" value="1" step="0.1">
+    </div>
+    <div class="result-box" id="result">Adjust to eliminate ghost image</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slR=document.getElementById('sl-r'),slC=document.getElementById('sl-c'),slRa=document.getElementById('sl-ra');
+const lblR=document.getElementById('lbl-r'),lblC=document.getElementById('lbl-c'),lblRa=document.getElementById('lbl-ra');
+const result=document.getElementById('result');
+
+function draw(){
+  const W=cv.width,H=cv.height;
+  const R=parseFloat(slR.value)*1e3;
+  const C=parseFloat(slC.value)*1e-12;
+  const Ra=parseFloat(slRa.value)*1e3;
+  lblR.textContent=parseFloat(slR.value).toFixed(0)+' kΩ';
+  lblC.textContent=slC.value+' pF';
+  lblRa.textContent=parseFloat(slRa.value).toFixed(1)+' kΩ';
+  ctx.clearRect(0,0,W,H);
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  const tau_passive=R*C;
+  const tau_active=Ra*C;
+  const frameTime=16.7e-3; // 60fps = 16.7ms frame time
+  const tTotal=Math.min(tau_passive*5,10); // up to 10 seconds
+  const Vpixel=5; // pixel charged to 5V
+  const vMin=0,vMax=Vpixel;
+  function yPx(v){return pad+plotH*(1-(v-vMin)/(vMax-vMin))}
+  // Grid
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  [0,1,2,3,4,5].forEach(v=>{ctx.beginPath();ctx.moveTo(pad,yPx(v));ctx.lineTo(W-pad,yPx(v));ctx.stroke()});
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  // Ghost threshold (pixel still partially visible)
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#f57c00';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(pad,yPx(0.5));ctx.lineTo(W-pad,yPx(0.5));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#f57c00';ctx.font='10px system-ui';ctx.textAlign='left';
+  ctx.fillText('Ghost visible above 0.5V',pad+4,yPx(0.5)-4);
+  // Frame time
+  ctx.setLineDash([3,3]);ctx.strokeStyle='#2e7d32';ctx.lineWidth=1;
+  if(frameTime<=tTotal){const xf=pad+(frameTime/tTotal)*plotW;ctx.beginPath();ctx.moveTo(xf,pad);ctx.lineTo(xf,H-pad);ctx.stroke();}
+  ctx.setLineDash([]);
+  // Passive discharge
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    const v=Vpixel*Math.exp(-t/tau_passive);
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  // Active discharge
+  ctx.strokeStyle='#2e7d32';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    const v=Vpixel*Math.exp(-t/tau_active);
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  // Labels
+  ctx.fillStyle='#888';ctx.textAlign='right';ctx.font='10px system-ui';
+  [0,1,2,3,4,5].forEach(v=>ctx.fillText(v+'V',pad-4,yPx(v)+3));
+  const tUnit=tTotal>1?'s':'ms';const tScale=tUnit==='s'?1:1e3;
+  ctx.textAlign='center';
+  [0,0.25,0.5,0.75,1].forEach(f=>{const t=f*tTotal;ctx.fillText((t*tScale).toFixed(tTotal>1?1:0)+tUnit,pad+f*plotW,H-pad+14)});
+  ctx.textAlign='left';ctx.font='11px system-ui';
+  ctx.fillStyle='#e53935';ctx.fillText('Passive discharge: τ = '+(tau_passive>=1?tau_passive.toFixed(1)+'s':(tau_passive*1e3).toFixed(0)+'ms'),pad+8,pad+16);
+  ctx.fillStyle='#2e7d32';ctx.fillText('Active discharge: τ = '+(tau_active*1e3).toFixed(1)+'ms',pad+8,pad+30);
+  const clearInFrame_passive=tau_passive*5<frameTime;
+  const clearInFrame_active=tau_active*5<frameTime;
+  result.innerHTML='<b>Passive τ = R×C = '+(tau_passive>=1?tau_passive.toFixed(1)+'s':(tau_passive*1e3).toFixed(0)+'ms')+'</b><br>Clears in frame (16.7ms)? <b>'+(clearInFrame_passive?'✅ YES':'⚠️ NO — ghost visible')+'</b><br><b>Active τ = Ra×C = '+(tau_active*1e3).toFixed(2)+'ms</b><br>Clears in frame? <b>'+(clearInFrame_active?'✅ YES':'⚠️ NO')+'</b><br><b>Rule: τ_discharge must be < frame_time/5</b>';
+}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slR,slC,slRa].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});
+resizeCanvas();draw();
+</script>
+</body>
+</html>

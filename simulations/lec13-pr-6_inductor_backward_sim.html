@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sim: Inductor Current Reversal</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Arial,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:12px;}
+canvas{display:block;border:1px solid #444;border-radius:6px;background:#0d0d1a;}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0;}
+.ctrl{display:flex;flex-direction:column;gap:3px;font-size:12px;}
+label{color:#aaa;}
+input[type=range]{width:140px;}
+.vals{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#ccc;margin:6px 0;}
+.val-item{background:#222;border-radius:4px;padding:4px 8px;}
+h3{font-size:13px;color:#90caf9;margin-bottom:6px;}
+@media(prefers-color-scheme:light){body{background:#f5f5f5;color:#111;}canvas{background:#fff;border-color:#ccc;}.val-item{background:#eee;color:#222;}label{color:#555;}h3{color:#005a9c;}}
+</style>
+</head>
+<body>
+<h3>Problem 6 — Inductor Current Reversal: Universal Formula</h3>
+<p style="font-size:11px;color:#aaa;margin-bottom:8px;">At t=T the opposing battery connects. Current transitions from I(T) to new steady state. If V_batt is large enough, current crosses zero and reverses.</p>
+<canvas id="cv"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>V_supply (V)</label><input type="range" id="Vs" min="1" max="48" value="12" step="1"><span id="VsV">12</span></div>
+  <div class="ctrl"><label>V_battery oppose (V)</label><input type="range" id="Vb" min="0" max="30" value="4" step="0.5"><span id="VbV">4.0</span></div>
+  <div class="ctrl"><label>R (Ohm)</label><input type="range" id="R" min="1" max="500" value="100" step="1"><span id="RV">100</span></div>
+  <div class="ctrl"><label>L (mH)</label><input type="range" id="L" min="0.1" max="100" value="10" step="0.1"><span id="LV">10.0</span></div>
+</div>
+<div class="vals">
+  <div class="val-item">I(T) initial: <strong id="IT">-</strong></div>
+  <div class="val-item">I_inf (new SS): <strong id="Iinf">-</strong></div>
+  <div class="val-item">tau = L/R: <strong id="tau">-</strong></div>
+  <div class="val-item">Zero crossing: <strong id="t0">-</strong></div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+function resizeCanvas(){
+  const w=cv.parentElement.getBoundingClientRect().width;
+  cv.width=Math.min(w-24,700);
+  cv.height=Math.round(cv.width*0.45);
+}
+function get(id){return parseFloat(document.getElementById(id).value);}
+function draw(){
+  const W=cv.width,H=cv.height;
+  const Vs=get('Vs'),Vb=get('Vb'),R=get('R'),L=get('L')*1e-3;
+  document.getElementById('VsV').textContent=get('Vs');
+  document.getElementById('VbV').textContent=get('Vb').toFixed(1);
+  document.getElementById('RV').textContent=get('R');
+  document.getElementById('LV').textContent=get('L').toFixed(1);
+  const I_T=Vs/R; // initial current before S2
+  const I_inf=(Vs-Vb)/R; // new steady state
+  const tau=L/R;
+  const t_zero_after_T=Vb>Vs?Infinity:I_T<=0?0:
+    I_inf<0?tau*Math.log(I_T/(I_T-I_inf)):Infinity;
+  document.getElementById('IT').textContent=(I_T*1000).toFixed(1)+'mA';
+  document.getElementById('Iinf').textContent=(I_inf*1000).toFixed(1)+'mA';
+  document.getElementById('tau').textContent=(tau*1000).toFixed(2)+'ms';
+  document.getElementById('t0').textContent=isFinite(t_zero_after_T)?(t_zero_after_T*1000).toFixed(2)+'ms after S2':'Never (stays positive)';
+  ctx.clearRect(0,0,W,H);
+  const pad={l:55,r:20,t:28,b:38};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const t_total=6*tau;
+  const T_switch=1.5*tau; // S2 closes at 1.5 tau
+  const I_max=Math.max(I_T*1.1,0.1);
+  const I_min=Math.min(I_inf*1.1,-0.05*I_max);
+  function tx(t){return pad.l+t/t_total*pw;}
+  function iy(I){return H-pad.b-(I-I_min)/(I_max-I_min)*ph;}
+  // Grid
+  ctx.strokeStyle='#1e2a3a';ctx.lineWidth=0.5;
+  const grid_vals=[0,I_T*0.5,I_T,I_inf];
+  const uniq_grid=[...new Set(grid_vals.map(v=>Math.round(v*1000)/1000))];
+  uniq_grid.forEach(iv=>{
+    if(iv>=I_min&&iv<=I_max){
+      ctx.beginPath();ctx.moveTo(pad.l,iy(iv));ctx.lineTo(W-pad.r,iy(iv));ctx.stroke();
+      ctx.fillStyle='#555';ctx.font='10px Arial';
+      ctx.fillText((iv*1000).toFixed(0)+'mA',2,iy(iv)+4);
+    }
+  });
+  // Zero line
+  if(0>=I_min&&0<=I_max){
+    ctx.strokeStyle='#555';ctx.lineWidth=0.5;ctx.setLineDash([3,2]);
+    ctx.beginPath();ctx.moveTo(pad.l,iy(0));ctx.lineTo(W-pad.r,iy(0));ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#888';ctx.font='9px Arial';ctx.fillText('0A',2,iy(0)+3);
+  }
+  const N=600;
+  // Phase 1: 0 to T_switch — charging from 0 to I_T (S1 just closed)
+  ctx.beginPath();ctx.strokeStyle='#55aaff';ctx.lineWidth=2;
+  for(let i=0;i<=N;i++){
+    const t=T_switch*i/N;
+    const I=I_T*(1-Math.exp(-t/tau));
+    if(i===0)ctx.moveTo(tx(t),iy(I));else ctx.lineTo(tx(t),iy(I));
+  }
+  // Phase 2: T_switch to t_total — decay/reverse to I_inf
+  const t_phase2=t_total-T_switch;
+  for(let i=1;i<=N;i++){
+    const dt=t_phase2*i/N;
+    const t=T_switch+dt;
+    const I=I_inf+(I_T-I_inf)*Math.exp(-dt/tau);
+    ctx.lineTo(tx(t),iy(I));
+  }
+  ctx.stroke();
+  // S2 closes marker
+  ctx.strokeStyle='#ffaa55';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(tx(T_switch),pad.t);ctx.lineTo(tx(T_switch),H-pad.b);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#ffaa55';ctx.font='10px Arial';ctx.fillText('S2 closes',tx(T_switch)+3,pad.t+14);
+  // Zero crossing
+  if(isFinite(t_zero_after_T)){
+    const t_cross=T_switch+t_zero_after_T;
+    ctx.strokeStyle='#ff5555';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(tx(t_cross),pad.t);ctx.lineTo(tx(t_cross),H-pad.b);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#ff7777';ctx.font='10px Arial';ctx.fillText('I=0',tx(t_cross)+3,iy(0)-6);
+  }
+  // Axes
+  ctx.strokeStyle='#666';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,H-pad.b);ctx.lineTo(W-pad.r,H-pad.b);ctx.stroke();
+  // I_inf asymptote
+  if(I_inf>=I_min&&I_inf<=I_max){
+    ctx.strokeStyle='#33aa33';ctx.lineWidth=0.5;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(tx(T_switch),iy(I_inf));ctx.lineTo(W-pad.r,iy(I_inf));ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#55aa55';ctx.font='10px Arial';ctx.fillText('I_inf='+Math.round(I_inf*1000)+'mA',W-pad.r-70,iy(I_inf)-4);
+  }
+  ctx.fillStyle='#aaa';ctx.font='10px Arial';ctx.fillText('Time',W/2-10,H-5);
+  ctx.fillStyle='#90caf9';ctx.font='bold 11px Arial';
+  ctx.fillText('Vs='+Vs+'V  Vbatt_oppose='+Vb+'V  R='+R+'O  L='+get('L')+'mH',pad.l+5,pad.t-8);
+  // Phase annotation
+  ctx.fillStyle='rgba(80,120,255,0.08)';ctx.fillRect(pad.l,pad.t,tx(T_switch)-pad.l,ph);
+  ctx.fillStyle='rgba(255,160,80,0.08)';ctx.fillRect(tx(T_switch),pad.t,W-pad.r-tx(T_switch),ph);
+  ctx.fillStyle='#aaa';ctx.font='9px Arial';
+  ctx.fillText('Phase 1: S1 only',pad.l+5,H-pad.b-8);
+  ctx.fillText('Phase 2: S1+S2',tx(T_switch)+5,H-pad.b-8);
+}
+['Vs','Vb','R','L'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>{resizeCanvas();draw();});
+resizeCanvas();draw();
+</script>
+</body>
+</html>

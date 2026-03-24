@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 17 DS 2 — BJT vs MOSFET Switch Loss Comparison</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  header { border-bottom:2px solid var(--accent); padding-bottom:10px; margin-bottom:16px; }
+  h1 { font-size:18px; margin:4px 0; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  .ctrl-label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; margin-bottom:4px; display:flex; justify-content:space-between; }
+  .ctrl-value { color:var(--accent); font-size:13px; font-weight:700; font-family:monospace; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .result-box { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.25); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.7; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header><h1>Lec 17 DS 2 — Switch Conduction Loss: BJT vs MOSFET</h1></header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Load Current <span class="ctrl-value" id="vI">2 A</span></div>
+      <input type="range" id="il" min="0.1" max="20" step="0.1" value="2">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">MOSFET R_DS_on (mΩ) <span class="ctrl-value" id="vRds">18 mΩ</span></div>
+      <input type="range" id="rds" min="1" max="500" step="1" value="18">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">BJT V_CE_sat (V) <span class="ctrl-value" id="vVce">0.2 V</span></div>
+      <input type="range" id="vce" min="0.05" max="2" step="0.05" value="0.2">
+    </div>
+    <div class="result-box" id="result">Adjust to compare devices</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+
+function draw(){
+  cv.width=cv.parentElement.getBoundingClientRect().width||620;
+  cv.height=380;
+  const W=cv.width, H=cv.height;
+  ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()||'#fff';
+  ctx.fillRect(0,0,W,H);
+
+  const Il=+document.getElementById('il').value;
+  const Rds=+document.getElementById('rds').value*1e-3;
+  const Vce=+document.getElementById('vce').value;
+
+  document.getElementById('vI').textContent=Il.toFixed(1)+' A';
+  document.getElementById('vRds').textContent=(Rds*1000).toFixed(0)+' mΩ';
+  document.getElementById('vVce').textContent=Vce.toFixed(2)+' V';
+
+  const iMax=20;
+  const pad={l:55,r:20,t:30,b:40};
+  const pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
+
+  const pMax=20;
+  function iToX(i){ return pad.l+pw*i/iMax; }
+  function pToY(p){ return pad.t+ph*(1-p/pMax); }
+
+  // Grid
+  ctx.strokeStyle='rgba(128,128,128,0.15)'; ctx.lineWidth=1;
+  for(let i=0;i<=iMax;i+=2){
+    const x=iToX(i);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();
+  }
+  for(let p=0;p<=pMax;p+=5){
+    const y=pToY(p);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+  }
+
+  // Labels
+  ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--muted').trim()||'#666';
+  ctx.font='10px system-ui'; ctx.textAlign='right';
+  for(let p=0;p<=pMax;p+=5) ctx.fillText(p+'W', pad.l-4, pToY(p)+4);
+  ctx.textAlign='center';
+  for(let i=0;i<=iMax;i+=5) ctx.fillText(i+'A', iToX(i), pad.t+ph+14);
+  ctx.save();ctx.translate(13,pad.t+ph/2);ctx.rotate(-Math.PI/2);
+  ctx.textAlign='center';ctx.fillText('Conduction Loss (W)',0,0);ctx.restore();
+  ctx.textAlign='center'; ctx.fillStyle=ctx.fillStyle;
+  ctx.fillText('Load Current (A)', pad.l+pw/2, H-4);
+
+  // MOSFET: P = I² × Rds
+  ctx.beginPath(); ctx.strokeStyle='#0066cc'; ctx.lineWidth=2.5;
+  for(let ix=0;ix<=pw;ix++){
+    const i=ix/pw*iMax;
+    const p=i*i*Rds;
+    ctx.lineTo(pad.l+ix, pToY(Math.min(p,pMax)));
+    if(ix===0) {ctx.moveTo(pad.l,pToY(0)); continue;}
+  }
+  ctx.stroke();
+
+  // BJT: P = Vce × I
+  ctx.beginPath(); ctx.strokeStyle='#e53935'; ctx.lineWidth=2.5;
+  for(let ix=0;ix<=pw;ix++){
+    const i=ix/pw*iMax;
+    const p=i*Vce;
+    ix===0?ctx.moveTo(pad.l+ix,pToY(Math.min(p,pMax))):ctx.lineTo(pad.l+ix,pToY(Math.min(p,pMax)));
+  }
+  ctx.stroke();
+
+  // Crossover point: I² × Rds = Vce × I → I_cross = Vce/Rds
+  const I_cross = Vce/Rds;
+  if(I_cross>0 && I_cross<iMax){
+    const xc=iToX(I_cross), yc=pToY(I_cross*Vce);
+    ctx.fillStyle='#fb8c00'; ctx.beginPath(); ctx.arc(xc,yc,5,0,2*Math.PI); ctx.fill();
+    ctx.font='10px system-ui'; ctx.textAlign='left'; ctx.fillStyle='#fb8c00';
+    ctx.fillText('Crossover: '+I_cross.toFixed(1)+'A', xc+8, yc-4);
+  }
+
+  // Mark current load
+  const xload=iToX(Il);
+  ctx.strokeStyle='rgba(128,128,128,0.5)'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(xload,pad.t);ctx.lineTo(xload,pad.t+ph);ctx.stroke();
+  ctx.setLineDash([]);
+
+  const P_mos=Il*Il*Rds, P_bjt=Il*Vce;
+  const winner=P_mos<P_bjt?'MOSFET':'BJT';
+  const winColor=P_mos<P_bjt?'#0066cc':'#e53935';
+
+  // Legend
+  ctx.font='11px system-ui'; ctx.textAlign='left';
+  ctx.fillStyle='#0066cc'; ctx.fillText('MOSFET: I²×R_DS_on', pad.l+8, pad.t+16);
+  ctx.fillStyle='#e53935'; ctx.fillText('BJT: V_CE_sat × I', pad.l+8, pad.t+30);
+
+  document.getElementById('result').innerHTML =
+    `<b>At I=${Il.toFixed(1)}A:</b><br>` +
+    `MOSFET loss: ${P_mos.toFixed(3)} W<br>` +
+    `BJT loss: ${P_bjt.toFixed(3)} W<br>` +
+    `<b>Crossover current:</b> ${I_cross.toFixed(2)} A<br>` +
+    `<b>Winner:</b> <span style="color:${winColor}">${winner}</span> ${I_cross<Il?'(above crossover)':'(below crossover)'}`;
+}
+
+['il','rds','vce'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',draw);
+draw();
+</script>
+</body>
+</html>

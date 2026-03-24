@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Amplifier DC Offset — Coupling Cap</title>
+<style>:root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}@media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}.module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}h1{font-size:18px;margin:4px 0}.layout{display:grid;grid-template-columns:1fr 260px;gap:16px}canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}.controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}.ctrl-group{margin-bottom:12px}.ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}.ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}.result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}@media(max-width:600px){.layout{grid-template-columns:1fr}}</style>
+</head>
+<body>
+<header><div class="module-id">Lecture 12 | Scenario 29</div><h1>Amplifier DC Offset: Asymmetric Clipping Fix</h1></header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group"><div class="ctrl-label">DC Offset (V) <span class="ctrl-value" id="lbl-dc">2.0 V</span></div><input type="range" id="sl-dc" min="-5" max="5" value="2" step="0.1"></div>
+    <div class="ctrl-group"><div class="ctrl-label">Coupling Cap (µF) <span class="ctrl-value" id="lbl-c">1000 µF</span></div><input type="range" id="sl-c" min="1" max="10000" value="1000" step="10"></div>
+    <div class="ctrl-group"><div class="ctrl-label">Signal Amplitude (V) <span class="ctrl-value" id="lbl-a">10 V</span></div><input type="range" id="sl-a" min="1" max="14" value="10" step="0.5"></div>
+    <div class="result-box" id="result">Adjust to fix asymmetric clipping</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slDc=document.getElementById('sl-dc'),slC=document.getElementById('sl-c'),slA=document.getElementById('sl-a');
+const lblDc=document.getElementById('lbl-dc'),lblC=document.getElementById('lbl-c'),lblA=document.getElementById('lbl-a');
+const result=document.getElementById('result');
+function draw(){
+  const W=cv.width,H=cv.height;
+  const Vdc=parseFloat(slDc.value);const C=parseFloat(slC.value)*1e-6;const Vamp=parseFloat(slA.value);
+  lblDc.textContent=Vdc.toFixed(1)+' V';lblC.textContent=slC.value+' µF';lblA.textContent=Vamp.toFixed(1)+' V';
+  ctx.clearRect(0,0,W,H);
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  const VCC=15,VEE=-15;const Vclip_pos=VCC-3,Vclip_neg=VEE+1; // asymmetric rails
+  const tTotal=0.002;const f=1000;
+  const vMin=VEE,vMax=VCC;
+  function yPx(v){return pad+plotH*(1-(v-vMin)/(vMax-vMin))}
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  [VEE,-10,-5,0,5,10,VCC].forEach(v=>{ctx.beginPath();ctx.moveTo(pad,yPx(v));ctx.lineTo(W-pad,yPx(v));ctx.stroke()});
+  ctx.strokeStyle='#888';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  // Clip lines
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#e53935';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(pad,yPx(Vclip_pos));ctx.lineTo(W-pad,yPx(Vclip_pos));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(pad,yPx(Vclip_neg));ctx.lineTo(W-pad,yPx(Vclip_neg));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#e53935';ctx.font='10px system-ui';ctx.textAlign='left';
+  ctx.fillText('Clip +'+Vclip_pos+'V',pad+4,yPx(Vclip_pos)-4);ctx.fillText('Clip '+Vclip_neg+'V',pad+4,yPx(Vclip_neg)+12);
+  // Zero line
+  ctx.setLineDash([4,2]);ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,yPx(0));ctx.lineTo(W-pad,yPx(0));ctx.stroke();ctx.setLineDash([]);
+  // Without coupling cap: signal + DC offset
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    let v=Vdc+Vamp*Math.sin(2*Math.PI*f*t);
+    v=Math.max(Vclip_neg,Math.min(Vclip_pos,v));
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  // With coupling cap: DC blocked, AC passes
+  const Rload=8;const tau=Rload*C;const f_c=1/(2*Math.PI*tau);
+  const lowpass_atten=Math.sqrt(1/(1+Math.pow(f_c/f,2)));
+  ctx.strokeStyle='#2e7d32';ctx.lineWidth=2;ctx.beginPath();
+  let vCap=Vdc;const dt=tTotal/plotW;
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    const vIn=Vdc+Vamp*Math.sin(2*Math.PI*f*t);
+    vCap+=(vIn-vCap)*dt/tau;
+    let v=(vIn-vCap);
+    v=Math.max(Vclip_neg,Math.min(Vclip_pos,v));
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  ctx.fillStyle='#888';ctx.textAlign='right';ctx.font='10px system-ui';
+  [VEE,-10,0,10,VCC].forEach(v=>ctx.fillText(v+'V',pad-4,yPx(v)+3));
+  ctx.textAlign='left';ctx.font='11px system-ui';
+  ctx.fillStyle='#e53935';ctx.fillText('No coupling cap: signal shifted by +'+Vdc.toFixed(1)+'V DC',pad+8,pad+16);
+  ctx.fillStyle='#2e7d32';ctx.fillText('With '+slC.value+'µF cap: DC blocked',pad+8,pad+30);
+  const clipPos=Vdc+Vamp>Vclip_pos;const clipNeg=Vdc-Vamp<Vclip_neg;
+  result.innerHTML='<b>DC offset = '+Vdc.toFixed(1)+'V</b><br>Signal: +'+( Vdc+Vamp).toFixed(1)+'V to '+(Vdc-Vamp).toFixed(1)+'V<br>'+(clipPos?'⚠️ Positive peak clips at +'+Vclip_pos+'V':'')+(clipNeg?'⚠️ Negative peak clips at '+Vclip_neg+'V':'')+((!clipPos&&!clipNeg)?'✅ No clipping':'')+'<br>Coupling cap f_c: <b>'+( f_c).toFixed(1)+'Hz</b><br><b>With cap: DC removed, signal centered at 0V ✅</b>';
+}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slDc,slC,slA].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});resizeCanvas();draw();
+</script>
+</body>
+</html>

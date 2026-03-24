@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 17 DS 1 — Diode Selection: Switching Frequency vs Losses</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  header { border-bottom:2px solid var(--accent); padding-bottom:10px; margin-bottom:16px; }
+  h1 { font-size:18px; margin:4px 0; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  .ctrl-label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; margin-bottom:4px; display:flex; justify-content:space-between; }
+  .ctrl-value { color:var(--accent); font-size:13px; font-weight:700; font-family:monospace; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .result-box { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.25); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.7; }
+  .warn { color:#cc4400; font-weight:700; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header><h1>Lec 17 DS 1 — Diode Selection: Conduction + Recovery Loss vs Frequency</h1></header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Load Current <span class="ctrl-value" id="vI">3 A</span></div>
+      <input type="range" id="il" min="0.1" max="10" step="0.1" value="3">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Supply Voltage <span class="ctrl-value" id="vV">5 V</span></div>
+      <input type="range" id="vv" min="3" max="48" step="1" value="5">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Freq Range Max <span class="ctrl-value" id="vFmax">1 MHz</span></div>
+      <input type="range" id="fmax" min="1" max="10" step="1" value="1">
+    </div>
+    <div class="result-box" id="result">Adjust to compare diode types</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+
+const diodes=[
+  {name:'1N4007 PN',    VF:0.7,  trr:30e-6,  color:'#e53935', dash:[]},
+  {name:'UF4007 Fast',  VF:0.75, trr:75e-9,  color:'#fb8c00', dash:[6,3]},
+  {name:'Schottky MBR', VF:0.35, trr:5e-9,   color:'#0066cc', dash:[]},
+  {name:'SiC Schottky', VF:1.5,  trr:2e-9,   color:'#8e24aa', dash:[3,3]},
+];
+
+function draw(){
+  cv.width=cv.parentElement.getBoundingClientRect().width||620;
+  cv.height=380;
+  const W=cv.width, H=cv.height;
+  ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()||'#fff';
+  ctx.fillRect(0,0,W,H);
+
+  const Il=+document.getElementById('il').value;
+  const Vdc=+document.getElementById('vv').value;
+  const fmaxExp=+document.getElementById('fmax').value;
+  const fMax=Math.pow(10,fmaxExp)*1000;
+
+  document.getElementById('vI').textContent=Il.toFixed(1)+' A';
+  document.getElementById('vV').textContent=Vdc+' V';
+  document.getElementById('vFmax').textContent=fMax>=1e6?(fMax/1e6).toFixed(0)+'MHz':(fMax/1000).toFixed(0)+' kHz';
+
+  // Total loss = conduction loss + switching loss
+  // P_cond = VF * Il
+  // P_sw   = 0.5 * Vdc * Il * trr * freq
+  function totalLoss(d,f){ return d.VF*Il + 0.5*Vdc*Il*d.trr*f; }
+
+  const pad={l:55,r:20,t:30,b:45};
+  const pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
+  const fMin=1;
+  const logFmin=0, logFmax=Math.log10(fMax);
+
+  const pMax=50, pMin=0;
+  function fToX(f){ return pad.l+(Math.log10(f)-logFmin)/(logFmax-logFmin)*pw; }
+  function pToY(p){ return pad.t+ph*(1-p/pMax); }
+
+  // Grid
+  ctx.strokeStyle='rgba(128,128,128,0.15)'; ctx.lineWidth=1;
+  for(let d=0;d<=Math.ceil(logFmax);d++){
+    const x=fToX(Math.pow(10,d));
+    if(x>=pad.l&&x<=pad.l+pw){ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+ph);ctx.stroke();}
+  }
+  for(let p=0;p<=pMax;p+=10){
+    const y=pToY(p);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+pw,y);ctx.stroke();
+  }
+
+  // Labels
+  ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--muted').trim()||'#666';
+  ctx.font='10px system-ui'; ctx.textAlign='right';
+  for(let p=0;p<=pMax;p+=10) ctx.fillText(p+'W', pad.l-4, pToY(p)+4);
+  ctx.textAlign='center';
+  for(let d=0;d<=Math.ceil(logFmax);d++){
+    const f=Math.pow(10,d);
+    const x=fToX(f);
+    if(x>=pad.l&&x<=pad.l+pw) ctx.fillText(f>=1e6?f/1e6+'MHz':f>=1000?f/1000+'kHz':f+'Hz',x,pad.t+ph+14);
+  }
+  ctx.save();ctx.translate(13,pad.t+ph/2);ctx.rotate(-Math.PI/2);
+  ctx.textAlign='center';ctx.fillText('Total Loss (W)',0,0);ctx.restore();
+
+  // Draw each diode curve
+  diodes.forEach(d=>{
+    ctx.beginPath(); ctx.strokeStyle=d.color; ctx.lineWidth=2; ctx.setLineDash(d.dash);
+    let first=true;
+    for(let ix=0;ix<=pw;ix++){
+      const f=Math.pow(10,logFmin+(ix/pw)*(logFmax-logFmin));
+      const p=totalLoss(d,f);
+      const x=pad.l+ix, y=pToY(Math.min(p,pMax+2));
+      first?ctx.moveTo(x,y):ctx.lineTo(x,y);
+      first=false;
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+  });
+
+  // Legend
+  ctx.font='10px system-ui'; ctx.textAlign='left';
+  diodes.forEach((d,i)=>{
+    ctx.fillStyle=d.color; ctx.fillText(d.name, pad.l+8, pad.t+16+(i*13));
+  });
+
+  // At current freq fMax, losses
+  const results=diodes.map(d=>({name:d.name, loss:totalLoss(d,fMax), color:d.color}));
+  results.sort((a,b)=>a.loss-b.loss);
+
+  document.getElementById('result').innerHTML =
+    results.map(r=>`<b style="color:${r.color}">${r.name}:</b> ${r.loss.toFixed(2)} W`).join('<br>')+
+    `<br><b>Winner at ${fMax>=1e6?(fMax/1e6)+'MHz':(fMax/1e3)+'kHz'}:</b> <span style="color:${results[0].color}">${results[0].name}</span>`;
+}
+
+['il','vv','fmax'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',draw);
+draw();
+</script>
+</body>
+</html>

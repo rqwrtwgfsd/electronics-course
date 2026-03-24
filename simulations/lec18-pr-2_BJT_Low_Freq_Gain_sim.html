@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 18 Pr 2 — BJT Low-Frequency Gain Roll-off</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  h1 { font-size:18px; margin-bottom:12px; border-bottom:2px solid var(--accent); padding-bottom:8px; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; display:flex; justify-content:space-between; margin-bottom:4px; }
+  .val { color:var(--accent); font-family:monospace; font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .info { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.2); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.6; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<h1>Pr 2 — CE Amplifier Gain vs Frequency (Low-Frequency Poles)</h1>
+<div class="layout">
+  <canvas id="cv" height="380"></canvas>
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>C_bypass (µF) <span class="val" id="v-cb">100</span></label>
+      <input type="range" id="cbypass" min="10" max="4700" value="100" step="10">
+    </div>
+    <div class="ctrl-group">
+      <label>C_in (µF) <span class="val" id="v-cin">1</span></label>
+      <input type="range" id="cin" min="0.1" max="100" value="1" step="0.1">
+    </div>
+    <div class="ctrl-group">
+      <label>C_out (µF) <span class="val" id="v-cout">10</span></label>
+      <input type="range" id="cout" min="1" max="100" value="10" step="1">
+    </div>
+    <div class="info" id="info">Adjust capacitors to see frequency response.</div>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function resizeCanvas() {
+  cv.width = cv.parentElement.getBoundingClientRect().width || 600;
+  cv.height = 380;
+}
+
+function draw() {
+  resizeCanvas();
+  const W = cv.width, H = cv.height;
+  const dark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const bg = dark ? '#1a1a1a' : '#ffffff';
+  const fg = dark ? '#e8e8e8' : '#1a1a1a';
+  const gridC = dark ? '#333' : '#eee';
+
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const Cb = +document.getElementById('cbypass').value * 1e-6;
+  const Ci = +document.getElementById('cin').value * 1e-6;
+  const Co = +document.getElementById('cout').value * 1e-6;
+
+  document.getElementById('v-cb').textContent = (Cb*1e6).toFixed(0) + ' µF';
+  document.getElementById('v-cin').textContent = (Ci*1e6).toFixed(2) + ' µF';
+  document.getElementById('v-cout').textContent = (Co*1e6).toFixed(0) + ' µF';
+
+  // Circuit parameters (fixed from problem)
+  const gm = 0.05404; // A/V
+  const RC = 3300, RE = 1000;
+  const R_eff_bypass = 1 / (1/RE + gm); // ≈ 1/gm || RE
+  const R_eff_in = 2180; // Thevenin at input
+  const R_eff_out = 3300; // RC
+
+  const fc_bypass = 1 / (2 * Math.PI * R_eff_bypass * Cb);
+  const fc_in = 1 / (2 * Math.PI * R_eff_in * Ci);
+  const fc_out = 1 / (2 * Math.PI * R_eff_out * Co);
+  const A_mid = 47; // midband gain magnitude
+
+  const pad = { l: 60, r: 20, t: 30, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  // Log frequency axis: 1Hz to 100kHz
+  const f_min = 1, f_max = 100000;
+  const logMin = Math.log10(f_min), logMax = Math.log10(f_max);
+
+  // dB axis: -40 to +40
+  const db_min = -40, db_max = 40;
+
+  // Grid
+  ctx.strokeStyle = gridC; ctx.lineWidth = 1;
+  for (let db = db_min; db <= db_max; db += 10) {
+    const y = pad.t + ph * (1 - (db - db_min) / (db_max - db_min));
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '11px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(db + ' dB', pad.l - 4, y + 4);
+  }
+  [1,2,5,10,20,50,100,200,500,1000,2000,5000,10000,20000,50000,100000].forEach(f => {
+    const x = pad.l + pw * (Math.log10(f) - logMin) / (logMax - logMin);
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
+    if ([1,10,100,1000,10000,100000].includes(f)) {
+      ctx.fillStyle = fg; ctx.font = '11px monospace'; ctx.textAlign = 'center';
+      const label = f >= 1000 ? (f/1000)+'k' : f;
+      ctx.fillText(label, x, pad.t + ph + 18);
+    }
+  });
+
+  // Axes labels
+  ctx.fillStyle = fg; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Frequency (Hz)', pad.l + pw / 2, H - 6);
+  ctx.save(); ctx.translate(14, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Gain (dB)', 0, 0); ctx.restore();
+
+  // Plot gain curve
+  ctx.beginPath();
+  ctx.strokeStyle = '#1565c0';
+  ctx.lineWidth = 2.5;
+  let first = true;
+  for (let i = 0; i <= 300; i++) {
+    const lf = logMin + (logMax - logMin) * i / 300;
+    const f = Math.pow(10, lf);
+    const w1 = f / fc_bypass, w2 = f / fc_in, w3 = f / fc_out;
+    // Gain = A_mid * HP1 * HP2 * HP3
+    const H1 = w1 / Math.sqrt(1 + w1 * w1);
+    const H2 = w2 / Math.sqrt(1 + w2 * w2);
+    const H3 = w3 / Math.sqrt(1 + w3 * w3);
+    const gain_db = 20 * Math.log10(A_mid * H1 * H2 * H3);
+    const x = pad.l + pw * (lf - logMin) / (logMax - logMin);
+    const y = pad.t + ph * (1 - (gain_db - db_min) / (db_max - db_min));
+    if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Mark pole frequencies
+  const poles = [
+    { fc: fc_bypass, label: 'f_bypass', color: '#e53935' },
+    { fc: fc_in, label: 'f_in', color: '#43a047' },
+    { fc: fc_out, label: 'f_out', color: '#fb8c00' },
+  ];
+  poles.forEach(p => {
+    if (p.fc < f_max && p.fc > f_min) {
+      const x = pad.l + pw * (Math.log10(p.fc) - logMin) / (logMax - logMin);
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = p.color; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = p.color; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(p.label + '=' + p.fc.toFixed(0) + 'Hz', x, pad.t + 12);
+    }
+  });
+
+  // Midband reference
+  const midY = pad.t + ph * (1 - (20 * Math.log10(A_mid) - db_min) / (db_max - db_min));
+  ctx.setLineDash([6, 3]);
+  ctx.strokeStyle = '#9e9e9e'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad.l, midY); ctx.lineTo(pad.l + pw, midY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#9e9e9e'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('Midband: ' + (20*Math.log10(A_mid)).toFixed(1) + ' dB', pad.l + 4, midY - 4);
+
+  document.getElementById('info').innerHTML =
+    `<b>Pole frequencies:</b><br>` +
+    `f_bypass = ${fc_bypass.toFixed(1)} Hz<br>` +
+    `f_in = ${fc_in.toFixed(1)} Hz<br>` +
+    `f_out = ${fc_out.toFixed(1)} Hz<br>` +
+    `<b>Gain at 100Hz ≈ ${(20*Math.log10(A_mid * (100/fc_bypass)/Math.sqrt(1+(100/fc_bypass)**2) * (100/fc_in)/Math.sqrt(1+(100/fc_in)**2))).toFixed(1)} dB</b>`;
+}
+
+['cbypass','cin','cout'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+window.addEventListener('resize', draw);
+draw();
+</script>
+</body>
+</html>

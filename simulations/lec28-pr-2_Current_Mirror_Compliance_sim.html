@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec28 Pr2 — Current Mirror Compliance Voltage</title>
+<style>
+  body{margin:0;padding:10px;font-family:sans-serif;background:#1a1a2e;color:#e0e0e0;}
+  canvas{display:block;border:1px solid #444;border-radius:6px;background:#0f0f1e;}
+  .ctrl{margin:8px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  label{min-width:200px;font-size:0.85em;}
+  input[type=range]{flex:1;min-width:120px;}
+  .val{min-width:70px;font-size:0.85em;color:#7ec8e3;}
+  .result-box{background:#162032;border:1px solid #2a4a6a;border-radius:6px;padding:10px;margin-top:8px;font-size:0.85em;}
+  h3{color:#7ec8e3;margin:4px 0 10px;}
+</style>
+</head>
+<body>
+<h3>Problem 2 — Cascode Current Mirror: I_out vs V_out (Compliance)</h3>
+<canvas id="cv"></canvas>
+<div class="ctrl">
+  <label>Vth (V):</label>
+  <input type="range" id="vth" min="0.3" max="0.7" value="0.5" step="0.01">
+  <span class="val" id="vth_v">0.5 V</span>
+</div>
+<div class="ctrl">
+  <label>Overdrive Vov (V):</label>
+  <input type="range" id="vov" min="0.05" max="0.4" value="0.2" step="0.01">
+  <span class="val" id="vov_v">0.2 V</span>
+</div>
+<div class="ctrl">
+  <label>Mirror type:</label>
+  <select id="mtype" style="background:#222;color:#e0e0e0;border:1px solid #444;padding:4px;">
+    <option value="simple">Simple (1 transistor)</option>
+    <option value="cascode" selected>Standard Cascode</option>
+    <option value="lowv">Low-Voltage Cascode</option>
+    <option value="regulated">Regulated Cascode</option>
+  </select>
+</div>
+<div class="result-box" id="result">Results</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function resizeCanvas(){
+  const w = cv.parentElement.getBoundingClientRect().width - 20;
+  cv.width = Math.max(300,w);
+  cv.height = Math.round(cv.width*0.45);
+}
+
+function getVals(){
+  return {
+    vth: parseFloat(document.getElementById('vth').value),
+    vov: parseFloat(document.getElementById('vov').value),
+    mtype: document.getElementById('mtype').value
+  };
+}
+
+function complianceVoltage(vth, vov, mtype){
+  switch(mtype){
+    case 'simple': return vov; // Vds_sat
+    case 'cascode': return vth + 2*vov; // standard cascode: Vov + Vgs_cascode
+    case 'lowv': return 2*vov; // low-voltage: 2Vov
+    case 'regulated': return vov; // regulated: ~Vov
+    default: return 2*vov;
+  }
+}
+
+function iout(vout, vth, vov, mtype, lambda){
+  const vcomp = complianceVoltage(vth, vov, mtype);
+  if(vout < vcomp){
+    // Triode region — current drops
+    const ratio = vout/vcomp;
+    return ratio * ratio; // simplified triode model
+  }
+  // Saturation: small lambda effect
+  return 1 + lambda * (vout - vcomp);
+}
+
+function draw(){
+  const W=cv.width, H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  const {vth, vov, mtype} = getVals();
+
+  const mx=55, my=20, bx=W-20, by=H-35;
+  const pw=bx-mx, ph=by-my;
+  const VoutMax = 1.8;
+  const lambda = 0.05; // channel length modulation
+
+  // Axes
+  ctx.strokeStyle='#444'; ctx.lineWidth=1;
+  ctx.beginPath();
+  ctx.moveTo(mx,my); ctx.lineTo(mx,by); ctx.lineTo(bx,by);
+  ctx.stroke();
+
+  // Grid
+  for(let i=0;i<=4;i++){
+    const y=my+i*ph/4;
+    ctx.strokeStyle='#252540'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(mx,y); ctx.lineTo(bx,y); ctx.stroke();
+    ctx.fillStyle='#888'; ctx.font='10px sans-serif';
+    ctx.fillText((1-i*0.25).toFixed(2), mx-42, y+4);
+  }
+  for(let i=0;i<=6;i++){
+    const x=mx+i*pw/6;
+    const v=VoutMax*i/6;
+    ctx.strokeStyle='#252540'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(x,my); ctx.lineTo(x,by); ctx.stroke();
+    ctx.fillStyle='#888'; ctx.font='10px sans-serif';
+    ctx.fillText(v.toFixed(2)+'V', x-12, by+14);
+  }
+
+  // Compliance lines
+  const colors = {simple:'#ef9a9a', cascode:'#ffb74d', lowv:'#aed581', regulated:'#4fc3f7'};
+  const names = {simple:'Simple', cascode:'Std Cascode', lowv:'Low-V Cascode', regulated:'Regulated'};
+
+  let highlightType = mtype;
+  const allTypes = ['simple','cascode','lowv','regulated'];
+
+  for(const t of allTypes){
+    const vcomp = complianceVoltage(vth, vov, t);
+    const alpha = t === highlightType ? 1.0 : 0.35;
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = colors[t];
+    ctx.lineWidth = t===highlightType ? 2.5 : 1.5;
+    ctx.beginPath();
+    let first=true;
+    for(let i=0;i<=300;i++){
+      const vout = VoutMax*i/300;
+      const io = iout(vout, vth, vov, t, lambda);
+      const x = mx + (vout/VoutMax)*pw;
+      const y = by - (io/1.15)*ph;
+      if(first){ctx.moveTo(x,y); first=false;}
+      else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    // Compliance marker
+    const xc = mx + (vcomp/VoutMax)*pw;
+    ctx.strokeStyle=colors[t]; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(xc,my); ctx.lineTo(xc,by); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=colors[t]; ctx.font='9px sans-serif';
+    ctx.fillText(names[t], Math.max(xc-10,mx), my+20*(allTypes.indexOf(t)+1));
+    ctx.globalAlpha=1;
+  }
+
+  // Selected compliance annotation
+  const vcomp = complianceVoltage(vth, vov, mtype);
+  ctx.fillStyle='#fff'; ctx.font='11px sans-serif';
+  ctx.fillText(`V_compliance (${names[mtype]}) = ${vcomp.toFixed(2)}V`, mx+10, by-12);
+
+  // Axes labels
+  ctx.fillStyle='#7ec8e3'; ctx.font='11px sans-serif';
+  ctx.fillText('I_out / I_ref', mx+5, my+12);
+  ctx.fillText('V_out →', bx-50, by+28);
+
+  // Results
+  const vcomp_all = allTypes.map(t=>({name:names[t], v:complianceVoltage(vth,vov,t)}));
+  document.getElementById('result').innerHTML =
+    `<b>Compliance Voltages (Vth=${vth.toFixed(2)}V, Vov=${vov.toFixed(2)}V):</b><br>` +
+    vcomp_all.map(x=>`${x.name}: V_comp = ${x.v.toFixed(2)}V`).join(' | ') + '<br>' +
+    `<b>Selected (${names[mtype]}):</b> V_comp = ${vcomp.toFixed(3)}V — ` +
+    (vcomp < 0.21 ? '✓ meets 0.2V spec' : '⚠ fails 0.2V spec, need lower Vov or regulated cascode');
+}
+
+document.getElementById('vth').addEventListener('input', e=>{document.getElementById('vth_v').textContent=parseFloat(e.target.value).toFixed(2)+' V'; draw();});
+document.getElementById('vov').addEventListener('input', e=>{document.getElementById('vov_v').textContent=parseFloat(e.target.value).toFixed(2)+' V'; draw();});
+document.getElementById('mtype').addEventListener('change', ()=>draw());
+resizeCanvas(); draw();
+window.addEventListener('resize', ()=>{resizeCanvas();draw();});
+</script>
+</body>
+</html>

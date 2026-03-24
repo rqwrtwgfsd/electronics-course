@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Current Sense Resistor Optimizer</title>
+<style>:root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}@media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}.module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}h1{font-size:18px;margin:4px 0}.layout{display:grid;grid-template-columns:1fr 260px;gap:16px}canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}.controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}.ctrl-group{margin-bottom:12px}.ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}.ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}.result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}@media(max-width:600px){.layout{grid-template-columns:1fr}}</style>
+</head>
+<body>
+<header><div class="module-id">Lecture 12 | Scenario 23</div><h1>Current Sense: R_sense vs Voltage Drop Trade-off</h1></header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group"><div class="ctrl-label">R_sense (mΩ) <span class="ctrl-value" id="lbl-r">10 mΩ</span></div><input type="range" id="sl-r" min="1" max="1000" value="10" step="1"></div>
+    <div class="ctrl-group"><div class="ctrl-label">Max Current (A) <span class="ctrl-value" id="lbl-i">0.5 A</span></div><input type="range" id="sl-i" min="0.1" max="5" value="0.5" step="0.1"></div>
+    <div class="ctrl-group"><div class="ctrl-label">Amp Gain (V/V) <span class="ctrl-value" id="lbl-g">100</span></div><input type="range" id="sl-g" min="1" max="1000" value="100" step="1"></div>
+    <div class="result-box" id="result">Adjust to balance accuracy vs drop</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slR=document.getElementById('sl-r'),slI=document.getElementById('sl-i'),slG=document.getElementById('sl-g');
+const lblR=document.getElementById('lbl-r'),lblI=document.getElementById('lbl-i'),lblG=document.getElementById('lbl-g');
+const result=document.getElementById('result');
+function draw(){
+  const W=cv.width,H=cv.height;
+  const Rs=parseFloat(slR.value)*1e-3;const Imax=parseFloat(slI.value);const G=parseFloat(slG.value);
+  lblR.textContent=slR.value+' mΩ';lblI.textContent=Imax.toFixed(1)+' A';lblG.textContent=G;
+  ctx.clearRect(0,0,W,H);
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  // Show: voltage drop across R_sense vs current
+  // And amplified signal at ADC vs current
+  const VCC=3.0;const nPoints=100;
+  const vDropMax=Imax*Rs*1000; // mV
+  const vADCmax=Math.min(Imax*Rs*G,VCC);
+  const yMin=0,yMax=Math.max(vDropMax*1.2,vADCmax*1.1,100);
+  function yPx(v){return pad+plotH*(1-v/yMax)}
+  function xPx(i){return pad+(i/Imax)*plotW}
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  [0,yMax*0.25,yMax*0.5,yMax*0.75,yMax].forEach(v=>{ctx.beginPath();ctx.moveTo(pad,yPx(v));ctx.lineTo(W-pad,yPx(v));ctx.stroke()});
+  ctx.strokeStyle='#888';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  // VCC line
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#f57c00';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,yPx(VCC*1000));ctx.lineTo(W-pad,yPx(VCC*1000));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#f57c00';ctx.font='10px system-ui';ctx.textAlign='left';ctx.fillText('VCC 3.0V = 3000mV',pad+4,yPx(VCC*1000)-4);
+  // V_drop in mV
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){const i=(px/plotW)*Imax;const v=i*Rs*1000;px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v))}ctx.stroke();
+  // ADC voltage (amplified sense voltage)
+  ctx.strokeStyle='#2e7d32';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){const i=(px/plotW)*Imax;const v=Math.min(i*Rs*G*1000,VCC*1000);px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v))}ctx.stroke();
+  ctx.fillStyle='#888';ctx.textAlign='right';ctx.font='10px system-ui';
+  [0,yMax*0.25,yMax*0.5,yMax*0.75,yMax].forEach(v=>{const lbl=v>=1000?(v/1000).toFixed(1)+'V':v.toFixed(0)+'mV';ctx.fillText(lbl,pad-4,yPx(v)+3)});
+  ctx.textAlign='center';
+  [0,Imax*0.25,Imax*0.5,Imax*0.75,Imax].forEach(i=>ctx.fillText(i.toFixed(1)+'A',pad+(i/Imax)*plotW,H-pad+14));
+  ctx.textAlign='left';ctx.font='11px system-ui';
+  ctx.fillStyle='#e53935';ctx.fillText('Voltage drop across R_sense (mV)',pad+8,pad+16);
+  ctx.fillStyle='#2e7d32';ctx.fillText('ADC signal (gain='+G+'×)',pad+8,pad+30);
+  const Vdrop=Imax*Rs*1000;const Vadc=Math.min(Imax*Rs*G*1000,VCC*1000);
+  const resolution=VCC*1000/4096;const SNR=Vadc/resolution;
+  result.innerHTML='<b>At I_max = '+Imax.toFixed(1)+'A:</b><br>V_drop = <b>'+Vdrop.toFixed(1)+'mV</b> '+(Vdrop<100?'✅ Low drop':'⚠️ High drop')+'<br>ADC signal: <b>'+(Vadc/1000).toFixed(3)+'V</b><br>12-bit ADC counts: <b>'+Math.round(Vadc/resolution)+'</b><br>SNR: <b>'+SNR.toFixed(0)+' counts</b><br><b>Rule: R_sense < 100mΩ in battery path</b>';
+}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slR,slI,slG].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});resizeCanvas();draw();
+</script>
+</body>
+</html>

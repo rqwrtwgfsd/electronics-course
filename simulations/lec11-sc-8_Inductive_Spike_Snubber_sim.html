@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inductive Spike — Flyback &amp; Snubber</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}
+  h1{font-size:18px;margin:4px 0}
+  .layout{display:grid;grid-template-columns:1fr 260px;gap:16px}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}
+  .ctrl-group{margin-bottom:12px}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}
+  .result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}
+  @media(max-width:600px){.layout{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 11 | Scenario 8</div>
+  <h1>MOSFET Inductive Spike: Flyback + RC Snubber</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Motor L (mH) <span class="ctrl-value" id="lbl-l">50 mH</span></div>
+      <input type="range" id="sl-l" min="1" max="200" value="50" step="1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Motor Current (A) <span class="ctrl-value" id="lbl-i">1.0 A</span></div>
+      <input type="range" id="sl-i" min="0.1" max="5" value="1" step="0.1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Snubber R (Ω) <span class="ctrl-value" id="lbl-r">10 Ω</span></div>
+      <input type="range" id="sl-r" min="0" max="100" value="10" step="1">
+    </div>
+    <div class="result-box" id="result">Adjust to protect the MOSFET</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slL=document.getElementById('sl-l'),slI=document.getElementById('sl-i'),slR=document.getElementById('sl-r');
+const lblL=document.getElementById('lbl-l'),lblI=document.getElementById('lbl-i'),lblR=document.getElementById('lbl-r');
+const result=document.getElementById('result');
+
+function draw(){
+  const W=cv.width,H=cv.height;
+  const L=parseFloat(slL.value)*1e-3;
+  const I0=parseFloat(slI.value);
+  const Rsnub=parseFloat(slR.value);
+  lblL.textContent=slL.value+' mH';
+  lblI.textContent=I0.toFixed(1)+' A';
+  lblR.textContent=Rsnub+' Ω';
+  ctx.clearRect(0,0,W,H);
+  const VCC=12,Vds_max=60;
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  // Spike energy E=0.5*L*I^2
+  const E=0.5*L*I0*I0;
+  // Without protection: spike = L*dI/dt where dI/dt determined by stray cap
+  // Peak voltage without diode: can be very high, simplified as L*I*1e6 (ns timescale)
+  const Cstray=100e-12; // 100pF stray
+  const Vpeak_no=Math.min(I0*Math.sqrt(L/Cstray),500);
+  // With flyback diode: clamps to VCC+0.7
+  const Vpeak_diode=VCC+0.7;
+  // With snubber R+C: spike absorbed, peak reduced
+  const Csnub=100e-9;
+  const Vpeak_snub=Rsnub>0?VCC+I0*Rsnub:Vpeak_no;
+  const Vpeak_snub2=Math.min(Vpeak_snub,Vpeak_no);
+  const tTotal=50e-6; // 50µs
+  const vMin=-5,vMax=Math.min(Vpeak_no*1.1,200);
+  function yPx(v){return pad+plotH*(1-(v-vMin)/(vMax-vMin))}
+  function tPx(t){return pad+(t/tTotal)*plotW}
+  // Grid
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  [0,VCC,Vpeak_diode,Vds_max].forEach(v=>{if(v<=vMax){ctx.beginPath();ctx.moveTo(pad,yPx(v));ctx.lineTo(W-pad,yPx(v));ctx.stroke()}});
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  // VDS_max line
+  ctx.setLineDash([6,3]);ctx.strokeStyle='#e53935';ctx.lineWidth=2;
+  if(Vds_max<=vMax){ctx.beginPath();ctx.moveTo(pad,yPx(Vds_max));ctx.lineTo(W-pad,yPx(Vds_max));ctx.stroke();}
+  ctx.fillStyle='#e53935';ctx.font='10px system-ui';ctx.textAlign='left';
+  if(Vds_max<=vMax)ctx.fillText('VDS_max='+Vds_max+'V',pad+4,yPx(Vds_max)-4);
+  ctx.setLineDash([]);
+  const t_off=5e-6;
+  // No protection
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    let v;
+    if(t<t_off)v=VCC;
+    else if(t<t_off+2e-6){const f=(t-t_off)/2e-6;v=VCC+f*(Vpeak_no-VCC);}
+    else v=VCC+(Vpeak_no-VCC)*Math.exp(-(t-t_off-2e-6)/2e-6);
+    v=Math.max(vMin,Math.min(vMax,v));
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  // With flyback diode
+  ctx.strokeStyle='#f57c00';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    let v;
+    if(t<t_off)v=VCC;
+    else{const tau=L/1;v=Vpeak_diode+(VCC-Vpeak_diode)*(1-Math.exp(-(t-t_off)/0.005));}
+    v=Math.max(vMin,Math.min(vMax,v));
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  // With snubber
+  ctx.strokeStyle='#2e7d32';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    let v;
+    if(t<t_off)v=VCC;
+    else{const tau2=L/(Rsnub+1);const Vp=Vpeak_snub2;v=Vp*Math.exp(-(t-t_off)/tau2)+VCC*(1-Math.exp(-(t-t_off)/tau2));}
+    v=Math.max(vMin,Math.min(vMax,v));
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  // Labels
+  ctx.fillStyle='#888';ctx.font='10px system-ui';ctx.textAlign='right';
+  [0,VCC,vMax*0.5,vMax*0.75].forEach(v=>ctx.fillText(v.toFixed(0)+'V',pad-4,yPx(v)+3));
+  ctx.textAlign='left';ctx.font='11px system-ui';
+  ctx.fillStyle='#e53935';ctx.fillText('No protection: '+Vpeak_no.toFixed(0)+'V spike',pad+8,pad+16);
+  ctx.fillStyle='#f57c00';ctx.fillText('Flyback diode: '+Vpeak_diode.toFixed(1)+'V',pad+8,pad+30);
+  ctx.fillStyle='#2e7d32';ctx.fillText('Snubber R='+Rsnub+'Ω: '+Vpeak_snub2.toFixed(0)+'V',pad+8,pad+44);
+  const safe=Vpeak_snub2<Vds_max;
+  result.innerHTML='<b>Spike energy: E = ½LI² = '+(E*1e3).toFixed(2)+'mJ</b><br>No protection: <b>'+Vpeak_no.toFixed(0)+'V</b> (MOSFET destroyed!)<br>Flyback diode: <b>'+Vpeak_diode.toFixed(1)+'V</b> ✅<br>Snubber ('+Rsnub+'Ω): <b>'+Vpeak_snub2.toFixed(0)+'V</b> '+(safe?'✅':'⚠️')+'<br><b>Rule:</b> NEVER switch inductive loads without flyback diode';
+}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slL,slI,slR].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});
+resizeCanvas();draw();
+</script>
+</body>
+</html>

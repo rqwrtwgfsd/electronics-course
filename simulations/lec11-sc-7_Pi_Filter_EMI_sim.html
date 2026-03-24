@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pi Filter — EMI Suppression</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}
+  h1{font-size:18px;margin:4px 0}
+  .layout{display:grid;grid-template-columns:1fr 260px;gap:16px}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}
+  .ctrl-group{margin-bottom:12px}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}
+  .result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}
+  @media(max-width:600px){.layout{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 11 | Scenario 7</div>
+  <h1>Pi Filter: C-L-C EMI Suppression Bode Plot</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">L (µH) <span class="ctrl-value" id="lbl-l">10 µH</span></div>
+      <input type="range" id="sl-l" min="1" max="100" value="10" step="1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">C1=C2 (nF) <span class="ctrl-value" id="lbl-c">100 nF</span></div>
+      <input type="range" id="sl-c" min="1" max="1000" value="100" step="1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Noise Freq (kHz) <span class="ctrl-value" id="lbl-fn">433 kHz</span></div>
+      <input type="range" id="sl-fn" min="10" max="2000" value="433" step="10">
+    </div>
+    <div class="result-box" id="result">Adjust to optimize Pi filter</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slL=document.getElementById('sl-l'),slC=document.getElementById('sl-c'),slFn=document.getElementById('sl-fn');
+const lblL=document.getElementById('lbl-l'),lblC=document.getElementById('lbl-c'),lblFn=document.getElementById('lbl-fn');
+const result=document.getElementById('result');
+
+function draw(){
+  const W=cv.width,H=cv.height;
+  const L=parseFloat(slL.value)*1e-6;
+  const C=parseFloat(slC.value)*1e-9;
+  const fn=parseFloat(slFn.value)*1e3;
+  lblL.textContent=slL.value+' µH';
+  lblC.textContent=slC.value+' nF';
+  lblFn.textContent=slFn.value+' kHz';
+  ctx.clearRect(0,0,W,H);
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  const fMin=1e3,fMax=100e6;
+  // Single LC filter attenuation
+  function atten1(f){const fc=1/(2*Math.PI*Math.sqrt(L*C));const ratio=f/fc;return ratio>1?-40*Math.log10(ratio):0}
+  // Pi filter: roughly two LC stages → -80dB/decade above f0
+  function attenPi(f){const fc=1/(2*Math.PI*Math.sqrt(L*(2*C)));const ratio=f/fc;return ratio>1?-60*Math.log10(ratio):0}
+  function xPx(f){return pad+plotW*(Math.log10(f)-Math.log10(fMin))/(Math.log10(fMax)-Math.log10(fMin))}
+  function yPx(db){return pad+plotH*(1-(db+80)/80)}
+  // Grid
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  for(let db=-80;db<=0;db+=10){ctx.beginPath();ctx.moveTo(pad,yPx(db));ctx.lineTo(W-pad,yPx(db));ctx.stroke()}
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  // Single L filter
+  ctx.strokeStyle='#e57373';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const logF=Math.log10(fMin)+(px/plotW)*(Math.log10(fMax)-Math.log10(fMin));
+    const f=Math.pow(10,logF);
+    const db=Math.max(-80,atten1(f));
+    const yp=Math.max(pad,Math.min(H-pad,yPx(db)));
+    px===0?ctx.moveTo(pad+px,yp):ctx.lineTo(pad+px,yp);
+  }ctx.stroke();ctx.setLineDash([]);
+  // Pi filter
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2.5;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const logF=Math.log10(fMin)+(px/plotW)*(Math.log10(fMax)-Math.log10(fMin));
+    const f=Math.pow(10,logF);
+    const db=Math.max(-80,attenPi(f));
+    const yp=Math.max(pad,Math.min(H-pad,yPx(db)));
+    px===0?ctx.moveTo(pad+px,yp):ctx.lineTo(pad+px,yp);
+  }ctx.stroke();
+  // Noise freq marker
+  const xfn=xPx(fn);
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#e53935';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(xfn,pad);ctx.lineTo(xfn,H-pad);ctx.stroke();ctx.setLineDash([]);
+  // Labels
+  ctx.fillStyle='#888';ctx.font='10px system-ui';ctx.textAlign='right';
+  for(let db=-80;db<=0;db+=10)ctx.fillText(db+'dB',pad-4,yPx(db)+3);
+  ctx.textAlign='center';
+  ['1k','10k','100k','1M','10M','100M'].forEach((lbl,i)=>{const f=Math.pow(10,i+3);if(f>=fMin&&f<=fMax)ctx.fillText(lbl,xPx(f),H-pad+14)});
+  ctx.textAlign='left';ctx.font='11px system-ui';
+  ctx.fillStyle='#e57373';ctx.fillText('Single LC filter (−40dB/dec)',pad+8,pad+16);
+  ctx.fillStyle='#0066cc';ctx.fillText('Pi filter CLC (−60dB/dec)',pad+8,pad+30);
+  ctx.fillStyle='#e53935';ctx.fillText('Noise @ '+slFn.value+'kHz',xfn+4,pad+14);
+  const db1=Math.max(-80,atten1(fn));const dbPi=Math.max(-80,attenPi(fn));
+  result.innerHTML='<b>Noise @ '+slFn.value+'kHz:</b><br>Single filter: <b>'+db1.toFixed(0)+'dB</b><br>Pi filter: <b>'+dbPi.toFixed(0)+'dB</b><br>Improvement: <b>'+Math.abs(dbPi-db1).toFixed(0)+'dB</b><br>Noise reduced: <b>'+(100*(1-Math.pow(10,dbPi/20))).toFixed(1)+'%</b>';
+}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slL,slC,slFn].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});
+resizeCanvas();draw();
+</script>
+</body>
+</html>

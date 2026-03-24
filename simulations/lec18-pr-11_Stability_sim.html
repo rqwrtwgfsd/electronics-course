@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec18 Pr11 — Amplifier Stability</title>
+<style>
+  :root{--bg:#f8f8f8;--fg:#222;--accent:#4a90d9;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a2e;--fg:#e0e0e0;--accent:#7ab4f5;}}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:Arial,sans-serif;padding:10px;}
+  h3{margin:6px 0;color:var(--accent);}
+  canvas{border:1px solid #555;border-radius:4px;display:block;width:100%;}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;font-size:13px;}
+  input[type=range]{width:130px;accent-color:var(--accent);}
+  .vals{background:#0002;border-radius:4px;padding:8px;font-size:13px;margin:6px 0;}
+  .vals span{color:var(--accent);font-weight:bold;}
+  .warn{color:#e05;font-weight:bold;}
+</style>
+</head>
+<body>
+<h3>Problem 11 — CE Amplifier: Phase Margin &amp; Stability</h3>
+<div class="controls">
+  <label>Gain A_mid: <input type="range" id="Amid" min="5" max="100" value="50" step="1"> <b id="AmidV">50</b></label>
+  <label>f_c poles (Hz): <input type="range" id="fc" min="1e4" max="5e6" value="1e6" step="1e4"> <b id="fcV">1M</b></label>
+  <label>C_dom (pF): <input type="range" id="Cdom" min="0" max="500" value="0" step="10"> <b id="CdomV">0</b></label>
+</div>
+<canvas id="cv"></canvas>
+<div class="vals" id="info"></div>
+<script>
+const cv=document.getElementById('cv');const ctx=cv.getContext('2d');
+function resizeCanvas(){const w=cv.parentElement.getBoundingClientRect().width||480;cv.width=Math.round(w);cv.height=Math.round(w*0.55);}
+function draw(){
+  resizeCanvas();
+  const W=cv.width,H=cv.height;
+  const Amid=+document.getElementById('Amid').value;
+  const fc=+document.getElementById('fc').value;
+  const Cdom_pF=+document.getElementById('Cdom').value;
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  ctx.fillStyle=isDark?'#1a1a2e':'#f8f8f8';ctx.fillRect(0,0,W,H);
+  const padL=65,padR=20,padT=35,padB=50;
+  const gW=W-padL-padR,gH=H-padT-padB;
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,padT);ctx.lineTo(padL,padT+gH);ctx.lineTo(padL+gW,padT+gH);ctx.stroke();
+  const fmin=1e3,fmax=1e8;
+  function xp(f){return padL+(Math.log10(f)-3)/(5)*gW;}
+  const dBmin=-40,dBmax=50;
+  function yp(db){return padT+gH-(db-dBmin)/(dBmax-dBmin)*gH;}
+  ctx.strokeStyle='#3334';ctx.lineWidth=0.5;
+  [1e3,1e4,1e5,1e6,1e7,1e8].forEach(f=>{ctx.beginPath();ctx.moveTo(xp(f),padT);ctx.lineTo(xp(f),padT+gH);ctx.stroke();});
+  for(let db=dBmin;db<=dBmax;db+=10){ctx.beginPath();ctx.moveTo(padL,yp(db));ctx.lineTo(padL+gW,yp(db));ctx.stroke();}
+  const fg=isDark?'#aaa':'#555';ctx.fillStyle=fg;ctx.font='10px Arial';
+  ['1k','10k','100k','1M','10M','100M'].forEach((s,i)=>{ctx.fillText(s,xp([1e3,1e4,1e5,1e6,1e7,1e8][i])-8,padT+gH+13);});
+  for(let db=dBmin;db<=dBmax;db+=10)ctx.fillText(db,padL-30,yp(db)+4);
+  ctx.fillStyle=isDark?'#ccc':'#333';ctx.font='11px Arial';ctx.fillText('Frequency (Hz)',padL+gW/2-35,H-5);
+  ctx.save();ctx.translate(12,padT+gH/2);ctx.rotate(-Math.PI/2);ctx.fillText('Gain (dB)',0,0);ctx.restore();
+  // Three identical HP poles + optional dominant pole
+  const rpi=2.78e3;
+  const f_dom=Cdom_pF>0?1/(2*Math.PI*rpi*Cdom_pF*1e-12):Infinity;
+  function gain_dB(f){
+    const w=2*Math.PI*f;
+    const wc=2*Math.PI*fc;
+    // Three high-pass poles near fc
+    let H=Amid;
+    H/=Math.sqrt(1+(wc/w)**2); // these are low-pass here (gain roll with freq)
+    H/=Math.sqrt(1+(wc/w)**2);
+    H/=Math.sqrt(1+(wc/w)**2);
+    if(f_dom<Infinity) H/=Math.sqrt(1+(f/f_dom)**2);
+    return 20*Math.log10(Math.max(H,0.001));
+  }
+  ctx.strokeStyle='#4a90d9';ctx.lineWidth=2.5;ctx.beginPath();let first=true;
+  for(let lf=3;lf<=8;lf+=0.02){
+    const f=Math.pow(10,lf);const db=gain_dB(f);const c=Math.max(dBmin,Math.min(dBmax,db));
+    if(first){ctx.moveTo(xp(f),yp(c));first=false;}else ctx.lineTo(xp(f),yp(c));
+  }ctx.stroke();
+  // 0dB line
+  ctx.strokeStyle='#ff9800';ctx.lineWidth=1;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(padL,yp(0));ctx.lineTo(padL+gW,yp(0));ctx.stroke();ctx.setLineDash([]);
+  // Phase at unity gain crossover (loop gain = Amid)
+  // Find unity gain frequency
+  let f_ug=fc,best_diff=1e9;
+  for(let lf=3;lf<=8;lf+=0.01){
+    const f=Math.pow(10,lf);const g=gain_dB(f);const d=Math.abs(g);
+    if(d<best_diff){best_diff=d;f_ug=f;}
+  }
+  // Phase at f_ug (three HP poles contribute)
+  const phi1=Math.atan(fc/f_ug)*180/Math.PI;
+  const phi_dom=f_dom<Infinity?Math.atan(f_ug/f_dom)*180/Math.PI:0;
+  const phase_excess=180-(phi1*3+phi_dom);
+  ctx.fillStyle=isDark?'#e0e0e0':'#222';ctx.font='bold 11px Arial';ctx.fillText('CE Amplifier Open-Loop Gain — 3 Pole Rolloff',padL+2,padT-8);
+  if(f_dom<Infinity){
+    ctx.strokeStyle='#43a047';ctx.lineWidth=1;ctx.setLineDash([3,2]);
+    ctx.beginPath();ctx.moveTo(xp(f_dom),padT);ctx.lineTo(xp(f_dom),padT+gH);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#43a047';ctx.font='10px Arial';
+    ctx.fillText('f_dom='+f_dom.toFixed(0)+'Hz',xp(f_dom)+2,padT+12);
+  }
+  const stable=phase_excess>45;
+  document.getElementById('info').innerHTML=
+    `Poles @ f_c=<span>${(fc/1000).toFixed(0)}kHz</span> × 3 | Gain @ unity-gain f=<span>${(f_ug/1e3).toFixed(0)}kHz</span><br>`+
+    `Phase margin ≈ <span class="${stable?'':'warn'}">${phase_excess.toFixed(0)}°</span> | `+
+    (stable?'<span style="color:#43a047">✓ Stable</span>':'<span class="warn">⚠ Likely to oscillate! Reduce gain or add C_dom</span>');
+}
+['Amid','fc','Cdom'].forEach(id=>{
+  const el=document.getElementById(id);const vl=document.getElementById(id+'V');
+  el.addEventListener('input',()=>{
+    const v=parseFloat(el.value);
+    vl.textContent=id==='fc'?(v>=1e6?(v/1e6).toFixed(0)+'M':(v/1e3).toFixed(0)+'k'):v;
+    draw();
+  });
+});
+window.addEventListener('resize',draw);resizeCanvas();draw();
+</script>
+</body></html>

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scenario 30 — Miller Capacitance MOSFET Self-Triggering</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto;}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px;}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;}
+  h1{font-size:18px;margin:4px 0;}
+  .layout{display:grid;grid-template-columns:1fr 280px;gap:16px;}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%;}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px;}
+  .ctrl-group{margin-bottom:12px;}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;display:flex;justify-content:space-between;}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace;}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;}
+  .result-box{background:rgba(0,102,204,0.08);border:1px solid rgba(0,102,204,0.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.5;}
+  @media(max-width:600px){.layout{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 12 | Scenario 30</div>
+  <h1>Miller Capacitance — MOSFET Self-Triggering &amp; Gate Clamp</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">dV_DS/dt (V/ns) <span class="ctrl-value" id="p1-val">10</span></div>
+      <input type="range" id="p1" min="1" max="50" value="10">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Gate-Source R (kΩ) <span class="ctrl-value" id="p2-val">∞ (none)</span></div>
+      <input type="range" id="p2" min="0" max="100" value="0">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Gate Bias (V) <span class="ctrl-value" id="p3-val">0</span></div>
+      <input type="range" id="p3" min="-10" max="0" value="0">
+    </div>
+    <div class="result-box" id="result">Adjust protection</div>
+  </div>
+</div>
+<script>
+const canvas=document.getElementById('cv');
+const ctx=canvas.getContext('2d');
+function isDark(){return window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches;}
+function draw(){
+  const dvdt=+document.getElementById('p1').value; // V/ns
+  const Rgs=+document.getElementById('p2').value*1e3||Infinity; // Ω
+  const Vbias=+document.getElementById('p3').value; // V
+  document.getElementById('p1-val').textContent=dvdt+' V/ns';
+  document.getElementById('p2-val').textContent=Rgs===Infinity?'∞ (none)':(Rgs/1000).toFixed(0)+' kΩ';
+  document.getElementById('p3-val').textContent=Vbias.toFixed(0)+' V';
+
+  const C_GD=100e-12; // 100pF Miller cap
+  const R_gate=10; // gate driver impedance
+  const R_eff=Rgs===Infinity?R_gate:R_gate*Rgs/(R_gate+Rgs);
+  // Miller current: I = C_GD * dV/dt
+  const I_miller=C_GD*dvdt*1e9; // A
+  // Voltage that appears at gate
+  const V_gate_miller=I_miller*R_eff+Vbias;
+  const V_th=3.0; // MOSFET threshold
+  const triggers=V_gate_miller>V_th;
+
+  canvas.width=canvas.parentElement.getBoundingClientRect().width||600;
+  canvas.height=380;
+  const W=canvas.width,H=canvas.height;
+  const dark=isDark();
+  const bg=dark?'#2a2a2a':'#f5f5f5';
+  const fg=dark?'#e8e8e8':'#1a1a1a';
+  const ac=dark?'#4499ff':'#0066cc';
+  const gr=dark?'#444':'#ddd';
+  const red='#e53935',grn='#43a047',orange='#ff9800';
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=fg;ctx.font='bold 13px system-ui';ctx.textAlign='center';
+  ctx.fillText('MOSFET Gate Voltage During Drain dV/dt Event',W/2,22);
+
+  const mx=60,my=40,mw=W-80,mh=(H-110)/2;
+  const totalT=100; // ns
+  const row1Y=my, row2Y=my+mh+25;
+
+  // Labels
+  ctx.fillStyle=fg;ctx.font='11px system-ui';ctx.textAlign='left';
+  ctx.fillText('Drain Voltage V_DS',mx+4,row1Y+14);
+  ctx.fillText('Gate Voltage V_GS (MOSFET should be OFF)',mx+4,row2Y+14);
+
+  [row1Y,row1Y+mh,row2Y,row2Y+mh].forEach(y=>{
+    ctx.strokeStyle=gr;ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(mx,y);ctx.lineTo(mx+mw,y);ctx.stroke();
+  });
+
+  const Vds_scale=400, Vgs_scale=15;
+  const toXt=t=>mx+mw*t/totalT;
+  const toY1=v=>row1Y+mh*(1-v/Vds_scale);
+  const toY2=v=>row2Y+mh*(1-(v-(-8))/20);
+
+  // V_th marker on gate plot
+  ctx.strokeStyle=orange;ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(mx,toY2(V_th));ctx.lineTo(mx+mw,toY2(V_th));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=orange;ctx.font='10px system-ui';ctx.textAlign='left';
+  ctx.fillText('V_th = '+V_th+'V',mx+4,toY2(V_th)-3);
+
+  // V_bias marker
+  if(Vbias<0){
+    ctx.strokeStyle=grn;ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(mx,toY2(Vbias));ctx.lineTo(mx+mw,toY2(Vbias));ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=grn;ctx.font='10px system-ui';ctx.textAlign='right';
+    ctx.fillText('V_bias='+Vbias+'V',mx+mw,toY2(Vbias)-3);
+  }
+
+  // Draw VDS (rising edge at t=20ns)
+  ctx.strokeStyle=ac;ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=400;i++){
+    const t=i/400*totalT;
+    const v=t<20?0:Math.min(Vds_scale,dvdt*(t-20));
+    i===0?ctx.moveTo(toXt(t),toY1(Math.max(0,Math.min(Vds_scale,v)))):ctx.lineTo(toXt(t),toY1(Math.max(0,Math.min(Vds_scale,v))));
+  }
+  ctx.stroke();
+
+  // Draw VGS miller spike
+  const t_event=20; // ns
+  const t_decay=R_eff*C_GD*1e9; // ns
+  ctx.strokeStyle=triggers?red:grn;ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=400;i++){
+    const t=i/400*totalT;
+    let vgs=Vbias;
+    if(t>=t_event&&t<t_event+dvdt){
+      // Miller current charging gate
+      vgs=Vbias+V_gate_miller*(t-t_event)/dvdt;
+    } else if(t>=t_event+dvdt){
+      vgs=Vbias+V_gate_miller*Math.exp(-(t-t_event-dvdt)/Math.max(0.5,t_decay));
+    }
+    i===0?ctx.moveTo(toXt(t),toY2(Math.max(-8,Math.min(12,vgs)))):ctx.lineTo(toXt(t),toY2(Math.max(-8,Math.min(12,vgs))));
+  }
+  ctx.stroke();
+
+  // Axes
+  ctx.strokeStyle=fg;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx,row1Y);ctx.lineTo(mx,row1Y+mh);ctx.lineTo(mx+mw,row1Y+mh);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(mx,row2Y);ctx.lineTo(mx,row2Y+mh);ctx.lineTo(mx+mw,row2Y+mh);ctx.stroke();
+
+  // Axis labels
+  ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='center';
+  [0,25,50,75,100].forEach(t=>ctx.fillText(t+'ns',toXt(t),row2Y+mh+14));
+  [0,Vds_scale/2,Vds_scale].forEach(v=>{
+    ctx.textAlign='right';
+    ctx.fillText(v+'V',mx-3,toY1(v)+4);
+  });
+
+  document.getElementById('result').innerHTML=
+    `<b>dV_DS/dt = ${dvdt}V/ns, C_GD = 100pF</b><br>`+
+    `Miller current I = C×dV/dt = ${(I_miller*1000).toFixed(0)}mA<br>`+
+    `R_eff = ${R_eff<1e6?(R_eff/1000).toFixed(1)+'kΩ':'∞'}<br>`+
+    `V_gate spike = ${V_gate_miller.toFixed(2)}V (bias: ${Vbias}V)<br>`+
+    `V_th = ${V_th}V<br>`+
+    (triggers?`<span style="color:red">⚠ MOSFET SELF-TRIGGERS! V_GS=${V_gate_miller.toFixed(1)}V > V_th — add R_GS or negative bias</span>`:
+     `<span style="color:green">✓ Gate stays below V_th — safe</span>`);
+}
+['p1','p2','p3'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>draw());
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ground Bounce — Digital-Analog Isolation</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}
+  h1{font-size:18px;margin:4px 0}
+  .layout{display:grid;grid-template-columns:1fr 260px;gap:16px}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}
+  .ctrl-group{margin-bottom:12px}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}
+  .result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}
+  @media(max-width:600px){.layout{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 12 | Scenario 14</div>
+  <h1>Ground Bounce: Digital Noise Into Analog Circuit</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Digital Current (mA) <span class="ctrl-value" id="lbl-id">50 mA</span></div>
+      <input type="range" id="sl-id" min="1" max="200" value="50" step="1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">GND Trace L (nH) <span class="ctrl-value" id="lbl-lg">20 nH</span></div>
+      <input type="range" id="sl-lg" min="1" max="100" value="20" step="1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Filter L (µH) <span class="ctrl-value" id="lbl-lf">10 µH</span></div>
+      <input type="range" id="sl-lf" min="1" max="100" value="10" step="1">
+    </div>
+    <div class="result-box" id="result">Adjust to see ground bounce effect</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slId=document.getElementById('sl-id'),slLg=document.getElementById('sl-lg'),slLf=document.getElementById('sl-lf');
+const lblId=document.getElementById('lbl-id'),lblLg=document.getElementById('lbl-lg'),lblLf=document.getElementById('lbl-lf');
+const result=document.getElementById('result');
+
+function draw(){
+  const W=cv.width,H=cv.height;
+  const Id=parseFloat(slId.value)*1e-3;
+  const Lg=parseFloat(slLg.value)*1e-9;
+  const Lf=parseFloat(slLf.value)*1e-6;
+  lblId.textContent=slId.value+' mA';
+  lblLg.textContent=slLg.value+' nH';
+  lblLf.textContent=slLf.value+' µH';
+  ctx.clearRect(0,0,W,H);
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  // Ground bounce voltage: V = L * dI/dt
+  // dI/dt: digital switching in ~1ns
+  const dIdt=Id/1e-9; // A/s
+  const Vbounce=Lg*dIdt*1e3; // mV
+  const VbounceFiltered=Vbounce/(1+Lf/Lg); // simplified
+  const tTotal=50e-9; // 50ns window
+  const vMin=-50,vMax=Math.max(Vbounce*1.2,100);
+  function yPx(v){return pad+plotH*(1-(v-vMin)/(vMax-vMin))}
+  // Grid
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  [0,25,50,75,100].filter(v=>v<=vMax).forEach(v=>{ctx.beginPath();ctx.moveTo(pad,yPx(v));ctx.lineTo(W-pad,yPx(v));ctx.stroke()});
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  // Zero line
+  ctx.setLineDash([4,2]);ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,yPx(0));ctx.lineTo(W-pad,yPx(0));ctx.stroke();ctx.setLineDash([]);
+  // Digital switching pulse creating ground bounce
+  const t_sw=5e-9,t_dur=2e-9;
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    let v=0;
+    if(t>=t_sw&&t<t_sw+t_dur){const f=(t-t_sw)/t_dur;v=Vbounce*(f<0.5?2*f:2*(1-f))*2;}
+    else if(t>=t_sw+t_dur)v=Vbounce*0.1*Math.exp(-(t-t_sw-t_dur)/5e-9)*Math.cos(2*Math.PI*(t-t_sw-t_dur)/10e-9);
+    v=Math.max(vMin,Math.min(vMax,v));
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  // Filtered bounce
+  ctx.strokeStyle='#2e7d32';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    let v=0;
+    if(t>=t_sw&&t<t_sw+t_dur){const f=(t-t_sw)/t_dur;v=VbounceFiltered*(f<0.5?2*f:2*(1-f))*2;}
+    else if(t>=t_sw+t_dur)v=VbounceFiltered*0.1*Math.exp(-(t-t_sw-t_dur)/8e-9);
+    v=Math.max(vMin,Math.min(vMax,v));
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  // Labels
+  ctx.fillStyle='#888';ctx.textAlign='right';ctx.font='10px system-ui';
+  [0,Math.round(vMax*0.33),Math.round(vMax*0.67),Math.round(vMax)].forEach(v=>{if(v>=vMin)ctx.fillText(v+'mV',pad-4,yPx(v)+3)});
+  ctx.textAlign='center';
+  [0,10,20,30,40,50].forEach(ns=>ctx.fillText(ns+'ns',pad+(ns/50)*plotW,H-pad+14));
+  ctx.textAlign='left';ctx.font='11px system-ui';
+  ctx.fillStyle='#e53935';ctx.fillText('Ground bounce without isolation: '+Vbounce.toFixed(0)+'mV',pad+8,pad+16);
+  ctx.fillStyle='#2e7d32';ctx.fillText('With '+slLf.value+'µH filter: '+VbounceFiltered.toFixed(0)+'mV',pad+8,pad+30);
+  result.innerHTML='<b>Ground bounce: V = L × dI/dt</b><br>= '+slLg.value+'nH × '+Id.toFixed(2)+'A/1ns = <b>'+Vbounce.toFixed(0)+'mV</b><br>With '+slLf.value+'µH filter: <b>'+VbounceFiltered.toFixed(0)+'mV</b><br>'+(Vbounce>10?'⚠️ Will affect analog circuits!':'✅ Acceptable')+'<br><b>Rule: Star ground — AGND and DGND meet at ONE point only</b>';
+}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slId,slLg,slLf].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});
+resizeCanvas();draw();
+</script>
+</body>
+</html>

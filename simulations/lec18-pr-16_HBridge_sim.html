@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec18 Pr16 — H-Bridge Motor Reversal</title>
+<style>
+  :root{--bg:#f8f8f8;--fg:#222;--accent:#4a90d9;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a2e;--fg:#e0e0e0;--accent:#7ab4f5;}}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:Arial,sans-serif;padding:10px;}
+  h3{margin:6px 0;color:var(--accent);}
+  canvas{border:1px solid #555;border-radius:4px;display:block;width:100%;}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;font-size:13px;}
+  input[type=range]{width:130px;accent-color:var(--accent);}
+  .vals{background:#0002;border-radius:4px;padding:8px;font-size:13px;margin:6px 0;}
+  .vals span{color:var(--accent);font-weight:bold;}
+  .warn{color:#e05;font-weight:bold;}
+</style>
+</head>
+<body>
+<h3>Problem 16 — H-Bridge Motor Reversal: Current Transient</h3>
+<div class="controls">
+  <label>L_motor (mH): <input type="range" id="Lm" min="0.1" max="50" value="10" step="0.1"> <b id="LmV">10.0</b></label>
+  <label>R_motor (Ω): <input type="range" id="Rm" min="0.1" max="10" value="2" step="0.1"> <b id="RmV">2.0</b></label>
+  <label>V_supply (V): <input type="range" id="Vs" min="5" max="48" value="24" step="1"> <b id="VsV">24</b></label>
+  <label>I_ramp_rate (A/ms): <input type="range" id="ramp" min="0.1" max="20" value="0.4" step="0.1"> <b id="rampV">0.4</b></label>
+</div>
+<canvas id="cv"></canvas>
+<div class="vals" id="info"></div>
+<script>
+const cv=document.getElementById('cv');const ctx=cv.getContext('2d');
+function resizeCanvas(){const w=cv.parentElement.getBoundingClientRect().width||480;cv.width=Math.round(w);cv.height=Math.round(w*0.52);}
+function draw(){
+  resizeCanvas();
+  const W=cv.width,H=cv.height;
+  const Lm=+document.getElementById('Lm').value*1e-3;
+  const Rm=+document.getElementById('Rm').value;
+  const Vs=+document.getElementById('Vs').value;
+  const ramp_A_ms=+document.getElementById('ramp').value;
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  ctx.fillStyle=isDark?'#1a1a2e':'#f8f8f8';ctx.fillRect(0,0,W,H);
+  const tau=Lm/Rm;
+  const I0=2; // initial forward current
+  const I_target=-2; // target reverse current
+  const OCP_thresh=I0*1.5; // 150% OCP
+  // Step reversal response
+  const tmax=tau*6;
+  const padL=65,padR=20,padT=35,padB=50;
+  const gW=W-padL-padR,gH=H-padT-padB;
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,padT);ctx.lineTo(padL,padT+gH);ctx.lineTo(padL+gW,padT+gH);ctx.stroke();
+  function xp(t){return padL+(t/tmax)*gW;}
+  const Imin=-Vs/Rm*1.5,Imax=Vs/Rm*1.5;
+  function yp(I){return padT+gH/2-(I/(Math.max(Math.abs(Imin),Imax)))*gH/2;}
+  ctx.strokeStyle='#3334';ctx.lineWidth=0.5;
+  const Vmid=padT+gH/2;
+  ctx.beginPath();ctx.moveTo(padL,Vmid);ctx.lineTo(padL+gW,Vmid);ctx.stroke();
+  for(let t=0;t<=tmax;t+=tau){ctx.beginPath();ctx.moveTo(xp(t),padT);ctx.lineTo(xp(t),padT+gH);ctx.stroke();}
+  const Iscale=Math.max(Math.abs(Imin),Imax);
+  for(let I=-Iscale;I<=Iscale;I+=Iscale/4){ctx.beginPath();ctx.moveTo(padL,yp(I));ctx.lineTo(padL+gW,yp(I));ctx.stroke();}
+  const fg=isDark?'#aaa':'#555';ctx.fillStyle=fg;ctx.font='10px Arial';
+  for(let t=0;t<=tmax;t+=tau){ctx.fillText((t*1000).toFixed(1)+'ms',xp(t)-10,padT+gH+13);}
+  for(let I=-Iscale;I<=Iscale;I+=Iscale/4)ctx.fillText(I.toFixed(1)+'A',padL-32,yp(I)+4);
+  ctx.fillStyle=isDark?'#ccc':'#333';ctx.font='11px Arial';ctx.fillText('Time (ms)',padL+gW/2-25,H-5);
+  ctx.save();ctx.translate(12,padT+gH/2);ctx.rotate(-Math.PI/2);ctx.fillText('Motor Current (A)',0,0);ctx.restore();
+  // Step reversal (V = 2*Vs applied: full reversal)
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2.5;ctx.beginPath();let first=true;
+  const Vinv=2*Vs;
+  for(let t=0;t<=tmax;t+=tmax/1000){
+    const I=I_target+(I0-I_target)*Math.exp(-t*Rm/Lm)-(Vinv/Rm-I0)*(1-Math.exp(-t*Rm/Lm));
+    // Simplified: step reversal with effective voltage = Vs + back-EMF
+    const I2=-Vs/Rm+(I0+Vs/Rm)*Math.exp(-t/tau);
+    if(first){ctx.moveTo(xp(t),yp(I2));first=false;}else ctx.lineTo(xp(t),yp(I2));
+  }ctx.stroke();
+  ctx.fillStyle='#e53935';ctx.font='10px Arial';ctx.fillText('Step reversal',xp(tau*0.5),yp(-Vs/Rm+(I0+Vs/Rm)*Math.exp(-0.5))-10);
+  // Ramped reversal (controlled)
+  const ramp=ramp_A_ms*1000; // A/s
+  ctx.strokeStyle='#43a047';ctx.lineWidth=2.5;ctx.beginPath();first=true;
+  for(let t=0;t<=tmax;t+=tmax/1000){
+    const I_ramp=Math.max(I_target,I0-ramp*t);
+    if(first){ctx.moveTo(xp(t),yp(I_ramp));first=false;}else ctx.lineTo(xp(t),yp(I_ramp));
+  }ctx.stroke();
+  ctx.fillStyle='#43a047';ctx.font='10px Arial';ctx.fillText('Ramped (current controlled)',xp(tmax*0.1),yp(I0-ramp*tmax*0.1)-8);
+  // OCP threshold
+  ctx.strokeStyle='#ff9800';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(padL,yp(OCP_thresh));ctx.lineTo(padL+gW,yp(OCP_thresh));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(padL,yp(-OCP_thresh));ctx.lineTo(padL+gW,yp(-OCP_thresh));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#ff9800';ctx.font='10px Arial';ctx.fillText('OCP='+OCP_thresh.toFixed(1)+'A',padL+4,yp(OCP_thresh)-4);
+  ctx.fillStyle=isDark?'#e0e0e0':'#222';ctx.font='bold 11px Arial';ctx.fillText('H-Bridge Motor Reversal — Step vs Ramped Current',padL+2,padT-8);
+  const peak_step=I0+Vs/Rm;
+  const trips=peak_step>OCP_thresh;
+  document.getElementById('info').innerHTML=
+    `τ=L/R=<span>${(tau*1000).toFixed(1)}ms</span> | Peak current (step)=<span class="${trips?'warn':''}">${peak_step.toFixed(1)}A</span> | OCP=<span>${OCP_thresh.toFixed(1)}A</span><br>`+
+    (trips?'<span class="warn">⚠ Step reversal trips OCP! Use ramped setpoint (green)</span>':'<span style="color:#43a047">✓ Within OCP</span>')+
+    ` | Ramp time needed: <span>${(4/ramp*1000).toFixed(0)}ms</span>`;
+}
+['Lm','Rm','Vs','ramp'].forEach(id=>{
+  const el=document.getElementById(id);const vl=document.getElementById(id+'V');
+  el.addEventListener('input',()=>{vl.textContent=id==='Lm'||id==='Rm'||id==='ramp'?parseFloat(el.value).toFixed(1):el.value;draw();});
+});
+window.addEventListener('resize',draw);resizeCanvas();draw();
+</script>
+</body></html>

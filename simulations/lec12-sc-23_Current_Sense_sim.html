@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scenario 23 — Current Sense Resistor</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto;}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px;}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;}
+  h1{font-size:18px;margin:4px 0;}
+  .layout{display:grid;grid-template-columns:1fr 280px;gap:16px;}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%;}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px;}
+  .ctrl-group{margin-bottom:12px;}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;display:flex;justify-content:space-between;}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace;}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;}
+  .result-box{background:rgba(0,102,204,0.08);border:1px solid rgba(0,102,204,0.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.5;}
+  @media(max-width:600px){.layout{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 12 | Scenario 23</div>
+  <h1>Current Sense Resistor — Voltage Budget Trade-off</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">R_sense (mΩ) <span class="ctrl-value" id="p1-val">1000</span></div>
+      <input type="range" id="p1" min="1" max="1000" value="1000">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Load Current (mA) <span class="ctrl-value" id="p2-val">500</span></div>
+      <input type="range" id="p2" min="50" max="2000" value="500">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Amplifier Gain <span class="ctrl-value" id="p3-val">1×</span></div>
+      <input type="range" id="p3" min="1" max="200" value="1">
+    </div>
+    <div class="result-box" id="result">Adjust parameters</div>
+  </div>
+</div>
+<script>
+const canvas=document.getElementById('cv');
+const ctx=canvas.getContext('2d');
+function isDark(){return window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches;}
+function draw(){
+  const Rs=+document.getElementById('p1').value*1e-3; // Ω
+  const Iload=+document.getElementById('p2').value*1e-3; // A
+  const gain=+document.getElementById('p3').value;
+  document.getElementById('p1-val').textContent=Math.round(Rs*1000)+' mΩ';
+  document.getElementById('p2-val').textContent=Math.round(Iload*1000)+' mA';
+  document.getElementById('p3-val').textContent=gain+'×';
+
+  const V_bat=3.0; // worst case (discharged LiPo)
+  const V_drop=Rs*Iload;
+  const V_for_circuit=V_bat-V_drop;
+  const V_sense=V_drop; // what amplifier measures
+  const V_sense_after_amp=V_sense*gain;
+  const V_circuit_min=2.5; // MCU minimum VCC
+
+  canvas.width=canvas.parentElement.getBoundingClientRect().width||600;
+  canvas.height=380;
+  const W=canvas.width,H=canvas.height;
+  const dark=isDark();
+  const bg=dark?'#2a2a2a':'#f5f5f5';
+  const fg=dark?'#e8e8e8':'#1a1a1a';
+  const ac=dark?'#4499ff':'#0066cc';
+  const gr=dark?'#444':'#ddd';
+  const red='#e53935',grn='#43a047',orange='#ff9800';
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=fg;ctx.font='bold 13px system-ui';ctx.textAlign='center';
+  ctx.fillText('Voltage Budget Analysis — Battery-Powered Current Sensing',W/2,22);
+
+  // Bar chart showing voltage breakdown
+  const mx=60,my=50,mw=W-100,mh=H-150;
+  const Vscale=V_bat*1.1;
+  const toH=v=>mh*v/Vscale;
+  const barW=Math.min(100,(mw-80)/3);
+
+  // Labels
+  ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='center';
+  ctx.fillText('Battery: '+V_bat.toFixed(1)+'V (LiPo min)',mx+barW/2,my-8);
+
+  // Draw stacked bar for battery
+  const drawStack=(x,items)=>{
+    let y=my+mh;
+    items.forEach(item=>{
+      const h=toH(item.v);
+      ctx.fillStyle=item.color;
+      ctx.fillRect(x,y-h,barW,h);
+      ctx.strokeStyle=fg;ctx.lineWidth=0.5;ctx.strokeRect(x,y-h,barW,h);
+      if(h>12){
+        ctx.fillStyle=fg;ctx.font='9px system-ui';ctx.textAlign='center';
+        ctx.fillText(item.label,x+barW/2,y-h/2+3);
+        ctx.fillText(item.v.toFixed(3)+'V',x+barW/2,y-h/2+14);
+      }
+      y-=h;
+    });
+  };
+
+  drawStack(mx,[
+    {v:V_drop,color:red,label:'V_drop'},
+    {v:V_for_circuit,color:grn,label:'Circuit VCC'},
+  ]);
+
+  // ADC readable signal bar
+  const ADC_max=V_bat;
+  drawStack(mx+barW+30,[
+    {v:Math.min(V_for_circuit,V_sense_after_amp),color:ac,label:'Sense signal'},
+    {v:Math.max(0,V_for_circuit-V_sense_after_amp),color:gr,label:'Unused ADC'},
+  ]);
+  ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='center';
+  ctx.fillText('ADC signal',mx+barW+30+barW/2,my-8);
+
+  // Power loss bar
+  const P_loss=Rs*Iload*Iload;
+  drawStack(mx+2*(barW+30),[
+    {v:Math.min(0.5,P_loss*10),color:orange,label:'Power loss'},
+    {v:Math.max(0,0.5-P_loss*10),color:gr,label:''},
+  ]);
+  ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='center';
+  ctx.fillText('Power loss',mx+2*(barW+30)+barW/2,my-8);
+
+  // Y-axis
+  ctx.strokeStyle=fg;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx,my+mh);ctx.lineTo(mx+3*barW+80,my+mh);ctx.stroke();
+  ctx.strokeStyle=gr;ctx.lineWidth=0.5;
+  [0,1,2,3].forEach(v=>{
+    const y=my+mh-toH(v);
+    ctx.beginPath();ctx.moveTo(mx-4,y);ctx.lineTo(mx+3*barW+80,y);ctx.stroke();
+    ctx.fillStyle=fg;ctx.font='9px system-ui';ctx.textAlign='right';
+    ctx.fillText(v+'V',mx-6,y+3);
+  });
+
+  // Min circuit voltage line
+  const yMin=my+mh-toH(V_circuit_min);
+  ctx.strokeStyle=red;ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(mx,yMin);ctx.lineTo(mx+3*barW+80,yMin);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=red;ctx.font='9px system-ui';ctx.textAlign='left';
+  ctx.fillText('Min VCC='+V_circuit_min+'V',mx+3*barW+85,yMin+3);
+
+  const ok=V_for_circuit>=V_circuit_min;
+  const adcUsable=V_sense_after_amp>0.1;
+  document.getElementById('result').innerHTML=
+    `<b>R_sense=${(Rs*1000).toFixed(0)}mΩ, I=${Math.round(Iload*1000)}mA</b><br>`+
+    `V_drop = ${(V_drop*1000).toFixed(1)}mV<br>`+
+    `Circuit VCC = ${V_for_circuit.toFixed(3)}V<br>`+
+    `Sense voltage = ${(V_sense*1000).toFixed(2)}mV → ×${gain} = ${(V_sense_after_amp*1000).toFixed(0)}mV<br>`+
+    `Power loss = ${(P_loss*1000).toFixed(2)}mW<br>`+
+    (ok?'<span style="color:green">✓ Voltage budget OK</span>':'<span style="color:red">⚠ V_drop too high — reduce R_sense and increase gain</span>');
+}
+['p1','p2','p3'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>draw());
+draw();
+</script>
+</body>
+</html>

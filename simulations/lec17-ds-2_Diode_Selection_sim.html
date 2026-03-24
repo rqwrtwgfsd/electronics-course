@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Sim: Diode Selection I-V and Loss</title>
+<style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:Arial,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:12px;}canvas{display:block;border:1px solid #444;border-radius:6px;background:#0d0d1a;}.controls{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0;}.ctrl{display:flex;flex-direction:column;gap:3px;font-size:12px;}label{color:#aaa;}input[type=range]{width:140px;}.vals{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#ccc;margin:6px 0;}.val-item{background:#222;border-radius:4px;padding:4px 8px;}h3{font-size:13px;color:#90caf9;margin-bottom:6px;}@media(prefers-color-scheme:light){body{background:#f5f5f5;color:#111;}canvas{background:#fff;border-color:#ccc;}.val-item{background:#eee;color:#222;}label{color:#555;}h3{color:#005a9c;}}</style>
+</head>
+<body>
+<h3>Lecture 17 DS-2: Diode I-V Curves - PN vs Schottky vs Zener</h3>
+<p style="font-size:11px;color:#aaa;margin-bottom:8px;">Compare forward voltage, reverse leakage, and breakdown. Adjust reverse voltage to see Zener regulation.</p>
+<canvas id="cv"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>Temperature (degC)</label><input type="range" id="T" min="-40" max="125" value="25" step="5"><span id="TV">25</span></div>
+  <div class="ctrl"><label>Zener voltage (V)</label><input type="range" id="Vz" min="2" max="20" value="5.1" step="0.1"><span id="VzV">5.1</span></div>
+  <div class="ctrl"><label>V range max (V)</label><input type="range" id="Vmax" min="0.5" max="2" value="1.2" step="0.05"><span id="VmaxV">1.2</span></div>
+</div>
+<div class="vals">
+  <div class="val-item">PN VF at 1A: <strong id="vf_pn">-</strong></div>
+  <div class="val-item">Schottky VF at 1A: <strong id="vf_sk">-</strong></div>
+  <div class="val-item">Power save at 1A: <strong id="pdiff">-</strong></div>
+</div>
+<script>
+var cv=document.getElementById("cv");
+var ctx=cv.getContext("2d");
+function resizeCanvas(){var w=cv.parentElement.getBoundingClientRect().width;cv.width=Math.min(w-24,700);cv.height=Math.round(cv.width*0.48);}
+function get(id){return parseFloat(document.getElementById(id).value);}
+function draw(){
+  var W=cv.width,H=cv.height;
+  var T=get("T")+273.15,Vz=get("Vz"),Vmax=get("Vmax");
+  document.getElementById("TV").textContent=get("T");
+  document.getElementById("VzV").textContent=get("Vz").toFixed(1);
+  document.getElementById("VmaxV").textContent=get("Vmax").toFixed(2);
+  var kT_q=8.617e-5*T;
+  var IS_PN=1e-10*Math.exp((T-298.15)/(10));
+  var IS_SK=1e-7*Math.exp((T-298.15)/(10));
+  function I_PN(V){return IS_PN*(Math.exp(V/kT_q)-1);}
+  function I_SK(V){return IS_SK*(Math.exp(V/(kT_q*1.05))-1);}
+  ctx.clearRect(0,0,W,H);
+  var pad={l:55,r:20,t:28,b:40};
+  var pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  var I_max=5,I_min=-0.3;
+  function fx(V){return pad.l+(V+0.1)/(Vmax+0.1)*pw;}
+  function fy(I){return H-pad.b-(I-I_min)/(I_max-I_min)*ph;}
+  ctx.strokeStyle="#1e2a3a";ctx.lineWidth=0.5;
+  [0,1,2,3,4,5].forEach(function(I){
+    ctx.beginPath();ctx.moveTo(pad.l,fy(I));ctx.lineTo(W-pad.r,fy(I));ctx.stroke();
+    ctx.fillStyle="#555";ctx.font="10px Arial";ctx.fillText(I+"A",2,fy(I)+4);
+  });
+  [0,0.2,0.4,0.6,0.8,1.0].forEach(function(V){
+    if(V<=Vmax){
+      ctx.beginPath();ctx.moveTo(fx(V),pad.t);ctx.lineTo(fx(V),H-pad.b);ctx.stroke();
+      ctx.fillStyle="#555";ctx.font="10px Arial";ctx.fillText(V.toFixed(1),fx(V)-8,H-pad.b+14);
+    }
+  });
+  var N=300;
+  ctx.beginPath();ctx.strokeStyle="#55aaff";ctx.lineWidth=2.5;
+  for(var i=0;i<=N;i++){
+    var V=-0.1+i*(Vmax+0.1)/N;
+    var I=Math.min(I_max,I_PN(V));
+    if(i===0)ctx.moveTo(fx(V),fy(I));else ctx.lineTo(fx(V),fy(I));
+  }
+  ctx.stroke();
+  ctx.beginPath();ctx.strokeStyle="#ffaa55";ctx.lineWidth=2.5;
+  for(var i=0;i<=N;i++){
+    var V=-0.1+i*(Vmax+0.1)/N;
+    var I=Math.min(I_max,I_SK(V));
+    if(i===0)ctx.moveTo(fx(V),fy(I));else ctx.lineTo(fx(V),fy(I));
+  }
+  ctx.stroke();
+  ctx.strokeStyle="#666";ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,H-pad.b);ctx.lineTo(W-pad.r,H-pad.b);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(pad.l,fy(0));ctx.lineTo(W-pad.r,fy(0));ctx.stroke();
+  // VF at 1A
+  function bisect_VF(Ifn,target){
+    var lo=0.1,hi=1.5;
+    for(var k=0;k<50;k++){var mid=(lo+hi)/2;if(Ifn(mid)<target)lo=mid;else hi=mid;}
+    return (lo+hi)/2;
+  }
+  var VF_PN=bisect_VF(I_PN,1);
+  var VF_SK=bisect_VF(I_SK,1);
+  document.getElementById("vf_pn").textContent=VF_PN.toFixed(3)+"V";
+  document.getElementById("vf_sk").textContent=VF_SK.toFixed(3)+"V";
+  document.getElementById("pdiff").textContent=((VF_PN-VF_SK)*1).toFixed(3)+"W/A";
+  ctx.strokeStyle="#55aaff";ctx.lineWidth=0.8;ctx.setLineDash([3,2]);
+  ctx.beginPath();ctx.moveTo(fx(VF_PN),fy(1));ctx.lineTo(fx(VF_PN),pad.t);ctx.stroke();
+  ctx.fillStyle="#55aaff";ctx.font="9px Arial";ctx.fillText("PN "+VF_PN.toFixed(3)+"V",fx(VF_PN)+2,pad.t+20);
+  ctx.strokeStyle="#ffaa55";
+  ctx.beginPath();ctx.moveTo(fx(VF_SK),fy(1));ctx.lineTo(fx(VF_SK),pad.t);ctx.stroke();
+  ctx.fillStyle="#ffaa55";ctx.font="9px Arial";ctx.fillText("SK "+VF_SK.toFixed(3)+"V",fx(VF_SK)+2,pad.t+32);
+  ctx.setLineDash([]);
+  ctx.fillStyle="#55aaff";ctx.font="11px Arial";ctx.fillText("PN Diode (Si)",pad.l+10,pad.t+16);
+  ctx.fillStyle="#ffaa55";ctx.font="11px Arial";ctx.fillText("Schottky",pad.l+10,pad.t+30);
+  ctx.fillStyle="#aaa";ctx.font="10px Arial";ctx.fillText("Forward Voltage (V)",W/2-30,H-5);
+  ctx.fillStyle="#90caf9";ctx.font="bold 11px Arial";
+  ctx.fillText("T="+get("T")+"degC  kT/q="+(kT_q*1000).toFixed(1)+"mV",pad.l+5,pad.t-8);
+}
+["T","Vz","Vmax"].forEach(function(id){document.getElementById(id).addEventListener("input",draw);});
+window.addEventListener("resize",function(){resizeCanvas();draw();});
+resizeCanvas();draw();
+</script></body></html>

@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RS-232 Long Cable Termination</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}
+  h1{font-size:18px;margin:4px 0}
+  .layout{display:grid;grid-template-columns:1fr 260px;gap:16px}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}
+  .ctrl-group{margin-bottom:12px}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}
+  .result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}
+  @media(max-width:600px){.layout{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 12 | Scenario 11</div>
+  <h1>RS-232 Long Cable: ISI &amp; Termination</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Cable Length (m) <span class="ctrl-value" id="lbl-l">10 m</span></div>
+      <input type="range" id="sl-l" min="1" max="30" value="10" step="1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Baud Rate (kbps) <span class="ctrl-value" id="lbl-b">115 kbps</span></div>
+      <input type="range" id="sl-b" min="9.6" max="115.2" value="115.2" step="0.1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Series R (Ω) <span class="ctrl-value" id="lbl-r">100 Ω</span></div>
+      <input type="range" id="sl-r" min="0" max="300" value="100" step="5">
+    </div>
+    <div class="result-box" id="result">Adjust to see signal integrity</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slL=document.getElementById('sl-l'),slB=document.getElementById('sl-b'),slR=document.getElementById('sl-r');
+const lblL=document.getElementById('lbl-l'),lblB=document.getElementById('lbl-b'),lblR=document.getElementById('lbl-r');
+const result=document.getElementById('result');
+
+function draw(){
+  const W=cv.width,H=cv.height;
+  const cableLen=parseFloat(slL.value);
+  const baud=parseFloat(slB.value)*1e3;
+  const R=parseFloat(slR.value);
+  lblL.textContent=cableLen+' m';
+  lblB.textContent=parseFloat(slB.value).toFixed(1)+' kbps';
+  lblR.textContent=R+' Ω';
+  ctx.clearRect(0,0,W,H);
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  // Cable model: 100pF/m, 500nH/m
+  const Ccable=100e-12*cableLen;
+  const Rcable=0.1*cableLen; // ~0.1Ω/m
+  const Rtot=R+Rcable;
+  const tau=Rtot*Ccable;
+  const bitPeriod=1/baud;
+  // Rise time 10%-90% = 2.2*tau
+  const t_rise=2.2*tau;
+  const pct_bit=(t_rise/bitPeriod)*100;
+  const tTotal=5*bitPeriod;
+  // Bit pattern: 0,1,0,1,1 to show ISI
+  const bits=[0,1,0,1,1];
+  function bitAt(t){const idx=Math.floor(t/bitPeriod);return idx<bits.length?bits[idx]:0}
+  const VHI=12,VLO=-12; // RS-232 levels
+  const vMin=-15,vMax=15;
+  function yPx(v){return pad+plotH*(1-(v-vMin)/(vMax-vMin))}
+  // Grid
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  [-12,-6,0,6,12].forEach(v=>{ctx.beginPath();ctx.moveTo(pad,yPx(v));ctx.lineTo(W-pad,yPx(v));ctx.stroke()});
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  // Ideal signal
+  ctx.strokeStyle='rgba(100,100,255,0.4)';ctx.lineWidth=1;ctx.setLineDash([4,2]);ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    const b=bitAt(t);
+    const v=b?VHI:VLO;
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();ctx.setLineDash([]);
+  // Filtered signal through RC
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2;ctx.beginPath();
+  let vCap=(bits[0]?VHI:VLO);
+  const dt=tTotal/plotW;
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    const vIn=bitAt(t)?VHI:VLO;
+    vCap+=(vIn-vCap)*dt/tau;
+    vCap=Math.max(vMin,Math.min(vMax,vCap));
+    px===0?ctx.moveTo(pad+px,yPx(vCap)):ctx.lineTo(pad+px,yPx(vCap));
+  }ctx.stroke();
+  // Logic threshold lines
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#f57c00';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,yPx(3));ctx.lineTo(W-pad,yPx(3));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(pad,yPx(-3));ctx.lineTo(W-pad,yPx(-3));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#f57c00';ctx.font='10px system-ui';ctx.textAlign='left';
+  ctx.fillText('+3V threshold',pad+4,yPx(3)-3);ctx.fillText('-3V threshold',pad+4,yPx(-3)+12);
+  ctx.fillStyle='#888';ctx.textAlign='right';ctx.font='10px system-ui';
+  [-12,-6,0,6,12].forEach(v=>ctx.fillText(v+'V',pad-4,yPx(v)+3));
+  const ok=t_rise<bitPeriod*0.7;
+  result.innerHTML='<b>Cable RC time constant:</b> τ = '+( tau*1e6).toFixed(1)+'µs<br>Bit period at '+parseFloat(slB.value).toFixed(0)+'kbps: '+( bitPeriod*1e6).toFixed(1)+'µs<br>Rise time (2.2τ): <b>'+( t_rise*1e6).toFixed(1)+'µs</b> ('+pct_bit.toFixed(0)+'% of bit)<br>Status: <b>'+(ok?'✅ Readable':'⚠️ ISI — bits smear')+'</b><br><b>Series R helps match Z₀ ≈ '+Math.sqrt(500e-9*cableLen/(100e-12*cableLen)).toFixed(0)+'Ω</b>';
+}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slL,slB,slR].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});
+resizeCanvas();draw();
+</script>
+</body>
+</html>

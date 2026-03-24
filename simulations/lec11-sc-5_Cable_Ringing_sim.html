@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cable Ringing — Series Termination</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}
+  h1{font-size:18px;margin:4px 0}
+  .layout{display:grid;grid-template-columns:1fr 260px;gap:16px}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}
+  .ctrl-group{margin-bottom:12px}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}
+  .result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}
+  @media(max-width:600px){.layout{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 11 | Scenario 5</div>
+  <h1>Cable Ringing: Series Termination &amp; Damping</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Series R (Ω) <span class="ctrl-value" id="lbl-r">33 Ω</span></div>
+      <input type="range" id="sl-r" min="0" max="150" value="33" step="1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Cable Length (m) <span class="ctrl-value" id="lbl-l">2 m</span></div>
+      <input type="range" id="sl-l" min="0.5" max="10" value="2" step="0.5">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Driver Impedance (Ω) <span class="ctrl-value" id="lbl-d">10 Ω</span></div>
+      <input type="range" id="sl-d" min="1" max="50" value="10" step="1">
+    </div>
+    <div class="result-box" id="result">Adjust series R to damp ringing</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slR=document.getElementById('sl-r'),slL=document.getElementById('sl-l'),slD=document.getElementById('sl-d');
+const lblR=document.getElementById('lbl-r'),lblL=document.getElementById('lbl-l'),lblD=document.getElementById('lbl-d');
+const result=document.getElementById('result');
+
+function draw(){
+  const W=cv.width,H=cv.height;
+  const R=parseFloat(slR.value);
+  const cableLen=parseFloat(slL.value);
+  const Rd=parseFloat(slD.value);
+  lblR.textContent=R+' Ω';
+  lblL.textContent=cableLen+' m';
+  lblD.textContent=Rd+' Ω';
+  ctx.clearRect(0,0,W,H);
+  // Cable model: L=500nH/m, C=100pF/m
+  const Lcable=500e-9*cableLen;
+  const Ccable=100e-12*cableLen;
+  const Z0=Math.sqrt(Lcable/Ccable);
+  const Rtotal=R+Rd;
+  // Damping ratio
+  const zeta=Rtotal/(2*Math.sqrt(Lcable/Ccable));
+  const f_ring=1/(2*Math.PI*Math.sqrt(Lcable*Ccable));
+  const omega=2*Math.PI*f_ring;
+  const tTotal=10/f_ring; // show 10 ring cycles
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  const VHI=3.3,vMin=-0.5,vMax=4.5;
+  function yPx(v){return pad+plotH*(1-(v-vMin)/(vMax-vMin))}
+  // grid
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  [0,1,2,3,VHI,4].forEach(v=>{ctx.beginPath();ctx.moveTo(pad,yPx(v));ctx.lineTo(W-pad,yPx(v));ctx.stroke()});
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  // Logic thresholds
+  ctx.setLineDash([4,3]);ctx.strokeStyle='#f57c00';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,yPx(0.8));ctx.lineTo(W-pad,yPx(0.8));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(pad,yPx(2.0));ctx.lineTo(W-pad,yPx(2.0));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#f57c00';ctx.font='9px system-ui';ctx.textAlign='left';
+  ctx.fillText('Logic LOW max 0.8V',pad+4,yPx(0.8)-3);
+  ctx.fillText('Logic HIGH min 2.0V',pad+4,yPx(2.0)-3);
+  // Step response with ringing
+  function stepResp(t){
+    if(t<=0)return 0;
+    if(zeta>=1){
+      // overdamped
+      const wd=omega*Math.sqrt(Math.max(0.01,zeta*zeta-1));
+      return VHI*(1-Math.exp(-zeta*omega*t)*(Math.cosh(wd*t)+zeta/Math.sqrt(zeta*zeta-1)*Math.sinh(wd*t)));
+    } else {
+      // underdamped
+      const wd=omega*Math.sqrt(1-zeta*zeta);
+      return VHI*(1-Math.exp(-zeta*omega*t)*(Math.cos(wd*t)+zeta/Math.sqrt(1-zeta*zeta)*Math.sin(wd*t)));
+    }
+  }
+  const t_step=tTotal*0.15;
+  ctx.strokeStyle='#0066cc';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal-t_step;
+    const v=stepResp(t);
+    const yp=yPx(Math.max(vMin,Math.min(vMax,v)));
+    px===0?ctx.moveTo(pad+px,yp):ctx.lineTo(pad+px,yp);
+  }ctx.stroke();
+  // Ideal step for reference
+  ctx.strokeStyle='rgba(0,102,204,0.3)';ctx.lineWidth=1;ctx.setLineDash([6,3]);ctx.beginPath();
+  const xstep=pad+(t_step/tTotal)*plotW;
+  ctx.moveTo(pad,yPx(0));ctx.lineTo(xstep,yPx(0));ctx.lineTo(xstep,yPx(VHI));ctx.lineTo(W-pad,yPx(VHI));
+  ctx.stroke();ctx.setLineDash([]);
+  // Labels
+  ctx.fillStyle='#888';ctx.font='10px system-ui';ctx.textAlign='right';
+  [0,1,2,3,VHI].forEach(v=>ctx.fillText(v.toFixed(1)+'V',pad-4,yPx(v)+3));
+  const overshoot=zeta<1?VHI*(1+Math.exp(-Math.PI*zeta/Math.sqrt(1-zeta*zeta))):VHI;
+  const isRinging=zeta<0.7;
+  result.innerHTML='<b>Damping ratio ζ = '+zeta.toFixed(2)+'</b><br>Ringing freq: <b>'+_fmtHz(f_ring)+'</b><br>Z₀ cable: <b>'+Z0.toFixed(0)+'Ω</b><br>Overshoot: <b>'+((overshoot/VHI-1)*100).toFixed(0)+'%</b><br>Status: <b>'+(zeta<0.5?'⚠️ Severe ringing':zeta<1?'⚠️ Some ringing':'✅ Critically damped')+'</b><br><b>Optimal R ≈ '+Math.max(0,(Z0-Rd)).toFixed(0)+'Ω</b>';
+}
+function _fmtHz(f){if(f>=1e6)return(f/1e6).toFixed(1)+'MHz';if(f>=1e3)return(f/1e3).toFixed(0)+'kHz';return f.toFixed(0)+'Hz'}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slR,slL,slD].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});
+resizeCanvas();draw();
+</script>
+</body>
+</html>

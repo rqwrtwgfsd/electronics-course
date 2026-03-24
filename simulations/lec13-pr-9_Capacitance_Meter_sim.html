@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sim: RC Capacitance Meter</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Arial,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:12px;}
+canvas{display:block;border:1px solid #444;border-radius:6px;background:#0d0d1a;}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0;}
+.ctrl{display:flex;flex-direction:column;gap:3px;font-size:12px;}
+label{color:#aaa;}
+input[type=range]{width:140px;}
+.vals{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#ccc;margin:6px 0;}
+.val-item{background:#222;border-radius:4px;padding:4px 8px;}
+h3{font-size:13px;color:#90caf9;margin-bottom:6px;}
+@media(prefers-color-scheme:light){body{background:#f5f5f5;color:#111;}canvas{background:#fff;border-color:#ccc;}.val-item{background:#eee;color:#222;}label{color:#555;}h3{color:#005a9c;}}
+</style>
+</head>
+<body>
+<h3>Problem 9 — RC Capacitance Meter: Error Analysis</h3>
+<p style="font-size:11px;color:#aaa;margin-bottom:8px;">Charge C_x through R. Comparator fires at 63.2% of Vs. Time = tau = RC. Vary V_initial to see error from incomplete discharge.</p>
+<canvas id="cv"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>C_x (nF)</label><input type="range" id="Cx" min="1" max="10000" value="1000" step="10"><span id="CxV">1000</span></div>
+  <div class="ctrl"><label>R (kOhm)</label><input type="range" id="R" min="1" max="1000" value="10" step="1"><span id="RV">10</span></div>
+  <div class="ctrl"><label>V_supply (V)</label><input type="range" id="Vs" min="1" max="10" value="5" step="0.5"><span id="VsV">5.0</span></div>
+  <div class="ctrl"><label>V_initial error (V)</label><input type="range" id="Vi" min="0" max="4" value="0" step="0.1"><span id="ViV">0.0</span></div>
+</div>
+<div class="vals">
+  <div class="val-item">tau_true: <strong id="tau_t">-</strong></div>
+  <div class="val-item">t_measured: <strong id="t_meas">-</strong></div>
+  <div class="val-item">C_measured: <strong id="C_meas">-</strong></div>
+  <div class="val-item">Error: <strong id="err">-</strong></div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+function resizeCanvas(){
+  const w=cv.parentElement.getBoundingClientRect().width;
+  cv.width=Math.min(w-24,700);
+  cv.height=Math.round(cv.width*0.45);
+}
+function get(id){return parseFloat(document.getElementById(id).value);}
+function draw(){
+  const W=cv.width,H=cv.height;
+  const Cx=get('Cx')*1e-9,R=get('R')*1e3,Vs=get('Vs'),Vi=get('Vi');
+  document.getElementById('CxV').textContent=get('Cx');
+  document.getElementById('RV').textContent=get('R');
+  document.getElementById('VsV').textContent=get('Vs').toFixed(1);
+  document.getElementById('ViV').textContent=get('Vi').toFixed(1);
+  const tau=R*Cx;
+  const V_thresh=Vs*0.632;
+  // Time to reach threshold with initial voltage Vi
+  let t_meas;
+  if(Vi>=V_thresh){t_meas=0;}
+  else{
+    // Vc(t) = Vs + (Vi-Vs)*exp(-t/tau) = V_thresh
+    // (Vi-Vs)*exp(-t/tau) = V_thresh - Vs
+    // exp(-t/tau) = (V_thresh-Vs)/(Vi-Vs)
+    const ratio=(V_thresh-Vs)/(Vi-Vs);
+    if(ratio<=0||ratio>1){t_meas=tau;}
+    else{t_meas=-tau*Math.log(ratio);}
+  }
+  const C_meas=t_meas/R;
+  const err_pct=(C_meas-Cx)/Cx*100;
+  const tau_str=tau>=1?tau.toFixed(2)+'s':tau>=0.001?(tau*1000).toFixed(1)+'ms':(tau*1e6).toFixed(1)+'µs';
+  document.getElementById('tau_t').textContent=tau_str;
+  document.getElementById('t_meas').textContent=t_meas>=1?t_meas.toFixed(2)+'s':t_meas>=0.001?(t_meas*1000).toFixed(1)+'ms':(t_meas*1e6).toFixed(1)+'µs';
+  document.getElementById('C_meas').textContent=(C_meas*1e9).toFixed(1)+'nF';
+  document.getElementById('err').textContent=err_pct.toFixed(2)+'%';
+  document.getElementById('err').style.color=Math.abs(err_pct)<2?'#55ff88':'#ff5555';
+  ctx.clearRect(0,0,W,H);
+  const pad={l:52,r:20,t:28,b:38};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  const t_end=Math.max(tau*4,t_meas*1.5);
+  function tx(t){return pad.l+t/t_end*pw;}
+  function vy(v){return H-pad.b-v/Vs*ph;}
+  // Grid
+  ctx.strokeStyle='#1e2a3a';ctx.lineWidth=0.5;
+  [0.25,0.5,0.63,0.75,1.0].forEach(frac=>{
+    const y=H-pad.b-frac*ph;
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();
+    ctx.fillStyle='#555';ctx.font='10px Arial';
+    ctx.fillText((frac*Vs).toFixed(2)+'V',2,y+4);
+  });
+  const N=400;
+  // Ideal charging from V=0
+  ctx.beginPath();ctx.strokeStyle='#55aaff';ctx.lineWidth=2;ctx.setLineDash([5,3]);
+  for(let i=0;i<=N;i++){
+    const t=t_end*i/N;
+    const Vc=Vs*(1-Math.exp(-t/tau));
+    if(i===0)ctx.moveTo(tx(t),vy(Vc));else ctx.lineTo(tx(t),vy(Vc));
+  }
+  ctx.stroke();ctx.setLineDash([]);
+  // Actual charging from Vi
+  ctx.beginPath();ctx.strokeStyle=Vi>0?'#ff9955':'#55aaff';ctx.lineWidth=2;
+  for(let i=0;i<=N;i++){
+    const t=t_end*i/N;
+    const Vc=Vs+(Vi-Vs)*Math.exp(-t/tau);
+    if(i===0)ctx.moveTo(tx(t),vy(Vc));else ctx.lineTo(tx(t),vy(Vc));
+  }
+  ctx.stroke();
+  // Threshold line
+  ctx.strokeStyle='#55ff88';ctx.lineWidth=1;ctx.setLineDash([4,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,vy(V_thresh));ctx.lineTo(W-pad.r,vy(V_thresh));ctx.stroke();
+  ctx.fillStyle='#55ff88';ctx.font='9px Arial';ctx.fillText('V_thresh=63.2%='+V_thresh.toFixed(2)+'V',pad.l+4,vy(V_thresh)-4);
+  ctx.setLineDash([]);
+  // t_measured vertical line
+  if(t_meas>0&&t_meas<t_end){
+    ctx.strokeStyle='#ffaa55';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(tx(t_meas),pad.t);ctx.lineTo(tx(t_meas),H-pad.b);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#ffaa55';ctx.font='9px Arial';ctx.fillText('t_meas',tx(t_meas)+3,pad.t+14);
+  }
+  // tau vertical
+  ctx.strokeStyle='#334';ctx.lineWidth=0.5;ctx.setLineDash([3,2]);
+  ctx.beginPath();ctx.moveTo(tx(tau),pad.t);ctx.lineTo(tx(tau),H-pad.b);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#888';ctx.font='9px Arial';ctx.fillText('tau',tx(tau)+2,H-pad.b+12);
+  ctx.strokeStyle='#666';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,H-pad.b);ctx.lineTo(W-pad.r,H-pad.b);ctx.stroke();
+  ctx.fillStyle='#aaa';ctx.font='10px Arial';ctx.fillText('Time',W/2-10,H-5);
+  ctx.fillStyle='#90caf9';ctx.font='bold 11px Arial';
+  ctx.fillText('Cx='+get('Cx')+'nF  R='+get('R')+'kO  Vi='+Vi.toFixed(1)+'V (initial)',pad.l+5,pad.t-8);
+  if(Vi>0){
+    ctx.fillStyle='#ff7777';ctx.font='10px Arial';
+    ctx.fillText('Incomplete discharge error: '+err_pct.toFixed(1)+'%',pad.l+5,pad.t+16);
+  }
+}
+['Cx','R','Vs','Vi'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>{resizeCanvas();draw();});
+resizeCanvas();draw();
+</script>
+</body>
+</html>

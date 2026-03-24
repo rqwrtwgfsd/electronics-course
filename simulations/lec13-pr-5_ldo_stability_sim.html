@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sim: LDO Stability — ESR Zero</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Arial,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:12px;}
+canvas{display:block;border:1px solid #444;border-radius:6px;background:#0d0d1a;}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0;}
+.ctrl{display:flex;flex-direction:column;gap:3px;font-size:12px;}
+label{color:#aaa;}
+input[type=range]{width:140px;}
+.vals{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#ccc;margin:6px 0;}
+.val-item{background:#222;border-radius:4px;padding:4px 8px;}
+h3{font-size:13px;color:#90caf9;margin-bottom:6px;}
+@media(prefers-color-scheme:light){body{background:#f5f5f5;color:#111;}canvas{background:#fff;border-color:#ccc;}.val-item{background:#eee;color:#222;}label{color:#555;}h3{color:#005a9c;}}
+</style>
+</head>
+<body>
+<h3>Problem 5 — LDO Stability: ESR Zero vs Unity-Gain Frequency</h3>
+<p style="font-size:11px;color:#aaa;margin-bottom:8px;">Phase margin depends on whether ESR zero falls below unity-gain frequency. Too-low ESR (ceramic cap) removes phase boost → oscillation.</p>
+<canvas id="cv"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>C_out (µF)</label><input type="range" id="Cout" min="1" max="100" value="10" step="0.5"><span id="CoutV">10.0</span></div>
+  <div class="ctrl"><label>ESR (mOhm)</label><input type="range" id="esr" min="1" max="1000" value="500" step="1"><span id="esrV">500</span></div>
+  <div class="ctrl"><label>f_unity_gain (kHz)</label><input type="range" id="fug" min="10" max="1000" value="200" step="10"><span id="fugV">200</span></div>
+  <div class="ctrl"><label>dI_step (mA)</label><input type="range" id="di" min="1" max="500" value="50" step="1"><span id="diV">50</span></div>
+</div>
+<div class="vals">
+  <div class="val-item">f_zero (ESR): <strong id="fz">-</strong></div>
+  <div class="val-item">ESR min needed: <strong id="esr_min">-</strong></div>
+  <div class="val-item">V_droop: <strong id="vdroop">-</strong></div>
+  <div class="val-item">Stability: <strong id="stab">-</strong></div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+function resizeCanvas(){
+  const w=cv.parentElement.getBoundingClientRect().width;
+  cv.width=Math.min(w-24,700);
+  cv.height=Math.round(cv.width*0.45);
+}
+function get(id){return parseFloat(document.getElementById(id).value);}
+function draw(){
+  const W=cv.width,H=cv.height;
+  const Cout=get('Cout')*1e-6,ESR=get('esr')*1e-3,fug=get('fug')*1e3,di=get('di')*1e-3;
+  document.getElementById('CoutV').textContent=get('Cout').toFixed(1);
+  document.getElementById('esrV').textContent=get('esr');
+  document.getElementById('fugV').textContent=get('fug');
+  document.getElementById('diV').textContent=get('di');
+  const f_zero=1/(2*Math.PI*ESR*Cout);
+  const esr_min=1/(2*Math.PI*fug*Cout);
+  const v_droop=ESR*di;
+  const stable=f_zero<fug;
+  document.getElementById('fz').textContent=f_zero>=1e3?(f_zero/1e3).toFixed(1)+'kHz':f_zero.toFixed(0)+'Hz';
+  document.getElementById('esr_min').textContent=(esr_min*1000).toFixed(1)+'mOhm';
+  document.getElementById('vdroop').textContent=(v_droop*1000).toFixed(1)+'mV';
+  document.getElementById('stab').textContent=stable?'STABLE (margin OK)':'UNSTABLE (oscillates!)';
+  document.getElementById('stab').style.color=stable?'#55ff88':'#ff5555';
+  ctx.clearRect(0,0,W,H);
+  const pad={l:55,r:20,t:28,b:40};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  // Bode plot: loop gain magnitude (simplified single-pole + ESR zero)
+  const f_min=100,f_max=10e6;
+  function fx(f){return pad.l+Math.log10(f/f_min)/Math.log10(f_max/f_min)*pw;}
+  function fy_db(db){const dbmin=-60,dbmax=40;return pad.t+ph*(1-(db-dbmin)/(dbmax-dbmin));}
+  // Grid
+  ctx.strokeStyle='#1e2a3a';ctx.lineWidth=0.5;
+  [-40,-20,0,20,40].forEach(db=>{
+    ctx.beginPath();ctx.moveTo(pad.l,fy_db(db));ctx.lineTo(W-pad.r,fy_db(db));ctx.stroke();
+    ctx.fillStyle='#555';ctx.font='10px Arial';ctx.fillText(db+'dB',2,fy_db(db)+4);
+  });
+  [1e3,10e3,100e3,1e6].forEach(f=>{
+    ctx.beginPath();ctx.moveTo(fx(f),pad.t);ctx.lineTo(fx(f),H-pad.b);ctx.stroke();
+    ctx.fillStyle='#555';ctx.font='10px Arial';
+    ctx.fillText(f>=1e6?(f/1e6)+'M':(f/1e3)+'k',fx(f)-8,H-pad.b+14);
+  });
+  // Loop gain: ~40dB at DC, rolloff at output pole, zero at ESR frequency
+  // Simplified: |T(jw)| = 40dB * (1 + jw/wz) / (1 + jw/wp) / (1 + jw/wp2)
+  const wp=2*Math.PI*fug*0.1; // dominant pole well below unity gain
+  const wz=2*Math.PI*f_zero;
+  ctx.beginPath();ctx.strokeStyle=stable?'#55aaff':'#ff5555';ctx.lineWidth=2;
+  for(let i=0;i<=400;i++){
+    const f=f_min*Math.pow(f_max/f_min,i/400);
+    const w=2*Math.PI*f;
+    // Phase of loop gain with ESR zero
+    const num=Math.sqrt(1+(w/wz)*(w/wz));
+    const den=Math.sqrt(1+(w/wp)*(w/wp)) * Math.sqrt(1+(w/(2*Math.PI*fug*5))*(w/(2*Math.PI*fug*5)));
+    const gain_dc=100; // 40dB
+    const mag=gain_dc*num/den;
+    const db=20*Math.log10(Math.max(mag,1e-6));
+    if(i===0)ctx.moveTo(fx(f),fy_db(db));else ctx.lineTo(fx(f),fy_db(db));
+  }
+  ctx.stroke();
+  // Phase plot (right half, secondary axis)
+  // Unity gain line
+  ctx.strokeStyle='#555';ctx.lineWidth=0.5;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(pad.l,fy_db(0));ctx.lineTo(W-pad.r,fy_db(0));ctx.stroke();
+  // f_zero marker
+  ctx.strokeStyle='#55ffaa';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(fx(f_zero),pad.t);ctx.lineTo(fx(f_zero),H-pad.b);ctx.stroke();
+  ctx.fillStyle='#55ffaa';ctx.font='10px Arial';ctx.fillText('f_zero',fx(f_zero)+2,pad.t+16);
+  // f_unity marker
+  ctx.strokeStyle='#ffaa55';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(fx(fug),pad.t);ctx.lineTo(fx(fug),H-pad.b);ctx.stroke();
+  ctx.fillStyle='#ffaa55';ctx.font='10px Arial';ctx.fillText('f_ug',fx(fug)+2,pad.t+28);
+  ctx.setLineDash([]);
+  // Stability annotation
+  ctx.fillStyle=stable?'rgba(80,200,100,0.1)':'rgba(255,50,50,0.1)';
+  if(stable){
+    ctx.fillRect(fx(f_zero),pad.t,Math.max(0,fx(fug)-fx(f_zero)),ph);
+    ctx.fillStyle='#55ff88';ctx.font='10px Arial';
+    ctx.fillText('Phase boost region',fx(f_zero)+4,pad.t+ph*0.5);
+  } else {
+    ctx.fillRect(fx(fug),pad.t,Math.max(0,fx(f_zero)-fx(fug)),ph);
+    ctx.fillStyle='#ff7777';ctx.font='10px Arial';
+    ctx.fillText('No phase boost!',fx(fug)+4,pad.t+ph*0.5);
+  }
+  ctx.strokeStyle='#666';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,H-pad.b);ctx.lineTo(W-pad.r,H-pad.b);ctx.stroke();
+  ctx.fillStyle='#aaa';ctx.font='10px Arial';ctx.fillText('Frequency',W/2-20,H-5);
+  ctx.fillStyle='#90caf9';ctx.font='bold 11px Arial';
+  ctx.fillText('Cout='+get('Cout')+'uF  ESR='+get('esr')+'mO  f_ug='+get('fug')+'kHz',pad.l+5,pad.t-8);
+}
+['Cout','esr','fug','di'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>{resizeCanvas();draw();});
+resizeCanvas();draw();
+</script>
+</body>
+</html>

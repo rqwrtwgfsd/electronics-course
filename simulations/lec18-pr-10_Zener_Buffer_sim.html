@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 18 Pr 10 — Zener Reference with Buffer</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  h1 { font-size:18px; margin-bottom:12px; border-bottom:2px solid var(--accent); padding-bottom:8px; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; display:flex; justify-content:space-between; margin-bottom:4px; }
+  .val { color:var(--accent); font-family:monospace; font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .info { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.2); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.6; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<h1>Pr 10 — Zener Reference: V_out vs Load Current (with/without Buffer)</h1>
+<div class="layout">
+  <canvas id="cv" height="380"></canvas>
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>r_Z Zener impedance (Ω) <span class="val" id="v-rz">30</span></label>
+      <input type="range" id="rz" min="1" max="100" value="30" step="1">
+    </div>
+    <div class="ctrl-group">
+      <label>R_series (Ω) <span class="val" id="v-rs">470</span></label>
+      <input type="range" id="rs" min="100" max="2000" value="470" step="10">
+    </div>
+    <div class="ctrl-group">
+      <label>β of buffer BJT <span class="val" id="v-beta">100</span></label>
+      <input type="range" id="beta" min="20" max="500" value="100" step="10">
+    </div>
+    <div class="info" id="info">Compare direct Zener vs buffered output.</div>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function resizeCanvas() {
+  cv.width = cv.parentElement.getBoundingClientRect().width || 600;
+  cv.height = 380;
+}
+
+function draw() {
+  resizeCanvas();
+  const W = cv.width, H = cv.height;
+  const dark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const bg = dark ? '#1a1a1a' : '#ffffff';
+  const fg = dark ? '#e8e8e8' : '#1a1a1a';
+  const gridC = dark ? '#333' : '#eee';
+
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const rZ = +document.getElementById('rz').value;
+  const Rs = +document.getElementById('rs').value;
+  const beta = +document.getElementById('beta').value;
+
+  document.getElementById('v-rz').textContent = rZ + ' Ω';
+  document.getElementById('v-rs').textContent = Rs + ' Ω';
+  document.getElementById('v-beta').textContent = beta;
+
+  const VCC = 12, VZ0 = 5.1;
+  // Output impedance: direct Zener = Rs || rZ
+  const Rout_direct = (Rs * rZ) / (Rs + rZ);
+  // Buffer: Rout = (Rs||rZ) / (beta+1)
+  const Rout_buffer = Rout_direct / (beta + 1);
+
+  const pad = { l: 65, r: 20, t: 40, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  // X: I_load 0 to 25mA
+  const xMax = 25; // mA
+  // Y: V_out 4.0 to 5.5
+  const yMin = 4.0, yMax = 5.5;
+
+  ctx.strokeStyle = gridC; ctx.lineWidth = 1;
+  for (let v = yMin; v <= yMax; v += 0.25) {
+    const y = pad.t + ph * (1 - (v - yMin) / (yMax - yMin));
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(v.toFixed(2) + 'V', pad.l - 4, y + 4);
+  }
+  for (let I = 0; I <= xMax; I += 5) {
+    const x = pad.l + pw * I / xMax;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(I + 'mA', x, pad.t + ph + 18);
+  }
+
+  ctx.fillStyle = fg; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Load Current I_load (mA)', pad.l + pw / 2, H - 6);
+  ctx.save(); ctx.translate(14, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('V_out (V)', 0, 0); ctx.restore();
+
+  // Nominal V_Z (approximate at I_Z = 15mA)
+  const VZ_nom = VZ0;
+  // I_Z_max from Rs
+  const IZ_max = (VCC - VZ_nom) / Rs * 1000; // mA
+
+  // Direct Zener: V_out = VZ_nom - rZ * (I_load * 1e-3 change via KCL)
+  // V_out decreases as I_load increases (r_Z effect through divider)
+  const drawLine = (Rout_mΩ, color, label) => {
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.5;
+    for (let I = 0; I <= xMax; I++) {
+      const V = VZ_nom - Rout_mΩ * I; // V_out drops linearly
+      if (V < yMin - 0.1) break;
+      const x = pad.l + pw * I / xMax;
+      const y = pad.t + ph * (1 - (Math.max(yMin, V) - yMin) / (yMax - yMin));
+      if (I === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    // Label at start
+    const labelY = pad.t + ph * (1 - (VZ_nom - yMin) / (yMax - yMin));
+    ctx.fillStyle = color; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(label, pad.l + 4, labelY - 4);
+  };
+
+  drawLine(Rout_direct / 1000, '#e53935', `Direct Zener (R_out=${Rout_direct.toFixed(1)}Ω)`);
+  drawLine(Rout_buffer / 1000, '#1565c0', `Buffered BJT (R_out=${Rout_buffer.toFixed(2)}Ω)`);
+
+  // 1% band
+  const specLine = pad.t + ph * (1 - (VZ_nom * 0.99 - yMin) / (yMax - yMin));
+  ctx.setLineDash([5, 5]);
+  ctx.strokeStyle = '#43a047'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(pad.l, specLine); ctx.lineTo(pad.l + pw, specLine); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#43a047'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('−1% spec limit', pad.l + pw - 2, specLine - 3);
+
+  ctx.fillStyle = fg; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('Zener Reference Load Regulation', pad.l, pad.t - 10);
+
+  // Max load direct
+  const I_max_direct = (VZ_nom * 0.01) / (Rout_direct / 1000);
+  const I_max_buffer = (VZ_nom * 0.01) / (Rout_buffer / 1000);
+
+  document.getElementById('info').innerHTML =
+    `<b>Output impedances:</b><br>` +
+    `Direct: R_out = ${Rout_direct.toFixed(1)} Ω<br>` +
+    `Buffered: R_out = ${Rout_buffer.toFixed(2)} Ω<br>` +
+    `Improvement: ${(Rout_direct/Rout_buffer).toFixed(0)}× (= β+1)<br>` +
+    `Max load (±1%): Direct ≈ ${I_max_direct.toFixed(1)} mA<br>` +
+    `Max load (±1%): Buffered ≈ ${I_max_buffer.toFixed(0)} mA`;
+}
+
+['rz','rs','beta'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+window.addEventListener('resize', draw);
+draw();
+</script>
+</body>
+</html>

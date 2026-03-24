@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>BLDC Motor WiFi EMI</title>
+<style>:root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}@media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}.module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}h1{font-size:18px;margin:4px 0}.layout{display:grid;grid-template-columns:1fr 260px;gap:16px}canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}.controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}.ctrl-group{margin-bottom:12px}.ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}.ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}.result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}@media(max-width:600px){.layout{grid-template-columns:1fr}}</style>
+</head>
+<body>
+<header><div class="module-id">Lecture 12 | Scenario 22</div><h1>BLDC Motor EMI: Harmonic Spectrum &amp; WiFi Impact</h1></header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group"><div class="ctrl-label">PWM Freq (kHz) <span class="ctrl-value" id="lbl-f">20 kHz</span></div><input type="range" id="sl-f" min="1" max="100" value="20" step="1"></div>
+    <div class="ctrl-group"><div class="ctrl-label">Filter L (µH) <span class="ctrl-value" id="lbl-l">100 µH</span></div><input type="range" id="sl-l" min="1" max="1000" value="100" step="10"></div>
+    <div class="ctrl-group"><div class="ctrl-label">Rise Time (ns) <span class="ctrl-value" id="lbl-t">100 ns</span></div><input type="range" id="sl-t" min="10" max="1000" value="100" step="10"></div>
+    <div class="result-box" id="result">Adjust to protect WiFi 2.4GHz band</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slF=document.getElementById('sl-f'),slL=document.getElementById('sl-l'),slT=document.getElementById('sl-t');
+const lblF=document.getElementById('lbl-f'),lblL=document.getElementById('lbl-l'),lblT=document.getElementById('lbl-t');
+const result=document.getElementById('result');
+function draw(){
+  const W=cv.width,H=cv.height;
+  const fpwm=parseFloat(slF.value)*1e3;const L=parseFloat(slL.value)*1e-6;const tr=parseFloat(slT.value)*1e-9;
+  lblF.textContent=slF.value+' kHz';lblL.textContent=slL.value+' µH';lblT.textContent=slT.value+' ns';
+  ctx.clearRect(0,0,W,H);
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  const fMin=1e3,fMax=3e9;
+  // Harmonic amplitude envelope: sinc envelope * 1/n for square wave
+  // High edge bandwidth = 1/(pi*tr)
+  const f_bw=1/(Math.PI*tr);
+  // Filter: 20dB/decade above f0 = 1/(2pi*L/R) with R=50
+  const f0_filt=50/(2*Math.PI*L);
+  function harmAmp(f){
+    // Square wave: harmonics at n*fpwm, amplitude proportional to sinc(n*pi*duty)*2/n
+    // For broadband: envelope = V0 * 2*tr*fpwm * sinc(pi*f*tr) / (pi*tr*fpwm * n)
+    // Simplified: spectral density falls as 1/f up to f_bw, then 1/f^2
+    if(f<fpwm)return 0;
+    const n=Math.round(f/fpwm);if(n===0)return 0;
+    const base=20*Math.log10(2/(Math.PI*n));
+    const env=f<f_bw?0:-20*Math.log10(f/f_bw);
+    return base+env;
+  }
+  function filterAtten(f){return f>f0_filt?-20*Math.log10(f/f0_filt):0}
+  function xPx(f){return pad+plotW*(Math.log10(f)-Math.log10(fMin))/(Math.log10(fMax)-Math.log10(fMin))}
+  function yPx(db){return pad+plotH*(1-(-db)/80)}
+  // Grid
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  for(let db=-80;db<=0;db+=10){ctx.beginPath();ctx.moveTo(pad,yPx(db));ctx.lineTo(W-pad,yPx(db));ctx.stroke()}
+  ctx.strokeStyle='#888';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  // WiFi band 2.4GHz
+  const xwifi=xPx(2.4e9);
+  ctx.fillStyle='rgba(0,100,255,0.1)';ctx.fillRect(xwifi-10,pad,20,plotH);
+  ctx.fillStyle='#0066cc';ctx.font='10px system-ui';ctx.textAlign='center';ctx.fillText('WiFi 2.4GHz',xwifi,pad+14);
+  // Spectrum without filter
+  ctx.strokeStyle='#e53935';ctx.lineWidth=1.5;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const logF=Math.log10(fMin)+(px/plotW)*(Math.log10(fMax)-Math.log10(fMin));
+    const f=Math.pow(10,logF);
+    if(f<fpwm){px===0?ctx.moveTo(pad+px,yPx(-80)):ctx.lineTo(pad+px,yPx(-80));continue}
+    const db=Math.max(-80,harmAmp(f));
+    px===0?ctx.moveTo(pad+px,yPx(db)):ctx.lineTo(pad+px,yPx(db));
+  }ctx.stroke();
+  // With filter
+  ctx.strokeStyle='#2e7d32';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const logF=Math.log10(fMin)+(px/plotW)*(Math.log10(fMax)-Math.log10(fMin));
+    const f=Math.pow(10,logF);
+    if(f<fpwm){px===0?ctx.moveTo(pad+px,yPx(-80)):ctx.lineTo(pad+px,yPx(-80));continue}
+    const db=Math.max(-80,harmAmp(f)+filterAtten(f));
+    px===0?ctx.moveTo(pad+px,yPx(db)):ctx.lineTo(pad+px,yPx(db));
+  }ctx.stroke();
+  ctx.fillStyle='#888';ctx.textAlign='right';ctx.font='10px system-ui';
+  [-80,-60,-40,-20,0].forEach(db=>ctx.fillText(db+'dB',pad-4,yPx(db)+3));
+  ctx.textAlign='center';
+  ['1k','10k','100k','1M','10M','100M','1G','3G'].forEach((lbl,i)=>{const f=Math.pow(10,i+3);if(f<=fMax)ctx.fillText(lbl,xPx(f),H-pad+14)});
+  const atWifi=harmAmp(2.4e9)+filterAtten(2.4e9);
+  const atWifi0=harmAmp(2.4e9);
+  result.innerHTML='<b>PWM at '+slF.value+'kHz</b><br>Edge BW (1/πtr): <b>'+(f_bw/1e9).toFixed(2)+'GHz</b><br>Noise at 2.4GHz (no filter): <b>'+atWifi0.toFixed(0)+'dB</b><br>With '+slL.value+'µH filter: <b>'+atWifi.toFixed(0)+'dB</b><br>'+(atWifi<-60?'✅ WiFi protected':'⚠️ Increase filter L')+'<br><b>Key: Slow down edges (increase tr) to cut HF content</b>';
+}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slF,slL,slT].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});resizeCanvas();draw();
+</script>
+</body>
+</html>

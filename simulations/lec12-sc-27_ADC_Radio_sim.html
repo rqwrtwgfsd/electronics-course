@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scenario 27 — ADC During Radio Transmission</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto;}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px;}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;}
+  h1{font-size:18px;margin:4px 0;}
+  .layout{display:grid;grid-template-columns:1fr 280px;gap:16px;}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%;}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px;}
+  .ctrl-group{margin-bottom:12px;}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;display:flex;justify-content:space-between;}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace;}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;}
+  .result-box{background:rgba(0,102,204,0.08);border:1px solid rgba(0,102,204,0.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.5;}
+  @media(max-width:600px){.layout{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 12 | Scenario 27</div>
+  <h1>ADC Reading During Radio TX — VREF Filtering</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">VREF Cap (µF) <span class="ctrl-value" id="p1-val">0</span></div>
+      <input type="range" id="p1" min="0" max="100" value="0">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Series R to VREF (Ω) <span class="ctrl-value" id="p2-val">0</span></div>
+      <input type="range" id="p2" min="0" max="100" value="0">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">ADC Timing <span class="ctrl-value" id="p3-val">During TX</span></div>
+      <input type="range" id="p3" min="0" max="1" step="1" value="0">
+    </div>
+    <div class="result-box" id="result">Adjust VREF protection</div>
+  </div>
+</div>
+<script>
+const canvas=document.getElementById('cv');
+const ctx=canvas.getContext('2d');
+function isDark(){return window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches;}
+function draw(){
+  const Cvref=+document.getElementById('p1').value*1e-6;
+  const Rvref=+document.getElementById('p2').value;
+  const goodTiming=+document.getElementById('p3').value;
+  document.getElementById('p1-val').textContent=Math.round(Cvref*1e6)+' µF';
+  document.getElementById('p2-val').textContent=Rvref+' Ω';
+  document.getElementById('p3-val').textContent=goodTiming?'Between TX bursts':'During TX';
+
+  const VCC=3.3, VREF_nom=3.3;
+  const I_radio=100e-3; // 100mA radio PA burst
+  const Rth_supply=2; // supply Rth
+  const V_sag_supply=I_radio*Rth_supply;
+  // VREF filter RC
+  const tau_vref=Rvref>0&&Cvref>0?Rvref*Cvref*1000:0; // ms
+  const radio_burst_ms=1;
+  // Sag reaching VREF
+  const V_sag_vref=Cvref>0?V_sag_supply*Math.exp(-radio_burst_ms/Math.max(0.001,tau_vref)):V_sag_supply;
+  const ADC_bits=12;
+  const adc_error_counts=(V_sag_vref/VREF_nom)*Math.pow(2,ADC_bits)*(goodTiming?0:1);
+
+  canvas.width=canvas.parentElement.getBoundingClientRect().width||600;
+  canvas.height=380;
+  const W=canvas.width,H=canvas.height;
+  const dark=isDark();
+  const bg=dark?'#2a2a2a':'#f5f5f5';
+  const fg=dark?'#e8e8e8':'#1a1a1a';
+  const ac=dark?'#4499ff':'#0066cc';
+  const gr=dark?'#444':'#ddd';
+  const red='#e53935',grn='#43a047',orange='#ff9800';
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=fg;ctx.font='bold 13px system-ui';ctx.textAlign='center';
+  ctx.fillText('VREF During Radio TX Burst',W/2,22);
+
+  const mx=60,my=40,mw=W-80,mh=(H-110)/2;
+  const totalT=300; // ms (3 bursts of 100ms period)
+  const row1Y=my, row2Y=my+mh+25;
+
+  // Labels
+  ctx.fillStyle=fg;ctx.font='11px system-ui';ctx.textAlign='left';
+  ctx.fillText('VREF voltage',mx+4,row1Y+14);
+  ctx.fillText('ADC reading (should be flat)',mx+4,row2Y+14);
+
+  [row1Y,row1Y+mh,row2Y,row2Y+mh].forEach(y=>{
+    ctx.strokeStyle=gr;ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(mx,y);ctx.lineTo(mx+mw,y);ctx.stroke();
+  });
+  ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='center';
+  [0,50,100,150,200,250,300].forEach(t=>{
+    ctx.fillText(t+'ms',mx+mw*t/totalT,row2Y+mh+14);
+  });
+
+  const toX=t=>mx+mw*t/totalT;
+  const toY1=v=>row1Y+mh*(1-(v-VREF_nom+0.3)/0.4);
+  const toY2=v=>row2Y+mh*(1-(v/Math.pow(2,ADC_bits)));
+
+  // Simulate VREF
+  let vref=VREF_nom;
+  ctx.strokeStyle=Cvref>0?grn:red;ctx.lineWidth=2;
+  ctx.beginPath();
+  let adcErrors=0;
+  const adcReadings=[];
+  for(let i=0;i<=500;i++){
+    const t=i/500*totalT;
+    const inBurst=(t%100)<radio_burst_ms;
+    const target=inBurst?VREF_nom-V_sag_supply:VREF_nom;
+    if(Cvref>0&&Rvref>0){
+      vref=vref+(target-vref)*(1-Math.exp(-0.6/(tau_vref)));
+    } else if(Cvref>0){
+      vref=target+(VREF_nom-target)*Math.exp(-t/100);
+    } else {
+      vref=target;
+    }
+    const y=toY1(Math.max(VREF_nom-0.3,Math.min(VREF_nom,vref)));
+    i===0?ctx.moveTo(toX(t),y):ctx.lineTo(toX(t),y);
+    // ADC reading
+    const effectiveSag=goodTiming&&inBurst?0:(VREF_nom-vref);
+    adcReadings.push({t,err:effectiveSag/VREF_nom*Math.pow(2,ADC_bits)});
+  }
+  ctx.stroke();
+
+  // ADC error bars
+  ctx.strokeStyle=orange;ctx.lineWidth=1.5;
+  ctx.beginPath();
+  adcReadings.forEach((r,i)=>{
+    const x=toX(r.t);
+    const v=2048+r.err*10; // nominal 2048 + error
+    const y=toY2(Math.max(0,Math.min(Math.pow(2,ADC_bits),v)));
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+
+  // Reference line at 2048
+  ctx.strokeStyle=grn;ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(mx,toY2(2048));ctx.lineTo(mx+mw,toY2(2048));ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.strokeStyle=fg;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx,row1Y);ctx.lineTo(mx,row1Y+mh);ctx.lineTo(mx+mw,row1Y+mh);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(mx,row2Y);ctx.lineTo(mx,row2Y+mh);ctx.lineTo(mx+mw,row2Y+mh);ctx.stroke();
+
+  document.getElementById('result').innerHTML=
+    `<b>Radio PA: ${I_radio*1000}mA burst, ${radio_burst_ms}ms</b><br>`+
+    `Supply sag: ${(V_sag_supply*1000).toFixed(0)}mV<br>`+
+    `VREF sag: ${(V_sag_vref*1000).toFixed(1)}mV ${Cvref>0?'(filtered)':'(unfiltered)'}<br>`+
+    `ADC error: ±${adc_error_counts.toFixed(0)} counts (12-bit)<br>`+
+    (goodTiming?'<span style="color:green">✓ Software timing avoids TX burst</span>':
+     Cvref>0&&Rvref>0?'<span style="color:green">✓ VREF filtered — ADC stable</span>':
+     '<span style="color:red">⚠ ADC reads during TX — add 10µF cap + 10Ω on VREF</span>');
+}
+['p1','p2','p3'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>draw());
+draw();
+</script>
+</body>
+</html>

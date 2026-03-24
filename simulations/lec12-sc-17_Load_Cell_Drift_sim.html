@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Load Cell Slow Drift — Leakage RC</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}
+  h1{font-size:18px;margin:4px 0}
+  .layout{display:grid;grid-template-columns:1fr 260px;gap:16px}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}
+  .ctrl-group{margin-bottom:12px}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}
+  .result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}
+  @media(max-width:600px){.layout{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 12 | Scenario 17</div>
+  <h1>Load Cell Drift: PCB Surface Leakage &amp; Long RC</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">PCB Leakage R (GΩ) <span class="ctrl-value" id="lbl-r">10 GΩ</span></div>
+      <input type="range" id="sl-r" min="1" max="100" value="10" step="1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Trace Capacitance (pF) <span class="ctrl-value" id="lbl-c">1 pF</span></div>
+      <input type="range" id="sl-c" min="0.1" max="10" value="1" step="0.1">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Input R (kΩ) <span class="ctrl-value" id="lbl-ri">100 kΩ</span></div>
+      <input type="range" id="sl-ri" min="1" max="1000" value="100" step="1">
+    </div>
+    <div class="result-box" id="result">Adjust to see drift time constant</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slR=document.getElementById('sl-r'),slC=document.getElementById('sl-c'),slRi=document.getElementById('sl-ri');
+const lblR=document.getElementById('lbl-r'),lblC=document.getElementById('lbl-c'),lblRi=document.getElementById('lbl-ri');
+const result=document.getElementById('result');
+
+function draw(){
+  const W=cv.width,H=cv.height;
+  const Rleak=parseFloat(slR.value)*1e9;
+  const Ctrace=parseFloat(slC.value)*1e-12;
+  const Ri=parseFloat(slRi.value)*1e3;
+  lblR.textContent=slR.value+' GΩ';
+  lblC.textContent=parseFloat(slC.value).toFixed(1)+' pF';
+  lblRi.textContent=slRi.value+' kΩ';
+  ctx.clearRect(0,0,W,H);
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  // τ_leak = Rleak * Ctrace (very long!)
+  const tau_leak=Rleak*Ctrace; // seconds
+  // Parallel with input R: effective tau
+  const Reff=Rleak*Ri/(Rleak+Ri);
+  const tau_eff=Reff*Ctrace;
+  const tTotal=Math.min(tau_leak*3,3600); // 3 time constants, max 1 hour
+  // Show voltage drift from 0 to Voffset
+  const Voffset=50e-3; // 50mV total drift possible (amplified by INA gain)
+  const vMin=0,vMax=Voffset*1.1;
+  function yPx(v){return pad+plotH*(1-(v-vMin)/(vMax-vMin))}
+  function tPxFn(t){return pad+(t/tTotal)*plotW}
+  // Grid
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  [0,10,20,30,40,50].forEach(mv=>{const v=mv*1e-3;if(v<=vMax){ctx.beginPath();ctx.moveTo(pad,yPx(v));ctx.lineTo(W-pad,yPx(v));ctx.stroke()}});
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  // Drift without fix
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    const v=Voffset*(1-Math.exp(-t/tau_leak));
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  // Drift with reduced input R (lower Ri) — faster settling, smaller final value
+  const tau_fixed=Ri*Ctrace*0.1; // after lowering Ri by 10×
+  const Vfixed=Voffset*0.1;
+  ctx.strokeStyle='#2e7d32';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    const v=Vfixed*(1-Math.exp(-t/tau_fixed));
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  // Labels
+  ctx.fillStyle='#888';ctx.textAlign='right';ctx.font='10px system-ui';
+  [0,10,20,30,40,50].filter(mv=>mv*1e-3<=vMax).forEach(mv=>ctx.fillText(mv+'mV',pad-4,yPx(mv*1e-3)+3));
+  // Time axis
+  const tUnit=tTotal>3600?'hr':tTotal>60?'min':'s';
+  const tScale=tUnit==='hr'?3600:tUnit==='min'?60:1;
+  ctx.textAlign='center';
+  [0,0.25,0.5,0.75,1].forEach(f=>{const t=f*tTotal;ctx.fillText((t/tScale).toFixed(tTotal>3600?1:0)+tUnit,pad+f*plotW,H-pad+14)});
+  ctx.textAlign='left';ctx.font='11px system-ui';
+  ctx.fillStyle='#e53935';ctx.fillText('No fix: τ = '+(tau_leak>=60?( tau_leak/60).toFixed(0)+'min':tau_leak.toFixed(0)+'s'),pad+8,pad+16);
+  ctx.fillStyle='#2e7d32';ctx.fillText('Lower Ri fix: τ = '+(tau_fixed>=60?(tau_fixed/60).toFixed(1)+'min':tau_fixed.toFixed(0)+'s'),pad+8,pad+30);
+  const driftMin=tau_leak/60;
+  result.innerHTML='<b>τ_leak = R_leak × C_trace</b><br>= '+slR.value+'GΩ × '+parseFloat(slC.value).toFixed(1)+'pF = <b>'+(tau_leak>=60?( tau_leak/60).toFixed(0)+'min':tau_leak.toFixed(0)+'s')+'</b><br>Final drift: <b>'+( Voffset*1000).toFixed(0)+'mV</b><br>Settle to 63% at: <b>'+driftMin.toFixed(0)+'min</b><br><b>Fix: Guard ring + lower source impedance</b>';
+}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slR,slC,slRi].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});
+resizeCanvas();draw();
+</script>
+</body>
+</html>

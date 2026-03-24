@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scenario 16 — Solenoid PWM Drive</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto;}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px;}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;}
+  h1{font-size:18px;margin:4px 0;}
+  .layout{display:grid;grid-template-columns:1fr 280px;gap:16px;}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%;}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px;}
+  .ctrl-group{margin-bottom:12px;}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;display:flex;justify-content:space-between;}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace;}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;}
+  .result-box{background:rgba(0,102,204,0.08);border:1px solid rgba(0,102,204,0.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.5;}
+  @media(max-width:600px){.layout{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 12 | Scenario 16</div>
+  <h1>Solenoid PWM — Inductive Current Buildup</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">PWM Frequency (Hz) <span class="ctrl-value" id="p1-val">100</span></div>
+      <input type="range" id="p1" min="1" max="500" value="100">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Duty Cycle (%) <span class="ctrl-value" id="p2-val">50</span></div>
+      <input type="range" id="p2" min="10" max="90" value="50">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Mode <span class="ctrl-value" id="p3-val">PWM</span></div>
+      <input type="range" id="p3" min="0" max="1" step="1" value="0">
+    </div>
+    <div class="result-box" id="result">Adjust parameters</div>
+  </div>
+</div>
+<script>
+const canvas=document.getElementById('cv');
+const ctx=canvas.getContext('2d');
+function isDark(){return window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches;}
+function draw(){
+  const fpwm=+document.getElementById('p1').value;
+  const duty=+document.getElementById('p2').value/100;
+  const peakHold=+document.getElementById('p3').value;
+  document.getElementById('p1-val').textContent=fpwm+' Hz';
+  document.getElementById('p2-val').textContent=Math.round(duty*100)+'%';
+  document.getElementById('p3-val').textContent=peakHold?'Peak-and-Hold':'PWM';
+
+  const L=500e-3, R=50; // 500mH, 50Ω
+  const V=12, I_max=V/R; // 240mA
+  const tau=L/R*1000; // ms
+  const T_pwm=1000/fpwm; // ms
+  const T_on=T_pwm*duty;
+
+  canvas.width=canvas.parentElement.getBoundingClientRect().width||600;
+  canvas.height=380;
+  const W=canvas.width,H=canvas.height;
+  const dark=isDark();
+  const bg=dark?'#2a2a2a':'#f5f5f5';
+  const fg=dark?'#e8e8e8':'#1a1a1a';
+  const ac=dark?'#4499ff':'#0066cc';
+  const gr=dark?'#444':'#ddd';
+  const red='#e53935',grn='#43a047',orange='#ff9800';
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=fg;ctx.font='bold 13px system-ui';ctx.textAlign='center';
+  ctx.fillText('Solenoid Current vs Time',W/2,22);
+
+  const mx=60,my=40,mw=W-80,mh=H-110;
+  const totalT=Math.min(200,T_pwm*5);
+  const toX=t=>mx+mw*t/totalT;
+  const toY=v=>my+mh*(1-v/I_max);
+
+  ctx.strokeStyle=gr;ctx.lineWidth=1;
+  [0,0.1,0.2,I_max].forEach(v=>{
+    const y=toY(v);
+    ctx.beginPath();ctx.moveTo(mx,y);ctx.lineTo(mx+mw,y);ctx.stroke();
+    ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='right';
+    ctx.fillText((v*1000).toFixed(0)+'mA',mx-3,y+4);
+  });
+  [0,totalT/4,totalT/2,3*totalT/4,totalT].forEach(t=>{
+    const x=toX(t);
+    ctx.beginPath();ctx.moveTo(x,my);ctx.lineTo(x,my+mh);ctx.stroke();
+    ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='center';
+    ctx.fillText(t.toFixed(0)+'ms',x,my+mh+14);
+  });
+
+  // I_open threshold
+  const I_open=I_max*0.8;
+  ctx.strokeStyle=grn;ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(mx,toY(I_open));ctx.lineTo(mx+mw,toY(I_open));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=grn;ctx.font='10px system-ui';ctx.textAlign='left';
+  ctx.fillText('I_open (80%)',mx+4,toY(I_open)-3);
+
+  // I_hold threshold
+  const I_hold=I_max*0.25;
+  ctx.strokeStyle=orange;ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(mx,toY(I_hold));ctx.lineTo(mx+mw,toY(I_hold));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=orange;ctx.font='10px system-ui';ctx.textAlign='left';
+  ctx.fillText('I_hold (25%)',mx+4,toY(I_hold)-3);
+
+  // Simulate current
+  const dt=totalT/500;
+  let i=0;
+  const holdStart=10; // ms — switch to hold after 10ms
+  ctx.strokeStyle=ac;ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let pt=0;pt<=500;pt++){
+    const t=pt/500*totalT;
+    let V_applied;
+    if(!peakHold){
+      const tInCycle=t%T_pwm;
+      V_applied=tInCycle<T_on?V:0;
+    } else {
+      if(t<holdStart) V_applied=V; // full drive to open
+      else {
+        // Hold: 25% average via series R concept
+        const Rseries=150;
+        V_applied=V*R/(R+Rseries);
+      }
+    }
+    const dI=(V_applied/L-i*R/L)*dt/1000;
+    i=Math.max(0,i+dI);
+    const y=toY(Math.min(I_max,i));
+    pt===0?ctx.moveTo(toX(t),y):ctx.lineTo(toX(t),y);
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle=fg;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx,my+mh);ctx.lineTo(mx+mw,my+mh);ctx.stroke();
+
+  // Tau marker
+  ctx.strokeStyle=orange;ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  if(tau<totalT){
+    ctx.beginPath();ctx.moveTo(toX(tau),my);ctx.lineTo(toX(tau),my+mh);ctx.stroke();
+    ctx.fillStyle=orange;ctx.font='10px system-ui';ctx.textAlign='center';
+    ctx.fillText('τ='+tau.toFixed(0)+'ms',toX(tau),my-4);
+  }
+  ctx.setLineDash([]);
+
+  const opens=i>I_open||T_on>tau;
+  document.getElementById('result').innerHTML=
+    `<b>L=${(L*1000).toFixed(0)}mH, R=${R}Ω, τ=${tau.toFixed(0)}ms</b><br>`+
+    `PWM: ${fpwm}Hz, T_on=${T_on.toFixed(0)}ms<br>`+
+    `T_on/τ = ${(T_on/tau).toFixed(2)} ${T_on>tau*5?'✓ Enough':'⚠ Too short!'}<br>`+
+    `I_max = ${(I_max*1000).toFixed(0)}mA<br>`+
+    (T_on>tau*5?'<span style="color:green">✓ Solenoid fully opens</span>':
+     '<span style="color:red">⚠ Current insufficient — lower PWM freq or use peak-and-hold</span>');
+}
+['p1','p2','p3'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>draw());
+draw();
+</script>
+</body>
+</html>

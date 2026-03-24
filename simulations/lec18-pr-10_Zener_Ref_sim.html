@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec18 Pr10 — Zener Reference</title>
+<style>
+  :root{--bg:#f8f8f8;--fg:#222;--accent:#4a90d9;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a2e;--fg:#e0e0e0;--accent:#7ab4f5;}}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:Arial,sans-serif;padding:10px;}
+  h3{margin:6px 0;color:var(--accent);}
+  canvas{border:1px solid #555;border-radius:4px;display:block;width:100%;}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;font-size:13px;}
+  input[type=range]{width:130px;accent-color:var(--accent);}
+  .vals{background:#0002;border-radius:4px;padding:8px;font-size:13px;margin:6px 0;}
+  .vals span{color:var(--accent);font-weight:bold;}
+  .warn{color:#e05;}
+</style>
+</head>
+<body>
+<h3>Problem 10 — Zener Reference: V_out vs Load Current</h3>
+<div class="controls">
+  <label>r_Z (Ω): <input type="range" id="rZ" min="1" max="100" value="29" step="1"> <b id="rZV">29</b></label>
+  <label>R_series (Ω): <input type="range" id="Rs" min="100" max="2000" value="470" step="10"> <b id="RsV">470</b></label>
+  <label>V_CC (V): <input type="range" id="Vcc" min="6" max="24" value="12" step="0.5"> <b id="VccV">12</b></label>
+  <label>β_buffer: <input type="range" id="beta" min="10" max="500" value="100" step="10"> <b id="betaV">100</b></label>
+</div>
+<canvas id="cv"></canvas>
+<div class="vals" id="info"></div>
+<script>
+const cv=document.getElementById('cv');const ctx=cv.getContext('2d');
+function resizeCanvas(){const w=cv.parentElement.getBoundingClientRect().width||480;cv.width=Math.round(w);cv.height=Math.round(w*0.52);}
+function draw(){
+  resizeCanvas();
+  const W=cv.width,H=cv.height;
+  const rZ=+document.getElementById('rZ').value;
+  const Rs=+document.getElementById('Rs').value;
+  const Vcc=+document.getElementById('Vcc').value;
+  const beta=+document.getElementById('beta').value;
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  ctx.fillStyle=isDark?'#1a1a2e':'#f8f8f8';ctx.fillRect(0,0,W,H);
+  const VZ0=5.1;
+  const Imax=30e-3; // 30mA max load
+  const padL=65,padR=20,padT=35,padB=50;
+  const gW=W-padL-padR,gH=H-padT-padB;
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,padT);ctx.lineTo(padL,padT+gH);ctx.lineTo(padL+gW,padT+gH);ctx.stroke();
+  function xp(i){return padL+(i/Imax)*gW;}
+  const Vmin=3,Vmax=6.5;
+  function yp(v){return padT+gH-((v-Vmin)/(Vmax-Vmin))*gH;}
+  ctx.strokeStyle='#3334';ctx.lineWidth=0.5;
+  for(let i=0;i<=Imax;i+=5e-3){ctx.beginPath();ctx.moveTo(xp(i),padT);ctx.lineTo(xp(i),padT+gH);ctx.stroke();}
+  for(let v=Vmin;v<=Vmax;v+=0.5){ctx.beginPath();ctx.moveTo(padL,yp(v));ctx.lineTo(padL+gW,yp(v));ctx.stroke();}
+  const fg=isDark?'#aaa':'#555';ctx.fillStyle=fg;ctx.font='10px Arial';
+  for(let i=0;i<=Imax;i+=5e-3)ctx.fillText((i*1000).toFixed(0)+'mA',xp(i)-10,padT+gH+13);
+  for(let v=Vmin;v<=Vmax;v+=0.5)ctx.fillText(v.toFixed(1)+'V',padL-35,yp(v)+4);
+  ctx.fillStyle=isDark?'#ccc':'#333';ctx.font='11px Arial';
+  ctx.fillText('Load Current',padL+gW/2-35,H-5);
+  ctx.save();ctx.translate(12,padT+gH/2);ctx.rotate(-Math.PI/2);ctx.fillText('V_out',0,0);ctx.restore();
+  // Bare Zener
+  const Rout_z=Rs*rZ/(Rs+rZ);
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2.5;ctx.beginPath();let first=true;
+  for(let Il=0;Il<=Imax;Il+=0.0001){
+    const IZ_max=(Vcc-VZ0)/Rs;
+    const VZ=VZ0-Il*Rout_z;
+    const clamped=Math.max(Vmin,Math.min(Vmax,VZ));
+    if(first){ctx.moveTo(xp(Il),yp(clamped));first=false;}else ctx.lineTo(xp(Il),yp(clamped));
+  }ctx.stroke();
+  ctx.fillStyle='#e53935';ctx.font='11px Arial';ctx.fillText('Bare Zener',xp(5e-3),yp(VZ0-5e-3*Rout_z)+14);
+  // Emitter follower buffer
+  const Rout_buf=(Rout_z)/(beta+1)+1/(beta/0.026/0.014); // approx
+  ctx.strokeStyle='#4a90d9';ctx.lineWidth=2.5;ctx.beginPath();first=true;
+  for(let Il=0;Il<=Imax;Il+=0.0001){
+    const Vout=(VZ0-0.65)-Il*Rout_buf;
+    const clamped=Math.max(Vmin,Math.min(Vmax,Vout));
+    if(first){ctx.moveTo(xp(Il),yp(clamped));first=false;}else ctx.lineTo(xp(Il),yp(clamped));
+  }ctx.stroke();
+  ctx.fillStyle='#4a90d9';ctx.font='11px Arial';ctx.fillText('Emitter Follower',xp(5e-3),yp((VZ0-0.65)-5e-3*Rout_buf)-8);
+  // TL431 (ideal: r_out=0.2Ω)
+  ctx.strokeStyle='#43a047';ctx.lineWidth=2;ctx.setLineDash([4,3]);ctx.beginPath();first=true;
+  for(let Il=0;Il<=Imax;Il+=0.001){
+    const Vout=5.1-Il*0.2;
+    const clamped=Math.max(Vmin,Math.min(Vmax,Vout));
+    if(first){ctx.moveTo(xp(Il),yp(clamped));first=false;}else ctx.lineTo(xp(Il),yp(clamped));
+  }ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#43a047';ctx.font='11px Arial';ctx.fillText('TL431 (ideal)',xp(15e-3),yp(5.1-15e-3*0.2)-8);
+  // ±0.5% band
+  ctx.fillStyle='rgba(43,215,100,0.1)';
+  ctx.fillRect(padL,yp(5.1*1.005),gW,yp(5.1*0.995)-yp(5.1*1.005));
+  ctx.strokeStyle='#43a047';ctx.lineWidth=1;ctx.setLineDash([3,2]);
+  ctx.beginPath();ctx.moveTo(padL,yp(5.1*1.005));ctx.lineTo(padL+gW,yp(5.1*1.005));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(padL,yp(5.1*0.995));ctx.lineTo(padL+gW,yp(5.1*0.995));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#43a047';ctx.font='9px Arial';ctx.fillText('±0.5% spec',padL+gW-60,yp(5.1*1.005)-3);
+  ctx.fillStyle=isDark?'#e0e0e0':'#222';ctx.font='bold 11px Arial';ctx.fillText('Zener Reference: V_out vs Load Current',padL+2,padT-8);
+  const dV_z=(20e-3)*Rout_z, dV_buf=(20e-3)*Rout_buf;
+  document.getElementById('info').innerHTML=
+    `r_out(Zener)=<span>${Rout_z.toFixed(1)}Ω</span> | ΔV@20mA=<span class="${dV_z>0.0255?'warn':''}">${(dV_z*1000).toFixed(0)}mV</span> | `+
+    `r_out(buffer)=<span>${Rout_buf.toFixed(2)}Ω</span> | ΔV@20mA=<span class="${dV_buf>0.0255?'warn':''}">${(dV_buf*1000).toFixed(0)}mV</span> | `+
+    `TL431 ΔV@20mA=<span>4mV ✓</span>`;
+}
+['rZ','Rs','Vcc','beta'].forEach(id=>{
+  const el=document.getElementById(id);const vl=document.getElementById(id+'V');
+  el.addEventListener('input',()=>{vl.textContent=id==='Vcc'?parseFloat(el.value).toFixed(1):el.value;draw();});
+});
+window.addEventListener('resize',draw);resizeCanvas();draw();
+</script>
+</body></html>

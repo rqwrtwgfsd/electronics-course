@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Lec29 Pr26 — Class AB Thermal Runaway</title>
+<style>
+  body{margin:0;padding:10px;font-family:sans-serif;background:#1a1a2e;color:#e0e0e0;}
+  canvas{display:block;border:1px solid #444;border-radius:6px;background:#0f0f1e;}
+  .ctrl{margin:7px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  label{min-width:220px;font-size:0.85em;} input[type=range]{flex:1;min-width:120px;}
+  .val{min-width:70px;font-size:0.85em;color:#7ec8e3;}
+  .result-box{background:#162032;border:1px solid #2a4a6a;border-radius:6px;padding:10px;margin-top:8px;font-size:0.85em;}
+  h3{color:#7ec8e3;margin:4px 0 10px;}
+</style></head><body>
+<h3>Problem 26 — Class AB: I_Q vs Temperature (Runaway Risk)</h3>
+<canvas id="cv"></canvas>
+<div class="ctrl"><label>Initial I_Q at 25°C (mA):</label><input type="range" id="iq0" min="1" max="100" value="20" step="1"><span class="val" id="iq0_v">20 mA</span></div>
+<div class="ctrl"><label>Thermal coupling (0=none, 1=perfect):</label><input type="range" id="coupling" min="0" max="1" value="0" step="0.05"><span class="val" id="coupling_v">0.00</span></div>
+<div class="ctrl"><label>R_E emitter degeneration (Ohm):</label><input type="range" id="re" min="0" max="2" value="0" step="0.05"><span class="val" id="re_v">0.00 Ω</span></div>
+<div class="result-box" id="result">Results</div>
+<script>
+const cv=document.getElementById('cv');const ctx=cv.getContext('2d');
+function resizeCanvas(){const w=cv.parentElement.getBoundingClientRect().width-20;cv.width=Math.max(300,w);cv.height=Math.round(cv.width*0.45);}
+function getV(){return{iq0:parseFloat(document.getElementById('iq0').value)*1e-3,coupling:parseFloat(document.getElementById('coupling').value),re:parseFloat(document.getElementById('re').value)};}
+function updateL(){
+  document.getElementById('iq0_v').textContent=parseFloat(document.getElementById('iq0').value).toFixed(0)+' mA';
+  document.getElementById('coupling_v').textContent=parseFloat(document.getElementById('coupling').value).toFixed(2);
+  document.getElementById('re_v').textContent=parseFloat(document.getElementById('re').value).toFixed(2)+' Ω';
+}
+function draw(){
+  const W=cv.width,H=cv.height;ctx.clearRect(0,0,W,H);
+  const {iq0,coupling,re}=getV();
+  const mx=60,my=15,bx=W-15,by=H-30,pw=bx-mx,ph=by-my;
+  const VCE=10,Rth=40,dVBE_dT=-0.002,VT=0.026;
+  const Tcases=[25,30,40,50,60,70,80,90,100,110,120,125];
+  const TMax=130, TMin=20;
+  const IqMax=Math.max(iq0*10,0.5);
+
+  ctx.strokeStyle='#444';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx,by);ctx.lineTo(bx,by);ctx.stroke();
+
+  for(let i=0;i<=5;i++){
+    const T=TMin+i*(TMax-TMin)/5;
+    const x=mx+i*pw/5;
+    ctx.strokeStyle='#252540';ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(x,my);ctx.lineTo(x,by);ctx.stroke();
+    ctx.fillStyle='#666';ctx.font='10px sans-serif';ctx.fillText(T.toFixed(0)+'°C',x-10,by+14);
+  }
+  for(let i=0;i<=4;i++){
+    const y=my+i*ph/4;const iq=IqMax*(1-i/4)*1e3;
+    ctx.strokeStyle='#252540';ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(mx,y);ctx.lineTo(bx,y);ctx.stroke();
+    ctx.fillStyle='#666';ctx.font='9px sans-serif';ctx.fillText(iq.toFixed(0)+'mA',mx-46,y+4);
+  }
+
+  // Compute IQ vs T_ambient
+  function computeIQ(Tamb, iq_init, coup, Re){
+    let iq=iq_init;
+    for(let iter=0;iter<200;iter++){
+      const Pq=VCE*iq;
+      const Tjunc=Tamb+Pq*Rth;
+      const dT_out=Tjunc-25;
+      const dT_bias=dT_out*coup;
+      const Vbias_change=dVBE_dT*dT_bias;
+      const Vbe_out_change=dVBE_dT*dT_out;
+      const net_change=Vbias_change-Vbe_out_change;
+      const iq_new=iq_init*Math.exp((net_change+(iq_init-iq)*Re)/VT);
+      if(Math.abs(iq_new-iq)<iq*0.0001) break;
+      iq=Math.min(iq_new, 2); // cap at 2A
+    }
+    return iq;
+  }
+
+  // Without coupling
+  ctx.strokeStyle='#ff7043';ctx.lineWidth=2;
+  ctx.beginPath();let first=true;
+  for(let i=0;i<=100;i++){
+    const T=TMin+i*(TMax-TMin)/100;
+    const iq=computeIQ(T,iq0,0,re);
+    const x=mx+(T-TMin)/(TMax-TMin)*pw;
+    const y=by-(iq/IqMax)*ph;
+    if(first){ctx.moveTo(x,Math.max(my,Math.min(by,y)));first=false;}else ctx.lineTo(x,Math.max(my,Math.min(by,y)));
+  }
+  ctx.stroke();ctx.fillStyle='#ff7043';ctx.font='9px sans-serif';ctx.fillText('No thermal coupling',mx+5,my+14);
+
+  // With user-set coupling
+  ctx.strokeStyle='#4fc3f7';ctx.lineWidth=2;
+  ctx.beginPath();first=true;
+  for(let i=0;i<=100;i++){
+    const T=TMin+i*(TMax-TMin)/100;
+    const iq=computeIQ(T,iq0,coupling,re);
+    const x=mx+(T-TMin)/(TMax-TMin)*pw;
+    const y=by-(iq/IqMax)*ph;
+    if(first){ctx.moveTo(x,Math.max(my,Math.min(by,y)));first=false;}else ctx.lineTo(x,Math.max(my,Math.min(by,y)));
+  }
+  ctx.stroke();ctx.fillStyle='#4fc3f7';ctx.font='9px sans-serif';ctx.fillText(`coupling=${coupling.toFixed(2)}, R_E=${re.toFixed(2)}Ω`,mx+5,my+26);
+
+  // Safe I_Q target line
+  const ySafe=by-(iq0*2/IqMax)*ph;
+  ctx.strokeStyle='#aed581';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(mx,ySafe);ctx.lineTo(bx,ySafe);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#aed581';ctx.font='9px sans-serif';ctx.fillText('2× I_Q0 limit',bx-90,ySafe-4);
+
+  ctx.fillStyle='#7ec8e3';ctx.font='11px sans-serif';ctx.fillText('I_Q (mA)',mx+5,my+10);ctx.fillText('T_ambient →',bx-70,by+26);
+
+  const iq_125_no_coup=computeIQ(125,iq0,0,re)*1e3;
+  const iq_125_coup=computeIQ(125,iq0,coupling,re)*1e3;
+  const runaway_no=iq_125_no_coup>iq0*1e3*5;
+  document.getElementById('result').innerHTML=
+    `<b>Thermal Runaway Analysis:</b><br>
+    I_Q at 125°C (no coupling): ${iq_125_no_coup.toFixed(0)}mA ${runaway_no?'🔴 THERMAL RUNAWAY':'⚠ High but controlled'}<br>
+    I_Q at 125°C (coupling=${coupling.toFixed(2)}): ${iq_125_coup.toFixed(0)}mA ${iq_125_coup<iq0*1e3*2.5?'✓ Stable':'⚠ Check'}<br>
+    R_E = ${re.toFixed(2)}Ω: ${re>0.05?'Provides thermal stabilization':'No degeneration — coupling critical'}<br>
+    Fix: Mount Q_bias on heatsink with output transistors (coupling→1) + R_E > 0.1Ω`;
+}
+['iq0','coupling','re'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{updateL();draw();}));
+resizeCanvas();updateL();draw();window.addEventListener('resize',()=>{resizeCanvas();draw();});
+</script></body></html>

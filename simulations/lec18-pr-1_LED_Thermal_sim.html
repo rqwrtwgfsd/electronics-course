@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec18 Pr1 — LED Thermal Runaway</title>
+<style>
+  :root { --bg:#f8f8f8; --fg:#222; --accent:#4a90d9; --warn:#e05; }
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a2e;--fg:#e0e0e0;--accent:#7ab4f5;--warn:#ff6b6b;}}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:Arial,sans-serif;padding:10px;}
+  h3{margin:6px 0;color:var(--accent);}
+  canvas{border:1px solid #555;border-radius:4px;display:block;width:100%;}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;}
+  label{font-size:13px;}
+  input[type=range]{width:140px;accent-color:var(--accent);}
+  .vals{background:#0002;border-radius:4px;padding:8px;font-size:13px;margin:6px 0;}
+  .vals span{color:var(--accent);font-weight:bold;}
+  .warn{color:var(--warn);}
+</style>
+</head>
+<body>
+<h3>Problem 1 — LED Thermal Runaway Simulator</h3>
+<div class="controls">
+  <label>Ambient T (°C): <input type="range" id="Tamb" min="20" max="120" value="25" step="1"> <b id="TambV">25</b></label>
+  <label>R_series (Ω): <input type="range" id="Rs" min="50" max="500" value="150" step="5"> <b id="RsV">150</b></label>
+  <label>θ_ja (°C/W): <input type="range" id="theta" min="50" max="400" value="200" step="10"> <b id="thetaV">200</b></label>
+  <label>V_supply (V): <input type="range" id="Vsup" min="3" max="12" value="5" step="0.1"> <b id="VsupV">5.0</b></label>
+</div>
+<canvas id="cv"></canvas>
+<div class="vals" id="info"></div>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function getVals(){
+  return {
+    Tamb: +document.getElementById('Tamb').value,
+    Rs: +document.getElementById('Rs').value,
+    theta: +document.getElementById('theta').value,
+    Vsup: +document.getElementById('Vsup').value
+  };
+}
+
+function calcLED(Tamb, Rs, Vsup, theta){
+  // Iterative: find steady-state operating point
+  let VF = 2.0, I = 0, Tj = Tamb;
+  for(let iter=0;iter<50;iter++){
+    VF = 2.0 - (Tj - 20) * 0.002;
+    if(VF < 0.2) VF = 0.2;
+    I = (Vsup - VF) / Rs;
+    if(I < 0) I = 0;
+    // IS effect: I_S doubles per 10°C above 25°C
+    let Is_mult = Math.pow(2, (Tj-25)/10);
+    // Effective current elevated by IS shift
+    let delta_VF = -(Tj - 20)*0.002;
+    let I_eff = I * Math.min(Is_mult * 0.02 + 1, 4); // simplified IS contribution
+    let P = VF * I_eff;
+    let Tj_new = Tamb + P * theta;
+    if(Math.abs(Tj_new - Tj) < 0.01) { Tj = Tj_new; I = I_eff; break; }
+    Tj = Tj_new * 0.5 + Tj * 0.5;
+  }
+  return {VF, I, Tj};
+}
+
+function resizeCanvas(){
+  const w = cv.parentElement.getBoundingClientRect().width || 480;
+  cv.width = Math.round(w);
+  cv.height = Math.round(w * 0.55);
+}
+
+function draw(){
+  resizeCanvas();
+  const W = cv.width, H = cv.height;
+  const {Tamb, Rs, theta, Vsup} = getVals();
+  ctx.clearRect(0,0,W,H);
+
+  // Background
+  const isDark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+  ctx.fillStyle = isDark ? '#1a1a2e' : '#f8f8f8';
+  ctx.fillRect(0,0,W,H);
+
+  const padL=60, padR=20, padT=30, padB=50;
+  const gW = W-padL-padR, gH = H-padT-padB;
+
+  // I-V curve of LED at different temperatures
+  const temps = [20, 40, 60, 85, 100];
+  const colors = ['#2196f3','#4caf50','#ff9800','#e53935','#9c27b0'];
+
+  // Draw axes
+  ctx.strokeStyle = '#888'; ctx.lineWidth=1;
+  ctx.beginPath();
+  ctx.moveTo(padL, padT); ctx.lineTo(padL, padT+gH); ctx.lineTo(padL+gW, padT+gH);
+  ctx.stroke();
+
+  // Axis labels
+  ctx.fillStyle = isDark?'#ccc':'#444'; ctx.font='11px Arial';
+  ctx.fillText('I_LED (mA)', 2, padT+gH/2);
+  ctx.fillText('V_LED (V)', padL+gW/2-20, H-5);
+
+  // Scale: V 0-3V, I 0-60mA
+  const Vmax=3, Imax=60;
+  function xp(v){ return padL + (v/Vmax)*gW; }
+  function yp(i){ return padT + gH - (i/Imax)*gH; }
+
+  // Grid
+  ctx.strokeStyle='#3334'; ctx.lineWidth=0.5;
+  for(let v=0;v<=3;v+=0.5){ ctx.beginPath(); ctx.moveTo(xp(v),padT); ctx.lineTo(xp(v),padT+gH); ctx.stroke(); }
+  for(let i=0;i<=60;i+=10){ ctx.beginPath(); ctx.moveTo(padL,yp(i)); ctx.lineTo(padL+gW,yp(i)); ctx.stroke(); }
+
+  // Tick labels
+  ctx.fillStyle=isDark?'#aaa':'#555'; ctx.font='10px Arial';
+  for(let v=0;v<=3;v+=0.5){ ctx.fillText(v.toFixed(1), xp(v)-8, padT+gH+13); }
+  for(let i=0;i<=60;i+=10){ ctx.fillText(i, padL-28, yp(i)+4); }
+
+  // Draw I-V curves
+  temps.forEach((T,ti)=>{
+    ctx.strokeStyle = colors[ti]; ctx.lineWidth=2;
+    ctx.beginPath();
+    let first=true;
+    for(let v=1.0; v<=2.8; v+=0.01){
+      let VF_ref = 2.0 - (T-20)*0.002;
+      let Is0 = 1e-12;
+      let Is_T = Is0 * Math.pow(2,(T-25)/10);
+      let n=2, Vt=0.026*(1+T/300);
+      let i = Is_T * (Math.exp(v/(n*Vt))-1) * 1000; // mA
+      i = Math.min(i, Imax);
+      if(first){ ctx.moveTo(xp(v),yp(i)); first=false; }
+      else ctx.lineTo(xp(v),yp(i));
+    }
+    ctx.stroke();
+    // Label
+    ctx.fillStyle=colors[ti]; ctx.font='10px Arial';
+    let labelV = 2.6 - ti*0.05;
+    let VF_ref = 2.0-(T-20)*0.002;
+    let Is0=1e-12, Is_T=Is0*Math.pow(2,(T-25)/10), n=2, Vt=0.026*(1+T/300);
+    let labelI = Math.min(Is_T*(Math.exp(labelV/(n*Vt))-1)*1000, Imax-2);
+    ctx.fillText(T+'°C', xp(labelV)+3, yp(labelI)-2);
+  });
+
+  // Load line: I = (Vsup-V)/Rs
+  ctx.strokeStyle='#ffd700'; ctx.lineWidth=2; ctx.setLineDash([6,3]);
+  ctx.beginPath();
+  ctx.moveTo(xp(0), yp(Vsup/Rs*1000));
+  ctx.lineTo(xp(Math.min(Vsup, Vmax)), yp(0));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#ffd700'; ctx.font='11px Arial';
+  ctx.fillText('Load line (R='+Rs+'Ω)', xp(0.1), yp(Vsup/Rs*1000)-5);
+
+  // Q-points
+  temps.forEach((T,ti)=>{
+    let Is0=1e-12, Is_T=Is0*Math.pow(2,(T-25)/10), n=2, Vt=0.026*(1+T/300);
+    // solve V where Is_T*(exp(V/(n*Vt))-1)*1000 = (Vsup-V)/Rs*1000
+    let best_v=1.5, best_err=1e9;
+    for(let v=1.0;v<=2.8;v+=0.001){
+      let id = Is_T*(Math.exp(v/(n*Vt))-1)*1000;
+      let il = (Vsup-v)/Rs*1000;
+      let err=Math.abs(id-il);
+      if(err<best_err){best_err=err;best_v=v;}
+    }
+    let Iq = (Vsup-best_v)/Rs*1000;
+    if(Iq>0 && Iq<Imax){
+      ctx.beginPath();
+      ctx.arc(xp(best_v), yp(Iq), 5, 0, 2*Math.PI);
+      ctx.fillStyle = colors[ti];
+      ctx.fill();
+    }
+  });
+
+  // Legend
+  const {VF,I,Tj} = calcLED(Tamb, Rs, Vsup, theta);
+  const safe = I*1000 < 30;
+  document.getElementById('info').innerHTML =
+    `T_ambient = <span>${Tamb}</span> °C &nbsp;|&nbsp; ` +
+    `T_junction = <span>${Tj.toFixed(1)}</span> °C &nbsp;|&nbsp; ` +
+    `V_F = <span>${VF.toFixed(3)}</span> V &nbsp;|&nbsp; ` +
+    `I_LED = <span class="${I*1000>30?'warn':''}">${(I*1000).toFixed(1)}</span> mA &nbsp;|&nbsp; ` +
+    `P_LED = <span>${(VF*I*1000).toFixed(1)}</span> mW &nbsp;|&nbsp; ` +
+    `<b class="${safe?'':'warn'}">${safe?'✓ Safe':'⚠ Thermal Risk!'}</b>`;
+
+  // Title
+  ctx.fillStyle=isDark?'#e0e0e0':'#222'; ctx.font='bold 12px Arial';
+  ctx.fillText('LED I-V curves at different temperatures + load line (yellow)', padL+2, padT-8);
+}
+
+['Tamb','Rs','theta','Vsup'].forEach(id=>{
+  const el=document.getElementById(id);
+  const val=document.getElementById(id+'V');
+  el.addEventListener('input',()=>{
+    val.textContent = id==='Vsup'?parseFloat(el.value).toFixed(1):el.value;
+    draw();
+  });
+});
+
+window.addEventListener('resize', ()=>draw());
+resizeCanvas(); draw();
+</script>
+</body>
+</html>

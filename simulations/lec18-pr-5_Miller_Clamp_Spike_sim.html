@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 18 Pr 5 — Miller Turn-On Spike</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  h1 { font-size:18px; margin-bottom:12px; border-bottom:2px solid var(--accent); padding-bottom:8px; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; display:flex; justify-content:space-between; margin-bottom:4px; }
+  .val { color:var(--accent); font-family:monospace; font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .info { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.2); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.6; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<h1>Pr 5 — Miller Turn-On: V_GS Spike vs dV/dt and R_GS</h1>
+<div class="layout">
+  <canvas id="cv" height="380"></canvas>
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>C_GD (pF) <span class="val" id="v-cgd">30</span></label>
+      <input type="range" id="cgd" min="5" max="200" value="30" step="5">
+    </div>
+    <div class="ctrl-group">
+      <label>dV/dt (V/ns) <span class="val" id="v-dvdt">20</span></label>
+      <input type="range" id="dvdt" min="1" max="50" value="20" step="1">
+    </div>
+    <div class="ctrl-group">
+      <label>R_GS (Ω) <span class="val" id="v-rgs">10000</span></label>
+      <input type="range" id="rgs" min="10" max="20000" value="10000" step="100">
+    </div>
+    <div class="info" id="info">Adjust to see spike amplitude.</div>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function resizeCanvas() {
+  cv.width = cv.parentElement.getBoundingClientRect().width || 600;
+  cv.height = 380;
+}
+
+function draw() {
+  resizeCanvas();
+  const W = cv.width, H = cv.height;
+  const dark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const bg = dark ? '#1a1a1a' : '#ffffff';
+  const fg = dark ? '#e8e8e8' : '#1a1a1a';
+  const gridC = dark ? '#333' : '#eee';
+
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const Cgd = +document.getElementById('cgd').value * 1e-12;
+  const dvdt = +document.getElementById('dvdt').value * 1e9; // V/s
+  const Rgs = +document.getElementById('rgs').value;
+
+  document.getElementById('v-cgd').textContent = (Cgd*1e12).toFixed(0) + ' pF';
+  document.getElementById('v-dvdt').textContent = (dvdt/1e9).toFixed(0) + ' V/ns';
+  document.getElementById('v-rgs').textContent = Rgs.toFixed(0) + ' Ω';
+
+  // Spike = C_GD * dV/dt * R_GS
+  const V_spike = Cgd * dvdt * Rgs;
+  const V_th = 3; // typical threshold
+
+  const pad = { l: 60, r: 20, t: 40, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  // Show V_spike vs R_GS sweep
+  const xMin = 10, xMax = 20000;
+  const logXMin = Math.log10(xMin), logXMax = Math.log10(xMax);
+  const yMin = 0, yMax = 30;
+
+  ctx.strokeStyle = gridC; ctx.lineWidth = 1;
+  for (let v = 0; v <= 30; v += 5) {
+    const y = pad.t + ph * (1 - v / 30);
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '11px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(v + ' V', pad.l - 4, y + 4);
+  }
+  [10,100,1000,10000].forEach(r => {
+    const x = pad.l + pw * (Math.log10(r) - logXMin) / (logXMax - logXMin);
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    const lbl = r >= 1000 ? (r/1000) + 'kΩ' : r + 'Ω';
+    ctx.fillText(lbl, x, pad.t + ph + 18);
+  });
+
+  ctx.fillStyle = fg; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('R_GS Gate-Source Resistance (Ω)', pad.l + pw / 2, H - 6);
+  ctx.save(); ctx.translate(14, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('V_GS Spike (V)', 0, 0); ctx.restore();
+
+  // Plot spike curve
+  ctx.beginPath();
+  ctx.strokeStyle = '#e53935';
+  ctx.lineWidth = 2.5;
+  let first = true;
+  for (let i = 0; i <= 300; i++) {
+    const lR = logXMin + (logXMax - logXMin) * i / 300;
+    const R = Math.pow(10, lR);
+    const spike = Math.min(yMax, Cgd * dvdt * R);
+    const x = pad.l + pw * (lR - logXMin) / (logXMax - logXMin);
+    const y = pad.t + ph * (1 - spike / yMax);
+    if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // V_th line
+  const vthY = pad.t + ph * (1 - V_th / yMax);
+  ctx.setLineDash([5, 5]);
+  ctx.strokeStyle = '#ff6f00'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pad.l, vthY); ctx.lineTo(pad.l + pw, vthY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#ff6f00'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('V_th = 3V (shoot-through threshold)', pad.l + 4, vthY - 4);
+
+  // Mark current R_GS
+  const curX = pad.l + pw * (Math.log10(Rgs) - logXMin) / (logXMax - logXMin);
+  const curY = pad.t + ph * (1 - Math.min(yMax, V_spike) / yMax);
+  ctx.beginPath();
+  ctx.arc(curX, curY, 7, 0, Math.PI * 2);
+  ctx.fillStyle = V_spike >= V_th ? '#e53935' : '#43a047';
+  ctx.fill();
+
+  ctx.fillStyle = fg; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('V_spike = C_GD × dV/dt × R_GS', pad.l, pad.t - 10);
+
+  const status = V_spike >= V_th ? '⚠ SHOOT-THROUGH RISK!' : '✓ Safe — spike below V_th';
+  document.getElementById('info').innerHTML =
+    `<b>V_spike = ${V_spike.toFixed(2)} V</b><br>` +
+    `C_GD = ${(Cgd*1e12).toFixed(0)} pF<br>` +
+    `dV/dt = ${(dvdt/1e9).toFixed(0)} V/ns<br>` +
+    `R_GS = ${Rgs} Ω<br>` +
+    `V_th = ${V_th} V<br>` +
+    `<b>${status}</b><br>` +
+    `Fix: reduce R_GS to < ${(V_th / (Cgd * dvdt)).toFixed(0)} Ω`;
+}
+
+['cgd','dvdt','rgs'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+window.addEventListener('resize', draw);
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scenario 11 — RS-232 Long Cable Termination</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  header { border-bottom:2px solid var(--accent); padding-bottom:10px; margin-bottom:16px; }
+  .module-id { font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:1px; }
+  h1 { font-size:18px; margin:4px 0; }
+  .layout { display:grid; grid-template-columns:1fr 280px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; background:var(--surface); width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  .ctrl-label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px; display:flex; justify-content:space-between; }
+  .ctrl-value { color:var(--accent); font-size:13px; font-weight:700; font-family:monospace; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .result-box { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.25); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.5; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 12 | Scenario 11</div>
+  <h1>RS-232 Long Cable — Edge Degradation &amp; Series Termination</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">Cable Length (m) <span class="ctrl-value" id="p1-val">10</span></div>
+      <input type="range" id="p1" min="1" max="30" value="10">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Baud Rate <span class="ctrl-value" id="p2-val">115200</span></div>
+      <input type="range" id="p2" min="0" max="3" step="1" value="2">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Series R (Ω) <span class="ctrl-value" id="p3-val">0</span></div>
+      <input type="range" id="p3" min="0" max="200" value="0">
+    </div>
+    <div class="result-box" id="result">Adjust parameters</div>
+  </div>
+</div>
+<script>
+const canvas = document.getElementById('cv');
+const ctx = canvas.getContext('2d');
+const bauds=[9600,38400,115200,230400];
+function isDark(){return window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches;}
+
+function draw(){
+  const len=+document.getElementById('p1').value;
+  const baudIdx=+document.getElementById('p2').value;
+  const Rs=+document.getElementById('p3').value;
+  const baud=bauds[baudIdx];
+  document.getElementById('p1-val').textContent=len+' m';
+  document.getElementById('p2-val').textContent=baud.toLocaleString()+' baud';
+  document.getElementById('p3-val').textContent=Rs+' Ω';
+
+  const C_per_m=100e-12, L_per_m=500e-9;
+  const C_total=C_per_m*len;
+  const R_src=Rs+5; // driver output impedance
+  const tau_rc=R_src*C_total;
+  const bit_period=1/baud;
+  const rise_time=2.2*tau_rc;
+  const bit_ok=rise_time<bit_period*0.7;
+
+  canvas.width=canvas.parentElement.getBoundingClientRect().width||600;
+  canvas.height=380;
+  const W=canvas.width,H=canvas.height;
+  const dark=isDark();
+  const bg=dark?'#2a2a2a':'#f5f5f5';
+  const fg=dark?'#e8e8e8':'#1a1a1a';
+  const ac=dark?'#4499ff':'#0066cc';
+  const gr=dark?'#444':'#ddd';
+  const red='#e53935',grn='#43a047',orange='#ff9800';
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=fg;ctx.font='bold 13px system-ui';ctx.textAlign='center';
+  ctx.fillText('RS-232 Signal at Receiver — Bit Pattern "10110100"',W/2,22);
+
+  const mx=50,my=40,mw=W-70,mh=H-100;
+  const bits=[1,0,1,1,0,1,0,0];
+  const totalT=bits.length*bit_period*1e6; // µs
+  const toX=t=>mx+mw*t/totalT;
+  const toY=v=>my+mh*(1-v);
+
+  ctx.strokeStyle=gr;ctx.lineWidth=1;
+  [0,0.5,1].forEach(v=>{
+    const y=toY(v);
+    ctx.beginPath();ctx.moveTo(mx,y);ctx.lineTo(mx+mw,y);ctx.stroke();
+    ctx.fillStyle=fg;ctx.font='10px system-ui';ctx.textAlign='right';
+    ctx.fillText(v===0?'0V':v===1?'5V':'2.5V',mx-3,y+4);
+  });
+
+  // Threshold at 1.5V
+  ctx.strokeStyle=orange;ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(mx,toY(0.3));ctx.lineTo(mx+mw,toY(0.3));ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=orange;ctx.font='10px system-ui';ctx.textAlign='left';
+  ctx.fillText('Threshold',mx+4,toY(0.3)-3);
+
+  // Ideal signal
+  ctx.strokeStyle=grn;ctx.lineWidth=1.5;ctx.globalAlpha=0.4;
+  ctx.beginPath();
+  bits.forEach((b,i)=>{
+    const t0=i*bit_period*1e6;
+    const t1=(i+1)*bit_period*1e6;
+    const y=toY(b);
+    if(i===0)ctx.moveTo(toX(t0),y);
+    ctx.lineTo(toX(t0),y);ctx.lineTo(toX(t1),y);
+  });
+  ctx.stroke();ctx.globalAlpha=1;
+
+  // RC-filtered signal
+  const dt=totalT/500;
+  let v=0;
+  const bitAt=t=>bits[Math.min(bits.length-1,Math.floor(t/bit_period/1e6))];
+  ctx.strokeStyle=bit_ok?ac:red;ctx.lineWidth=2.5;
+  ctx.beginPath();
+  let errors=0;
+  for(let i=0;i<=500;i++){
+    const t=i/500*totalT;
+    const target=bitAt(t);
+    v=v+(target-v)*(1-Math.exp(-dt/Math.max(0.001,tau_rc*1e6)));
+    const x=toX(t);const y=toY(Math.max(0,Math.min(1,v)));
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    // Sample near center of each bit
+    const bitIdx=Math.floor(t/bit_period/1e6);
+    const bitCenter=(bitIdx+0.5)*bit_period*1e6;
+    if(Math.abs(t-bitCenter)<dt){
+      const expected=bits[Math.min(bits.length-1,bitIdx)];
+      const sampled=v>0.3?1:0;
+      if(sampled!==expected)errors++;
+    }
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle=fg;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx,my+mh);ctx.lineTo(mx+mw,my+mh);ctx.stroke();
+
+  ctx.font='10px system-ui';ctx.textAlign='left';
+  ctx.fillStyle=grn;ctx.fillRect(mx,my+mh+28,12,2);
+  ctx.fillStyle=fg;ctx.fillText('Ideal',mx+16,my+mh+33);
+  ctx.fillStyle=bit_ok?ac:red;ctx.fillRect(mx+60,my+mh+28,12,2);
+  ctx.fillStyle=fg;ctx.fillText('After '+len+'m cable',mx+76,my+mh+33);
+
+  document.getElementById('result').innerHTML=
+    `<b>${baud.toLocaleString()} baud, ${len}m cable</b><br>`+
+    `Cable C = ${(C_total*1e12).toFixed(0)} pF, R_src = ${R_src} Ω<br>`+
+    `Rise time τ×2.2 = ${(rise_time*1e6).toFixed(2)} µs<br>`+
+    `Bit period = ${(bit_period*1e6).toFixed(2)} µs<br>`+
+    (bit_ok?'<span style="color:green">✓ Signal OK — bits readable</span>':
+     '<span style="color:red">⚠ ISI — bits smearing. Reduce baud or add termination R</span>');
+}
+
+['p1','p2','p3'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>draw());
+draw();
+</script>
+</body>
+</html>

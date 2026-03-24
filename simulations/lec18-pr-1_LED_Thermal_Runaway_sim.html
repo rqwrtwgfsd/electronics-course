@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 18 Pr 1 — LED Thermal Runaway</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  h1 { font-size:18px; margin-bottom:12px; border-bottom:2px solid var(--accent); padding-bottom:8px; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; display:flex; justify-content:space-between; margin-bottom:4px; }
+  .val { color:var(--accent); font-family:monospace; font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .info { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.2); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.6; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<h1>Pr 1 — LED Thermal Runaway: I vs Temperature</h1>
+<div class="layout">
+  <canvas id="cv" height="380"></canvas>
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>Ambient Temp (°C) <span class="val" id="v-tamb">85</span></label>
+      <input type="range" id="tamb" min="20" max="120" value="85" step="5">
+    </div>
+    <div class="ctrl-group">
+      <label>Series R (Ω) <span class="val" id="v-r">150</span></label>
+      <input type="range" id="rval" min="50" max="500" value="150" step="10">
+    </div>
+    <div class="ctrl-group">
+      <label>θ_ja (°C/W) <span class="val" id="v-theta">200</span></label>
+      <input type="range" id="theta" min="50" max="400" value="200" step="10">
+    </div>
+    <div class="info" id="info">Adjust parameters to see thermal runaway.</div>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function resizeCanvas() {
+  cv.width = cv.parentElement.getBoundingClientRect().width || 600;
+  cv.height = 380;
+}
+
+function ledCurrent(T_amb, R, theta_ja) {
+  // Iterative solution: T_j = T_amb + P*theta, P = Vf*I, I = (5-Vf)/R
+  // Vf(T) = 2.0 - 0.002*(T-20)
+  let T_j = T_amb;
+  for (let iter = 0; iter < 50; iter++) {
+    const Vf = 2.0 - 0.002 * (T_j - 20);
+    const I = Math.max(0, (5 - Vf) / R);
+    const P = Vf * I;
+    T_j = T_amb + P * theta_ja;
+  }
+  const Vf = 2.0 - 0.002 * (T_j - 20);
+  const I = Math.max(0, (5 - Vf) / R) * 1000; // mA
+  return { I, T_j, Vf: Vf };
+}
+
+function draw() {
+  resizeCanvas();
+  const W = cv.width, H = cv.height;
+  const dark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const bg = dark ? '#1a1a1a' : '#ffffff';
+  const fg = dark ? '#e8e8e8' : '#1a1a1a';
+  const gridC = dark ? '#333' : '#eee';
+
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const T_amb = +document.getElementById('tamb').value;
+  const R = +document.getElementById('rval').value;
+  const theta = +document.getElementById('theta').value;
+
+  document.getElementById('v-tamb').textContent = T_amb + ' °C';
+  document.getElementById('v-r').textContent = R + ' Ω';
+  document.getElementById('v-theta').textContent = theta + ' °C/W';
+
+  const pad = { l: 60, r: 20, t: 30, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  // Draw I vs Tamb curve from 20 to 120°C
+  const temps = [];
+  const currents = [];
+  for (let t = 20; t <= 120; t += 1) {
+    const res = ledCurrent(t, R, theta);
+    temps.push(t);
+    currents.push(res.I);
+  }
+  const maxI = Math.max(40, ...currents);
+
+  // Grid
+  ctx.strokeStyle = gridC;
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + ph * i / 4;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '11px monospace'; ctx.textAlign = 'right';
+    ctx.fillText((maxI * (4 - i) / 4).toFixed(0) + ' mA', pad.l - 4, y + 4);
+  }
+  for (let i = 0; i <= 5; i++) {
+    const x = pad.l + pw * i / 5;
+    const t = 20 + 100 * i / 5;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '11px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(t.toFixed(0) + '°C', x, pad.t + ph + 18);
+  }
+
+  // Axes labels
+  ctx.fillStyle = fg; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Ambient Temperature (°C)', pad.l + pw / 2, H - 6);
+  ctx.save(); ctx.translate(14, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('LED Current (mA)', 0, 0); ctx.restore();
+
+  // Plot curve
+  ctx.beginPath();
+  ctx.strokeStyle = '#e53935';
+  ctx.lineWidth = 2.5;
+  for (let i = 0; i < temps.length; i++) {
+    const x = pad.l + (temps[i] - 20) / 100 * pw;
+    const y = pad.t + ph - (currents[i] / maxI) * ph;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Mark current ambient point
+  const cur = ledCurrent(T_amb, R, theta);
+  const px = pad.l + (T_amb - 20) / 100 * pw;
+  const py = pad.t + ph - (cur.I / maxI) * ph;
+  ctx.beginPath();
+  ctx.arc(px, py, 6, 0, Math.PI * 2);
+  ctx.fillStyle = '#f57f17';
+  ctx.fill();
+
+  // Safe limit line (20mA)
+  const safeY = pad.t + ph - (20 / maxI) * ph;
+  ctx.setLineDash([5, 5]);
+  ctx.strokeStyle = '#43a047';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(pad.l, safeY); ctx.lineTo(pad.l + pw, safeY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#43a047'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('20 mA safe limit', pad.l + 4, safeY - 4);
+
+  // Title
+  ctx.fillStyle = fg; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('LED Current vs Temperature (V=5V, R=' + R + 'Ω)', pad.l, pad.t - 8);
+
+  // Info
+  const runaway = cur.I > 30 ? '⚠ Thermal runaway zone!' : cur.I > 22 ? '⚡ Elevated — monitor closely' : '✓ Safe operating region';
+  document.getElementById('info').innerHTML =
+    `<b>At T_amb = ${T_amb}°C:</b><br>` +
+    `V_F = ${cur.Vf.toFixed(3)} V<br>` +
+    `I_LED = ${cur.I.toFixed(1)} mA<br>` +
+    `T_junction ≈ ${(T_amb + cur.Vf * cur.I / 1000 * theta).toFixed(1)} °C<br>` +
+    `<b>${runaway}</b>`;
+}
+
+['tamb','rval','theta'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+window.addEventListener('resize', draw);
+draw();
+</script>
+</body>
+</html>

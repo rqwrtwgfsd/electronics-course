@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Scenario 12 — Hall Sensor PWM Noise Filter</title>
+<style>
+  :root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999;}}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto;}
+  header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px;}
+  .module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;}
+  h1{font-size:18px;margin:4px 0;}
+  .layout{display:grid;grid-template-columns:1fr 280px;gap:16px;}
+  canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%;}
+  .controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px;}
+  .ctrl-group{margin-bottom:12px;}
+  .ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;display:flex;justify-content:space-between;}
+  .ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace;}
+  input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer;}
+  .result-box{background:rgba(0,102,204,0.08);border:1px solid rgba(0,102,204,0.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.5;}
+  @media(max-width:600px){.layout{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<header>
+  <div class="module-id">Lecture 12 | Scenario 12</div>
+  <h1>Hall Sensor — PWM Noise Filtering</h1>
+</header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">R (kΩ) <span class="ctrl-value" id="p1-val">1.6</span></div>
+      <input type="range" id="p1" min="1" max="50" value="16">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">C (nF) <span class="ctrl-value" id="p2-val">100</span></div>
+      <input type="range" id="p2" min="10" max="1000" value="100">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">PWM Noise Level (%) <span class="ctrl-value" id="p3-val">30</span></div>
+      <input type="range" id="p3" min="5" max="80" value="30">
+    </div>
+    <div class="result-box" id="result">Adjust filter values</div>
+  </div>
+</div>
+<script>
+const canvas=document.getElementById('cv');
+const ctx=canvas.getContext('2d');
+function isDark(){return window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches;}
+function draw(){
+  const R=+document.getElementById('p1').value/10*1000; // Ω
+  const C=+document.getElementById('p2').value*1e-9; // F
+  const noiseLevel=+document.getElementById('p3').value/100;
+  document.getElementById('p1-val').textContent=(R/1000).toFixed(2)+' kΩ';
+  document.getElementById('p2-val').textContent=(C*1e9).toFixed(0)+' nF';
+  document.getElementById('p3-val').textContent=Math.round(noiseLevel*100)+'%';
+
+  const fc=1/(2*Math.PI*R*C);
+  const f_signal=100, f_noise=20000;
+  const atten_signal=1/Math.sqrt(1+Math.pow(f_signal/fc,2));
+  const atten_noise=1/Math.sqrt(1+Math.pow(f_noise/fc,2));
+
+  canvas.width=canvas.parentElement.getBoundingClientRect().width||600;
+  canvas.height=380;
+  const W=canvas.width,H=canvas.height;
+  const dark=isDark();
+  const bg=dark?'#2a2a2a':'#f5f5f5';
+  const fg=dark?'#e8e8e8':'#1a1a1a';
+  const ac=dark?'#4499ff':'#0066cc';
+  const gr=dark?'#444':'#ddd';
+  const red='#e53935',grn='#43a047',orange='#ff9800';
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=bg;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle=fg;ctx.font='bold 13px system-ui';ctx.textAlign='center';
+  ctx.fillText('Hall Sensor Signal — Current Reading with PWM Noise',W/2,22);
+
+  const mx=55,my=40,mw=W-75,mh=(H-110)/2;
+  const totalT=20; // ms (2 cycles of 100Hz signal)
+  const row1Y=my,row2Y=my+mh+25;
+  const toX=t=>mx+mw*t/totalT;
+  const toY1=v=>row1Y+mh*(1-v);
+  const toY2=v=>row2Y+mh*(1-v);
+
+  // Labels
+  ctx.fillStyle=fg;ctx.font='11px system-ui';ctx.textAlign='left';
+  ctx.fillText('Sensor output (with PWM noise)',mx+4,row1Y+14);
+  ctx.fillText('After RC filter (fc='+fc.toFixed(0)+'Hz)',mx+4,row2Y+14);
+
+  [row1Y,row1Y+mh,row2Y,row2Y+mh].forEach(y=>{
+    ctx.strokeStyle=gr;ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(mx,y);ctx.lineTo(mx+mw,y);ctx.stroke();
+  });
+
+  // Raw signal: slow 100Hz + 20kHz noise
+  const signal=t=>0.3+0.3*Math.sin(2*Math.PI*100*t/1000)+noiseLevel*0.3*Math.sin(2*Math.PI*20000*t/1000+0.5);
+  ctx.strokeStyle=red;ctx.lineWidth=2;
+  ctx.beginPath();
+  for(let i=0;i<=500;i++){
+    const t=i/500*totalT;
+    const v=Math.max(0,Math.min(1,signal(t)));
+    i===0?ctx.moveTo(toX(t),toY1(v)):ctx.lineTo(toX(t),toY1(v));
+  }
+  ctx.stroke();
+
+  // RC filtered
+  const dt=totalT/500;
+  let v=0.5;
+  ctx.strokeStyle=grn;ctx.lineWidth=2.5;
+  ctx.beginPath();
+  for(let i=0;i<=500;i++){
+    const t=i/500*totalT;
+    const s=signal(t);
+    v=v+(s-v)*(1-Math.exp(-dt/(R*C*1000)));
+    i===0?ctx.moveTo(toX(t),toY2(Math.max(0,Math.min(1,v)))):ctx.lineTo(toX(t),toY2(Math.max(0,Math.min(1,v))));
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle=fg;ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx,row1Y);ctx.lineTo(mx,row1Y+mh);ctx.lineTo(mx+mw,row1Y+mh);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(mx,row2Y);ctx.lineTo(mx,row2Y+mh);ctx.lineTo(mx+mw,row2Y+mh);ctx.stroke();
+
+  const noiseAtADC=noiseLevel*0.3*atten_noise;
+  const adcErr=noiseAtADC/2.5*100;
+  document.getElementById('result').innerHTML=
+    `<b>f_c = ${fc.toFixed(0)} Hz</b><br>`+
+    `Signal (100Hz) attenuation: ${(20*Math.log10(atten_signal)).toFixed(1)} dB (${(atten_signal*100).toFixed(0)}% passes)<br>`+
+    `Noise (20kHz) attenuation: ${(20*Math.log10(atten_noise)).toFixed(1)} dB (${(atten_noise*100).toFixed(0)}% passes)<br>`+
+    `Residual noise at ADC: ±${(adcErr).toFixed(1)}% of range<br>`+
+    (adcErr<1?'<span style="color:green">✓ Noise below 1% — ADC accurate</span>':
+     '<span style="color:red">⚠ Noise too high — reduce R or increase C</span>');
+}
+['p1','p2','p3'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>draw());
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sim: Switcher Failure — Diode Recovery Current</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Arial,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:12px;}
+canvas{display:block;border:1px solid #444;border-radius:6px;background:#0d0d1a;}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0;}
+.ctrl{display:flex;flex-direction:column;gap:3px;font-size:12px;}
+label{color:#aaa;}
+input[type=range]{width:140px;}
+.vals{display:flex;gap:20px;flex-wrap:wrap;font-size:12px;color:#ccc;margin:6px 0;}
+.val-item{background:#222;border-radius:4px;padding:4px 8px;}
+h3{font-size:13px;color:#90caf9;margin-bottom:6px;}
+@media(prefers-color-scheme:light){body{background:#f5f5f5;color:#111;}canvas{background:#fff;border-color:#ccc;}.val-item{background:#eee;color:#222;}label{color:#555;}h3{color:#005a9c;}}
+</style>
+</head>
+<body>
+<h3>Problem 1 — MOSFET Switcher: Reverse Recovery Failure</h3>
+<p style="font-size:11px;color:#aaa;margin-bottom:8px;">Shows drain current spike during diode reverse recovery. Energy per cycle × cycles/6 hours → fatigue failure.</p>
+<canvas id="cv"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>Switching freq (Hz)</label><input type="range" id="freq" min="100" max="20000" value="1000" step="100"><span id="freqV">1000</span></div>
+  <div class="ctrl"><label>Diode t_rr (µs)</label><input type="range" id="trr" min="0.015" max="30" value="30" step="0.5"><span id="trrV">30.0</span></div>
+  <div class="ctrl"><label>V_supply (V)</label><input type="range" id="vsup" min="5" max="48" value="24" step="1"><span id="vsupV">24</span></div>
+  <div class="ctrl"><label>R_wiring (Ω)</label><input type="range" id="rwire" min="0.1" max="5" value="1" step="0.1"><span id="rwireV">1.0</span></div>
+</div>
+<div class="vals">
+  <div class="val-item">I_spike: <strong id="ispike">-</strong></div>
+  <div class="val-item">E/cycle: <strong id="ecycle">-</strong></div>
+  <div class="val-item">P_extra: <strong id="pextra">-</strong></div>
+  <div class="val-item">Cycles to 6h: <strong id="cyc6h">-</strong></div>
+  <div class="val-item">Diode type: <strong id="dtype">-</strong></div>
+</div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+function resizeCanvas(){
+  const w=cv.parentElement.getBoundingClientRect().width;
+  cv.width=Math.min(w-24,700);
+  cv.height=Math.round(cv.width*0.42);
+}
+function get(id){return parseFloat(document.getElementById(id).value);}
+function setLbl(id,val){document.getElementById(id).textContent=val;}
+function draw(){
+  const W=cv.width,H=cv.height;
+  const freq=get('freq'),trr=get('trr')*1e-6,vsup=get('vsup'),rwire=get('rwire');
+  setLbl('freqV',freq);setLbl('trrV',get('trr').toFixed(1));setLbl('vsupV',vsup);setLbl('rwireV',rwire.toFixed(1));
+  const T=1/freq; // period in seconds
+  const ispike=vsup/rwire;
+  const ecycle=0.5*vsup*ispike*trr;
+  const pextra=ecycle*freq;
+  const cyc6h=6*3600*freq;
+  document.getElementById('ispike').textContent=ispike.toFixed(1)+'A';
+  document.getElementById('ecycle').textContent=(ecycle*1000).toFixed(2)+'mJ';
+  document.getElementById('pextra').textContent=pextra.toFixed(2)+'W';
+  document.getElementById('cyc6h').textContent=(cyc6h/1e6).toFixed(1)+'M';
+  const dtype=trr<0.1?'Schottky (safe)':trr<1?'Fast recovery':trr<10?'Marginal (UF4007)':'1N4007 (DANGER)';
+  document.getElementById('dtype').textContent=dtype;
+  ctx.clearRect(0,0,W,H);
+  const pad={l:55,r:20,t:28,b:40};
+  const pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  // Draw axes
+  ctx.strokeStyle='#555';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,H-pad.b);ctx.lineTo(W-pad.r,H-pad.b);ctx.stroke();
+  // Draw grid
+  ctx.strokeStyle='#1e1e3a';ctx.lineWidth=0.5;
+  for(let i=1;i<=4;i++){
+    const y=pad.t+ph*i/4;
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(W-pad.r,y);ctx.stroke();
+  }
+  // Waveform: show one full period of drain current
+  // Normal current: inductor current (steady ~1.2A for 24V/10ohm * 0.5 duty)
+  const I_normal=vsup/10*0.5;
+  const I_max=ispike*1.2;
+  function px(t_frac){return pad.l+t_frac*pw;}
+  function py(I){return H-pad.b-Math.max(0,Math.min(1,I/I_max))*ph;}
+  // Red: with slow diode (trr=current setting)
+  const t_on=0.5; // 50% duty fraction
+  const t_rr_frac=trr/T;
+  ctx.beginPath();ctx.strokeStyle='#ff5555';ctx.lineWidth=2;
+  ctx.moveTo(px(0),py(I_normal));
+  // from 0 to 50% duty: MOSFET OFF, inductor freewheeling through diode
+  ctx.lineTo(px(t_on-0.01),py(I_normal));
+  // Turn on event: spike
+  ctx.lineTo(px(t_on),py(ispike));
+  ctx.lineTo(px(t_on+t_rr_frac),py(I_normal));
+  ctx.lineTo(px(0.99),py(I_normal));
+  ctx.lineTo(px(1.0),py(I_normal));
+  ctx.stroke();
+  // Green: ideal Schottky (trr~0)
+  ctx.beginPath();ctx.strokeStyle='#55ff88';ctx.lineWidth=1.5;ctx.setLineDash([5,3]);
+  ctx.moveTo(px(0),py(I_normal));
+  ctx.lineTo(px(t_on-0.005),py(I_normal));
+  ctx.lineTo(px(t_on),py(I_normal*1.05)); // tiny spike
+  ctx.lineTo(px(t_on+0.005),py(I_normal));
+  ctx.lineTo(px(1.0),py(I_normal));
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // Labels
+  ctx.fillStyle='#aaa';ctx.font='11px Arial';
+  ctx.fillText('I_D (A)',4,pad.t+5);
+  ctx.fillText('0',pad.l-14,H-pad.b+4);
+  ctx.fillText(I_max.toFixed(0),pad.l-26,pad.t+10);
+  ctx.fillText('Time (1 period)',W/2-30,H-5);
+  // Annotation
+  ctx.fillStyle='#ff5555';ctx.font='10px Arial';
+  ctx.fillText('▲ Slow diode spike',px(t_on)+4,py(ispike)-4);
+  ctx.fillStyle='#55ff88';ctx.font='10px Arial';
+  ctx.fillText('Schottky (safe)',px(0.6),py(I_normal)-12);
+  // Title
+  ctx.fillStyle='#90caf9';ctx.font='bold 11px Arial';
+  ctx.fillText(`V=${vsup}V  f=${freq}Hz  t_rr=${(trr*1e6).toFixed(2)}µs`,pad.l+5,pad.t-8);
+  // SOA danger zone
+  if(pextra>1){
+    ctx.fillStyle='rgba(255,80,80,0.1)';
+    ctx.fillRect(px(t_on),pad.t,px(t_on+t_rr_frac)-px(t_on),ph);
+    ctx.fillStyle='#ff7777';ctx.font='9px Arial';
+    ctx.fillText('SOA stress zone',px(t_on)+2,pad.t+ph*0.4);
+  }
+}
+['freq','trr','vsup','rwire'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',()=>{resizeCanvas();draw();});
+resizeCanvas();draw();
+</script>
+</body>
+</html>

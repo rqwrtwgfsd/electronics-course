@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 13 Pr 3 — Two-Capacitor Charging Transient</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  header { border-bottom:2px solid var(--accent); padding-bottom:10px; margin-bottom:16px; }
+  h1 { font-size:18px; margin:4px 0; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  .ctrl-label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; margin-bottom:4px; display:flex; justify-content:space-between; }
+  .ctrl-value { color:var(--accent); font-size:13px; font-weight:700; font-family:monospace; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .result-box { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.25); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.7; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<header><h1>Lec 13 Pr 3 — Two-Cap Ladder: V_A(t) and V_B(t)</h1></header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group">
+      <div class="ctrl-label">R1=R2=R3 <span class="ctrl-value" id="vR">10 kΩ</span></div>
+      <input type="range" id="rval" min="1" max="100" step="1" value="10">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">C1=C2 <span class="ctrl-value" id="vC">100 µF</span></div>
+      <input type="range" id="cval" min="1" max="500" step="1" value="100">
+    </div>
+    <div class="ctrl-group">
+      <div class="ctrl-label">Time span <span class="ctrl-value" id="vSpan">3 τ</span></div>
+      <input type="range" id="span" min="1" max="5" step="0.5" value="3">
+    </div>
+    <div class="result-box" id="result">Adjust to explore charging</div>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function draw(){
+  cv.width  = cv.parentElement.getBoundingClientRect().width || 620;
+  cv.height = 380;
+  const W=cv.width, H=cv.height;
+  const txt = getComputedStyle(document.documentElement).getPropertyValue('--text').trim()||'#111';
+  const bg  = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim()||'#fff';
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
+
+  const R = +document.getElementById('rval').value * 1e3;
+  const C = +document.getElementById('cval').value * 1e-6;
+  const span = +document.getElementById('span').value;
+
+  document.getElementById('vR').textContent = (+document.getElementById('rval').value)+' kΩ';
+  document.getElementById('vC').textContent = (+document.getElementById('cval').value)+' µF';
+  document.getElementById('vSpan').textContent = span.toFixed(1)+' τ';
+
+  // Thevenin resistance seen by each cap: R∥(R+R) = R∥2R = 2R/3
+  const Rth = (2*R)/3;
+  const tau = Rth * C; // seconds
+
+  // Final voltages: V_A(∞)=10/3*2=10*2/3≈3.333V if supply=5V, R1=R2=R3
+  // Supply=5V, all equal R → V_A(∞)=5*(2/3)=3.333, V_B(∞)=5*(1/3)=1.667
+  const Vs=5;
+  const VA_inf = Vs*2/3;
+  const VB_inf = Vs*1/3;
+
+  const tMax = span * tau;
+  const pad={l:50,r:20,t:30,b:40};
+  const pw=W-pad.l-pad.r, ph=H-pad.t-pad.b;
+
+  // Grid
+  ctx.strokeStyle='rgba(128,128,128,0.15)'; ctx.lineWidth=1;
+  for(let v=0; v<=5; v++){
+    const y=pad.t+ph*(1-v/5);
+    ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(pad.l+pw,y); ctx.stroke();
+  }
+  for(let t=0; t<=span; t+=0.5){
+    const x=pad.l+pw*t/span;
+    ctx.beginPath(); ctx.moveTo(x,pad.t); ctx.lineTo(x,pad.t+ph); ctx.stroke();
+  }
+
+  // Axes labels
+  ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--muted').trim()||'#666';
+  ctx.font='10px system-ui'; ctx.textAlign='right';
+  for(let v=0;v<=5;v++){
+    const y=pad.t+ph*(1-v/5);
+    ctx.fillText(v+'V', pad.l-4, y+4);
+  }
+  ctx.textAlign='center';
+  for(let t=0; t<=span; t+=1){
+    const x=pad.l+pw*t/span;
+    ctx.fillText(t.toFixed(0)+'τ', x, pad.t+ph+14);
+  }
+  ctx.save(); ctx.translate(13,pad.t+ph/2); ctx.rotate(-Math.PI/2);
+  ctx.textAlign='center'; ctx.fillText('Voltage (V)', 0,0); ctx.restore();
+
+  // Plot VA(t)
+  function plotCurve(Vinf, color, lw){
+    ctx.beginPath(); ctx.strokeStyle=color; ctx.lineWidth=lw;
+    for(let ix=0; ix<=pw; ix++){
+      const t = (ix/pw)*tMax;
+      const v = Vinf*(1-Math.exp(-t/tau));
+      const x = pad.l+ix;
+      const y = pad.t+ph*(1-v/5);
+      ix===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+  }
+  plotCurve(VA_inf,'#0066cc',2.5);
+  plotCurve(VB_inf,'#e53935',2.5);
+
+  // Asymptote lines
+  ctx.setLineDash([6,4]); ctx.lineWidth=1;
+  ctx.strokeStyle='#0066cc88';
+  ctx.beginPath(); const yA=pad.t+ph*(1-VA_inf/5);
+  ctx.moveTo(pad.l,yA); ctx.lineTo(pad.l+pw,yA); ctx.stroke();
+  ctx.strokeStyle='#e5393588';
+  ctx.beginPath(); const yB=pad.t+ph*(1-VB_inf/5);
+  ctx.moveTo(pad.l,yB); ctx.lineTo(pad.l+pw,yB); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Labels
+  ctx.font='11px system-ui'; ctx.textAlign='left';
+  ctx.fillStyle='#0066cc'; ctx.fillText('V_A(t) → '+VA_inf.toFixed(3)+'V', pad.l+6, yA-6);
+  ctx.fillStyle='#e53935'; ctx.fillText('V_B(t) → '+VB_inf.toFixed(3)+'V', pad.l+6, yB+14);
+
+  // Tau marker
+  const x1tau = pad.l + pw*(1/span);
+  ctx.strokeStyle='rgba(128,128,128,0.5)'; ctx.lineWidth=1.5; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(x1tau,pad.t); ctx.lineTo(x1tau,pad.t+ph); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle=txt; ctx.font='10px system-ui'; ctx.textAlign='center';
+  ctx.fillText('τ', x1tau, pad.t+10);
+
+  // Result
+  const tau_ms = (tau*1000).toFixed(1);
+  document.getElementById('result').innerHTML =
+    `<b>Rth (seen by each C):</b> ${(Rth/1000).toFixed(2)} kΩ<br>` +
+    `<b>τ (both caps equal):</b> ${tau_ms} ms<br>` +
+    `<b>V_A(∞):</b> ${VA_inf.toFixed(3)} V &nbsp; <b>V_B(∞):</b> ${VB_inf.toFixed(3)} V<br>` +
+    `<b>Ratio V_A/V_B:</b> always 2.00 (by symmetry)<br>` +
+    `<b>At t=5ms:</b> V_A=${(VA_inf*(1-Math.exp(-5e-3/tau))).toFixed(4)}V`;
+}
+
+['rval','cval','span'].forEach(id=>document.getElementById(id).addEventListener('input',draw));
+window.addEventListener('resize',draw);
+draw();
+</script>
+</body>
+</html>

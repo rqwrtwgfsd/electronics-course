@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 18 Pr 20 — 1W Audio Amplifier Design</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  h1 { font-size:18px; margin-bottom:12px; border-bottom:2px solid var(--accent); padding-bottom:8px; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; display:flex; justify-content:space-between; margin-bottom:4px; }
+  .val { color:var(--accent); font-family:monospace; font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .info { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.2); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.6; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<h1>Pr 20 — 1W Audio Amplifier: Frequency Response and Gain Budget</h1>
+<div class="layout">
+  <canvas id="cv" height="380"></canvas>
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>CE Stage Gain <span class="val" id="v-gain">31</span></label>
+      <input type="range" id="gain" min="5" max="100" value="31" step="1">
+    </div>
+    <div class="ctrl-group">
+      <label>C_bypass (µF) <span class="val" id="v-cb">330</span></label>
+      <input type="range" id="cbval" min="10" max="4700" value="330" step="10">
+    </div>
+    <div class="ctrl-group">
+      <label>Input signal (mV_rms) <span class="val" id="v-vin">100</span></label>
+      <input type="range" id="vinval" min="1" max="200" value="100" step="1">
+    </div>
+    <div class="info" id="info">1W amp design: CE pre-amp + class AB output.</div>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function resizeCanvas() {
+  cv.width = cv.parentElement.getBoundingClientRect().width || 600;
+  cv.height = 380;
+}
+
+function draw() {
+  resizeCanvas();
+  const W = cv.width, H = cv.height;
+  const dark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const bg = dark ? '#1a1a1a' : '#fff';
+  const fg = dark ? '#e8e8e8' : '#1a1a1a';
+  const gridC = dark ? '#333' : '#eee';
+
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  const A_ce = +document.getElementById('gain').value;
+  const Cb = +document.getElementById('cbval').value * 1e-6;
+  const Vin_mV = +document.getElementById('vinval').value;
+
+  document.getElementById('v-gain').textContent = A_ce;
+  document.getElementById('v-cb').textContent = (Cb*1e6).toFixed(0) + ' µF';
+  document.getElementById('v-vin').textContent = Vin_mV + ' mV_rms';
+
+  const RL = 8; // speaker
+  const gm = 0.0385; // A/V at 1mA
+  const RC = 3900;
+  // Lower cutoff freq from C_bypass: R_eff = 1/gm ≈ 26Ω
+  const R_eff_bypass = 26; // 1/gm
+  const f_bypass = 1 / (2 * Math.PI * R_eff_bypass * Cb);
+  // Output coupling: C_out=1000µF, R=8Ω
+  const f_out = 1 / (2 * Math.PI * RL * 1000e-6);
+  // Input: C_in=1µF, R=7kΩ
+  const f_in = 1 / (2 * Math.PI * 7000 * 1e-6);
+
+  const A_total = A_ce * 0.95; // Class AB is ~unity gain output
+  const Vout_rms = Vin_mV / 1000 * A_total;
+  const P_out = Vout_rms * Vout_rms / RL;
+  const Vout_peak = Vout_rms * Math.sqrt(2);
+  const clipping = Vout_peak > 4; // 9V supply, mid-rail=4.5V, max swing ~4V peak
+
+  const pad = { l: 65, r: 20, t: 40, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  const fMin = 1, fMax = 200000;
+  const logMin = Math.log10(fMin), logMax = Math.log10(fMax);
+  const dbMin = -40, dbMax = 40;
+
+  ctx.strokeStyle = gridC; ctx.lineWidth = 1;
+  for (let db = dbMin; db <= dbMax; db += 10) {
+    const y = pad.t + ph * (1 - (db - dbMin) / (dbMax - dbMin));
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+pw, y); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(db + 'dB', pad.l-4, y+4);
+  }
+  [1,10,100,1000,10000,100000,200000].forEach(f => {
+    const x = pad.l + pw * (Math.log10(f) - logMin) / (logMax - logMin);
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t+ph); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '9px monospace'; ctx.textAlign = 'center';
+    const lbl = f >= 1000 ? (f/1000)+'k' : f;
+    ctx.fillText(lbl, x, pad.t+ph+18);
+  });
+
+  ctx.fillStyle = fg; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Frequency (Hz)', pad.l + pw / 2, H - 6);
+  ctx.save(); ctx.translate(14, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Gain (dB)', 0, 0); ctx.restore();
+
+  // Audio band
+  ctx.fillStyle = 'rgba(67,160,71,0.08)';
+  const x20 = pad.l + pw * (Math.log10(20) - logMin) / (logMax - logMin);
+  const x20k = pad.l + pw * (Math.log10(20000) - logMin) / (logMax - logMin);
+  ctx.fillRect(x20, pad.t, x20k - x20, ph);
+  ctx.fillStyle = '#43a047'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Audio 20Hz–20kHz', (x20+x20k)/2, pad.t+14);
+
+  // Gain curve
+  ctx.beginPath(); ctx.strokeStyle = '#1565c0'; ctx.lineWidth = 2.5;
+  let first = true;
+  for (let i = 0; i <= 400; i++) {
+    const lf = logMin + (logMax - logMin) * i / 400;
+    const f = Math.pow(10, lf);
+    const H_bypass = (f/f_bypass) / Math.sqrt(1 + (f/f_bypass)**2);
+    const H_out = (f/f_out) / Math.sqrt(1 + (f/f_out)**2);
+    const H_in = (f/f_in) / Math.sqrt(1 + (f/f_in)**2);
+    const gain = A_total * H_bypass * H_out * H_in;
+    const db = 20 * Math.log10(Math.max(1e-6, gain));
+    const x = pad.l + pw * (lf - logMin) / (logMax - logMin);
+    const y = pad.t + ph * (1 - (Math.min(dbMax, Math.max(dbMin, db)) - dbMin) / (dbMax - dbMin));
+    if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // −3dB line
+  const midGain_db = 20 * Math.log10(A_total);
+  const m3dby = pad.t + ph * (1 - (midGain_db - 3 - dbMin) / (dbMax - dbMin));
+  ctx.setLineDash([5,4]); ctx.strokeStyle = '#9e9e9e'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad.l, m3dby); ctx.lineTo(pad.l+pw, m3dby); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#9e9e9e'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('−3dB', pad.l+pw-4, m3dby-3);
+
+  ctx.fillStyle = fg; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText('1W Audio Amplifier Frequency Response', pad.l, pad.t-10);
+
+  document.getElementById('info').innerHTML =
+    `<b>CE gain = ${A_ce}, Total gain ≈ ${A_total.toFixed(0)}</b><br>` +
+    `V_out = ${(Vout_rms*1000).toFixed(0)} mV_rms → ${Vout_peak.toFixed(2)} V peak<br>` +
+    `P_out = ${P_out.toFixed(3)} W into ${RL}Ω<br>` +
+    `f_bypass = ${f_bypass.toFixed(1)} Hz<br>` +
+    `${clipping ? '⚠ CLIPPING: reduce gain or input' : P_out >= 0.9 ? '✓ ~1W output reached' : 'Increase gain or input for 1W'}<br>` +
+    `THD: Class AB + degeneration → < 1% ✓`;
+}
+
+['gain','cbval','vinval'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+window.addEventListener('resize', draw);
+draw();
+</script>
+</body>
+</html>

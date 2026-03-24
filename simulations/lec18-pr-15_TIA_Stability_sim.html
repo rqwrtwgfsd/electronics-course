@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec18 Pr15 — TIA Stability</title>
+<style>
+  :root{--bg:#f8f8f8;--fg:#222;--accent:#4a90d9;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a2e;--fg:#e0e0e0;--accent:#7ab4f5;}}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:Arial,sans-serif;padding:10px;}
+  h3{margin:6px 0;color:var(--accent);}
+  canvas{border:1px solid #555;border-radius:4px;display:block;width:100%;}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;font-size:13px;}
+  input[type=range]{width:130px;accent-color:var(--accent);}
+  .vals{background:#0002;border-radius:4px;padding:8px;font-size:13px;margin:6px 0;}
+  .vals span{color:var(--accent);font-weight:bold;}
+  .warn{color:#e05;font-weight:bold;}
+</style>
+</head>
+<body>
+<h3>Problem 15 — TIA Phase Margin vs C_f Compensation</h3>
+<div class="controls">
+  <label>R_f (MΩ): <input type="range" id="Rf" min="0.1" max="50" value="10" step="0.1"> <b id="RfV">10.0</b></label>
+  <label>C_D (pF): <input type="range" id="CD" min="1" max="100" value="20" step="1"> <b id="CDV">20</b></label>
+  <label>C_f (pF): <input type="range" id="Cf" min="0" max="10" value="0" step="0.1"> <b id="CfV">0.0</b></label>
+  <label>GBW (MHz): <input type="range" id="GBW" min="1" max="1000" value="10" step="1"> <b id="GBWV">10</b></label>
+</div>
+<canvas id="cv"></canvas>
+<div class="vals" id="info"></div>
+<script>
+const cv=document.getElementById('cv');const ctx=cv.getContext('2d');
+function resizeCanvas(){const w=cv.parentElement.getBoundingClientRect().width||480;cv.width=Math.round(w);cv.height=Math.round(w*0.55);}
+function draw(){
+  resizeCanvas();
+  const W=cv.width,H=cv.height;
+  const Rf=+document.getElementById('Rf').value*1e6;
+  const CD=+document.getElementById('CD').value*1e-12;
+  const Cf=+document.getElementById('Cf').value*1e-12;
+  const GBW=+document.getElementById('GBW').value*1e6;
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  ctx.fillStyle=isDark?'#1a1a2e':'#f8f8f8';ctx.fillRect(0,0,W,H);
+  const padL=65,padR=20,padT=35,padB=50;
+  const gW=W-padL-padR,gH=H-padT-padB;
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,padT);ctx.lineTo(padL,padT+gH);ctx.lineTo(padL+gW,padT+gH);ctx.stroke();
+  const fmin=1,fmax=GBW*10;
+  function xp(f){return padL+(Math.log10(f)-0)/(Math.log10(fmax))*gW;}
+  const dBmin=-80,dBmax=80;
+  function yp(db){return padT+gH-(db-dBmin)/(dBmax-dBmin)*gH;}
+  ctx.strokeStyle='#3334';ctx.lineWidth=0.5;
+  for(let lf=0;lf<=Math.log10(fmax);lf+=1){const f=Math.pow(10,lf);ctx.beginPath();ctx.moveTo(xp(f),padT);ctx.lineTo(xp(f),padT+gH);ctx.stroke();}
+  for(let db=dBmin;db<=dBmax;db+=20){ctx.beginPath();ctx.moveTo(padL,yp(db));ctx.lineTo(padL+gW,yp(db));ctx.stroke();}
+  const fg=isDark?'#aaa':'#555';ctx.fillStyle=fg;ctx.font='10px Arial';
+  for(let lf=0;lf<=Math.log10(fmax);lf+=1){
+    const f=Math.pow(10,lf);const s=f>=1e9?(f/1e9).toFixed(0)+'G':f>=1e6?(f/1e6).toFixed(0)+'M':f>=1e3?(f/1e3).toFixed(0)+'k':f.toFixed(0);
+    ctx.fillText(s,xp(f)-8,padT+gH+13);
+  }
+  for(let db=dBmin;db<=dBmax;db+=20)ctx.fillText(db,padL-30,yp(db)+4);
+  ctx.fillStyle=isDark?'#ccc':'#333';ctx.font='11px Arial';ctx.fillText('Frequency (Hz)',padL+gW/2-35,H-5);
+  ctx.save();ctx.translate(12,padT+gH/2);ctx.rotate(-Math.PI/2);ctx.fillText('Noise Gain (dB)',0,0);ctx.restore();
+  // Noise gain: 1 + Zf/Zin where Zin = 1/jwCD, Zf = Rf/(1+jwRfCf)
+  // |NG| = |1 + Zf·jwCD| = |1 + Rf·jwCD/(1+jwRfCf)|
+  function ng_dB(f){
+    const w=2*Math.PI*f;
+    const Zf_r=Rf/(1+(w*Rf*Cf)**2), Zf_i=-Rf**2*Cf*w/(1+(w*Rf*Cf)**2);
+    const ng_r=1+Zf_i*(-w*CD), ng_i=Zf_r*w*CD;
+    // noise gain magnitude
+    const ng=Math.sqrt((1+Zf_r*0+(-Zf_i*w*CD))**2+(Zf_r*w*CD)**2);
+    // simplified: |NG| = sqrt(1 + (w*CD*(Rf/||...))^2)
+    const Zf_mag=Rf/Math.sqrt(1+(w*Rf*Cf)**2);
+    const ng2=Math.sqrt(1+(w*CD*Zf_mag)**2);
+    return 20*Math.log10(ng2);
+  }
+  // Op-amp open loop gain
+  function aol_dB(f){return Math.max(-20,20*Math.log10(GBW/f));}
+  // Loop gain = Aol/NG
+  function loop_gain_dB(f){return aol_dB(f)-ng_dB(f);}
+  // Noise gain
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2;ctx.beginPath();let first=true;
+  for(let lf=0;lf<=Math.log10(fmax);lf+=0.02){const f=Math.pow(10,lf);const db=ng_dB(f);const c=Math.max(dBmin,Math.min(dBmax,db));if(first){ctx.moveTo(xp(f),yp(c));first=false;}else ctx.lineTo(xp(f),yp(c));}ctx.stroke();
+  ctx.fillStyle='#e53935';ctx.font='11px Arial';ctx.fillText('Noise Gain',xp(10),yp(ng_dB(10))+12);
+  // Op-amp AOL
+  ctx.strokeStyle='#4a90d9';ctx.lineWidth=2;ctx.beginPath();first=true;
+  for(let lf=0;lf<=Math.log10(fmax);lf+=0.02){const f=Math.pow(10,lf);const db=aol_dB(f);const c=Math.max(dBmin,Math.min(dBmax,db));if(first){ctx.moveTo(xp(f),yp(c));first=false;}else ctx.lineTo(xp(f),yp(c));}ctx.stroke();
+  ctx.fillStyle='#4a90d9';ctx.font='11px Arial';ctx.fillText('A_OL',xp(10),yp(aol_dB(10))-8);
+  // Find crossover
+  let f_cross=GBW,ph_margin=0;
+  for(let lf=0;lf<=Math.log10(fmax);lf+=0.01){
+    const f=Math.pow(10,lf);const lg=loop_gain_dB(f);
+    if(Math.abs(lg)<2){
+      f_cross=f;
+      // Phase at this frequency
+      const w=2*Math.PI*f;
+      const ph_ng=-Math.atan(w*CD*Rf/(1+(w*Rf*Cf)))*180/Math.PI;
+      ph_margin=90+ph_ng;
+      break;
+    }
+  }
+  const stable=ph_margin>30;
+  // fp and fz markers
+  const fp=1/(2*Math.PI*Rf*CD);
+  const fz=Cf>0?1/(2*Math.PI*Rf*Cf):Infinity;
+  if(fp>1&&fp<fmax){
+    ctx.strokeStyle='#ff9800';ctx.lineWidth=1;ctx.setLineDash([3,2]);
+    ctx.beginPath();ctx.moveTo(xp(fp),padT);ctx.lineTo(xp(fp),padT+gH);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#ff9800';ctx.font='9px Arial';ctx.fillText('f_p='+fp.toFixed(0)+'Hz',xp(fp)+2,padT+10);
+  }
+  if(fz<fmax){
+    ctx.strokeStyle='#43a047';ctx.lineWidth=1;ctx.setLineDash([3,2]);
+    ctx.beginPath();ctx.moveTo(xp(fz),padT);ctx.lineTo(xp(fz),padT+gH);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#43a047';ctx.font='9px Arial';
+    const fzs=fz>=1e6?(fz/1e6).toFixed(1)+'MHz':(fz/1000).toFixed(0)+'kHz';
+    ctx.fillText('f_z='+fzs,xp(fz)+2,padT+22);
+  }
+  ctx.fillStyle=isDark?'#e0e0e0':'#222';ctx.font='bold 11px Arial';ctx.fillText('TIA Noise Gain vs A_OL — Stability',padL+2,padT-8);
+  document.getElementById('info').innerHTML=
+    `f_pole=<span>${fp.toFixed(0)}Hz</span> | f_zero=<span>${Cf>0?(fz/1000).toFixed(0)+'kHz':'∞ (no C_f)'}</span><br>`+
+    `Crossover ≈ <span>${(f_cross/1000).toFixed(0)}kHz</span> | Phase margin ≈ <span class="${stable?'':'warn'}">${ph_margin.toFixed(0)}°</span> | `+
+    (stable?'<span style="color:#43a047">✓ Stable</span>':'<span class="warn">⚠ Oscillates — increase C_f!</span>');
+}
+['Rf','CD','Cf','GBW'].forEach(id=>{
+  const el=document.getElementById(id);const vl=document.getElementById(id+'V');
+  el.addEventListener('input',()=>{vl.textContent=id==='Rf'||id==='Cf'?parseFloat(el.value).toFixed(1):el.value;draw();});
+});
+window.addEventListener('resize',draw);resizeCanvas();draw();
+</script>
+</body></html>

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>ADC VREF Radio Noise</title>
+<style>:root{--bg:#fff;--surface:#f5f5f5;--border:#ccc;--text:#1a1a1a;--accent:#0066cc;--muted:#666}@media(prefers-color-scheme:dark){:root{--bg:#1a1a1a;--surface:#2a2a2a;--border:#444;--text:#e8e8e8;--accent:#4499ff;--muted:#999}}*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui,sans-serif;background:var(--bg);color:var(--text);padding:16px;max-width:900px;margin:0 auto}header{border-bottom:2px solid var(--accent);padding-bottom:10px;margin-bottom:16px}.module-id{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:1px}h1{font-size:18px;margin:4px 0}.layout{display:grid;grid-template-columns:1fr 260px;gap:16px}canvas{border:1px solid var(--border);border-radius:4px;display:block;background:var(--surface);width:100%}.controls{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px}.ctrl-group{margin-bottom:12px}.ctrl-label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;display:flex;justify-content:space-between}.ctrl-value{color:var(--accent);font-size:13px;font-weight:700;font-family:monospace}input[type=range]{width:100%;accent-color:var(--accent);cursor:pointer}.result-box{background:rgba(0,102,204,.08);border:1px solid rgba(0,102,204,.25);border-radius:4px;padding:10px;margin-top:12px;font-size:12px;line-height:1.6}@media(max-width:600px){.layout{grid-template-columns:1fr}}</style>
+</head>
+<body>
+<header><div class="module-id">Lecture 12 | Scenario 27</div><h1>ADC VREF: Radio TX Disturbance &amp; Decoupling</h1></header>
+<div class="layout">
+  <div><canvas id="cv" height="380"></canvas></div>
+  <div class="controls">
+    <div class="ctrl-group"><div class="ctrl-label">VREF Cap (µF) <span class="ctrl-value" id="lbl-c">10 µF</span></div><input type="range" id="sl-c" min="0.1" max="100" value="10" step="0.1"></div>
+    <div class="ctrl-group"><div class="ctrl-label">Radio Burst (mA) <span class="ctrl-value" id="lbl-i">100 mA</span></div><input type="range" id="sl-i" min="10" max="500" value="100" step="10"></div>
+    <div class="ctrl-group"><div class="ctrl-label">Series R (Ω) <span class="ctrl-value" id="lbl-r">10 Ω</span></div><input type="range" id="sl-r" min="0" max="100" value="10" step="1"></div>
+    <div class="result-box" id="result">Adjust to protect ADC accuracy</div>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const slC=document.getElementById('sl-c'),slI=document.getElementById('sl-i'),slR=document.getElementById('sl-r');
+const lblC=document.getElementById('lbl-c'),lblI=document.getElementById('lbl-i'),lblR=document.getElementById('lbl-r');
+const result=document.getElementById('result');
+function draw(){
+  const W=cv.width,H=cv.height;
+  const C=parseFloat(slC.value)*1e-6;const I=parseFloat(slI.value)*1e-3;const R=parseFloat(slR.value);
+  lblC.textContent=parseFloat(slC.value).toFixed(1)+' µF';lblI.textContent=slI.value+' mA';lblR.textContent=R+' Ω';
+  ctx.clearRect(0,0,W,H);
+  const pad=44,plotW=W-pad*2,plotH=H-pad*2;
+  // VREF = 3.3V nominally. Radio burst causes sag.
+  const Vref=3.3;const Rsupply=0.5;const Vdrop_supply=I*Rsupply;
+  // Without VREF cap: VREF sags with supply
+  const Vdrop_no=Vdrop_supply;
+  // With VREF cap: RC filter with series R
+  const tau=R*C;const Vdrop_cap=Vdrop_no*Math.exp(-1/(R>0?R:0.01));
+  const tBurst=1e-3;const tTotal=10e-3;
+  const vMin=Vref-0.15,vMax=Vref+0.05;
+  function yPx(v){return pad+plotH*(1-(v-vMin)/(vMax-vMin))}
+  ctx.strokeStyle='rgba(128,128,128,0.15)';ctx.lineWidth=1;
+  [Vref-0.1,Vref-0.05,Vref,Vref+0.05].forEach(v=>{ctx.beginPath();ctx.moveTo(pad,yPx(v));ctx.lineTo(W-pad,yPx(v));ctx.stroke()});
+  ctx.strokeStyle='#888';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();
+  // ADC error threshold: ±1 LSB at 12bit = 3.3/4096 = 0.8mV
+  const lsb=Vref/4096;
+  ctx.setLineDash([5,3]);ctx.strokeStyle='#f57c00';ctx.lineWidth=1;
+  if(Vref-lsb>=vMin){ctx.beginPath();ctx.moveTo(pad,yPx(Vref-lsb));ctx.lineTo(W-pad,yPx(Vref-lsb));ctx.stroke();}
+  ctx.setLineDash([]);
+  ctx.fillStyle='#f57c00';ctx.font='10px system-ui';ctx.textAlign='left';ctx.fillText('±1 LSB = '+( lsb*1000).toFixed(1)+'mV',pad+4,yPx(Vref-lsb)+12);
+  const t_tx=0.001;
+  // No VREF cap
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2;ctx.beginPath();
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    let v=Vref;
+    if(t>=t_tx&&t<t_tx+tBurst){v=Vref-Vdrop_no*(t-t_tx)/tBurst;}
+    else if(t>=t_tx+tBurst){v=Vref-Vdrop_no*Math.exp(-(t-t_tx-tBurst)/0.001);}
+    v=Math.max(vMin,Math.min(vMax,v));
+    px===0?ctx.moveTo(pad+px,yPx(v)):ctx.lineTo(pad+px,yPx(v));
+  }ctx.stroke();
+  // With VREF cap
+  ctx.strokeStyle='#2e7d32';ctx.lineWidth=2;ctx.beginPath();
+  let vCap=Vref;const dt=tTotal/plotW;
+  for(let px=0;px<=plotW;px++){
+    const t=(px/plotW)*tTotal;
+    let vSupply=Vref;
+    if(t>=t_tx&&t<t_tx+tBurst)vSupply=Vref-Vdrop_no*(t-t_tx)/tBurst;
+    else if(t>=t_tx+tBurst)vSupply=Vref-Vdrop_no*Math.exp(-(t-t_tx-tBurst)/0.001);
+    const tauEff=Math.max(R,0.1)*C;
+    vCap+=(vSupply-vCap)*dt/tauEff;
+    vCap=Math.max(vMin,Math.min(vMax,vCap));
+    px===0?ctx.moveTo(pad+px,yPx(vCap)):ctx.lineTo(pad+px,yPx(vCap));
+  }ctx.stroke();
+  ctx.fillStyle='#888';ctx.textAlign='right';ctx.font='10px system-ui';
+  [Vref-0.1,Vref-0.05,Vref].forEach(v=>ctx.fillText(v.toFixed(3)+'V',pad-4,yPx(v)+3));
+  const errNo=Math.round(Vdrop_no/lsb);const errCap=Math.round(Math.min(Vdrop_no*0.05,Vdrop_no)/lsb);
+  result.innerHTML='<b>Radio burst: '+slI.value+'mA × 0.5Ω = '+( Vdrop_no*1000).toFixed(0)+'mV sag</b><br>No VREF cap: <b>'+errNo+' LSB error</b> '+(errNo>2?'⚠️':'✅')+'<br>With '+slC.value+'µF + '+R+'Ω: <b>~'+Math.round(errNo/Math.max(1,tau/tBurst))+' LSB error</b><br>τ = R×C = '+(tau*1000).toFixed(1)+'ms<br><b>Rule: VREF must always have 10µF minimum</b>';
+}
+function resizeCanvas(){cv.width=cv.parentElement.getBoundingClientRect().width||600;cv.height=380}
+[slC,slI,slR].forEach(s=>s.addEventListener('input',draw));
+window.addEventListener('resize',function(){resizeCanvas();draw()});resizeCanvas();draw();
+</script>
+</body>
+</html>

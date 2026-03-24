@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec18 Pr18 — LED Constant Current Driver</title>
+<style>
+  :root{--bg:#f8f8f8;--fg:#222;--accent:#4a90d9;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a2e;--fg:#e0e0e0;--accent:#7ab4f5;}}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:Arial,sans-serif;padding:10px;}
+  h3{margin:6px 0;color:var(--accent);}
+  canvas{border:1px solid #555;border-radius:4px;display:block;width:100%;}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;font-size:13px;}
+  input[type=range]{width:130px;accent-color:var(--accent);}
+  .vals{background:#0002;border-radius:4px;padding:8px;font-size:13px;margin:6px 0;}
+  .vals span{color:var(--accent);font-weight:bold;}
+  .warn{color:#e05;}
+</style>
+</head>
+<body>
+<h3>Problem 18 — LED Current vs Temperature: Resistor vs Op-Amp Loop</h3>
+<div class="controls">
+  <label>R_sense (Ω): <input type="range" id="Rs" min="1" max="100" value="10" step="1"> <b id="RsV">10</b></label>
+  <label>V_ref (mV): <input type="range" id="Vref" min="50" max="500" value="200" step="5"> <b id="VrefV">200</b></label>
+  <label>TCR_R (ppm/°C): <input type="range" id="TCR" min="0" max="1000" value="100" step="10"> <b id="TCRV">100</b></label>
+  <label>V_supply (V): <input type="range" id="Vs" min="2" max="5" value="3.3" step="0.1"> <b id="VsV">3.3</b></label>
+</div>
+<canvas id="cv"></canvas>
+<div class="vals" id="info"></div>
+<script>
+const cv=document.getElementById('cv');const ctx=cv.getContext('2d');
+function resizeCanvas(){const w=cv.parentElement.getBoundingClientRect().width||480;cv.width=Math.round(w);cv.height=Math.round(w*0.52);}
+function draw(){
+  resizeCanvas();
+  const W=cv.width,H=cv.height;
+  const Rs=+document.getElementById('Rs').value;
+  const Vref_mV=+document.getElementById('Vref').value;
+  const TCR=+document.getElementById('TCR').value;
+  const Vs=+document.getElementById('Vs').value;
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  ctx.fillStyle=isDark?'#1a1a2e':'#f8f8f8';ctx.fillRect(0,0,W,H);
+  const Vref=Vref_mV/1000;
+  const I_target=Vref/Rs;
+  const VF25=2.0,dVF_dT=-0.002; // LED VF tempco
+  const R_series=(Vs-VF25)/I_target;
+  const padL=65,padR=20,padT=35,padB=50;
+  const gW=W-padL-padR,gH=H-padT-padB;
+  ctx.strokeStyle='#888';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(padL,padT);ctx.lineTo(padL,padT+gH);ctx.lineTo(padL+gW,padT+gH);ctx.stroke();
+  const Tmin=-40,Tmax=85;
+  function xp(T){return padL+(T-Tmin)/(Tmax-Tmin)*gW;}
+  const Irange=I_target*0.5,Imin=I_target-Irange,Imax_plot=I_target+Irange;
+  function yp(I){return padT+gH-((I-Imin)/(Imax_plot-Imin))*gH;}
+  ctx.strokeStyle='#3334';ctx.lineWidth=0.5;
+  for(let T=Tmin;T<=Tmax;T+=25){ctx.beginPath();ctx.moveTo(xp(T),padT);ctx.lineTo(xp(T),padT+gH);ctx.stroke();}
+  for(let I=Imin;I<=Imax_plot;I+=I_target*0.1){ctx.beginPath();ctx.moveTo(padL,yp(I));ctx.lineTo(padL+gW,yp(I));ctx.stroke();}
+  const fg=isDark?'#aaa':'#555';ctx.fillStyle=fg;ctx.font='10px Arial';
+  for(let T=Tmin;T<=Tmax;T+=25)ctx.fillText(T+'°C',xp(T)-10,padT+gH+13);
+  for(let I=Imin;I<=Imax_plot;I+=I_target*0.1)ctx.fillText((I*1000).toFixed(0)+'mA',padL-38,yp(I)+4);
+  ctx.fillStyle=isDark?'#ccc':'#333';ctx.font='11px Arial';ctx.fillText('Temperature (°C)',padL+gW/2-35,H-5);
+  ctx.save();ctx.translate(12,padT+gH/2);ctx.rotate(-Math.PI/2);ctx.fillText('I_LED (A)',0,0);ctx.restore();
+  // Simple resistor drive
+  ctx.strokeStyle='#e53935';ctx.lineWidth=2.5;ctx.beginPath();let first=true;
+  for(let T=Tmin;T<=Tmax;T+=0.5){
+    const VF=VF25+dVF_dT*(T-25);
+    const I=(Vs-VF)/R_series;
+    const clamped=Math.max(Imin,Math.min(Imax_plot,I));
+    if(first){ctx.moveTo(xp(T),yp(clamped));first=false;}else ctx.lineTo(xp(T),yp(clamped));
+  }ctx.stroke();
+  ctx.fillStyle='#e53935';ctx.font='11px Arial';ctx.fillText('Simple R='+R_series.toFixed(0)+'Ω',xp(-30),yp(I_target)-10);
+  // Op-amp feedback loop (I = Vref/Rs, Vref is bandgap stable, Rs has TCR)
+  ctx.strokeStyle='#43a047';ctx.lineWidth=2.5;ctx.beginPath();first=true;
+  for(let T=Tmin;T<=Tmax;T+=0.5){
+    const Rs_T=Rs*(1+TCR*1e-6*(T-25));
+    const Vref_T=Vref*(1+10e-6*(T-25)); // 10ppm/°C bandgap
+    const I=Vref_T/Rs_T;
+    const clamped=Math.max(Imin,Math.min(Imax_plot,I));
+    if(first){ctx.moveTo(xp(T),yp(clamped));first=false;}else ctx.lineTo(xp(T),yp(clamped));
+  }ctx.stroke();
+  ctx.fillStyle='#43a047';ctx.font='11px Arial';ctx.fillText('Op-amp+R_sense (feedback)',xp(-30),yp(I_target)+14);
+  // Target and ±2% band
+  ctx.strokeStyle='#4a90d9';ctx.lineWidth=1;ctx.setLineDash([5,3]);
+  ctx.beginPath();ctx.moveTo(padL,yp(I_target));ctx.lineTo(padL+gW,yp(I_target));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='rgba(74,144,217,0.1)';ctx.fillRect(padL,yp(I_target*1.02),gW,yp(I_target*0.98)-yp(I_target*1.02));
+  ctx.strokeStyle='#4a90d9';ctx.lineWidth=0.8;ctx.setLineDash([2,2]);
+  ctx.beginPath();ctx.moveTo(padL,yp(I_target*1.02));ctx.lineTo(padL+gW,yp(I_target*1.02));ctx.stroke();
+  ctx.beginPath();ctx.moveTo(padL,yp(I_target*0.98));ctx.lineTo(padL+gW,yp(I_target*0.98));ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#4a90d9';ctx.font='9px Arial';ctx.fillText('±2% spec',padL+gW-60,yp(I_target*1.02)-3);
+  ctx.fillStyle=isDark?'#e0e0e0':'#222';ctx.font='bold 11px Arial';ctx.fillText('LED Current vs Temperature — Simple R vs Feedback Loop',padL+2,padT-8);
+  const VF_m40=VF25+dVF_dT*(-40-25),VF_85=VF25+dVF_dT*(85-25);
+  const I_m40=(Vs-VF_m40)/R_series,I_85=(Vs-VF_85)/R_series;
+  const err_max=Math.max(Math.abs(I_m40-I_target),Math.abs(I_85-I_target))/I_target*100;
+  const Rs_85=Rs*(1+TCR*1e-6*60),Vref_85=Vref*(1+10e-6*60);
+  const I_loop_85=Vref_85/Rs_85,err_loop=(I_loop_85-I_target)/I_target*100;
+  document.getElementById('info').innerHTML=
+    `I_target=<span>${(I_target*1000).toFixed(1)}mA</span> | R_series=<span>${R_series.toFixed(0)}Ω</span><br>`+
+    `Simple R error @ −40°C/+85°C: <span class="${err_max>2?'warn':''}">${err_max.toFixed(1)}%</span> | `+
+    `Feedback loop error @ 85°C: <span class="${Math.abs(err_loop)>2?'warn':''}">${Math.abs(err_loop).toFixed(2)}%</span> `+
+    (err_max>2?'(resistor fails ±2% spec)':'(meets spec)');
+}
+['Rs','Vref','TCR','Vs'].forEach(id=>{
+  const el=document.getElementById(id);const vl=document.getElementById(id+'V');
+  el.addEventListener('input',()=>{vl.textContent=id==='Vs'?parseFloat(el.value).toFixed(1):el.value;draw();});
+});
+window.addEventListener('resize',draw);resizeCanvas();draw();
+</script>
+</body></html>

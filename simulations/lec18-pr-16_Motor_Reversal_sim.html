@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 18 Pr 16 — Motor Current Reversal Transient</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  h1 { font-size:18px; margin-bottom:12px; border-bottom:2px solid var(--accent); padding-bottom:8px; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; display:flex; justify-content:space-between; margin-bottom:4px; }
+  .val { color:var(--accent); font-family:monospace; font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .info { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.2); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.6; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<h1>Pr 16 — H-Bridge Motor Reversal: Current Transient (RL Load)</h1>
+<div class="layout">
+  <canvas id="cv" height="380"></canvas>
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>Motor L (mH) <span class="val" id="v-l">10</span></label>
+      <input type="range" id="lval" min="0.5" max="50" value="10" step="0.5">
+    </div>
+    <div class="ctrl-group">
+      <label>Motor R (Ω) <span class="val" id="v-r">2</span></label>
+      <input type="range" id="rval" min="0.1" max="20" value="2" step="0.1">
+    </div>
+    <div class="ctrl-group">
+      <label>I_target (A) <span class="val" id="v-it">2</span></label>
+      <input type="range" id="ival" min="0.5" max="10" value="2" step="0.5">
+    </div>
+    <div class="info" id="info">Current reversal limited by L/R time constant.</div>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function resizeCanvas() {
+  cv.width = cv.parentElement.getBoundingClientRect().width || 600;
+  cv.height = 380;
+}
+
+function draw() {
+  resizeCanvas();
+  const W = cv.width, H = cv.height;
+  const dark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const bg = dark ? '#1a1a1a' : '#fff';
+  const fg = dark ? '#e8e8e8' : '#1a1a1a';
+  const gridC = dark ? '#333' : '#eee';
+
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  const L = +document.getElementById('lval').value * 1e-3;
+  const R = +document.getElementById('rval').value;
+  const I0 = +document.getElementById('ival').value;
+
+  document.getElementById('v-l').textContent = (L*1e3).toFixed(1) + ' mH';
+  document.getElementById('v-r').textContent = R.toFixed(1) + ' Ω';
+  document.getElementById('v-it').textContent = I0.toFixed(1) + ' A';
+
+  const tau = L / R;
+  const V_eff = 2 * I0 * R; // 2×Vs during reversal (back-EMF adds)
+  const I_final = -I0;
+  const I_initial = I0;
+
+  // Time axis: 0 to 5tau
+  const t_total = 5 * tau;
+  const pad = { l: 65, r: 20, t: 40, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  const yMin = -I0 * 1.5, yMax = I0 * 2.5;
+
+  ctx.strokeStyle = gridC; ctx.lineWidth = 1;
+  const numY = 8;
+  for (let i = 0; i <= numY; i++) {
+    const v = yMin + (yMax - yMin) * (numY - i) / numY;
+    const y = pad.t + ph * i / numY;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l+pw, y); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(v.toFixed(1) + 'A', pad.l-4, y+4);
+  }
+  for (let i = 0; i <= 5; i++) {
+    const x = pad.l + pw * i / 5;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t+ph); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    ctx.fillText((tau * i * 1000).toFixed(1) + 'ms', x, pad.t+ph+18);
+  }
+
+  ctx.fillStyle = fg; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Time (ms)', pad.l + pw / 2, H - 6);
+  ctx.save(); ctx.translate(14, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Motor Current (A)', 0, 0); ctx.restore();
+
+  // Uncontrolled reversal: I(t) = I_final + (I_initial - I_final)*exp(-t/tau)
+  // = -I0 + 2*I0 * exp(-t/tau) — but with 2x voltage during reversal
+  // I(t) = -I0 + (I0 - (-I0)) * exp(-t / (L/(2R))) — effective tau halved?
+  // Actually: with 2xV applied: I(t) = V_eff/R * (1-exp(-t*R/L)) - I0...
+  // Simplified: I(t) = I_final + (I_initial - I_final)*exp(-t/tau_eff) with tau_eff = L/(R)
+  const drawCurrent = (tau_eff, color, lbl) => {
+    ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 2.5;
+    for (let i = 0; i <= 400; i++) {
+      const t = t_total * i / 400;
+      const Icur = I_final + (I_initial - I_final) * Math.exp(-t / tau_eff);
+      const x = pad.l + pw * i / 400;
+      const y = pad.t + ph * (1 - (Icur - yMin) / (yMax - yMin));
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.fillStyle = color; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+    ctx.fillText(lbl, pad.l + 4, pad.t + (color === '#e53935' ? 18 : 30));
+  };
+
+  drawCurrent(tau, '#e53935', 'No control (τ=L/R=' + (tau*1e3).toFixed(1) + 'ms)');
+  drawCurrent(tau * 0.3, '#1565c0', 'With current control (ramp setpoint)');
+
+  // OCP limit
+  const ocpI = I0 * 1.5;
+  const ocpY = pad.t + ph * (1 - (ocpI - yMin) / (yMax - yMin));
+  ctx.setLineDash([5,4]); ctx.strokeStyle = '#fb8c00'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(pad.l, ocpY); ctx.lineTo(pad.l+pw, ocpY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#fb8c00'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+  ctx.fillText('OCP trip = ' + ocpI.toFixed(1) + 'A', pad.l+pw-4, ocpY-3);
+
+  // Zero line
+  const zeroY = pad.t + ph * (1 - (0 - yMin) / (yMax - yMin));
+  ctx.strokeStyle = fg; ctx.lineWidth = 0.8;
+  ctx.beginPath(); ctx.moveTo(pad.l, zeroY); ctx.lineTo(pad.l+pw, zeroY); ctx.stroke();
+
+  ctx.fillStyle = fg; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(`H-Bridge Reversal: L=${(L*1e3).toFixed(0)}mH, R=${R}Ω, τ=${(tau*1e3).toFixed(1)}ms`, pad.l, pad.t-10);
+
+  document.getElementById('info').innerHTML =
+    `<b>Motor time constant:</b><br>` +
+    `τ = L/R = ${(tau*1e3).toFixed(2)} ms<br>` +
+    `I_peak without control: up to ${(I0 * 2.5).toFixed(1)} A<br>` +
+    `OCP trips at: ${ocpI.toFixed(1)} A<br>` +
+    `<b>Ramp setpoint over 2τ = ${(2*tau*1e3).toFixed(1)} ms prevents trip</b>`;
+}
+
+['lval','rval','ival'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+window.addEventListener('resize', draw);
+draw();
+</script>
+</body>
+</html>

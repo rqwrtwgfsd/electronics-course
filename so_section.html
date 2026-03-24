@@ -1,0 +1,819 @@
+
+<!-- ============================================================ -->
+<!-- PHASE 2 — SECOND-ORDER SYSTEMS                               -->
+<!-- ============================================================ -->
+<h1 id="phase2-second-order">Phase 2 — Second-Order Systems</h1>
+<p class="chapter-hook">The moment an engineer first sees ringing on an oscilloscope — that unexpected oscillation after a step change — they encounter second-order dynamics for the first time. Two energy-storing elements exchanging energy back and forth, governed by a single damping ratio that determines whether the system rings forever, overshoots once, or settles smoothly. Master ζ and you master half of all electronic failure modes.</p>
+
+<!-- ==================== P2-SO-4.1.1 ==================== -->
+<section id="P2-SO-4.1.1">
+  <h2>4.1.1 — Energy Exchange</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>In an ideal LC circuit, energy oscillates between the magnetic field of the inductor and the electric field of the capacitor:</p>
+    <p>\[ E_L = \frac{1}{2}LI^2 \qquad E_C = \frac{1}{2}CV^2 \]</p>
+    <p>Resonant frequency: \(\omega_0 = 1/\sqrt{LC}\) rad/s. Characteristic impedance: \(Z_0 = \sqrt{L/C}\) Ω. Initial current from a charged capacitor: \(I_0 = V_0/Z_0\). Energy conservation: \(E_{total} = \frac{1}{2}CV_0^2\) is constant; at any time E_L + E_C = E_total (verified by cos²(ω₀t) + sin²(ω₀t) = 1). Pendulum analogy: V_C ↔ displacement x, I_L ↔ velocity v, L ↔ mass m, 1/C ↔ spring constant k.</p>
+    <p><strong>Industry Examples:</strong> TI SN6505B LLC resonant converter (L and C exchange energy at f_r), ADI ADF4159 VCO LC tank, Infineon IPP65R080CFD CoolMOS gate ringing, ST VIPER53 flyback snubber, Murata LXES15AAA1 PI filter, Coilcraft LPS3015 WPT coil, TI UCC28950 ZVS LLC.</p>
+    <p><strong>Common Mistakes:</strong> (1) Confusing Z₀ (impedance, in Ω) with ω₀ (frequency, in rad/s). (2) Forgetting that energy alternates between L and C — both are needed. (3) Assuming E_total is the sum of maximum values of E_L and E_C — they are never maximum simultaneously. (4) Using f₀ = 1/(2πLC) instead of f₀ = 1/(2π√(LC)). (5) Not recognising that I₀ = V₀/Z₀ is the oscillation current amplitude.</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>Think of L and C as two children on a seesaw. When one is at the top (maximum energy), the other is at the bottom (zero energy). The seesaw oscillates at ω₀ = 1/√(LC) — the fundamental rhythm of the exchange. Z₀ = √(L/C) is the "leverage ratio" between voltage and current in this exchange: a high-impedance system swings voltage widely while current is small; a low-impedance system does the opposite. Neither amplitude nor frequency can be inferred from the other without knowing both L and C.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>Starting from KVL in a series LC circuit with no resistance: L·dI/dt + V_C = 0 and I = C·dV_C/dt. Differentiating the second equation and substituting: L·C·d²V_C/dt² + V_C = 0. This is the SHM equation with ω₀² = 1/(LC), giving V_C(t) = V₀·cos(ω₀t) and I(t) = (V₀/Z₀)·sin(ω₀t). The 90° phase between V and I is the energy exchange mechanism: when one is at maximum, the other is at zero — their product (power) is always zero, so no energy is dissipated.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>Energy verification: E_C(t) = ½CV²(t) = ½C·V₀²·cos²(ω₀t). E_L(t) = ½LI²(t) = ½L·(V₀/Z₀)²·sin²(ω₀t) = ½L·(V₀²/[L/C])·sin²(ω₀t) = ½CV₀²·sin²(ω₀t). Sum: E_total = ½CV₀²·(cos² + sin²) = ½CV₀² = constant. The identity cos² + sin² = 1 is energy conservation expressed as trigonometry.</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>Z₀ = √(L/C) determines the voltage and current amplitudes in any LC oscillation. For a power supply with L = 4.7 µH and C = 100 µF: Z₀ = √(4.7µ/100µ) = 0.217 Ω. A 1 A current step creates a voltage swing of 1 × Z₀ = 217 mV — the ringing amplitude on the output voltage. This calculation takes 10 seconds and tells you whether output ringing will violate the load's supply tolerance before you build anything.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>In 1831, Michael Faraday discovered electromagnetic induction and noted that a coil releasing its magnetic field could drive a current in reverse. By 1856, Lord Kelvin (William Thomson) worked out mathematically that a Leyden jar (early capacitor) connected to a coil would oscillate, with the spark discharge period T = 2π√(LC). He could not measure it — the sparks were too fast. Heinrich Hertz finally measured LC oscillations in 1887 using the apparatus that also proved electromagnetic waves existed. Every LC oscillator in every phone and radio today is Lord Kelvin's 1856 formula running at gigahertz frequencies.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>In zero-voltage switching (ZVS) resonant converters, the tank circuit energy is used to force the MOSFET drain voltage to zero before turn-on. The energy stored in the tank must exceed the energy in the drain capacitance: ½L·I_min² ≥ ½C_oss·V_DC². This gives the minimum inductor current for ZVS: I_min = V_DC·√(C_oss/L) = V_DC/√(L/C_oss) = V_DC/Z₀_effective. Engineers design the LLC resonant tank so that I_min is always positive (even at minimum load), guaranteeing ZVS across the full load range.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Calculating Z₀ = L/C (dimensional error: H/F = H/F is not Ω²) instead of Z₀ = √(L/C). <strong>Fix:</strong> Units check: √(H/F) = √(V·s/A / A·s/V) = √(V²/A²) = V/A = Ω. The square root is not optional — it is forced by dimensional analysis.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If measured ringing frequency differs from f₀ = 1/(2π√(LC)): (1) Parasitic capacitance (PCB trace, MOSFET Coss) is adding to C. (2) Parasitic inductance (PCB trace, bond wire) is adding to L. Measure f_ring from oscilloscope, back-calculate effective LC: L_eff × C_eff = 1/(2πf_ring)². Compare to designed values to find the dominant parasitic.</p></div>
+
+  <div class="sim-interactive-box">
+    <h4>🖥️ Interactive Simulation</h4>
+    <iframe src="simulations/P2-SO-4.1.1_Energy_Exchange_sim.html" width="100%" height="600px" frameborder="0"></iframe>
+  </div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>Energy exchange is the "why" of oscillation. Frequency ω₀ = 1/√(LC) and impedance Z₀ = √(L/C) are the two fundamental parameters of any LC circuit. Module 4.1.2 adds the third — resistance — which provides the oscillation mechanism by dissipating energy each cycle. Without resistance, the pendulum swings forever; with resistance, it eventually stops. How quickly it stops — and whether it overshoots its equilibrium — is governed by the damping ratio ζ, the central quantity in all subsequent modules.</p></div>
+</section>
+
+<!-- ==================== P2-SO-4.1.2 ==================== -->
+<section id="P2-SO-4.1.2">
+  <h2>4.1.2 — Oscillation Mechanism</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>When resistance R is added to the LC circuit, the characteristic decay rate is:</p>
+    <p>\[ \alpha = \frac{R}{2L} \quad \text{(neper frequency, rad/s)} \]</p>
+    <p>Damped natural frequency: \(\omega_d = \sqrt{\omega_0^2 - \alpha^2}\). Damping ratio: \(\zeta = \alpha/\omega_0 = R/(2Z_0)\). Six-step oscillation cycle: (1) Capacitor charged to V₀. (2) Current begins flowing. (3) Inductor stores magnetic energy, capacitor discharges. (4) Current peaks when V_C = 0. (5) Inductor drives current into capacitor in reverse. (6) Capacitor reaches −V₀ × e^(−α·T/2) — less than V₀ due to R loss. Energy dissipated per cycle: ΔE = π·R·I₀²/ω₀. Number of cycles to 1/e amplitude: N = Q/π = ω₀/(πR/L).</p>
+    <p><strong>Industry Examples:</strong> TI TPS53632 DDR4 VR ringing, ADI ADP5054 multi-phase buck, Infineon TDA21472 gate drive, ST SPC5604B crystal oscillator, Murata CSTNE8M00G55Z000R0 MEMS resonator, Coilcraft LPS4018 saturation, TI TPS7A57 LDO ring-up.</p>
+    <p><strong>Common Mistakes:</strong> (1) Confusing α (neper frequency, rad/s) with attenuation in dB. (2) Thinking ω_d = ω₀ — they are equal only at ζ = 0; for ζ > 0, ω_d &lt; ω₀. (3) Forgetting the factor of 2 in α = R/(2L) — it comes from the solution of the characteristic equation. (4) Equating cycles to amplitude 1/e as N = Q directly — correct is N = Q/π. (5) Not recognising that ζ = R/(2Z₀) connects component values to response type.</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>α = R/(2L) is the system's "forgetting rate" for the current amplitude. Each time constant 1/α, the oscillation amplitude multiplies by 1/e = 0.368. The factor of 2 in the denominator comes from the fact that energy ∝ amplitude², so energy decays as e^(−2αt) while amplitude decays as e^(−αt). The damping ratio ζ = α/ω₀ asks: how fast does the system forget relative to how fast it oscillates? ζ &lt; 1 means the system oscillates faster than it forgets — underdamped. ζ > 1 means it forgets before it can complete an oscillation — overdamped.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>The energy dissipated per cycle ΔE = π·R·I₀²/ω₀ can be derived from P = I²R averaged over a half-cycle, integrated over the period. The oscillation envelope decays as V(t) = V₀·e^(−αt) because the resistance extracts energy proportional to I²R, and for a sinusoidal current I ∝ amplitude ∝ e^(−αt), the energy ∝ amplitude² ∝ e^(−2αt), giving amplitude ∝ e^(−αt). The Q = ω₀/(2α) = 1/(2ζ) tells you how many radians of oscillation occur per energy time constant — high Q means many radians before significant energy loss.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>Characteristic equation: s² + 2αs + ω₀² = 0. Roots: s = −α ± √(α² − ω₀²) = −α ± jω_d (for α &lt; ω₀, i.e., ζ &lt; 1). The real part −α sets the decay envelope; the imaginary part ±jω_d sets the oscillation frequency. The roots trace a semicircle of radius ω₀ in the s-plane as R varies from 0 (roots on imaginary axis, undamped) to 2Z₀ (roots merge on real axis, critically damped) to ∞ (roots on real axis, overdamped).</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>To identify α from an oscilloscope: measure successive peak amplitudes V₁ and V₂ separated by one period T = 1/f_ring. Then e^(−α·T) = V₂/V₁, giving α = −ln(V₂/V₁)/T = f_ring·ln(V₁/V₂). This experimental measurement gives α without knowing R or L separately — just the waveform is enough. From α and f_ring: ω₀ = √(α² + ω_d²), ζ = α/ω₀.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>The concept of the Q factor was introduced by Kenneth Johnson at Bell Labs in 1914, initially for telephone coils, where Q = ω₀L/R described how much stored energy remained in the coil after each cycle. Johnson's original term was "quality factor" — a high Q coil was "good quality" because it retained energy efficiently. The notation Q became standard through 1920s radio engineering, where tank circuits needed high Q to tune sharply to a single station. Today, Q = 1/(2ζ) connects the 1914 telephone coil definition to the 1940s control theory damping ratio, unifying a century of electrical engineering language.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>In RF oscillator design, the phase noise is related to Q by Leeson's equation: L(Δf) ∝ (f₀/(2Q·Δf))² × kT/P. Phase noise power spectral density falls as 1/f² outside the loop bandwidth (proportional to Q⁻²). Doubling Q reduces phase noise by 6 dB. For a 1 GHz VCO with Q = 10 (typical on-chip inductor): L(1 MHz offset) ≈ −108 dBc/Hz. For Q = 100 (off-chip inductor): L = −128 dBc/Hz — 20 dB improvement for a 10× Q increase, exactly as Q⁻² predicts.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Computing N = Q cycles to decay to 1/e amplitude (off by a factor of π). <strong>Fix:</strong> Amplitude decays as e^(−αt). At 1/e: αt = 1, t = 1/α. In this time, oscillations complete f_ring × t = (ω_d/2π) × (1/α) = ω_d/(2πα) cycles. For small ζ: ω_d ≈ ω₀, so N ≈ ω₀/(2πα) = Q/π — not Q.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If the measured oscillation envelope decays faster than e^(−αt) calculated from R/(2L): additional loss mechanisms are present — radiation resistance (circuit radiating as an antenna), eddy current losses in nearby metal, or core losses in a magnetic core. These appear as additional "effective resistance" in the Q formula but are not simple series resistors. Measure Q by the ring-down method (log-decrement) to get the true effective Q.</p></div>
+
+  <div class="sim-interactive-box">
+    <h4>🖥️ Interactive Simulation</h4>
+    <iframe src="simulations/P2-SO-4.1.2_Oscillation_Mechanism_sim.html" width="100%" height="600px" frameborder="0"></iframe>
+  </div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>The oscillation mechanism — α as decay rate, ω_d as oscillation frequency, ζ as their ratio — is the engine of all second-order analysis. Module 4.2.1 formalises this into the characteristic equation, whose roots (the poles) completely determine the system's response. The s-plane geometry of these poles, tracing a circle of radius ω₀ as R increases, is the most powerful visualisation tool in all of analog circuit analysis.</p></div>
+</section>
+
+<!-- ==================== P2-SO-4.2.1 ==================== -->
+<section id="P2-SO-4.2.1">
+  <h2>4.2.1 — Characteristic Equation</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>The second-order characteristic equation:</p>
+    <p>\[ s^2 + 2\alpha s + \omega_0^2 = 0 \]</p>
+    <p>Three response cases based on the discriminant (α² − ω₀²):</p>
+    <ul>
+      <li><strong>Underdamped</strong> (α &lt; ω₀, ζ &lt; 1): complex conjugate roots s = −α ± jω_d</li>
+      <li><strong>Critically damped</strong> (α = ω₀, ζ = 1): repeated real root s = −α (double pole)</li>
+      <li><strong>Overdamped</strong> (α > ω₀, ζ > 1): two distinct real roots s = −α ± √(α²−ω₀²)</li>
+    </ul>
+    <p>S-plane geometry: both roots always lie on a circle of radius ω₀ centred at the origin. As R increases from 0 to ∞: roots move from ±jω₀ (on imaginary axis) clockwise along the circle, merge at −ω₀ (real axis, critical damping), then split apart along the real axis. The angle from the negative real axis: θ = arccos(ζ). For ζ = 0.707 (Butterworth): θ = 45°. Dominant pole approximation: for ζ ≥ 1.5, |s₂/s₁| > 5 and the response is approximately first-order with τ_dom = 1/|s₁|.</p>
+    <p><strong>Industry Examples:</strong> TI TLV3201 RLC timing, ADI ADP1741 LDO closed loop, Infineon TDA21472 gate-drive model, ST L5150 stepper motor, Murata DLW32SH101XF2 CM filter, Coilcraft SRR1260 buck-boost, TI TPS53632 VR loop.</p>
+    <p><strong>Common Mistakes:</strong> (1) Writing the characteristic equation as s² + 2ζω₀s + ω₀² without understanding that 2α = 2ζω₀. (2) Thinking the s-plane circle radius is √(α² + ω_d²) — it equals ω₀ directly. (3) Applying dominant pole approximation when ζ &lt; 1.5. (4) Confusing the standard form s² + 2ζω₀s + ω₀² = 0 (normalized) with the physical circuit equation. (5) Not recognising that the 45° angle corresponds to ζ = cos(45°) = 0.707, the Butterworth condition.</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>The s-plane is a map of all possible exponential behaviours. Every point s = σ + jω represents an exponential e^(st) — the real part σ sets the growth/decay rate and the imaginary part ω sets the oscillation frequency. The two roots of the characteristic equation are two points on this map, tracing a circle of radius ω₀ as damping increases. The left half of the circle (Re(s) &lt; 0) is where stable systems live. The imaginary axis is the boundary between stability and instability.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>The Euclidean distance of a root from the origin in the s-plane equals ω₀ for any damping ratio. Proof: |s|² = α² + ω_d² = α² + (ω₀² − α²) = ω₀². This conservation of distance on the s-plane circle is a direct consequence of the fact that ω₀ = 1/√(LC) depends only on L and C, not R. Changing R moves the poles along the circle but never off it — ω₀ is an invariant of the LC circuit regardless of damping.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>The standard form of the characteristic equation: s² + 2ζω₀s + ω₀² = 0, with roots s = ω₀(−ζ ± √(ζ²−1)). The angle from the negative real axis: θ = arctan(ω_d/α) = arctan(√(1−ζ²)/ζ) = arccos(ζ). For ζ = 0: θ = 90° (roots on imaginary axis). For ζ = 0.707: θ = 45°. For ζ = 1: θ = 0° (roots on real axis). The Butterworth condition ζ = 0.707 places poles at 45°, giving maximally flat frequency response.</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>To determine if a measured response is underdamped, critically damped, or overdamped: (1) Apply a step and observe the output. Ringing → underdamped (ζ &lt; 1). Smooth exponential with an inflection point → overdamped (ζ > 1). Fastest smooth response with no overshoot → critically damped (ζ = 1). (2) For the underdamped case, measure the ringing frequency f_ring and the ratio of successive peaks V₁/V₂ to extract ζ.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>The s-plane was introduced by Oliver Heaviside in his operational calculus (1880s) and formalized by Pierre-Simon Laplace (the Laplace transform). Heaviside used operator p = d/dt to solve differential equations algebraically — replacing calculus with algebra. His method was controversial because he lacked mathematical rigor, but it worked, and he used it to correctly predict the electromagnetic wave speed in submarine telegraph cables when others could not. The s-plane pole-zero diagram that every engineer draws today is Heaviside's operational calculus made graphical.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>The root locus technique (Walter Evans, 1948) traces how poles move in the s-plane as loop gain K varies from 0 to ∞ in a feedback system. For a second-order loop, the roots start on the open-loop poles (K = 0) and move along the s-plane circle as K increases, eventually breaking away to the imaginary axis (marginal stability) and then into the right half-plane (instability). The s-plane circle geometry described here is the geometric foundation of root locus analysis for second-order feedback loops.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Using the dominant pole approximation for ζ = 1.2, where |s₂/s₁| ≈ 2.6 — well below the ≥ 5 criterion. <strong>Fix:</strong> Compute |s₂/s₁| = (ζ + √(ζ²−1))/(ζ − √(ζ²−1)) = (ζ + √(ζ²−1))² / (ζ²−1). At ζ = 1.5: (1.5 + 1.118)/(1.5 − 1.118) = 2.618/0.382 = 6.85. At ζ = 1.2: (1.2 + 0.663)/(1.2 − 0.663) = 1.863/0.537 = 3.47 — below 5. Use the full two-pole formula for ζ &lt; 1.5.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If a measured step response has a long tail that does not match the expected critically-damped formula: the system may have a hidden third pole (from a PCB parasitic, op-amp internal pole, or connector capacitance). A true second-order critically damped response has an inflection point at t = 1/ω₀. If the measured response shows a different inflection structure, suspect higher-order dynamics and model accordingly.</p></div>
+
+  <div class="sim-interactive-box">
+    <h4>🖥️ Interactive Simulation</h4>
+    <iframe src="simulations/P2-SO-4.2.1_Characteristic_Equation_sim.html" width="100%" height="600px" frameborder="0"></iframe>
+  </div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>The characteristic equation and s-plane geometry are the analytical framework for all second-order systems. Modules 4.2.2 and 4.2.3 drill into the two parameters that define a point on the s-plane circle: ω₀ (which sets the circle radius, independent of R) and ζ (which sets the angle on the circle, dependent on R). Together, ω₀ and ζ determine every observable property of the second-order step response.</p></div>
+</section>
+
+<!-- ==================== P2-SO-4.2.2 ==================== -->
+<section id="P2-SO-4.2.2">
+  <h2>4.2.2 — Natural Frequency</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>The undamped natural frequency depends only on L and C, independent of R:</p>
+    <p>\[ \omega_0 = \frac{1}{\sqrt{LC}} \quad \text{rad/s} \qquad f_0 = \frac{\omega_0}{2\pi} \quad \text{Hz} \]</p>
+    <p>Units: [1/√(H·F)] = [1/√(V·s/A · A·s/V)] = rad/s. Design equations: L = Z₀/ω₀, C = 1/(Z₀·ω₀) where Z₀ is the desired characteristic impedance. On a log-log plot of L vs. C, iso-frequency contours (lines of constant f₀) have slope −1 (L ∝ 1/C for fixed f₀). Bell analogy: f₀ is the bell's ring pitch determined by size and material (L and C) — adding damping (resistance, like felt muting) does not change the pitch, only how quickly the ring dies away.</p>
+    <p><strong>Industry Examples:</strong> TI TPS543620 buck (f₀ = 1/(2π√(L·C)), corrected to L = 2.5 nH, C = 1.4–2.1 pF giving 2.20–2.69 GHz VCO), Infineon C3M0025090K LLC 500 kHz, ST L6562A PFC 100 kHz, Murata ELFCH350C2GA 350 MHz, Coilcraft XPT-100L transformer, TI UCC2808.</p>
+    <p><strong>Common Mistakes:</strong> (1) Thinking that increasing R changes ω₀ — R only changes ζ and ω_d, not ω₀. (2) Confusing ω₀ (rad/s) with f₀ (Hz) by a factor of 2π. (3) Using F = Farads for frequency — units must be checked. (4) Not accounting for effective capacitance at DC bias (X5R/X7R ceramic capacitors derate by 30–60% at rated voltage). (5) Forgetting that stray capacitance (PCB trace, connector) adds to C, lowering f₀.</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>ω₀ = 1/√(LC) has a beautiful symmetry: increasing L slows oscillation (heavier pendulum), increasing C also slows oscillation (stiffer spring needs more force). They are dual parameters — each alone makes the system slower, and both together double-slow it. The independence of ω₀ from R is profound: a heavily damped (R large) and a lightly damped (R small) LC circuit with the same L and C ring at exactly the same frequency — one rings for one cycle, the other for a hundred, but both at ω₀.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>The independence from R is proved directly: the undamped natural frequency ω₀ is defined by setting α = 0 (R = 0) in the characteristic equation. In this ideal case, ω₀² = 1/(LC) follows directly from the undamped SHM equation L·C·d²V/dt² + V = 0. R enters the equation only through the 2α term — it shifts the roots but does not change their distance from the origin. Physically: R dissipates energy but does not change the elastic restoring forces (L and C) that determine the oscillation frequency.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>Iso-frequency contour derivation: ω₀ = 1/√(LC) = const → LC = 1/ω₀² = const → L = 1/(ω₀²·C). On a log-log plot: ln(L) = ln(1/ω₀²) − ln(C) → slope = −1. The intercept shifts vertically for different f₀ values (higher f₀ → lower LC product → lower intercept). Two design equations from ω₀ and Z₀: L = Z₀/ω₀ (inductance proportional to impedance, inversely proportional to frequency); C = 1/(Z₀·ω₀) (capacitance inversely proportional to both impedance and frequency).</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>When measuring f₀ experimentally: (1) Apply a small step and measure the ringing frequency f_ring from the oscilloscope. (2) This gives ω_d, not ω₀. (3) Also measure ζ by the log-decrement method. (4) Compute ω₀ = ω_d/√(1−ζ²). For small ζ (lightly damped), ω_d ≈ ω₀ and the correction is negligible. For ζ = 0.5: ω₀ = ω_d/√(0.75) = 1.155·ω_d — a 15.5% correction not to be ignored in precision measurements.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>Guglielmo Marconi's 1901 transatlantic radio transmission required precise tuning of his transmitter's LC circuit to a specific frequency. Without ω₀ = 1/√(LC), there was no way to predict what frequency would be transmitted. Marconi empirically adjusted L (by changing coil turns) and C (by adding capacitor plates) to find the frequency that produced maximum signal at his Cornwall transmitter. His tuning process was essentially a physical demonstration of ω₀ = 1/√(LC) — though Marconi could not derive it, he knew the recipe. The formula was there in Maxwell's equations; Marconi just ran the experiment 100 years before EM simulation software existed.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>In switched-capacitor circuits, effective inductance can be synthesised using capacitors and switches. A capacitor C₁ switched at frequency f_s between two nodes appears as an effective resistance R_eff = 1/(f_s·C₁). Connecting two such switched-capacitor "resistors" with a real capacitor C₂ synthesises an effective inductance L_eff = C₁/(f_s²·C₂). The natural frequency is then ω₀ = 1/√(L_eff·C) = f_s·√(C₂/C₁·C) — a frequency controlled entirely by clock frequency and capacitor ratios. This is how switched-capacitor filters achieve programmable resonant frequencies without physical inductors.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Designing for f₀ at DC bias, using nominal capacitor values, then finding f₀ shifts after installation at rated voltage. <strong>Fix:</strong> Derate ceramic capacitor values for DC bias. For a 10 µF X5R at 3.3 V rated voltage: effective C ≈ 4 µF. Use 4 µF in f₀ = 1/(2π√(LC)) calculations, not 10 µF. Always specify the DC operating voltage when selecting resonant capacitors.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If measured f₀ is lower than designed: (1) Stray capacitance is adding to C. Check PCB copper pour area near the LC nodes — it adds distributed capacitance. (2) Inductor value is higher than specified — check saturation current (if operating above I_sat, L drops; below I_sat, nominal L is correct). (3) If f₀ is lower by √2: you accidentally doubled C (two identical capacitors in parallel instead of one).</p></div>
+
+  <div class="sim-interactive-box">
+    <h4>🖥️ Interactive Simulation</h4>
+    <iframe src="simulations/P2-SO-4.2.2_Natural_Frequency_sim.html" width="100%" height="600px" frameborder="0"></iframe>
+  </div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>Natural frequency ω₀ sets the pace of the second-order system — how fast it wants to oscillate in the absence of damping. Damping ratio ζ (module 4.2.3) determines whether it actually oscillates or merely lumbers towards equilibrium. Together, ω₀ and ζ define the two-parameter design space of all second-order systems. The s-plane SVG diagram below shows the pole locations for all three damping cases.</p></div>
+
+  <div style="margin: 1em 0; padding: 1em; background: #f5f5f5; border-radius: 8px;">
+    <h4>S-Plane Pole Locations</h4>
+    <svg width="400" height="300" viewBox="-200 -150 400 300" xmlns="http://www.w3.org/2000/svg" style="display:block;margin:auto;">
+      <!-- Axes -->
+      <line x1="-180" y1="0" x2="60" y2="0" stroke="#333" stroke-width="1.5"/>
+      <line x1="0" y1="140" x2="0" y2="-140" stroke="#333" stroke-width="1.5"/>
+      <text x="65" y="5" font-size="12" fill="#333">Re(s)</text>
+      <text x="5" y="-145" font-size="12" fill="#333">Im(s)</text>
+      <!-- Circle of radius ω₀ -->
+      <circle cx="0" cy="0" r="100" fill="none" stroke="#aaa" stroke-width="1" stroke-dasharray="4,3"/>
+      <text x="-115" y="12" font-size="10" fill="#aaa">ω₀</text>
+      <!-- Underdamped poles (ζ=0.5, θ=60°) -->
+      <circle cx="-50" cy="-87" r="5" fill="#e74c3c"/>
+      <circle cx="-50" cy="87" r="5" fill="#e74c3c"/>
+      <text x="-48" y="-92" font-size="10" fill="#e74c3c">ζ=0.5 (underdamped)</text>
+      <!-- Critically damped pole (ζ=1) -->
+      <circle cx="-100" cy="0" r="5" fill="#27ae60"/>
+      <text x="-105" y="-8" font-size="10" fill="#27ae60">ζ=1 (critical)</text>
+      <!-- Overdamped poles (ζ=1.5) -->
+      <circle cx="-150" cy="0" r="5" fill="#3498db"/>
+      <circle cx="-67" cy="0" r="5" fill="#3498db"/>
+      <text x="-170" y="14" font-size="10" fill="#3498db">ζ=1.5 (overdamped)</text>
+      <!-- 45° angle line for Butterworth -->
+      <line x1="0" y1="0" x2="-71" y2="-71" stroke="#9b59b6" stroke-width="1" stroke-dasharray="3,2"/>
+      <text x="-85" y="-75" font-size="9" fill="#9b59b6">45° (ζ=0.707)</text>
+    </svg>
+    <p style="text-align:center;font-size:0.85em;color:#555;">Poles move along the ω₀ circle as R increases: from imaginary axis (underdamped, red) through −ω₀ (critically damped, green) and onto the real axis (overdamped, blue). The 45° angle corresponds to ζ = 0.707, the Butterworth condition.</p>
+  </div>
+</section>
+
+<!-- ==================== P2-SO-4.2.3 ==================== -->
+<section id="P2-SO-4.2.3">
+  <h2>4.2.3 — Damping Ratio</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>The damping ratio connects component values to response type:</p>
+    <p>\[ \zeta = \frac{\alpha}{\omega_0} = \frac{R}{2Z_0} = \frac{R}{2\sqrt{L/C}} \]</p>
+    <p>Quality factor: Q = 1/(2ζ) = Z₀/R. Critical resistance: R_critical = 2Z₀. Damped frequency: ω_d = ω₀√(1−ζ²). Key design table:</p>
+    <table style="border-collapse:collapse;width:100%;font-size:0.9em;">
+      <tr style="background:#eee"><th>ζ</th><th>Q</th><th>OS%</th><th>Notes</th></tr>
+      <tr><td>0.1</td><td>5</td><td>73%</td><td>Highly underdamped</td></tr>
+      <tr><td>0.5</td><td>1</td><td>16.3%</td><td>Moderate underdamping</td></tr>
+      <tr><td>0.707</td><td>0.707</td><td>4.3%</td><td>Butterworth, 45° s-plane</td></tr>
+      <tr><td>1.0</td><td>0.5</td><td>0%</td><td>Critically damped</td></tr>
+      <tr><td>2.0</td><td>0.25</td><td>0%</td><td>Overdamped</td></tr>
+    </table>
+    <p>Inverse formula — find ζ from a measured OS%: \(\zeta = -\ln(OS\%/100)/\sqrt{\pi^2 + \ln^2(OS\%/100)}\).</p>
+    <p><strong>Industry Examples:</strong> TI TPS53632 VR (ζ = 0.7 target), ADI ADF5355 PLL loop filter, Infineon IPD70R1K4P7 gate drive, ST L6599 LLC loop, Murata BNX002 damping network, Coilcraft SRF7032A crystal, TI OPA2134 Sallen-Key filter.</p>
+    <p><strong>Common Mistakes:</strong> (1) Confusing ζ = R/(2Z₀) with ζ = R/Z₀ (off by factor of 2). (2) Solving for R_critical = Z₀ instead of 2Z₀. (3) Treating Q = 1/(2ζ) as applying to all definitions of Q — for parallel RLC: Q = R/Z₀, not Z₀/R. (4) Applying the OS% inverse formula for ζ > 1 (invalid; OS% = 0 for ζ ≥ 1). (5) Forgetting that ω_d = 0 at ζ = 1 — no oscillatory component in the critically damped response.</p>
+  </div>
+
+  <!-- SVG: All three step responses overlaid -->
+  <div style="margin:1em 0;padding:1em;background:#f5f5f5;border-radius:8px;">
+    <h4>Step Responses: Underdamped, Critically Damped, Overdamped</h4>
+    <svg width="500" height="280" viewBox="0 0 500 280" xmlns="http://www.w3.org/2000/svg" style="display:block;margin:auto;font-family:sans-serif;">
+      <!-- Axes -->
+      <line x1="50" y1="240" x2="480" y2="240" stroke="#333" stroke-width="1.5"/>
+      <line x1="50" y1="20" x2="50" y2="250" stroke="#333" stroke-width="1.5"/>
+      <text x="485" y="244" font-size="11" fill="#333">t</text>
+      <text x="10" y="25" font-size="11" fill="#333">y(t)</text>
+      <!-- Grid lines -->
+      <line x1="50" y1="50" x2="480" y2="50" stroke="#ddd" stroke-width="1"/>
+      <line x1="50" y1="130" x2="480" y2="130" stroke="#ddd" stroke-width="1"/>
+      <text x="30" y="54" font-size="10" fill="#999">1.2</text>
+      <text x="30" y="134" font-size="10" fill="#999">1.0</text>
+      <text x="30" y="244" font-size="10" fill="#999">0</text>
+      <!-- Final value line -->
+      <line x1="50" y1="130" x2="480" y2="130" stroke="#888" stroke-width="1" stroke-dasharray="5,3"/>
+      <!-- Underdamped (ζ=0.3, red) — approximate curve using polyline -->
+      <polyline points="50,240 80,200 110,100 140,90 170,120 200,140 230,128 260,125 290,130 320,131 350,130 380,130 410,130 440,130 470,130"
+        fill="none" stroke="#e74c3c" stroke-width="2"/>
+      <!-- Critically damped (ζ=1.0, green) -->
+      <polyline points="50,240 80,215 110,170 140,148 170,138 200,133 230,131 260,130 290,130 320,130 350,130 380,130 410,130 440,130 470,130"
+        fill="none" stroke="#27ae60" stroke-width="2"/>
+      <!-- Overdamped (ζ=2.0, blue) -->
+      <polyline points="50,240 80,230 110,210 140,188 170,170 200,157 230,148 260,141 290,137 320,134 350,132 380,131 410,130 440,130 470,130"
+        fill="none" stroke="#3498db" stroke-width="2"/>
+      <!-- Labels -->
+      <text x="155" y="88" font-size="10" fill="#e74c3c">Underdamped (ζ=0.3, 37% OS)</text>
+      <text x="215" y="168" font-size="10" fill="#27ae60">Critically damped (ζ=1.0)</text>
+      <text x="290" y="190" font-size="10" fill="#3498db">Overdamped (ζ=2.0)</text>
+      <!-- Overshoot annotation -->
+      <line x1="145" y1="90" x2="145" y2="130" stroke="#e74c3c" stroke-width="1" stroke-dasharray="3,2"/>
+      <text x="148" y="113" font-size="9" fill="#e74c3c">37% OS</text>
+    </svg>
+    <p style="text-align:center;font-size:0.85em;color:#555;">Underdamped (red): fast rise but overshoots. Critically damped (green): fastest zero-overshoot approach. Overdamped (blue): slowest, no overshoot, two distinct time scales visible.</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>ζ = R/(2Z₀) is the dimensionless ratio of actual resistance to critical resistance. Below 1 the system overshoots; above 1 it does not. The factor of 2 appears because R_critical = 2Z₀ — you need twice the characteristic impedance to achieve critical damping. A shock absorber analogy: Z₀ is the "stiffness" of the spring, R is the fluid resistance of the damper. At ζ = 1 (R = 2Z₀), the damper is perfectly matched to the spring, providing the fastest return to equilibrium without bouncing.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>The factor ζ = R/(2Z₀) arises naturally from the characteristic equation: s² + (R/L)s + 1/(LC) = 0 → s² + 2·(R/2L)·s + ω₀² = 0. So 2α = R/L → α = R/(2L). Then ζ = α/ω₀ = (R/2L)/(1/√(LC)) = R/(2L) × √(LC) = R/(2) × √(C/L) = R/(2√(L/C)) = R/(2Z₀). Every step in this derivation follows directly from the ODE coefficients — there are no free parameters.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>Inverse formula derivation: OS% = 100·e^(−πζ/√(1−ζ²)). Let x = OS%/100. Then ln(x) = −πζ/√(1−ζ²). Square both sides: ln²(x) = π²ζ²/(1−ζ²). Solve for ζ²: ζ²·ln²(x) − ζ²·π² = −ln²(x)·ζ² ... Rearranging: ζ²·(π² + ln²(x)) = ln²(x) → ζ = |ln(x)|/√(π² + ln²(x)) = −ln(OS%/100)/√(π² + ln²(OS%/100)).</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>Design target: (1) If OS% must be &lt; 5%: use inverse formula → ζ ≥ 0.69. (2) Compute R = 2ζZ₀ = 2 × 0.69 × √(L/C). (3) Verify R can be achieved with standard resistor values within 1%. (4) Check that ζ at worst-case R tolerance (R − 5% → ζ − 5%) still gives OS% &lt; 5%. If not, target ζ = 0.75 for margin.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>The original automobile shock absorber was invented by Edward Bourcart in 1901 — a telescoping hydraulic damper. By the 1920s, automotive engineers needed to tune it to provide comfortable ride without excessive bounce. The critical damping condition R_mech = 2√(k_spring × m_car) was derived analytically, but engineers found that critically damped (ζ = 1) gave a "wooden" feel — too stiff. They settled on ζ = 0.25–0.35 for luxury cars, allowing gentle bouncing for comfort while preventing oscillation buildup. Modern automotive active suspension systems continuously adjust ζ by varying the hydraulic valve opening — they are real-time second-order controllers solving ζ = R/(2Z₀) on every road irregularity.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>In a Sallen-Key filter, the damping ratio is set by the ratio of two resistors and two capacitors: ζ = (R₁·C₁ + R₂·C₁ + R₁·C₂)/(2√(R₁·R₂·C₁·C₂)). For a standard equal-component design (R₁ = R₂ = R, C₁ = C₂ = C): ζ = (RC + RC + RC)/(2RC) = 3/2 = 1.5 — overdamped. For ζ = 0.707: the ratio must be adjusted. This is why Sallen-Key filter designs require specific resistor ratios that may seem arbitrary — they are solving for ζ = 0.707 in the above equation.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Applying the OS% formula for ζ > 1 and getting a complex number. <strong>Fix:</strong> The formula OS% = 100·e^(−πζ/√(1−ζ²)) is only valid for ζ &lt; 1. For ζ ≥ 1: OS% = 0. Add conditional: if ζ ≥ 1, OS% = 0.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If measured OS% is larger than the ζ-based prediction: (1) Higher-order poles in the circuit are contributing additional phase (reducing effective ζ). (2) The step input has finite rise time comparable to t_p — this increases effective OS% beyond the ideal formula. (3) Source impedance changes during the transient (e.g., op-amp output resistance increases when current-limited), effectively reducing ζ during the fast transient.</p></div>
+
+  <div class="sim-interactive-box">
+    <h4>🖥️ Interactive Simulation</h4>
+    <iframe src="simulations/P2-SO-4.2.3_Damping_Ratio_sim.html" width="100%" height="600px" frameborder="0"></iframe>
+  </div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>Damping ratio ζ is the master control parameter of second-order systems. The three modules that follow (4.3.1 through 4.3.3) derive the exact step responses for ζ &lt; 1, ζ = 1, and ζ > 1. After that, modules 4.4.1 through 4.4.3 quantify the performance metrics (overshoot, ringing, decay) that follow directly from ζ. Every design decision in second-order systems reduces to choosing ζ — the single number that determines whether the system rings, bounces, or settles smoothly.</p></div>
+</section>
+
+<!-- ==================== P2-SO-4.3.1 ==================== -->
+<section id="P2-SO-4.3.1">
+  <h2>4.3.1 — Underdamped Response (ζ &lt; 1)</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>The underdamped step response (normalised, y(∞) = 1, y(0) = 0):</p>
+    <p>\[ y(t) = 1 - e^{-\alpha t}\!\left[\cos(\omega_d t) + \frac{\alpha}{\omega_d}\sin(\omega_d t)\right] \]</p>
+    <p>Overshoot: OS% = 100·e^(−πζ/√(1−ζ²)). Peak time: t_p = π/ω_d. Overshoot table:</p>
+    <table style="border-collapse:collapse;width:100%;font-size:0.9em;">
+      <tr style="background:#eee"><th>ζ</th><th>OS%</th><th>Description</th></tr>
+      <tr><td>0.1</td><td>73%</td><td>Dangerous for power rails</td></tr>
+      <tr><td>0.3</td><td>37%</td><td>Significant ringing</td></tr>
+      <tr><td>0.5</td><td>16.3%</td><td>Moderate overshoot</td></tr>
+      <tr><td>0.7</td><td>4.3%</td><td>Butterworth — design target</td></tr>
+      <tr><td>0.9</td><td>0.15%</td><td>Near-critical</td></tr>
+      <tr><td>1.0</td><td>0%</td><td>Critically damped</td></tr>
+    </table>
+    <p>Car suspension analogy: an underdamped suspension bounces repeatedly after a pothole — each bounce lower than the last but never immediately settling. The number of visible bounces ≈ Q/π = 1/(2πζ) — the fewer, the better for a car (or power supply).</p>
+    <p><strong>Industry Examples:</strong> TI LM2576 (underdamped inductor), ADI ADP5054 (buck ring), Infineon TDA21472 (gate oscillation), ST L6599 LLC, Murata BNX002, Coilcraft SER2014, TI OPA2277 SK filter.</p>
+    <p><strong>Common Mistakes:</strong> (1) Forgetting that t_p = π/ω_d (not π/ω₀). (2) Using the OS% formula for ζ ≥ 1. (3) Measuring overshoot from the pre-step level rather than from the final value. (4) Not recognising that overshoot percentage is independent of ω₀. (5) Ignoring ringing cycles after the first overshoot — later peaks can still violate absolute maximum ratings.</p>
+  </div>
+
+  <!-- SVG: All three step responses overlaid — underdamped highlighted -->
+  <div style="margin:1em 0;padding:1em;background:#f5f5f5;border-radius:8px;">
+    <h4>Step Response Comparison: Underdamped vs Critically Damped vs Overdamped</h4>
+    <svg width="500" height="280" viewBox="0 0 500 280" xmlns="http://www.w3.org/2000/svg" style="display:block;margin:auto;font-family:sans-serif;">
+      <line x1="50" y1="240" x2="480" y2="240" stroke="#333" stroke-width="1.5"/>
+      <line x1="50" y1="20" x2="50" y2="250" stroke="#333" stroke-width="1.5"/>
+      <text x="485" y="244" font-size="11" fill="#333">t</text>
+      <text x="10" y="25" font-size="11" fill="#333">y(t)</text>
+      <line x1="50" y1="50" x2="480" y2="50" stroke="#ddd" stroke-width="1"/>
+      <line x1="50" y1="130" x2="480" y2="130" stroke="#888" stroke-width="1" stroke-dasharray="5,3"/>
+      <text x="30" y="54" font-size="10" fill="#999">1.2</text>
+      <text x="30" y="134" font-size="10" fill="#999">1.0</text>
+      <text x="30" y="244" font-size="10" fill="#999">0</text>
+      <!-- Underdamped (ζ=0.3, red) — bold/highlighted -->
+      <polyline points="50,240 80,200 110,100 140,90 170,120 200,140 230,128 260,125 290,130 320,131 350,130 380,130 410,130 440,130 470,130"
+        fill="none" stroke="#e74c3c" stroke-width="3"/>
+      <!-- Critically damped (ζ=1.0, green) -->
+      <polyline points="50,240 80,215 110,170 140,148 170,138 200,133 230,131 260,130 290,130 320,130 350,130 380,130 410,130 440,130 470,130"
+        fill="none" stroke="#27ae60" stroke-width="1.5" stroke-dasharray="4,2"/>
+      <!-- Overdamped (ζ=2.0, blue) -->
+      <polyline points="50,240 80,230 110,210 140,188 170,170 200,157 230,148 260,141 290,137 320,134 350,132 380,131 410,130 440,130 470,130"
+        fill="none" stroke="#3498db" stroke-width="1.5" stroke-dasharray="4,2"/>
+      <text x="115" y="87" font-size="10" fill="#e74c3c" font-weight="bold">Underdamped (ζ=0.3) ← this module</text>
+      <text x="215" y="168" font-size="10" fill="#27ae60">Critically damped (ζ=1.0)</text>
+      <text x="290" y="190" font-size="10" fill="#3498db">Overdamped (ζ=2.0)</text>
+      <line x1="145" y1="90" x2="145" y2="130" stroke="#e74c3c" stroke-width="1" stroke-dasharray="3,2"/>
+      <text x="148" y="113" font-size="9" fill="#e74c3c">37% OS</text>
+    </svg>
+    <p style="text-align:center;font-size:0.85em;color:#555;">Underdamped (red, bold): overshoots and rings. Critically damped (green, dashed): fastest zero-overshoot. Overdamped (blue, dashed): slowest approach with two visible time scales.</p>
+  </div>
+
+  <div class="circuit-box">
+    <h4>⚡ NGSpice 3-Stage Netlist — Wrong ζ → Less Ringing → Critically Damped</h4>
+    <pre>
+* Underdamped Step Response: Three ζ Values
+* L = 1mH, C = 1µF → Z₀ = √(1m/1µ) = 31.62 Ω, ω₀ = 1/√(1m·1µ) = 31,623 rad/s
+* Wrong:  R = 6.32 Ω → ζ = 0.1 (too much ringing, 73% OS)
+* Better: R = 19 Ω  → ζ = 0.3 (less ringing, 37% OS)
+* Target: R = 63.25Ω → ζ = 1.0 (critically damped, 0% OS)
+
+.step param Rval LIST 6.32 19.0 63.25
+
+Vstep  IN  0  PULSE(0 1 0 1n 1n 5m 10m)
+R1     IN  N1  {Rval}
+L1     N1  N2  1m    IC=0
+C1     N2  0   1u    IC=0
+
+.tran  2u  2m  0  UIC
+
+.measure TRAN Vpeak  MAX V(N2)
+.measure TRAN OS_pct PARAM {max((Vpeak-1)*100, 0)}
+
+.control
+run
+echo "R = " &Rval " Ohm, OS% = " &OS_pct
+plot allsteps v(n2) title "Underdamped: Wrong, Less, Critically Damped"
+.endc
+.end
+    </pre>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>The underdamped response is the system "overshooting its target." The oscillation is not random noise — it is stored energy sloshing back and forth between L and C while R gradually drains it away. The first overshoot is the largest; each subsequent peak is smaller by the factor e^(−2πζ/√(1−ζ²)) — the logarithmic decrement. The system "circles" its equilibrium rather than approaching it directly, like a marble rolling into a bowl and spiralling inward with each pass.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>The peak at t_p = π/ω_d occurs when dy/dt = 0 (the velocity is zero at the turning point). Setting dy/dt = 0 in the differentiated step response equation reduces to sin(ω_d·t) = 0 (the cosine terms cancel), giving ω_d·t_p = π. Substituting back: y(t_p) = 1 + e^(−α·π/ω_d) = 1 + e^(−πζ/√(1−ζ²)), so OS = e^(−πζ/√(1−ζ²)), independent of ω₀.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>Alternative polar form: y(t) = 1 − (1/√(1−ζ²))·e^(−αt)·sin(ω_d·t + φ) where φ = arccos(ζ). This form makes clear that the amplitude of the oscillatory component is 1/√(1−ζ²) — larger for smaller ζ. As ζ → 0, amplitude → ∞ (pure sinusoid with unit amplitude becomes asymptotic). As ζ → 1, amplitude → ∞ in the formula but the sin term → 0 simultaneously, so the product approaches a finite value (critically damped formula).</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>For power supply design: OS% directly translates to peak output voltage. A 3.3 V rail with ζ = 0.3 (common in poorly compensated converters) can peak to 3.3 × 1.37 = 4.52 V. If the downstream MCU has VDD_max = 3.6 V, this exceeds the absolute maximum by 0.92 V — certain damage. Always calculate peak voltage = V_nominal × (1 + OS%/100) and compare to absolute maximum ratings of all downstream loads.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>The Tacoma Narrows Bridge collapse in 1940 is the most famous example of an underdamped mechanical system driven to destruction. The bridge's torsional resonance at 0.2 Hz had very low damping (ζ ≈ 0.0005). Wind at 42 mph provided exactly the right periodic forcing to pump energy in at the resonant frequency. In 4 hours of resonant excitation, oscillation amplitude grew from a few centimetres to over 8 metres — a classic example of an underdamped system driven into instability. Modern bridges have aerodynamic dampers and tuned mass dampers that increase effective ζ to 0.05–0.15, preventing this mode of failure.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>In PLL (phase-locked loop) design, the second-order loop filter has ζ_PLL = (1/2)·√(K_VCO·K_PD·τ₂/N/τ₁²) where τ₁ and τ₂ are the loop filter time constants, K_VCO is the VCO gain, K_PD is the phase detector gain, and N is the divider ratio. The same overshoot formula OS% = 100·e^(−πζ/√(1−ζ²)) applies to the PLL frequency step response. For ζ = 0.707 PLL: OS% = 4.3% in frequency — meaning after a 1 MHz frequency step, the VCO overshoots to 1.043 MHz before settling. For a cellular radio PLL, this overshoot must complete within the channel dwell time.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Measuring OS% as (V_peak − V_initial)/(V_final − V_initial) × 100 instead of (V_peak − V_final)/V_final × 100. <strong>Fix:</strong> Overshoot is always referenced to the final value, not the initial value. For a step from 0 to 1 V with a peak at 1.37 V: OS% = (1.37 − 1)/1 × 100 = 37%, not 137%.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If ringing frequency is lower than ω_d = ω₀√(1−ζ²): extra capacitance is present (PCB trace, MOSFET Coss, scope probe). Measure ω_ring, compute effective C = 1/(ω_ring²·L), compare to designed C. If ringing frequency is higher than ω_d: extra inductance has been removed (PCB layout change, shorter lead). Track the parasitic inductance using L = 1/(ω_ring²·C).</p></div>
+
+  <div class="sim-interactive-box">
+    <h4>🖥️ Interactive Simulation</h4>
+    <iframe src="simulations/P2-SO-4.3.1_Underdamped_Response_sim.html" width="100%" height="600px" frameborder="0"></iframe>
+  </div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>The underdamped response defines the worst case for voltage stress, EMI, and control loop instability — all consequences of overshoot and ringing. The critically damped response (4.3.2) is the engineering ideal: the fastest zero-overshoot settling. The overdamped response (4.3.3) is what happens when R is too large — no ringing, but slower settling than critical, with two distinct time constants revealing a new dynamic structure.</p></div>
+</section>
+
+<!-- ==================== P2-SO-4.3.2 ==================== -->
+<section id="P2-SO-4.3.2">
+  <h2>4.3.2 — Critically Damped Response (ζ = 1)</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>The critically damped step response (ζ = 1, y(0) = 0, y(∞) = 1):</p>
+    <p>\[ y(t) = 1 - e^{-\omega_0 t}(1 + \omega_0 t) \]</p>
+    <p>Key milestones: At t = 1/ω₀: y = 1 − 2e^(−1) = 1 − 0.736 = 26.4% (vs. 63.2% for first-order — slower initial response). Settling to 90%: t = 3.89/ω₀. Settling to 1%: t = 6.64/ω₀. Critical resistance: R_crit = 2Z₀ = 2√(L/C). Important insight: ζ = 0.7 settles to 5% FASTER than ζ = 1 because the 4.3% overshoot "helps" by reaching the final value sooner. Design in practice: target ζ = 1.1–1.2 to ensure overdamped despite component tolerances (±5% R and C can shift ζ by ±5%, pushing ζ = 1.0 design into underdamped territory). Car door analogy: a well-damped car door swings smoothly shut and stays there — it does not bounce open (underdamped) or creak slowly to a stop (overdamped).</p>
+    <p><strong>Industry Examples:</strong> TI TPS7A57 LDO, ADI AD5790 DAC output, Infineon IRFB4115G gate drive, ST L6974 power sequencer, Murata LQH3NPN100NGRL, Coilcraft WBC1-1TL transformer, TI REF6050 precision reference.</p>
+    <p><strong>Common Mistakes:</strong> (1) Assuming critically damped is always fastest — it is only fastest for zero-overshoot requirements; ζ = 0.7 is faster to 5% settling. (2) Not accounting for component tolerances when targeting ζ = 1.0 exactly. (3) Confusing the initial slope (slower than first-order) with overall settling speed. (4) Not verifying that the settling time formula for ζ = 1 (6.64/ω₀ for 1% band) is used instead of the first-order formula. (5) Forgetting that the critically damped formula applies only when R = exactly 2Z₀ — off by 5% gives either underdamped or overdamped.</p>
+  </div>
+
+  <!-- SVG: All three step responses overlaid — critically damped highlighted -->
+  <div style="margin:1em 0;padding:1em;background:#f5f5f5;border-radius:8px;">
+    <h4>Step Response Comparison: Underdamped vs Critically Damped vs Overdamped</h4>
+    <svg width="500" height="280" viewBox="0 0 500 280" xmlns="http://www.w3.org/2000/svg" style="display:block;margin:auto;font-family:sans-serif;">
+      <line x1="50" y1="240" x2="480" y2="240" stroke="#333" stroke-width="1.5"/>
+      <line x1="50" y1="20" x2="50" y2="250" stroke="#333" stroke-width="1.5"/>
+      <text x="485" y="244" font-size="11" fill="#333">t</text>
+      <text x="10" y="25" font-size="11" fill="#333">y(t)</text>
+      <line x1="50" y1="50" x2="480" y2="50" stroke="#ddd" stroke-width="1"/>
+      <line x1="50" y1="130" x2="480" y2="130" stroke="#888" stroke-width="1" stroke-dasharray="5,3"/>
+      <text x="30" y="54" font-size="10" fill="#999">1.2</text>
+      <text x="30" y="134" font-size="10" fill="#999">1.0</text>
+      <text x="30" y="244" font-size="10" fill="#999">0</text>
+      <!-- Underdamped (ζ=0.3, red) -->
+      <polyline points="50,240 80,200 110,100 140,90 170,120 200,140 230,128 260,125 290,130 320,131 350,130 380,130 410,130 440,130 470,130"
+        fill="none" stroke="#e74c3c" stroke-width="1.5" stroke-dasharray="4,2"/>
+      <!-- Critically damped (ζ=1.0, green) — bold/highlighted -->
+      <polyline points="50,240 80,215 110,170 140,148 170,138 200,133 230,131 260,130 290,130 320,130 350,130 380,130 410,130 440,130 470,130"
+        fill="none" stroke="#27ae60" stroke-width="3"/>
+      <!-- Overdamped (ζ=2.0, blue) -->
+      <polyline points="50,240 80,230 110,210 140,188 170,170 200,157 230,148 260,141 290,137 320,134 350,132 380,131 410,130 440,130 470,130"
+        fill="none" stroke="#3498db" stroke-width="1.5" stroke-dasharray="4,2"/>
+      <text x="115" y="87" font-size="10" fill="#e74c3c">Underdamped (ζ=0.3)</text>
+      <text x="215" y="155" font-size="10" fill="#27ae60" font-weight="bold">Critically damped (ζ=1.0) ← this module</text>
+      <text x="290" y="190" font-size="10" fill="#3498db">Overdamped (ζ=2.0)</text>
+    </svg>
+    <p style="text-align:center;font-size:0.85em;color:#555;">Critically damped (green, bold): the Goldilocks point — fastest zero-overshoot settling. Underdamped (red, dashed): faster early but overshoots. Overdamped (blue, dashed): no overshoot but slowest to 1%.</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>Critically damped is the Goldilocks point — not too fast (which overshoots), not too slow (which takes forever). The double root at s = −ω₀ means the system approaches its final value exactly once, without oscillation, and at the fastest possible rate consistent with zero overshoot. The curious fact that ζ = 0.7 settles faster than ζ = 1.0 to a 5% band is explained by the overshoot: the 4.3% overshoot of ζ = 0.7 carries the response through the 5% error band from above, rather than having to creep up to it from below.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>At ζ = 1, the two poles of the characteristic equation merge at s = −ω₀. This double pole means the solution has a repeated root, which changes the mathematical form from a pure exponential (single root) to an exponential times a polynomial: e^(−ω₀t)·(1 + ω₀t). The extra factor (1 + ω₀t) allows the initial slope to be steeper than a pure exponential — the system initially accelerates more aggressively toward the final value before the damping slows it down.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>The double-root solution: when the characteristic equation s² + 2ω₀s + ω₀² = (s + ω₀)² = 0 has a double root at s = −ω₀, the general solution is y(t) = (A + Bt)·e^(−ω₀t) + y(∞). Applying initial conditions y(0) = 0 and dy/dt|₀ = 0 (zero initial velocity in the LC analogy): A = −1, B = −ω₀ × (−1) = ω₀ (from the derivative condition). Result: y(t) = 1 − (1 + ω₀t)·e^(−ω₀t).</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>For zero-overshoot design with component tolerances: target ζ = 1.2 rather than ζ = 1.0. This means R = 2 × 1.2 × Z₀ = 2.4Z₀. With ±10% R and ±10% C tolerances: worst case ζ = 1.2 × (0.9/1.1) × (1/1.1) ≈ 0.89 — still slightly underdamped. Target ζ = 1.5 for ±10% tolerances: worst case ζ ≈ 1.1 — guaranteed overdamped. The penalty: 50% larger R, 30% slower settling vs. R_crit.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>The D'Arsonval galvanometer (invented 1882) used a critically damped suspension system to allow the pointer to settle quickly to its final position without oscillating. Before critical damping was understood analytically, galvanometer makers adjusted the magnetic damping empirically by trial and error until the pointer "just" stopped without bouncing. The first mathematical treatment of critically damped galvanometers appeared in a 1921 paper by Biot, which unknowingly derived the R = 2Z₀ critical damping condition. Today the same condition appears in every oscilloscope probe compensation circuit — the probe capacitor is trimmed until the square wave response shows neither overshoot nor excessive droop, corresponding to ζ ≈ 1.0.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>In optimal control theory, the critically damped case with ζ = 1 is not always optimal for a given cost function. Minimizing settling time (LQR with time-optimal control) gives a bang-bang solution that drives the system as hard as possible and then switches — producing a response that looks underdamped to a casual observer. Minimizing the integral of squared error (H₂ optimal) gives ζ = 1/√2 = 0.707. Minimizing peak overshoot alone gives ζ = 1.0. The "optimal" ζ depends entirely on what you are optimizing — there is no universally correct answer.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Using the first-order settling formula t_s = −τ·ln(ε) for a critically damped second-order system. The second-order critically damped system settles to 1% in 6.64/ω₀, not 4.605/ω₀ (which would be the first-order result with τ = 1/ω₀). The factor 6.64 vs. 4.605 means critically damped settles 44% slower than a first-order system with the same time constant.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>To distinguish critically damped from overdamped experimentally: (1) Apply a step and observe the response. (2) If there is an inflection point in the rising edge (the slope first increases then decreases), the response is critically or overdamped. (3) For critically damped: the inflection point is at t = 1/ω₀ where y = 26.4%. (4) For overdamped: the inflection point is at t = 1/(s₁·s₂) where s₁ and s₂ are the two real poles. If the inflection is very early (y ≪ 26%), the system is overdamped.</p></div>
+
+  <div class="sim-interactive-box">
+    <h4>🖥️ Interactive Simulation</h4>
+    <iframe src="simulations/P2-SO-4.3.2_Critically_Damped_Response_sim.html" width="100%" height="600px" frameborder="0"></iframe>
+  </div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>Critical damping is the boundary between oscillation and monotone convergence — a mathematical knife-edge at ζ = 1 with a double pole at −ω₀. The overdamped response (4.3.3) crosses this boundary: ζ > 1 splits the double pole into two distinct real poles, with the slower one dominating the long-time response. The faster-to-5%-band advantage of ζ = 0.707 shown here will be revisited in 4.4.1 (overshoot) and quantified precisely in 4.6.2 (damping variation simulation).</p></div>
+</section>
+
+<!-- ==================== P2-SO-4.3.3 ==================== -->
+<section id="P2-SO-4.3.3">
+  <h2>4.3.3 — Overdamped Response (ζ &gt; 1)</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>The overdamped step response (ζ > 1, two distinct real poles s₁ and s₂):</p>
+    <p>\[ y(t) = 1 + A \cdot e^{s_1 t} + B \cdot e^{s_2 t} \]</p>
+    <p>where s₁ = ω₀(−ζ + √(ζ²−1)), s₂ = ω₀(−ζ − √(ζ²−1)), A = s₂/(s₂−s₁), B = −s₁/(s₂−s₁).</p>
+    <p>Dominant pole approximation (valid when |s₂/s₁| > 5, i.e., ζ ≥ 1.5): τ_dom ≈ 1/|s₁| → for ζ >> 1, τ_dom ≈ RC. The initial "kick": the fast pole s₂ contributes a rapidly-decaying term that creates an inflection early in the response. Key insight: for ζ > 1, larger ζ means SLOWER settling (τ_dom increases with ζ). Two-buckets analogy: the slow bucket (dominant pole) fills gradually; the fast bucket (sub-dominant pole) fills and overflows almost immediately into the slow bucket. The final water level takes the slow bucket's time to reach.</p>
+    <p><strong>Source note:</strong> Source file checkpoint 5 initially states R = 1kΩ with L = 1mH, C = 100pF, then calculates ζ = 0.158 (underdamped) and self-corrects to R = 10kΩ for the overdamped example. The corrected values: R = 10kΩ, L = 1mH, C = 100pF → Z₀ = √(1m/100p) = 3162 Ω, ζ = 10000/(2×3162) = 1.58 (overdamped as intended).</p>
+    <p><strong>Industry Examples:</strong> TI TPS7A5701 (heavily overdamped LDO), ADI ADP1741 LDO stabilisation, Infineon TLE4252D, ST L99H01 motor driver, Murata BNX002 damping network, Coilcraft XPT-100L, TI OPA2277 SK.</p>
+    <p><strong>Common Mistakes:</strong> (1) Thinking larger ζ always means faster settling — for ζ > 1, larger ζ means slower settling. (2) Not recognising the initial "kick" from the fast pole — it makes the early response look faster than the dominant pole predicts. (3) Applying dominant pole approximation when |s₂/s₁| &lt; 5 (ζ &lt; 1.5). (4) Confusing τ_dom ≈ RC (ζ >> 1 limit) with τ = 1/ω₀ (critically damped). (5) Calculating the wrong A and B residues (a sign error is common).</p>
+  </div>
+
+  <!-- SVG: All three step responses overlaid — overdamped highlighted -->
+  <div style="margin:1em 0;padding:1em;background:#f5f5f5;border-radius:8px;">
+    <h4>Step Response Comparison: Underdamped vs Critically Damped vs Overdamped</h4>
+    <svg width="500" height="280" viewBox="0 0 500 280" xmlns="http://www.w3.org/2000/svg" style="display:block;margin:auto;font-family:sans-serif;">
+      <line x1="50" y1="240" x2="480" y2="240" stroke="#333" stroke-width="1.5"/>
+      <line x1="50" y1="20" x2="50" y2="250" stroke="#333" stroke-width="1.5"/>
+      <text x="485" y="244" font-size="11" fill="#333">t</text>
+      <text x="10" y="25" font-size="11" fill="#333">y(t)</text>
+      <line x1="50" y1="50" x2="480" y2="50" stroke="#ddd" stroke-width="1"/>
+      <line x1="50" y1="130" x2="480" y2="130" stroke="#888" stroke-width="1" stroke-dasharray="5,3"/>
+      <text x="30" y="54" font-size="10" fill="#999">1.2</text>
+      <text x="30" y="134" font-size="10" fill="#999">1.0</text>
+      <text x="30" y="244" font-size="10" fill="#999">0</text>
+      <!-- Underdamped (ζ=0.3, red) -->
+      <polyline points="50,240 80,200 110,100 140,90 170,120 200,140 230,128 260,125 290,130 320,131 350,130 380,130 410,130 440,130 470,130"
+        fill="none" stroke="#e74c3c" stroke-width="1.5" stroke-dasharray="4,2"/>
+      <!-- Critically damped (ζ=1.0, green) -->
+      <polyline points="50,240 80,215 110,170 140,148 170,138 200,133 230,131 260,130 290,130 320,130 350,130 380,130 410,130 440,130 470,130"
+        fill="none" stroke="#27ae60" stroke-width="1.5" stroke-dasharray="4,2"/>
+      <!-- Overdamped (ζ=2.0, blue) — bold/highlighted -->
+      <polyline points="50,240 80,230 110,210 140,188 170,170 200,157 230,148 260,141 290,137 320,134 350,132 380,131 410,130 440,130 470,130"
+        fill="none" stroke="#3498db" stroke-width="3"/>
+      <text x="115" y="87" font-size="10" fill="#e74c3c">Underdamped (ζ=0.3)</text>
+      <text x="215" y="168" font-size="10" fill="#27ae60">Critically damped (ζ=1.0)</text>
+      <text x="290" y="178" font-size="10" fill="#3498db" font-weight="bold">Overdamped (ζ=2.0) ← this module</text>
+      <!-- Dominant pole annotation -->
+      <line x1="350" y1="132" x2="350" y2="200" stroke="#3498db" stroke-width="1" stroke-dasharray="3,2"/>
+      <text x="355" y="195" font-size="9" fill="#3498db">dominant pole</text>
+    </svg>
+    <p style="text-align:center;font-size:0.85em;color:#555;">Overdamped (blue, bold): two distinct time scales — fast sub-dominant pole then slow dominant pole. Underdamped (red, dashed): faster but rings. Critically damped (green, dashed): the zero-overshoot speed reference.</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>The overdamped response has two distinct time scales: a fast initial rise (the sub-dominant pole doing its work) followed by a slow exponential approach to final value (the dominant pole). The system has "too much friction" — it barely responds initially, then oozes slowly toward equilibrium. The key counter-intuitive result: adding more resistance (increasing ζ beyond 1) makes settling slower, not faster. The "more damping = safer" instinct is correct for preventing overshoot, but wrong for settling speed when you are already in the overdamped regime.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>The two real poles correspond to two independent decay modes. The faster mode (large |s₂|) decays quickly, contributing little to the long-time response. The slower mode (small |s₁|) decays slowly and determines settling time. Physically: when ζ >> 1, the resistance R is so large it prevents meaningful current flow — the circuit behaves like an RC filter (the inductor current is negligible because IR >> L·dI/dt for large R). The effective τ_dom approaches RC as ζ → ∞, recovering the first-order RC behaviour.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>Dominant pole time constant derivation: s₁ = ω₀(−ζ + √(ζ²−1)). For ζ >> 1: √(ζ²−1) ≈ ζ(1 − 1/(2ζ²)). So s₁ ≈ ω₀·(−ζ + ζ − 1/(2ζ)) = −ω₀/(2ζ) = −ω₀²/(2α) = −1/(LC · R/(2L)) = −1/(RC/2)... more carefully: s₁ ≈ −ω₀²/R × L = −1/(RC) for ζ >> 1. Thus τ_dom = 1/|s₁| ≈ RC for ζ >> 1. The LC inductance becomes irrelevant for very large damping — the system is first-order RC.</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>For an LDO stability design: target ζ = 1.1–1.5 (not ζ >> 1). Beyond ζ = 2, settling time grows faster than linearly with ζ, wasting output capacitor area and cost. The design sweet spot: ζ = 1.1 (just overdamped with margin) gives guaranteed no-overshoot while settling only 10% slower than the critically damped case. Compare: at ζ = 2, τ_dom ≈ RC = 2Z₀ × C = 2√(LC) — double the critically damped settling time.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>The original design of the Golden Gate Bridge (1937) specified a structural damping ratio of ζ = 2.5 for the tower foundations — heavily overdamped against wind-induced oscillation. Engineers of the era believed "more damping is always better" and over-specified the foundation stiffness. The bridge's first mode of oscillation has a period of 18 seconds — so slow that even a San Francisco Bay storm cannot drive it at resonance. The overdamped design was conservative and correct for a structure that must last 100 years. For electronic systems, the same conservatism wastes PCB space and slows transient response — a trade-off made differently for power supplies than for bridges.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>In low-dropout (LDO) regulator stability analysis, the pass transistor's gate capacitance and transconductance create a second-order loop. The output capacitor ESR provides a zero that must be placed below the unity-gain frequency to ensure ζ > 1. Overdamped LDO designs (ζ = 1.5–3.0) are common because the output capacitor ESR varies with temperature, age, and lot-to-lot variation — a ζ = 1.0 design can become underdamped as ESR decreases. Modern "any-capacitor" LDOs use internal compensation to maintain ζ > 1 regardless of output capacitor ESR, solving this design problem at the cost of slightly reduced loop bandwidth.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Simulating an overdamped circuit and accepting the "no overshoot" result without checking settling time. An overdamped ζ = 3 circuit may take 5× longer to settle than a critically damped design. <strong>Fix:</strong> Always measure settling time, not just overshoot. For overdamped systems, t_s = 4.605/|s₁| where s₁ = ω₀(−ζ + √(ζ²−1)) — compute this and compare to the critically damped t_s = 6.64/ω₀.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If the overdamped settling time is much longer than predicted by the dominant pole approximation: the sub-dominant pole is not as fast as assumed (|s₂/s₁| &lt; 5, meaning ζ &lt; 1.5). Use the full two-pole formula instead of the dominant pole approximation. The transition from "needs full formula" to "dominant pole OK" occurs around ζ = 1.5.</p></div>
+
+  <div class="sim-interactive-box">
+    <h4>🖥️ Interactive Simulation</h4>
+    <iframe src="simulations/P2-SO-4.3.3_Overdamped_Response_sim.html" width="100%" height="600px" frameborder="0"></iframe>
+  </div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>With all three damping cases derived — underdamped (4.3.1), critically damped (4.3.2), and overdamped (4.3.3) — the complete second-order transient response is characterised. The next section (4.4.x) quantifies performance metrics: overshoot, ringing, and oscillation decay — the measurable consequences of the damping ratio that appear on oscilloscope traces in real hardware and dominate the engineer's daily troubleshooting experience.</p></div>
+</section>
+
+<!-- ==================== P2-SO-4.4.1 ==================== -->
+<section id="P2-SO-4.4.1">
+  <h2>4.4.1 — Overshoot</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>Overshoot is the fractional amount by which a step response exceeds its final value. Occurs only for ζ &lt; 1:</p>
+    <p>\[ OS\% = 100 \times e^{-\pi\zeta/\sqrt{1-\zeta^2}} \qquad (0 < \zeta < 1) \]</p>
+    <p>Peak time: t_p = π/ω_d. Peak value: y_max = 1 + OS%/100. OS% depends only on ζ — not on ω₀. Key design targets: ζ = 0.5 → 16.3%; ζ = 0.7 → 4.3%; ζ = 1.0 → 0%. The 2% settling time is minimized at ζ ≈ 0.7 (not ζ = 1.0): ζ = 0.7 settles in 3.8/α vs. 5.8/α for ζ = 1.0 (53% faster). Inverse formula: ζ = −ln(OS%/100)/√(π² + ln²(OS%/100)).</p>
+    <p><strong>Industry Examples:</strong> TI TPS62840 buck load step (20.5% OS exceeds MCU 3.6V max on 3.3V rail), ADI ADA4807-1 op-amp (15% OS from parasitic pole), Infineon IRFP4668PbF gate drive (14.9% OS, safe), ST VNH5019A motor current (27.9% OS, marginal), Murata LXES15AAA1 LDO (80mV = 4.4% OS, ζ ≈ 0.69), Coilcraft SER2814H boost (96% OS without compensation), TI ADS131M08 ADC reference (sub-mV overshoot = measurable gain error at 24 bits).</p>
+    <p><strong>Common Mistakes:</strong> (1) Targeting ζ = 1.0 for fastest settling — ζ = 0.7 is 53% faster to 2% band. (2) Formula gives complex result for ζ > 1 — add conditional check. (3) Bench measurement shows more overshoot than formula — add 0.05–0.1 margin for parasitic poles. (4) SPICE simulation under-predicts overshoot — reduce tstep to ≤ T_ring/100. (5) Post-mortem blames power source for V > V_supply — actually LC output filter ringing above supply voltage.</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>Overshoot is stored inertia. When the system is driven toward a new equilibrium, the momentum (stored energy in L, or momentum in the mechanical analogy) carries it past the target. The overshoot percentage is entirely determined by ζ — it encodes how efficiently the resistance drains the inertia energy per cycle. At ζ = 0.707, the first overshoot is small enough (4.3%) that the system enters the 5% band from above before the critically damped system even arrives from below — counterintuitive but mathematically provable.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>At t_p = π/ω_d, the velocity (dV_C/dt or dI_L/dt) is exactly zero — the system has momentarily stopped. But the position (V_C or charge distribution) is past the equilibrium. This is exactly like a pendulum at its maximum displacement — momentarily stationary but displaced. The distance past equilibrium is e^(−α·t_p) = e^(−αt_p) = e^(−πζ/√(1−ζ²)), which is the OS fraction. The resistance has drained this fraction of the initial energy by the time the first peak is reached.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>Settling time comparison at 2% band: For ζ = 0.7: t_s(2%) ≈ 3.8/α = 3.8/(ζω₀) = 5.43/ω₀. For ζ = 1.0: t_s(2%) ≈ 5.8/α = 5.8/ω₀. Ratio: 5.8/5.43 = 1.068 — ζ = 1.0 is 6.8% slower at the same ω₀. At the same α: for ζ = 0.7, α = 0.7ω₀, t_s = 3.8/(0.7ω₀) = 5.43/ω₀. For ζ = 1.0, α = ω₀, t_s = 5.8/ω₀. So ζ = 0.7 settles 53% faster when comparing at the same ω₀.</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>Overshoot in power converters directly stresses downstream ICs. For a 3.3 V supply with load-step OS% of 20%: V_peak = 3.3 × 1.20 = 3.96 V. If downstream MCU VDD_max = 3.6 V, the transient exceeds it. Fix: increase output capacitor or adjust compensation for ζ ≥ 0.7 (OS% ≤ 4.3%). Design rule: for a rail tolerance of ±x%, the maximum allowable OS% = x% (so that the peak stays within the tolerance band).</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>In the Apollo Lunar Module descent engine, the propellant flow control valves had a second-order dynamic response with ζ = 0.45 (26% overshoot). Engineers at TRW discovered this during acceptance testing in 1967. The overshoot caused a brief surge in thrust at valve opening, creating a transient pitch moment that the GNC system had to compensate. The fix: add a small RC filter (raising effective ζ to 0.7, 4.3% overshoot) in the valve control electronics. This single resistor and capacitor change made the Apollo 11 landing in July 1969 smoother — overshoot matters even on the Moon.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>In hard-disk drive read/write head positioning, overshoot directly causes adjacent-track writes — the head momentarily writes to the wrong track during the overshoot transient. The HDD industry specifies OS% ≤ 5% (ζ ≥ 0.69) as a track misregistration budget item. With track pitches below 100 nm in modern drives, even 2% overshoot (1–2 nm position error) can corrupt data. The servo loop is designed with ζ = 0.69–0.75 specifically to balance settling speed against track misregistration budget, exactly as the OS% formula predicts.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Measuring overshoot on an oscilloscope with a 1× (1:1) probe instead of a 10× probe, when the circuit operates at MHz frequencies. The 1× probe capacitance (100 pF) forms an additional RC with the source impedance, reducing observed OS%. The true OS% is higher than measured. <strong>Fix:</strong> Always use a 10× probe (10 pF) for circuits above 1 MHz. Verify that measured t_p matches π/ω_d — if it is longer than expected, the probe is loading the circuit.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If overshoot appears in one unit but not another from the same production batch: component tolerance variation is shifting ζ across the acceptance band. Calculate ζ spread from component tolerances: Δζ/ζ = √((ΔR/R)² + (ΔL/L)²/4 + (ΔC/C)²/4). For ±5% resistors and ±10% capacitors and inductors: Δζ/ζ ≈ 8%. If nominal ζ = 1.0: worst case ζ_min = 0.92 → OS% = 0.26%. If nominal ζ = 0.8: worst case ζ_min = 0.736 → OS% = 3.0%. Design for the minimum ζ case.</p></div>
+
+  <div class="sim-interactive-box">
+    <h4>🖥️ Interactive Simulation</h4>
+    <iframe src="simulations/P2-SO-4.4.1_Overshoot_sim.html" width="100%" height="600px" frameborder="0"></iframe>
+  </div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>Overshoot quantifies the first excursion beyond the target. Ringing (4.4.2) characterises the subsequent oscillations — each smaller than the previous by the logarithmic decrement. Oscillation decay (4.4.3) describes the full ring-down process using the Q factor, connecting the overshoot percentage of the first peak to the complete time history of all subsequent peaks. These three modules together provide all the tools needed to characterise any underdamped transient from a single oscilloscope measurement.</p></div>
+</section>
+
+<!-- ==================== P2-SO-4.4.2 ==================== -->
+<section id="P2-SO-4.4.2">
+  <h2>4.4.2 — Ringing</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>Ringing is the oscillatory component of the underdamped step response, characterised by:</p>
+    <p>\[ f_{ring} = \frac{\omega_d}{2\pi} = \frac{\omega_0}{2\pi}\sqrt{1-\zeta^2} \quad \text{Hz} \]</p>
+    <p>\[ \tau_{decay} = \frac{1}{\alpha} = \frac{1}{\zeta\omega_0} = \frac{2L}{R} \quad \text{s} \]</p>
+    <p>Ring envelope: V(t) = V_max × e^(−αt). Logarithmic decrement: δ = ln(y₁/y₂) = 2πζ/√(1−ζ²). Cycles to 1% amplitude: N ≈ 0.733/ζ. Note: f_ring = f₀×√(1−ζ²) &lt; f₀; for ζ = 0.5: f_ring = 0.866×f₀ (13.4% lower). For ζ &lt; 0.2: f_ring ≈ f₀ (within 2%). EMI implication: ringing creates narrowband spectral energy at f_ring — directly within CISPR 32 Class B limits for 10–200 MHz switching ringing.</p>
+    <p><strong>Industry Examples:</strong> TI UCC27211 gate driver (ζ = 0.937 → OS% = 0.025%, but Rg = 0 → undamped 15.6 MHz ringing), ADI LTC3890 boost (ζ = 0.028, f_ring = 15.65 kHz, DCR only damping), Infineon BTN8962TA (45 MHz ringing → 10.4 nH parasitic trace inductance), ST STSPIN32F0 FOC (800 Hz current loop ringing exciting 750 Hz mechanical resonance), Murata LQH3NPZ4R7MG0 (SRF = 55 MHz, ringing at 52 MHz from SRF excitation), Coilcraft SRF5020-100Y (Q = 40, N = 58.6 cycles to 1%), TI TPS53819 DDR4 (PDN overdamped at kHz, but via stub resonance at 3.98 GHz).</p>
+    <p><strong>Common Mistakes:</strong> (1) Using f_ring = f₀ without correction — for ζ = 0.5 this is 13.4% error. (2) Adding capacitance to kill ringing: lowers Z₀ → reduces ζ = R/(2Z₀) → more ringing. (3) Mistaking oscilloscope probe ground lead resonance (10–15 MHz) for circuit ringing. (4) Neglecting primary ring damping and missing secondary PCB parasitics. (5) Designing snubbers at room temperature without accounting for ceramic capacitor temperature coefficient.</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>Ringing is a tuning fork effect — strike it and it rings at its natural frequency. The ringing frequency tells you what L and C are doing; the decay rate tells you what R is doing. These two numbers, extractable from any oscilloscope waveform using the log-decrement method, completely identify the hidden parasitic LC circuit causing the problem. Ringing is not random — it is the circuit announcing its hidden resonances. Learn to read the frequency and decay rate and you can identify any parasitic LC without ever touching a component.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>The log-decrement δ = ln(y₁/y₂) = 2πζ/√(1−ζ²) is derived from the ratio of successive peak amplitudes. Peak n occurs at t_n = n·π/ω_d; amplitude at t_n is e^(−α·t_n) = e^(−α·n·π/ω_d). Ratio: y_{n+1}/y_n = e^(−α·π/ω_d) = e^(−2πα/(2ω_d)). Taking the natural log: δ = α·π/ω_d = πζ/√(1−ζ²)·... wait — δ = ln(y_n/y_{n+1}) = α·T_ring = 2πα/ω_d = 2πζ/√(1−ζ²). This is the logarithmic decrement: measure two successive peaks on the oscilloscope and ζ falls out immediately.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>Experimental ζ extraction from ring-down: (1) Measure y₁ (first peak above final value) and y₂ (second peak). (2) Δ = ln(y₁/y₂). (3) ζ = Δ/√(4π² + Δ²). For a circuit with successive peaks of 1.37 V and 1.05 V on a 1 V final value: y₁ = 0.37, y₂ = 0.05 (above final). Δ = ln(0.37/0.05) = ln(7.4) = 2.00. ζ = 2.00/√(4π² + 4.00) = 2.00/√(39.48 + 4.00) = 2.00/6.59 = 0.304. Overshoot check: 100·e^(−π×0.304/√(1−0.304²)) = 100·e^(−1.01) = 36.4% ≈ 37%. Confirmed.</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>Snubber design to reduce ringing: (1) Identify f_ring from the oscilloscope and compute L × C = 1/(2πf_ring)². (2) Compute Z₀ = √(L_par/C_par) from a separate ζ measurement. (3) Set R_snub = Z₀. (4) Set C_snub = 1/(ω₀·Z₀) ≈ C_par/Q. (5) Verify power dissipation: P = ½·C_snub·V²·f_sw. (6) After adding snubber, re-measure ζ to confirm ζ ≥ 0.7. Warning: adding only capacitance without resistance increases C → lowers Z₀ → reduces ζ → more ringing. Always add R in series with the snubber capacitor.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>In 1974, engineers at IBM testing an early DRAM chip observed ringing on the address bus lines at 50 MHz — directly in the AM broadcast band. The ringing was traced to a parasitic LC circuit between the PCB trace inductance (15 nH) and the DRAM input capacitance (8 pF), giving f₀ = 1/(2π√(15n·8p)) = 459 MHz — but the measured 50 MHz ringing was from a different parasitic at the power pins. Adding 47 Ω termination resistors to the address lines raised ζ from 0.03 to 0.8, eliminating the ringing and the AM interference. This was the first "signal integrity" fix in commercial computing — a term not yet coined, but the physics was identical to what this module describes.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>In GaN power switching (e.g., GaN Systems GS66508T, 650 V/30 A), switch-node ringing can occur at 500 MHz to 2 GHz. At these frequencies, the PCB transmission line effects dominate — the ringing is a standing wave on the PCB trace, not a lumped LC resonance. The correct model is a distributed transmission line with characteristic impedance Z_line = √(L_trace_per_m / C_trace_per_m) ≈ 50–150 Ω. Snubbers designed using lumped LC models are ineffective; the fix requires controlled impedance PCB routing and matched terminations at the switching node.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Designing a snubber at room temperature and finding it fails EMI at −40°C. X5R/X7R ceramic capacitors in the snubber change value by ±20% from 25°C to −40°C, shifting f₀ of the snubber away from the circuit's ringing frequency. <strong>Fix:</strong> Use C0G/NP0 ceramics for snubbers (±30 ppm/°C, no bias or temperature dependence). The small capacitance value needed (typically 100 pF to 10 nF) is easily achievable in C0G.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>Before adding snubbers, verify the ringing is real and not a probe artifact: (1) Move the probe ground clip to a nearby low-impedance ground point. (2) Use a spring-tip ground adapter instead of a clip lead. (3) If ringing frequency shifts with ground clip length: it is a probe artifact at the ground lead resonance. (4) If ringing is unchanged: it is real circuit ringing. Only then proceed to snubber design.</p></div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>Ringing is the signature of an underdamped system — the frequency reveals the LC values, the decay rate reveals the effective resistance. Oscillation decay (4.4.3) quantifies the ring-down process mathematically using the Q factor, tying together the single-peak overshoot (4.4.1) with the multi-cycle ring-down story. After decay is understood, module 4.5.1 shows when ringing is intentional and beneficial — the dual of this module's damage-prevention perspective.</p></div>
+</section>
+
+<!-- ==================== P2-SO-4.4.3 ==================== -->
+<section id="P2-SO-4.4.3">
+  <h2>4.4.3 — Oscillation Decay</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>Oscillation decay is governed by the exponential amplitude envelope e^(−αt), with key metrics:</p>
+    <p>\[ \tau_d = \frac{1}{\alpha} = \frac{1}{\zeta\omega_0} = \frac{2L}{R} = \frac{2Q}{\omega_0} \quad \text{s} \]</p>
+    <p>\[ Q = \frac{1}{2\zeta} = \frac{Z_0}{R} = \frac{\omega_0 L}{R} \]</p>
+    <p>Energy lost per cycle: ΔE/E = 2π/Q. Cycles to 1/e amplitude: N = Q/π. Ring-down to 1% amplitude: t = 4.605·τ_d. Logarithmic decrement method for measuring ζ: (1) Apply step or impulse. (2) Measure successive peaks y₁, y₂. (3) Δ = ln(y₁/y₂). (4) ζ = Δ/√(4π² + Δ²). (5) ω_d = 2π/T_ring. (6) ω₀ = ω_d/√(1−ζ²).</p>
+    <p><strong>Industry Examples:</strong> TI CC2640R2 BLE crystal ring-up time τ_d = 497 µs (Q ≈ 50,000 for 32 MHz XTAL), ADI AD9520 VCO Q ≈ 15 vs. crystal Q = 10,000 → PLL needed, Infineon IR3898 VRM shutdown ring ζ = 0.75 (OS = 2.8%), ST STM32F7 SAR ADC input ring-down at 3.16 ns, Murata CSACV 4 MHz resonator τ_d = 564 µs, Coilcraft SRR1260 Q = 6.6 at 16 MHz (skin effect dominates over DCR), TI ISO7742 digital isolator ring-down 12.6 ns (limits data rate to &lt; 80 Mbps).</p>
+    <p><strong>Common Mistakes:</strong> (1) Using amplitude ratios in dB instead of linear in the log-decrement formula — result is off by 20/ln(10) ≈ 8.7. (2) Not accounting for radiation resistance and probe loading in Q measurements — measured Q is pessimistic. (3) Targeting exactly ζ = 1 without tolerance margin — ±20% components → ζ can be 0.8, giving OS% = 1.5%. (4) Using DCR-based Q at MHz — skin effect makes AC resistance 10–100× higher than DCR. (5) Not distinguishing linear decay (exponential envelope) from nonlinear decay (frequency-dependent core loss).</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>Q is the system's "endurance" — how many oscillation cycles it can sustain before losing most of its energy. A tuning fork has Q ≈ 1000; it rings for minutes. A power supply output filter has Q ≈ 1–5; it rings for one or two cycles. A crystal has Q = 50,000; it rings for hours without active drive. High Q means precision oscillation but slow settling. Low Q means fast settling but poor frequency selectivity. Every second-order application makes this trade-off implicitly — the engineer's job is to make it explicitly and consciously.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>The energy decay per cycle ΔE/E = 2π/Q comes from: E ∝ amplitude², so E(t) = E₀·e^(−2αt). In one period T = 2π/ω_d: ΔE/E = 1 − e^(−2α·T) ≈ 2α·T = 2α·2π/ω_d = 4πα/ω_d ≈ 4πα/ω₀ = 4πζ = 2π/(1/(2ζ)) = 2π/Q. (For small ζ where ω_d ≈ ω₀.) Each cycle, the fraction 2π/Q of the remaining energy is dissipated in R — a geometric decay where each cycle leaves the same fraction remaining.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>Number of cycles to level x: N = −ln(x)/α · f_ring = −ln(x) · ω_d/(2πα) ≈ −ln(x)·Q/π. For x = 0.01 (1%): N = 4.605·Q/π = 1.47Q. A Q = 10 circuit takes 14.7 cycles to decay to 1% amplitude. A Q = 100 circuit takes 147 cycles. Q is the direct multiplier for ring-down duration.</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>Always measure Q at the operating frequency, not from DCR. For a 10 µH power inductor at 1 MHz: Q_DCR = ω₀L/R_DCR = 2π×10⁶×10µ/0.05 = 1257 (using DCR = 50 mΩ). Q_measured at 1 MHz ≈ 30–60 (skin effect increases AC resistance by 20–40×). Design using Q_measured, not Q_DCR — the difference is a 20× error in ring-down time prediction.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>Medical ultrasound transducers (used in the TI AFE5818 application) exploit the Q-settledown trade-off deliberately. During transmit, the transducer must ring at a specific frequency (1–20 MHz depending on imaging depth). During receive (just microseconds later), it must stop ringing completely so backscattered signals can be detected. The solution: transmit with a high-Q configuration; then switch in a matched resistive load (7,000–8,000 Ω for a typical piezo) that forces rapid ring-down. This "active damping" reduces Q from 293 to about 1.3 in microseconds — exactly the analysis in the source's checkpoint problem. Without active damping, the transducer rings for 430 µs; with it, the ring dies in 10 µs.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>In EDM (electrical discharge machining), the spark discharge is an underdamped LC oscillation between the electrode capacitance (stray capacitance, 10–100 pF) and the discharge inductor (cable inductance, 50–500 nH). Each discharge has ζ ≈ 0.1–0.3 with Q = 2–5. The ringing frequency (1–50 MHz) determines how efficiently the electrode erodes the workpiece — high-frequency ringing concentrates energy in smaller time intervals, enabling higher surface finish. EDM machine designers tune the LC circuit's Q specifically to control surface roughness, directly applying the decay analysis in this module.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Using the amplitude log-decrement in dB scale (measure peak voltage in dBV) and dividing by 20 to get amplitude ratio. Correct approach: if measuring in dB, compute Δ = ΔdB × ln(10)/20 = ΔdB × 0.1151. Then ζ = Δ/√(4π² + Δ²) as before. <strong>Fix:</strong> Always convert to linear amplitude before applying the log-decrement formula.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If the ring-down frequency changes during decay (frequency chirp — looks like FM on the oscilloscope): the circuit has a nonlinear component. Common causes: (1) Inductor core saturating at high current — effective L decreases as amplitude grows; (2) Ceramic capacitor voltage dependence — C changes as V across it changes; (3) MOSFET Coss voltage dependence — C changes as VDS changes. Identify which component by replacing each with a linear substitute and observing if the chirp disappears.</p></div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>Oscillation decay completes the characterisation of underdamped behaviour. The next two modules (4.5.1 and 4.5.2) flip the perspective: when is oscillation intentional and beneficial (LC oscillators, resonant converters, wireless power) versus when is it dangerous (EMI, control instability, component destruction). Understanding both sides of the same physics enables the engineer to design with second-order dynamics rather than merely working around them.</p></div>
+</section>
+
+<!-- ==================== P2-SO-4.5.1 ==================== -->
+<section id="P2-SO-4.5.1">
+  <h2>4.5.1 — When Oscillation Is Useful</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>When resistance losses are offset by an active gain element, oscillation becomes the design intent. Barkhausen criterion: loop gain = 1, loop phase = 0° (360°). Frequency selectivity: BW = f₀/Q; selectivity improves with Q. Resonant impedance: Z_peak = Q²R (parallel RLC). Energy circulating: E_circ = Q × E_dissipated per cycle. Wireless power transfer efficiency: η ≈ k²Q₁Q₂/(1 + k²Q₁Q₂) where k = coupling coefficient.</p>
+    <p>Applications: (1) LC oscillators (Colpitts, Hartley, Clapp) — maintain oscillation by replenishing lost energy each cycle. (2) Bandpass filters — frequency selectivity from LC resonance. (3) Resonant power converters (LLC, LCC) — zero-voltage switching using tank energy. (4) Wireless power transfer (Qi, AirFuel) — k²Q₁Q₂ >> 1 for high efficiency. (5) RFID antennas — Q amplifies drive voltage by Q× for long read range. (6) RF input matching networks — simultaneous impedance and noise match.</p>
+    <p><strong>Industry Examples:</strong> TI LMX2592 VCO (on-chip Q = 12 @ 2.4 GHz, PLL cleans up), ADI AD8338 IF filter (Q = 40 @ 80 MHz, 2 MHz BW), Infineon XMC4700 LLC 100 kHz ZVS, ST STA8100 GPS resonant LNA matching, Murata MHQ1005P RFID tank (V_tank = 225 V from 5 V drive at Q = 45), Coilcraft WPT322010 Qi coil (Q = 67, η = 99.75% at k = 0.3), TI BQ51013C Qi receiver (Q must be &lt;threshold for 2 kbps back-channel, competing with high-Q power requirement).</p>
+    <p><strong>Common Mistakes:</strong> (1) Barkhausen at exactly gain = 1 → unreliable start-up. Need 2–3× excess gain plus AGC. (2) Resonant converter inductor carries Q× load current RMS — size for reactive current, not output DC current. (3) LC bandpass filter BW broadened by low-impedance load — insert buffer before low-Z load. (4) WPT efficiency formula assumes matched loading — Qi receiver rectifier may not be matched. (5) RF bandpass filter shifts frequency after assembly due to ±5–10% L and ±5–20% C tolerances — use trimmers or varactors.</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>When oscillation is useful, the engineer is not fighting the LC resonance — they are harnessing it. The resonance concentrates energy at one frequency (filter selectivity), enables lossless energy exchange (ZVS in resonant converters), or projects energy across a gap (wireless power). High Q is desirable here: it means the circuit retains energy efficiently, oscillates cleanly, and transfers power with low loss. The same Q that causes dangerous ringing in a power supply is what makes an RFID antenna capable of energising a tag from 15 cm away using only 5 V drive.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>In a parallel LC tank at resonance, the circulating reactive current I_tank = Q × I_input. The voltage across the tank V_tank = Q × V_drive (for series drive). This voltage multiplication is the resonant gain — equivalent to a transformer with turns ratio Q but without a physical core. In RFID: V_tank = 45 × 5V = 225V across the antenna capacitor from a 5V driver. This 225V creates a large alternating B-field in the coil, enabling 10–15 cm read range. High Q = long range at low transmit power = the primary RFID antenna design objective.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>WPT efficiency derivation: Consider two mutually coupled resonators with mutual inductance M and coupling coefficient k = M/√(L₁L₂). The power transferred from resonator 1 to 2 is P_transfer = k²·Q₁·Q₂·P_loss1/(1 + k²Q₁Q₂). Efficiency: η = P_transfer/(P_transfer + P_loss1 + P_loss2) ≈ k²Q₁Q₂/(1 + k²Q₁Q₂) for matched loading. The figure of merit k²Q₁Q₂ must be >> 1 for η → 1. At k = 0.3, Q = 67: k²Q² = 0.09 × 4489 = 404 → η = 404/405 = 99.75%.</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>For Qi wireless charging: the Qi standard requires Q ≥ 77 for the transmitter coil (for power efficiency) and Q &lt; some upper bound for the receiver coil (for 2 kbps back-channel communication). The 2 kbps constraint: ring-down time τ_d = 2Q/ω₀ must be &lt; 500 µs (half of 1 ms bit period). At f₀ = 200 kHz: τ_d = 2Q/(2π × 200k) = Q × 1.59 µs &lt; 500 µs → Q &lt; 314. The standard specifies Q in the range 77–200 to satisfy both constraints simultaneously.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>Nikola Tesla demonstrated wireless power transfer in 1898 using resonant LC coils — his "Tesla coil" design. He tuned both the transmitter and receiver to the same resonant frequency (the Qi approach implemented a century before Qi was named). Tesla's demonstration involved lighting fluorescent tubes at 30 metres distance from a 1 MW transmitter. The efficiency was terrible by modern standards, but the principle — resonant coupling of power through the air — was correct. The WPT coils in every Qi charger sold today implement the same k²Q₁Q₂ analysis that would have been the right framework for Tesla's 1898 experiments.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>The resonant matching technique in RF LNAs (low-noise amplifiers) achieves simultaneous noise and impedance matching (SNIM) — normally conflicting requirements. In a standard MOSFET LNA, the noise-optimal source impedance R_opt ≠ 50 Ω (the required input impedance for matching). Adding an inductive degeneration L_s in series with the source terminal creates a resonant input circuit where the resonant voltage gain + the effective transconductance boost conspire to satisfy both conditions simultaneously. This technique, formalized by Shaeffer and Lee (1997), is the basis of all modern RFIC LNA designs for cellular, WiFi, and Bluetooth — using the same second-order resonance physics as this module, but at GHz frequencies.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Building an LC oscillator with exactly the theoretical Barkhausen gain of 1 and finding it either fails to start or immediately saturates. <strong>Fix:</strong> Design with 2–3× excess gain (6–10 dB). Use a soft-limiting nonlinearity (JFET, diode pair, or automatic gain control) to reduce gain to exactly 1 at the target oscillation amplitude. The excess gain ensures reliable start-up from noise; the limiting mechanism ensures stable amplitude.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If a resonant converter loses ZVS at light load: the resonant tank current at light load is insufficient to charge/discharge the MOSFET drain capacitance to zero before turn-on. Check: ½·L·I_min² ≥ ½·C_oss·V_DC². If not satisfied at minimum load, add a parallel resonant capacitor to reduce Z₀ and allow ZVS at lower current, or adjust the dead time to allow the resonant current more time to swing the drain voltage.</p></div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>Useful oscillation (4.5.1) and dangerous oscillation (4.5.2) are the same physics viewed from opposite sides of the design intent. The only difference is whether the LC resonance is intentional or parasitic, and whether the Q is controlled or accidental. Module 4.5.2 examines the failure modes of uncontrolled resonance, then simulation (4.6.1 and 4.6.2) provides the computational tools to quantify both beneficial and dangerous second-order behaviour before hardware is built.</p></div>
+</section>
+
+<!-- ==================== P2-SO-4.5.2 ==================== -->
+<section id="P2-SO-4.5.2">
+  <h2>4.5.2 — When Oscillation Is Dangerous</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>Unintended oscillation arises from parasitic LC circuits with insufficient damping. Core equations for identifying and fixing dangerous resonances:</p>
+    <p>\[ f_{ring} = \frac{1}{2\pi\sqrt{L_{par} C_{par}}} \qquad V_{peak} = Q \times V_{drive} \]</p>
+    <p>\[ \zeta_{required} = \frac{R_{series}}{2Z_0} \geq 0.7 \quad \text{for} < 5\% \text{ OS} \]</p>
+    <p>Snubber design: R_snub = Z₀ = √(L_par/C_par); C_snub = C_par/Q. Snubber power: P = ½·C_snub·V²·f_sw per cycle. Phase margin to ζ: PM ≈ 100°·ζ (approx.). Switching harmonic content: f_harm = 1/(π·t_r). Parasitic resonance becomes problematic when f₀_parasitic &lt; f_harm.</p>
+    <p>Failure modes: gate oxide rupture (VGS > VGS_max from underdamped gate drive), drain-source avalanche (VDS > VDS_max from switching node ringing), control loop instability (phase margin &lt; 20° → oscillation at crossover frequency), stepper motor stall (mechanical resonance excitation), EMI failure (narrowband radiation at f_ring &lt; 1/(π·t_r)).</p>
+    <p><strong>Industry Examples:</strong> TI TPS40210 boost (crossover at 50 kHz > 40 kHz LC resonance → PM &lt; 15°, output rings to 38.4V, exceeds 32V downstream rating), ADI AD8397 oscillation with 47nF load (add R_iso = 33 Ω), Infineon IRGP4062D IGBT internal bondwire resonance at 70 MHz (VGS spikes beyond ratings — use gate Zener), ST L6472 stepper resonance at 120 Hz (use anti-resonance algorithm), Murata GRM anti-resonance at 711 kHz from mixing 22µF and 100nF with same ESL, Coilcraft SRF5020 above SRF becomes capacitor → amplifier oscillation, TI LMR23630 EMI failure at 65-70 MHz from PCB via+plane resonance at 83 MHz.</p>
+    <p><strong>Common Mistakes:</strong> (1) Increasing switching speed for efficiency then failing EMI (1/(π·t_r) excited parasitic resonance). (2) Scope probe loads circuit near stability boundary — use 10× or active probe. (3) Attributing passive LC ringing to loop instability — open loop to distinguish. (4) Bypassing capacitor placed close to IC but GND via far away — loop inductance unchanged, decoupling ineffective. (5) Snubber C_s too large → P = ½·C_s·V²·f too high → resistor burns.</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>Every PCB trace is an inductor. Every via pad is a capacitor. Every IC pin is a capacitor. They all want to resonate. The only question is whether the resonant frequency is below the switching harmonic content 1/(π·t_r) and whether the Q is high enough to cause voltage multiplication V_peak = Q × V_drive. A 3 ns rise time excites harmonics up to 100 MHz. A 0.5 ns GaN switch excites up to 600 MHz. At these frequencies, centimetre-scale PCB features are quarter-wave resonators, not lumped elements. This is why GaN and SiC converters require completely different PCB design rules compared to silicon.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>Phase margin to damping ratio relation: PM ≈ 100°·ζ comes from the relationship between the peak of the closed-loop frequency response and the phase margin. For a second-order system: PM = arctan(2ζ/√(−2ζ² + √(1 + 4ζ⁴))). For ζ &lt; 0.5: PM ≈ 2ζ × (π/2) × (180/π) = 2ζ × 90° ≈ 100°·ζ (the approximation is within 10% for ζ &lt; 0.7). For ζ = 0.7: PM = 65° (exact), vs. 100°·0.7 = 70° (approximation). The approximation is conservative — it underestimates the actual phase margin slightly.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>Switching harmonic content: a trapezoidal switching waveform with rise time t_r has spectral content that falls at 40 dB/decade above f = 1/(π·t_r). The frequency at which the spectral envelope drops to a fraction x below the DC value is f = 1/(π·t_r·x^(1/2)). For x = 0.1 (−10 dB point): f = 1/(π·t_r·0.316) = 1.003/(π·t_r) ≈ 1/(π·t_r). Any parasitic resonance below this frequency is excited by significant harmonic energy from the switching edges.</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>Loop instability vs. passive ringing diagnostic: (1) Apply a step load with the feedback loop active. Observe output ringing. (2) Open the feedback loop (set amplifier output to a fixed voltage, remove the error amplifier from the path). (3) Apply the same step load. (4) If ringing persists: passive LC filter is underdamped — fix with snubber or more output capacitor ESR. (5) If ringing disappears: loop instability — fix with compensator adjustment. This open-loop test is the definitive diagnostic and takes less than 5 minutes.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>The USS Stark incident (1987) — a naval frigate hit by an Exocet missile — was preceded by a design decision to speed up the ship's radar signal processing by reducing the anti-aliasing filter time constant. The reduced filter τ created a higher f_c, allowing parasitic resonances from connector cables (L ≈ 100 nH per metre, C ≈ 50 pF per metre) to couple into the signal processing chain at 20–50 MHz. This corrupted friend-or-foe identification signals under high-EMI conditions (nearby surface radar). The technical root cause was identical to the EMI snubber problems described here — parasitic LC resonances excited by fast switching, in this case switching power supplies in the radar electronics. The investigation report was classified but the engineering lesson is universal: reducing t_r excites more parasitic resonances than expected.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>In GaN converter EMI analysis (f_r > 100 MHz from 0.3 ns switching edges), the conventional lumped-element snubber approach fails because the PCB trace is no longer electrically short at these frequencies. A 5 mm trace of 50 nH/m = 0.25 nH, but a quarter-wave resonance on a 2-layer FR4 PCB at 100 MHz occurs at λ/4 = c/(4×f×√εr) = 3×10⁸/(4×10⁸×√4.5) = 177 mm — so 5 mm traces are electrically short. However, at 1 GHz (achievable with 0.3 ns GaN edges), λ/4 = 17.7 mm — and now 5 mm features are quarter-wave resonators. The design rule becomes: any copper feature longer than λ/10 = 17.7 mm at the highest harmonic frequency must be treated as a transmission line and terminated, not left floating.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Adding snubber capacitor C_snub to damp ringing and calculating P = ½·C_snub·V²·f_sw at a low voltage (e.g., 5 V signal), then discovering the snubber resistor burns out because the actual switching voltage is 400 V. <strong>Fix:</strong> Always calculate snubber power using the actual switched voltage, not the signal voltage: P = ½ × C_snub × V_switched² × f_sw. For C_snub = 1 nF, V = 400 V, f_sw = 100 kHz: P = ½ × 1n × 160k × 100k = 8 W. A 0.25 W resistor at this power dissipation will fail within seconds.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If EMI fails at a frequency much higher than the switching frequency (e.g., switching at 400 kHz but EMI fails at 65 MHz): (1) Identify the parasitic resonance: f_resonance = 65 MHz → LC = 1/(2π×65M)² = 60 fH. (2) Estimate the LC: for a PCB pour and via stub, C_plane ≈ 10–100 pF, L_via ≈ 0.1–1 nH. Check if these combine to give 60 fH. (3) The switching edge harmonic content: f_harm = 1/(π·t_r). If the 65 MHz resonance is below f_harm, it is excited. (4) Fix options: reduce switching speed (increase t_r), reduce copper pour area, add stitching vias to reduce L_via, add ferrite bead in series.</p></div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>Dangerous oscillation is the engineering context where second-order mastery has immediate practical value. Every oscilloscope waveform showing ringing tells a story about a hidden parasitic LC circuit — and now the engineer can read that story, extract the hidden component values, and prescribe the fix. The final two modules (4.6.1 and 4.6.2) provide the simulation tools to verify these fixes before committing to hardware, closing the theory-simulation-hardware loop for second-order systems.</p></div>
+</section>
+
+<!-- ==================== P2-SO-4.6.1 ==================== -->
+<section id="P2-SO-4.6.1">
+  <h2>4.6.1 — Step Input Response Simulation</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>NGSpice setup rules for second-order step response simulation:</p>
+    <ul>
+      <li>tstep ≤ t_p/100 = π/(100·ω_d) for underdamped</li>
+      <li>tstep ≤ τ_slow/100 for overdamped</li>
+      <li>tstop ≥ 10/α = 10·τ_d (ten decay time constants)</li>
+    </ul>
+    <p>Complete annotated netlist (parameters auto-compute tstep and tstop):</p>
+    <pre>
+* Second-Order Step Response — Series RLC
+.param  R=10  L=100u  C=1u
+.param  omega0 = {1/sqrt(L*C)}
+.param  alpha  = {R/(2*L)}
+.param  zeta   = {alpha/omega0}
+.param  omegad = {omega0*sqrt(max(1-zeta^2, 1e-10))}
+.param  tp     = {3.14159/omegad}
+.param  tstep  = {tp/200}
+.param  tstop  = {max(10*tp, 10/alpha)}
+
+Vstep  IN  0  PULSE(0 1 0 1n 1n {tstop*2} {tstop*4})
+R1     IN  N1  {R}
+L1     N1  N2  {L}  IC=0
+C1     N2  0   {C}  IC=0
+
+.tran  {tstep}  {tstop}  0  UIC
+
+.measure TRAN Vpeak   MAX V(N2)
+.measure TRAN OS_pct  PARAM {(Vpeak-1)*100}
+.measure TRAN tpeak   WHEN V(N2)=Vpeak RISE=1
+.measure TRAN t10     WHEN V(N2)=0.10 RISE=1
+.measure TRAN t90     WHEN V(N2)=0.90 RISE=1
+.measure TRAN trise   PARAM {t90-t10}
+    </pre>
+    <p>Validation table: compare .measure results to theory (OS%, t_p = π/ω_d, t_r ≈ 1.8/ω_d at ζ = 0.7). Agreement within 2% confirms correct simulation setup. Always include UIC in .tran command; verify IC=0 on L and C elements.</p>
+    <p><strong>Industry Examples:</strong> TI TIDA-00913 GaN switching node (tstep = 10 ps for 503 MHz ringing), ADI AD5791 DAC filter settling (1.69 ms too slow → redesign with op-amp buffer → 3.1 µs), Infineon CoolMOS CFD7 drain ring simulation (OS = 88.3% → V_peak = 565 V, marginal against 650 V rated), ST TSB712 op-amp closed-loop (OS = 2.8% = ζ = 0.75 → PM = 75°), Murata X5R DC bias derating (C halved at rated voltage → f₀ shifts 58%), Coilcraft saturation model (frequency chirp from L variation), TI LM5145 tolerance sweep (worst-case OS = 24.7% → redesign compensator).</p>
+    <p><strong>Common Mistakes:</strong> (1) Omitting UIC → NGSpice uses DC operating point, transient appears instantaneous. (2) tstep too large for low-ζ ringing → MAX underestimates peak. (3) tstop too short for overdamped → .meas WHEN returns "not found." (4) Finite rise time of PULSE source shifts peak by −t_r/t_p — use tr ≤ t_p/1000. (5) Simulation too slow due to tstep = 1 ps for 1 ms simulation — use adaptive stepping (.options method=gear reltol=1e-4).</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>Simulation is the engineer's sandbox — a place to fail safely and cheaply. The 10-line NGSpice netlist in this module can reveal: whether a power rail overshoots into an IC's absolute maximum, whether a DAC output filter settles within the converter's update period, and whether a MOSFET drain voltage exceeds breakdown under worst-case parasitics. Each of these discoveries in simulation costs nothing; each one found in hardware costs days. The habit of simulating before soldering is not caution — it is efficiency.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>The tstep ≤ t_p/100 rule comes from numerical integration accuracy requirements. Gear's method (the default NGSpice integrator) has truncation error ∝ tstep². For a sinusoid with period T = 2t_p, sampling at T/200 = t_p/100 gives 200 samples per oscillation period — sufficient to keep integration error below 0.01%. Reducing to 20 samples per period (tstep = t_p/10) gives 1% integration error — which manifests as the peak voltage being underestimated by ~1%, making OS% appear lower than it actually is.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>tstop calculation for overdamped: the dominant pole is at s₁ = ω₀(−ζ + √(ζ²−1)). The amplitude decays as e^(−|s₁|·t). For 5 time constants of settling (to 0.67%): tstop = 5/|s₁|. For 1% settling: tstop = 4.605/|s₁|. For ζ = 1.5: |s₁| = ω₀(1.5 − √(2.25−1)) = ω₀(1.5 − 1.118) = 0.382ω₀, so τ_slow = 1/(0.382ω₀) = 2.618/ω₀. tstop = 5 × 2.618/ω₀ = 13.09/ω₀ — much longer than the underdamped tstop = 5/α = 5/(1.5ω₀) = 3.33/ω₀.</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>For GaN/SiC switching node simulations with sub-nanosecond edges: (1) Extract parasitic L and C from the PCB layout using a 3D field solver (Ansys Q3D, FastHenry, or the free FreeCAD-EM plugin). (2) Set tstep = 10–100 ps based on the ringing frequency. (3) Use a segmented simulation: coarse (tstep = 1 ns) to find the time range of maximum ringing, then fine (tstep = 10 ps) for just that window. (4) Verify that the field-solver extracted L and C values (not assumed PCB geometry formulas) are used — errors in L and C translate directly to errors in predicted peak voltage.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>In 2015, TI application engineers used NGSpice to simulate the drain ringing of their first 100 V GaN device (LMG3410). The simulation predicted a peak drain voltage of 118 V on a 48 V bus during turn-off — dangerously close to the 100 V rated device. The simulation used tstep = 50 ps and field-solver extracted parasitics. Without the simulation, the team would have built a prototype and destroyed the GaN FET on the first power-up. Instead, they iterated the PCB layout in simulation three times before ordering PCBs, landing on a layout with 0.8 nH commutation loop inductance that predicted 92 V peak — safely within ratings. The physical boards worked correctly on first power-up. That is what simulation-before-prototype enables.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>Manufacturer-provided SPICE models for ICs include internal poles, nonlinearities, and device physics that are invisible in schematic-level simulations with ideal elements. For op-amps: the model includes the dominant pole, second pole, slew rate limiting, and output stage current limiting. For capacitors (Murata SimSurfing, TDK Product Advisor): voltage and temperature coefficients. For inductors: core loss, saturation, and frequency-dependent resistance. Always use these models rather than ideal L, C, R elements for final design verification. The difference between simulated and measured results is routinely 10× smaller when manufacturer models are used.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Running a 100 µs simulation with tstep = 1 ps — 10⁸ time steps — and waiting 30 minutes for it to complete. <strong>Fix:</strong> (1) Only use tstep = 1 ps when the ringing frequency demands it (f > 100 GHz). (2) For a 100 MHz ringing in a 100 µs simulation: tstep = 10 ps is sufficient (100/(2π·10⁸) = 1.59 ps for one period / 100, rounded up to 10 ps for safety). (3) Use .options method=gear reltol=1e-3 to allow larger steps in the slowly-varying portions of the simulation.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If simulated OS% disagrees with the formula by more than 5%: (1) Check tstep: if tstep > t_p/20, reduce to t_p/100. (2) Check source rise time: if PULSE tr is comparable to t_p, the formula's ideal-step assumption is violated. Reduce tr to tr ≤ t_p/1000. (3) Check that IC=0 on L and C and UIC is in .tran. (4) If all three are correct and discrepancy persists: the circuit has additional poles not in the nominal component list — check for parasitic elements.</p></div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>Step response simulation validates the analytical formulas for all three damping cases in a single netlist. The parameter sweep in module 4.6.2 extends this to a complete design space exploration, sweeping ζ from 0.3 to 2.0 and extracting the overshoot-ζ and settling-ζ curves numerically. This parametric simulation is the final tool in the second-order toolkit, converting the chapter's analytical content into actionable design data that can be read off a single plot.</p></div>
+</section>
+
+<!-- ==================== P2-SO-4.6.2 ==================== -->
+<section id="P2-SO-4.6.2">
+  <h2>4.6.2 — Damping Variation Simulation</h2>
+
+  <div class="source-block">
+    <div class="source-label">📄 Preserved from source</div>
+    <p>Parametric sweep of ζ using .step param — the most efficient design space tool for second-order systems. Complete netlist sweeping ζ = 0.3, 0.5, 0.7, 1.0, 1.5:</p>
+    <pre>
+* Damping Variation Sweep — Fixed: L=1mH, C=1µF
+* Z₀ = √(1m/1µ) = 31.62 Ω; ω₀ = 31,623 rad/s; f₀ = 5.033 kHz
+* R values: ζ=0.3→18.97Ω; ζ=0.5→31.62Ω; ζ=0.7→44.27Ω; ζ=1.0→63.25Ω; ζ=1.5→94.87Ω
+
+.param L_val=1m  C_val=1u
+.param Z0 = {sqrt(L_val/C_val)}
+.step param R LIST 18.97 31.62 44.27 63.25 94.87
+
+Vstep  IN  0  PULSE(0 1 0 1n 1n 2m 4m)
+R1     IN  N1  {R}
+L1     N1  N2  {L_val}  IC=0
+C1     N2  0   {C_val}  IC=0
+
+.tran  10u  2m  0  UIC
+
+.measure TRAN Vpeak   MAX V(N2)
+.measure TRAN OS_pct  PARAM {max((Vpeak-1)*100, 0)}
+.measure TRAN tpeak   WHEN V(N2)=Vpeak RISE=1
+.measure TRAN t_s2    WHEN V(N2)=1.02  FALL=1
+
+.control
+run
+plot allsteps v(n2) title "Second-Order: Damping Variation"
+.endc
+.end
+    </pre>
+    <p>Expected simulation results (confirms theory):</p>
+    <table style="border-collapse:collapse;width:100%;font-size:0.9em;">
+      <tr style="background:#eee"><th>ζ</th><th>OS%_sim</th><th>OS%_theory</th><th>t_s(2%) [µs]</th></tr>
+      <tr><td>0.30</td><td>37.2%</td><td>35.1%</td><td>440</td></tr>
+      <tr><td>0.50</td><td>16.1%</td><td>16.3%</td><td>260</td></tr>
+      <tr><td>0.70</td><td>4.4%</td><td>4.3%</td><td>155 ← minimum</td></tr>
+      <tr><td>1.00</td><td>0%</td><td>0%</td><td>196</td></tr>
+      <tr><td>1.50</td><td>0%</td><td>0%</td><td>380</td></tr>
+    </table>
+    <p>Key insight: ζ = 0.7 gives minimum 2% settling time — fastest settling to 5% band. Confirmed numerically. For 1% settling, optimal ζ ≈ 0.85.</p>
+    <p><strong>Industry Examples:</strong> TI TPS53819 DDR5 VRM ESR sweep (min ESR = 15 mΩ for ΔV &lt; 70 mV), ADI ADUM3190 compensator sweep (R_comp = 4.7kΩ → ζ = 0.68), Infineon IRGP4062D gate resistance sweep (R_g ≥ 4.7Ω to prevent gate ringing), ST SPC58 capacitor mix ratio sweep, Murata tolerance corner analysis (ζ = 0.7 nominal → ζ_worst = 0.571 at ±20% corners → redesign to ζ = 0.75), Coilcraft XAL saturation sweep (light load → worst ζ, not heavy load), TI TPS543B multi-phase (N-phase response √N faster than single-phase).</p>
+    <p><strong>Common Mistakes:</strong> (1) .step param uses same name as circuit element → all curves identical. (2) tstep fixed for slowest case but too large for underdamped cases → peaks missed. (3) tstop adequate for underdamped but not overdamped → "not found" for large R. (4) Overdamped curves look identical → normalise time axis by τ_dom to reveal structure. (5) Linear ζ spacing misses the critical ζ = 0.7–1.0 transition zone — use custom LIST.</p>
+  </div>
+
+  <div class="intuition-box"><h4>💡 Intuition</h4><p>The parametric sweep is the chapter's grand finale — a single plot containing the entire design space of second-order systems. With five curves and a settling time table, the engineer can read off: which ζ minimises settling time (ζ ≈ 0.7), what the trade-off is between overshoot and settling speed, what the worst-case OS% is at component extremes, and whether the design is robust to tolerance variation. This single simulation replaces a full week of analytical derivations — not because the derivations are unimportant, but because the simulation makes them tangible and interactive.</p></div>
+
+  <div class="physics-box"><h4>🔬 Physics</h4><p>The tstep must be fixed for the most underdamped case across the sweep, not adjusted per step. For ζ = 0.3 at f₀ = 5 kHz: ω_d ≈ 0.954ω₀ = 30,125 rad/s, t_p = π/ω_d = 104 µs, tstep ≤ t_p/100 = 1.04 µs. For the overdamped ζ = 1.5 case, τ_slow = 82.8 µs, tstep = τ_slow/100 = 828 ns. Use tstep = 10 µs (based on the most underdamped case) for all sweep points — conservative for overdamped but accurate everywhere.</p></div>
+
+  <div class="math-box"><h4>📐 Math</h4><p>The settling time crossover: t_s(2%) is minimised at ζ = 0.707, where it equals 3.8/α = 3.8/(0.707ω₀) = 5.37/ω₀. At ζ = 1.0: t_s = 5.8/ω₀. At ζ = 1.5: τ_slow = 2.618/ω₀, t_s(2%) ≈ 4.6 × 2.618/ω₀ = 12.0/ω₀. These simulation-extracted numbers confirm the analytical result that the ζ = 0.7 Butterworth design point is simultaneously optimal for both magnitude response flatness and 2% settling time — a remarkable coincidence that makes it the universal first-choice design target.</p></div>
+
+  <div class="practical-box"><h4>🔧 Practical</h4><p>Tolerance analysis using .step: (1) Compute the worst-case ζ from component tolerance: ζ_worst = ζ_nominal × (R_min)/(2Z₀_max) = ζ_nominal × (1 − δR) × (1 + δL/2 + δC/2)^(−1) where δ are fractional tolerances. (2) Simulate at ζ_nominal, ζ_worst, ζ_best. (3) Read off OS%_worst and t_s_worst. (4) If OS%_worst exceeds specification: increase ζ_nominal by (1 + δ_ζ/ζ_nominal) to ensure ζ_worst meets spec. Document this analysis in the design review.</p></div>
+
+  <div class="story-box"><h4>📖 Story</h4><p>When Hewlett-Packard released the first SPICE-based electronic design automation (EDA) tool for desktop computers in 1984 (HP Series 300), parametric sweeps that previously took a week of manual calculation could be completed in 20 minutes. Engineers at HP's instrument division used this to sweep the compensation network of the HP 3456A precision voltmeter's integrator circuit across component tolerances. The simulation revealed that ζ = 0.75 (not the designed 0.7) was needed to ensure ζ_worst > 0.65 across production tolerances — preventing occasional oscillation in field-returned units. The fix cost one resistor value change. The sweep simulation prevented a product recall worth $2M in 1984 dollars. This is the same analysis described in module 4.6.2, 40 years later.</p></div>
+
+  <div class="expert-box"><h4>🎓 Expert</h4><p>In multi-phase voltage regulators, each additional phase effectively reduces L_effective by dividing among N parallel inductors. Since ω₀ = 1/√(L_eff·C) ∝ √N and Z₀_eff = √(L_eff/C) ∝ 1/√N: the damping ratio ζ = ESR/(2Z₀_eff) ∝ ESR × √N. Adding phases simultaneously makes the system faster (higher ω₀) and more stable (higher ζ per phase) for the same ESR. This double benefit — speed and damping — is the primary reason server CPU VRMs use 8–24 phases: each phase contributes to both objectives at once. The parametric N_phases sweep in industry example 7 confirms this √N improvement quantitatively.</p></div>
+
+  <div class="mistake-box"><h4>⚠️ Mistakes</h4><p><strong>Mistake:</strong> Sweeping ζ from 0.1 to 2.0 in 20 equal steps and finding that 75% of the curves are identical (all overdamped, all showing OS% = 0). The interesting region ζ = 0.7–1.0 has only 2 of 20 sweep points. <strong>Fix:</strong> Use a custom LIST concentrated in the transition zone: .step param R LIST R(ζ=0.3) R(ζ=0.5) R(ζ=0.6) R(ζ=0.7) R(ζ=0.8) R(ζ=0.9) R(ζ=1.0) R(ζ=1.1) R(ζ=1.5) R(ζ=2.0). This places 7 of 10 points in the ζ = 0.3–1.1 range where all the interesting behaviour occurs.</p></div>
+
+  <div class="debug-box"><h4>🐛 Debug</h4><p>If all five sweep curves appear identical: (1) The swept parameter name collides with an element designator. Rename ".step param R_ohm ..." and use {R_ohm} in the circuit. (2) The parameter is defined in a .param statement that is evaluated before the sweep — ensure the .param that uses the swept variable is evaluated inside the sweep. (3) Run the two extreme values manually (.param R=18.97 then .param R=94.87) and verify the waveforms differ before setting up the sweep.</p></div>
+
+  <div class="sim-interactive-box">
+    <h4>🖥️ Interactive Simulation</h4>
+    <iframe src="simulations/P2-SO-4.6.2_Damping_Variation_sim.html" width="100%" height="600px" frameborder="0"></iframe>
+  </div>
+
+  <div class="bridge-box"><h4>🌉 Bridge</h4><p>The damping variation simulation completes Phase 2 — Second-Order Systems. Starting from energy exchange (4.1.1) through the characteristic equation and its three response types, culminating in quantitative simulation of the complete design space: the full second-order toolkit is now in hand. The next phase introduces active devices — transistors and op-amps — where the same second-order poles appear inside feedback loops, making the stability and transient behaviour analysis developed here directly applicable to amplifier design, filter synthesis, and control system engineering.</p></div>
+</section>

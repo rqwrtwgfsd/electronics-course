@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Lec30 Sc7 — ADC ENOB vs Noise Floor</title>
+<style>
+  body{margin:0;padding:10px;font-family:sans-serif;background:#1a1a2e;color:#e0e0e0;}
+  canvas{display:block;border:1px solid #444;border-radius:6px;background:#0f0f1e;}
+  .ctrl{margin:7px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  label{min-width:220px;font-size:0.85em;} input[type=range]{flex:1;min-width:120px;}
+  .val{min-width:80px;font-size:0.85em;color:#7ec8e3;}
+  .result-box{background:#162032;border:1px solid #2a4a6a;border-radius:6px;padding:10px;margin-top:8px;font-size:0.85em;line-height:1.6;}
+  h3{color:#7ec8e3;margin:4px 0 10px;}
+</style></head><body>
+<h3>Scenario 7 — 12-bit ADC: ENOB vs Supply Noise Floor</h3>
+<canvas id="cv"></canvas>
+<div class="ctrl"><label>Supply noise V_n (mVpk):</label><input type="range" id="vnoise" min="0" max="50" value="20" step="0.5"><span class="val" id="vnoise_v">20 mV</span></div>
+<div class="ctrl"><label>LPF attenuation (dB):</label><input type="range" id="lpf_att" min="0" max="80" value="0" step="1"><span class="val" id="lpf_att_v">0 dB</span></div>
+<div class="ctrl"><label>PSRR at noise freq (dB):</label><input type="range" id="psrr" min="10" max="80" value="20" step="1"><span class="val" id="psrr_v">20 dB</span></div>
+<div class="result-box" id="result">Results</div>
+<script>
+const cv=document.getElementById('cv');const ctx=cv.getContext('2d');
+function resizeCanvas(){const w=cv.parentElement.getBoundingClientRect().width-20;cv.width=Math.max(300,w);cv.height=Math.round(cv.width*0.4);}
+function getV(){return{vnoise:parseFloat(document.getElementById('vnoise').value)*1e-3,lpf_att:parseFloat(document.getElementById('lpf_att').value),psrr:parseFloat(document.getElementById('psrr').value)};}
+function updateL(){
+  document.getElementById('vnoise_v').textContent=parseFloat(document.getElementById('vnoise').value).toFixed(1)+' mV';
+  document.getElementById('lpf_att_v').textContent=parseFloat(document.getElementById('lpf_att').value).toFixed(0)+' dB';
+  document.getElementById('psrr_v').textContent=parseFloat(document.getElementById('psrr').value).toFixed(0)+' dB';
+}
+function draw(){
+  const W=cv.width,H=cv.height;ctx.clearRect(0,0,W,H);
+  const {vnoise,lpf_att,psrr}=getV();
+  const mx=55,my=15,bx=W-15,by=H-30,pw=bx-mx,ph=by-my;
+
+  const Vfull=3.3, Nbits=12;
+  const VLSB=Vfull/Math.pow(2,Nbits);
+  // Noise at ADC input after filtering + PSRR
+  const noise_at_adc=vnoise/Math.pow(10,lpf_att/20)/Math.pow(10,psrr/20);
+  const ENOB=Nbits-Math.log2(Math.max(noise_at_adc/VLSB,1));
+  const SINAD=6.02*ENOB+1.76;
+
+  // Bar chart: ENOB components
+  const bars=[
+    {label:'Theoretical\n(12-bit)',val:12,color:'#4fc3f7'},
+    {label:'After supply\nnoise',val:Math.max(1,Nbits-Math.log2(Math.max(vnoise/VLSB,1))),color:'#ff7043'},
+    {label:'After LPF',val:Math.max(1,Nbits-Math.log2(Math.max(vnoise/Math.pow(10,lpf_att/20)/VLSB,1))),color:'#ffb74d'},
+    {label:'After PSRR',val:Math.max(1,ENOB),color:'#aed581'},
+  ];
+
+  const barW=pw/bars.length*0.6;
+  for(let i=0;i<bars.length;i++){
+    const x=mx+(i+0.5)*pw/bars.length;
+    const b=bars[i];
+    const h=(b.val/12)*ph;
+    const y=by-h;
+    ctx.fillStyle=b.color;
+    ctx.fillRect(x-barW/2,y,barW,h);
+    ctx.fillStyle='#fff';ctx.font='bold 14px sans-serif';ctx.textAlign='center';
+    ctx.fillText(b.val.toFixed(1),x,y-5);
+    ctx.fillStyle='#888';ctx.font='9px sans-serif';
+    const lines=b.label.split('\n');
+    lines.forEach((l,j)=>ctx.fillText(l,x,by+13+j*11));
+  }
+  ctx.textAlign='left';
+
+  // Y axis
+  ctx.strokeStyle='#444';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(mx,my);ctx.lineTo(mx,by);ctx.lineTo(bx,by);ctx.stroke();
+  for(let b=0;b<=12;b+=2){
+    const y=by-(b/12)*ph;
+    ctx.strokeStyle='#252540';ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(mx,y);ctx.lineTo(bx,y);ctx.stroke();
+    ctx.fillStyle='#666';ctx.font='9px sans-serif';ctx.fillText(b.toFixed(0),mx-18,y+4);
+  }
+
+  ctx.fillStyle='#7ec8e3';ctx.font='11px sans-serif';ctx.fillText('ENOB (bits)',mx+2,my+10);
+
+  const noise_mV=noise_at_adc*1e3;
+  document.getElementById('result').innerHTML=
+    `<b>ADC ENOB Analysis (12-bit, 3.3V range):</b><br>
+    1 LSB = ${(VLSB*1e3).toFixed(3)} mV | Supply noise = ${(vnoise*1e3).toFixed(1)} mV<br>
+    After LPF (${lpf_att}dB) + PSRR (${psrr}dB): noise at ADC = ${noise_mV.toFixed(3)} mV<br>
+    ENOB = ${ENOB.toFixed(1)} bits | SINAD = ${SINAD.toFixed(0)} dB<br>
+    ${ENOB>10?'✓ Excellent: ≥10 bits effective':ENOB>8?'⚠ Moderate: 8-10 bits':'🔴 Poor: <8 bits — add LPF + improve decoupling'}<br>
+    Fix: Add LPF ${64/6|0} dB recovers ~${(64/6).toFixed(0)} bits`;
+}
+['vnoise','lpf_att','psrr'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{updateL();draw();}));
+resizeCanvas();updateL();draw();window.addEventListener('resize',()=>{resizeCanvas();draw();});
+</script></body></html>

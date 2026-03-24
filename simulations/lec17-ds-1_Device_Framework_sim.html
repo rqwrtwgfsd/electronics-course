@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Sim: Device Selection Framework</title>
+<style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:Arial,sans-serif;background:#1a1a2e;color:#e0e0e0;padding:12px;}canvas{display:block;border:1px solid #444;border-radius:6px;background:#0d0d1a;}.controls{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0;}.ctrl{display:flex;flex-direction:column;gap:3px;font-size:12px;}label{color:#aaa;}input[type=range]{width:150px;}.vals{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#ccc;margin:6px 0;}.val-item{background:#222;border-radius:4px;padding:4px 8px;}h3{font-size:13px;color:#90caf9;margin-bottom:6px;}@media(prefers-color-scheme:light){body{background:#f5f5f5;color:#111;}canvas{background:#fff;border-color:#ccc;}.val-item{background:#eee;color:#222;}label{color:#555;}h3{color:#005a9c;}}</style>
+</head>
+<body>
+<h3>Lecture 17 DS-1: Switching Supply Rectifier - Diode Loss vs Switching Frequency</h3>
+<p style="font-size:11px;color:#aaa;margin-bottom:8px;">Shows how diode type affects total loss (conduction + recovery) at different switching frequencies. Schottky dominates above 10kHz.</p>
+<canvas id="cv"></canvas>
+<div class="controls">
+  <div class="ctrl"><label>Output current (A)</label><input type="range" id="Iout" min="0.1" max="20" value="3" step="0.1"><span id="IoutV">3.0</span></div>
+  <div class="ctrl"><label>Output voltage (V)</label><input type="range" id="Vout" min="1" max="48" value="5" step="1"><span id="VoutV">5</span></div>
+</div>
+<div class="vals">
+  <div class="val-item">1N4007 loss at 200kHz: <strong id="loss_pn">-</strong></div>
+  <div class="val-item">Schottky loss at 200kHz: <strong id="loss_schottky">-</strong></div>
+  <div class="val-item">Winner: <strong id="winner">-</strong></div>
+</div>
+<script>
+var cv=document.getElementById("cv");
+var ctx=cv.getContext("2d");
+function resizeCanvas(){var w=cv.parentElement.getBoundingClientRect().width;cv.width=Math.min(w-24,700);cv.height=Math.round(cv.width*0.48);}
+function get(id){return parseFloat(document.getElementById(id).value);}
+function draw(){
+  var W=cv.width,H=cv.height;
+  var Iout=get("Iout"),Vout=get("Vout");
+  document.getElementById("IoutV").textContent=Iout.toFixed(1);
+  document.getElementById("VoutV").textContent=Vout;
+  var VF_PN=0.7,VF_schottky=0.35;
+  var trr_PN=30e-6,trr_schottky=0;
+  var Vreverse=Vout*2;
+  // Conduction loss = VF * Iout
+  var Pcond_PN=VF_PN*Iout,Pcond_Schottky=VF_schottky*Iout;
+  var f_at200k=200e3;
+  var Prev_PN=0.5*Vreverse*Iout*trr_PN*f_at200k;
+  document.getElementById("loss_pn").textContent=(Pcond_PN+Prev_PN).toFixed(1)+"W ("+(Pcond_PN).toFixed(1)+"cond+"+(Prev_PN).toFixed(1)+"rec)";
+  document.getElementById("loss_schottky").textContent=(Pcond_Schottky).toFixed(1)+"W (cond only)";
+  document.getElementById("winner").textContent="Schottky MBR540 ("+((Pcond_Schottky/(Pcond_PN+Prev_PN)*100).toFixed(0))+"% of PN loss)";
+  ctx.clearRect(0,0,W,H);
+  var pad={l:60,r:30,t:28,b:45};
+  var pw=W-pad.l-pad.r,ph=H-pad.t-pad.b;
+  var f_min=100,f_max=1e6;
+  function fx(f){return pad.l+Math.log10(f/f_min)/Math.log10(f_max/f_min)*pw;}
+  var P_max=Math.max(Pcond_PN*5,Prev_PN*3,2);
+  function py(P){return H-pad.b-Math.max(0,P/P_max)*ph;}
+  ctx.strokeStyle="#1e2a3a";ctx.lineWidth=0.5;
+  for(var k=0;k<=4;k++){
+    var P=P_max*k/4;
+    ctx.beginPath();ctx.moveTo(pad.l,py(P));ctx.lineTo(W-pad.r,py(P));ctx.stroke();
+    ctx.fillStyle="#555";ctx.font="10px Arial";ctx.fillText(P.toFixed(1)+"W",2,py(P)+4);
+  }
+  [1e3,10e3,100e3,1e6].forEach(function(f){
+    ctx.beginPath();ctx.moveTo(fx(f),pad.t);ctx.lineTo(fx(f),H-pad.b);ctx.stroke();
+    ctx.fillStyle="#555";ctx.font="10px Arial";
+    ctx.fillText(f>=1e6?(f/1e6)+"M":(f/1e3)+"k",fx(f)-8,H-pad.b+14);
+  });
+  var N=300;
+  // 1N4007 total loss
+  ctx.beginPath();ctx.strokeStyle="#ff5555";ctx.lineWidth=2.5;
+  for(var i=0;i<=N;i++){
+    var f=f_min*Math.pow(f_max/f_min,i/N);
+    var Pc=VF_PN*Iout;
+    var Prev=0.5*Vreverse*Iout*trr_PN*f;
+    var Ptot=Pc+Prev;
+    if(i===0)ctx.moveTo(fx(f),py(Ptot));else ctx.lineTo(fx(f),py(Ptot));
+  }
+  ctx.stroke();
+  // Schottky total loss
+  ctx.beginPath();ctx.strokeStyle="#55ff88";ctx.lineWidth=2.5;
+  for(var i=0;i<=N;i++){
+    var f2=f_min*Math.pow(f_max/f_min,i/N);
+    var Ps=VF_schottky*Iout;
+    if(i===0)ctx.moveTo(fx(f2),py(Ps));else ctx.lineTo(fx(f2),py(Ps));
+  }
+  ctx.stroke();
+  // crossover
+  var f_cross=Pcond_PN>0?(VF_PN-VF_schottky)*Iout/(0.5*Vreverse*Iout*trr_PN):f_max;
+  if(f_cross>f_min && f_cross<f_max){
+    ctx.strokeStyle="#ffaa55";ctx.lineWidth=1;ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(fx(f_cross),pad.t);ctx.lineTo(fx(f_cross),H-pad.b);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle="#ffaa55";ctx.font="9px Arial";ctx.fillText("crossover",fx(f_cross)+2,pad.t+14);
+  }
+  ctx.strokeStyle="#666";ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t);ctx.lineTo(pad.l,H-pad.b);ctx.lineTo(W-pad.r,H-pad.b);ctx.stroke();
+  ctx.fillStyle="#ff5555";ctx.font="11px Arial";ctx.fillText("1N4007 (slow PN)",pad.l+10,pad.t+16);
+  ctx.fillStyle="#55ff88";ctx.font="11px Arial";ctx.fillText("Schottky MBR540",pad.l+10,pad.t+30);
+  ctx.fillStyle="#aaa";ctx.font="10px Arial";ctx.fillText("Switching Frequency",W/2-40,H-5);
+  ctx.fillStyle="#90caf9";ctx.font="bold 11px Arial";
+  ctx.fillText("Iout="+Iout+"A  Vout="+Vout+"V  V_reverse="+Vout*2+"V",pad.l+5,pad.t-8);
+}
+["Iout","Vout"].forEach(function(id){document.getElementById(id).addEventListener("input",draw);});
+window.addEventListener("resize",function(){resizeCanvas();draw();});
+resizeCanvas();draw();
+</script></body></html>

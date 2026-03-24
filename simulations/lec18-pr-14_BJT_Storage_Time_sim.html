@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lec 18 Pr 14 — BJT Storage Time vs Overdrive</title>
+<style>
+  :root { --bg:#fff; --surface:#f5f5f5; --border:#ccc; --text:#1a1a1a; --accent:#0066cc; --muted:#666; }
+  @media (prefers-color-scheme:dark) { :root { --bg:#1a1a1a; --surface:#2a2a2a; --border:#444; --text:#e8e8e8; --accent:#4499ff; --muted:#999; } }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--text); padding:16px; max-width:900px; margin:0 auto; }
+  h1 { font-size:18px; margin-bottom:12px; border-bottom:2px solid var(--accent); padding-bottom:8px; }
+  .layout { display:grid; grid-template-columns:1fr 260px; gap:16px; }
+  canvas { border:1px solid var(--border); border-radius:4px; display:block; width:100%; }
+  .controls { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; }
+  .ctrl-group { margin-bottom:12px; }
+  label { font-size:11px; font-weight:600; color:var(--muted); text-transform:uppercase; display:flex; justify-content:space-between; margin-bottom:4px; }
+  .val { color:var(--accent); font-family:monospace; font-weight:700; }
+  input[type=range] { width:100%; accent-color:var(--accent); cursor:pointer; }
+  .info { background:rgba(0,102,204,0.08); border:1px solid rgba(0,102,204,0.2); border-radius:4px; padding:10px; margin-top:12px; font-size:12px; line-height:1.6; }
+  @media (max-width:600px) { .layout { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<h1>Pr 14 — BJT Switch: Storage Time vs Base Overdrive Factor</h1>
+<div class="layout">
+  <canvas id="cv" height="380"></canvas>
+  <div class="controls">
+    <div class="ctrl-group">
+      <label>β (hFE) <span class="val" id="v-beta">100</span></label>
+      <input type="range" id="beta" min="20" max="500" value="100" step="10">
+    </div>
+    <div class="ctrl-group">
+      <label>τ_F minority lifetime (ns) <span class="val" id="v-tau">1</span></label>
+      <input type="range" id="tau" min="0.1" max="20" value="1" step="0.1">
+    </div>
+    <div class="ctrl-group">
+      <label>Overdrive N = I_B/I_B_min <span class="val" id="v-n">10</span></label>
+      <input type="range" id="nval" min="1.1" max="30" value="10" step="0.1">
+    </div>
+    <div class="info" id="info">Storage time = β × τ_F × ln(1 + N - 1)</div>
+  </div>
+</div>
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+function resizeCanvas() {
+  cv.width = cv.parentElement.getBoundingClientRect().width || 600;
+  cv.height = 380;
+}
+
+function draw() {
+  resizeCanvas();
+  const W = cv.width, H = cv.height;
+  const dark = window.matchMedia('(prefers-color-scheme:dark)').matches;
+  const bg = dark ? '#1a1a1a' : '#fff';
+  const fg = dark ? '#e8e8e8' : '#1a1a1a';
+  const gridC = dark ? '#333' : '#eee';
+
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+
+  const beta = +document.getElementById('beta').value;
+  const tau_ns = +document.getElementById('tau').value;
+  const N_cur = +document.getElementById('nval').value;
+
+  document.getElementById('v-beta').textContent = beta;
+  document.getElementById('v-tau').textContent = tau_ns.toFixed(1) + ' ns';
+  document.getElementById('v-n').textContent = N_cur.toFixed(1) + 'x';
+
+  // t_storage ≈ β × τ_F × ln(1 + N_overdrive)
+  // N = I_B / I_B_sat_min
+  const storageTime = n => beta * tau_ns * Math.log(1 + n - 1); // simplified
+
+  const pad = { l: 65, r: 20, t: 40, b: 50 };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+
+  const nMin = 1, nMax = 30;
+  const ts_max = storageTime(nMax);
+  const yMax = Math.max(100, ts_max * 1.1);
+
+  ctx.strokeStyle = gridC; ctx.lineWidth = 1;
+  for (let i = 0; i <= 5; i++) {
+    const y = pad.t + ph * i / 5;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + pw, y); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText((yMax * (5-i) / 5).toFixed(0) + 'ns', pad.l - 4, y + 4);
+  }
+  for (let n = 0; n <= 30; n += 5) {
+    const x = pad.l + pw * n / 30;
+    ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
+    ctx.fillStyle = fg; ctx.font = '10px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(n + 'x', x, pad.t + ph + 18);
+  }
+
+  ctx.fillStyle = fg; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('Overdrive Factor N = I_B / I_B_sat', pad.l + pw / 2, H - 6);
+  ctx.save(); ctx.translate(14, pad.t + ph / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Storage Time t_s (ns)', 0, 0); ctx.restore();
+
+  // Storage time curve
+  ctx.beginPath(); ctx.strokeStyle = '#e53935'; ctx.lineWidth = 2.5;
+  for (let n = 1.01; n <= nMax; n += 0.1) {
+    const ts = storageTime(n);
+    const x = pad.l + pw * (n - nMin) / (nMax - nMin);
+    const y = pad.t + ph * (1 - Math.min(ts, yMax) / yMax);
+    if (n <= 1.1) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Marker at current N
+  const ts_cur = storageTime(N_cur);
+  const cx = pad.l + pw * (N_cur - nMin) / (nMax - nMin);
+  const cy = pad.t + ph * (1 - Math.min(ts_cur, yMax) / yMax);
+  ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI*2);
+  ctx.fillStyle = '#43a047'; ctx.fill();
+
+  // Rise time reference line (turn-on is fast)
+  const t_rise = beta * tau_ns * 0.05; // approximate
+  const riseY = pad.t + ph * (1 - t_rise / yMax);
+  ctx.setLineDash([5,4]); ctx.strokeStyle = '#1565c0'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(pad.l, riseY); ctx.lineTo(pad.l+pw, riseY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#1565c0'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(`t_rise ≈ ${t_rise.toFixed(0)} ns (turn-on)`, pad.l+4, riseY-3);
+
+  ctx.fillStyle = fg; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillText(`t_storage = β × τ_F × ln(N) (β=${beta}, τ_F=${tau_ns}ns)`, pad.l, pad.t - 10);
+
+  const asymmetry = ts_cur / Math.max(1, t_rise);
+  document.getElementById('info').innerHTML =
+    `<b>At ${N_cur.toFixed(1)}× overdrive:</b><br>` +
+    `t_storage = ${ts_cur.toFixed(0)} ns<br>` +
+    `t_rise (turn-on) ≈ ${t_rise.toFixed(0)} ns<br>` +
+    `Asymmetry: ${asymmetry.toFixed(0)}:1 (fall vs rise)<br>` +
+    `Fix: Baker clamp prevents saturation<br>` +
+    `<b>Schottky clamp keeps V_BC < 0.4V → no deep sat</b>`;
+}
+
+['beta','tau','nval'].forEach(id => document.getElementById(id).addEventListener('input', draw));
+window.addEventListener('resize', draw);
+draw();
+</script>
+</body>
+</html>

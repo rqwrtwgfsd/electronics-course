@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Lec18 Pr3 — MOSFET EMI Spectrum</title>
+<style>
+  :root{--bg:#f8f8f8;--fg:#222;--accent:#4a90d9;}
+  @media(prefers-color-scheme:dark){:root{--bg:#1a1a2e;--fg:#e0e0e0;--accent:#7ab4f5;}}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:Arial,sans-serif;padding:10px;}
+  h3{margin:6px 0;color:var(--accent);}
+  canvas{border:1px solid #555;border-radius:4px;display:block;width:100%;}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;font-size:13px;}
+  input[type=range]{width:130px;accent-color:var(--accent);}
+  .vals{background:#0002;border-radius:4px;padding:8px;font-size:12px;margin:6px 0;}
+  .vals span{color:var(--accent);font-weight:bold;}
+  .warn{color:#e05;font-weight:bold;}
+</style>
+</head>
+<body>
+<h3>Problem 3 — MOSFET Switch: EMI Spectrum vs Switching Speed</h3>
+<div class="controls">
+  <label>R_gate (Ω): <input type="range" id="Rg" min="1" max="100" value="1" step="1"> <b id="RgV">1</b></label>
+  <label>f_sw (kHz): <input type="range" id="fsw" min="10" max="500" value="100" step="10"> <b id="fswV">100</b></label>
+  <label>Loop area (cm²): <input type="range" id="area" min="0.5" max="20" value="10" step="0.5"> <b id="areaV">10</b></label>
+  <label>V_DD (V): <input type="range" id="Vdd" min="12" max="400" value="24" step="1"> <b id="VddV">24</b></label>
+</div>
+<canvas id="cv"></canvas>
+<div class="vals" id="info"></div>
+<script>
+const cv=document.getElementById('cv');
+const ctx=cv.getContext('2d');
+
+function resizeCanvas(){
+  const w=cv.parentElement.getBoundingClientRect().width||480;
+  cv.width=Math.round(w); cv.height=Math.round(w*0.55);
+}
+
+function draw(){
+  resizeCanvas();
+  const W=cv.width,H=cv.height;
+  const Rg=+document.getElementById('Rg').value;
+  const fsw_kHz=+document.getElementById('fsw').value;
+  const area_cm2=+document.getElementById('area').value;
+  const Vdd=+document.getElementById('Vdd').value;
+
+  const isDark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+  ctx.fillStyle=isDark?'#1a1a2e':'#f8f8f8'; ctx.fillRect(0,0,W,H);
+
+  const fsw=fsw_kHz*1e3;
+  const Ciss=2e-9; // 2nF for 5A MOSFET
+  const tr=5*Rg*Ciss; // rise time ~ 5*Rg*Ciss
+  const f1=1/(Math.PI*(1/fsw)); // first corner = fsw/pi
+  const f2=1/(Math.PI*tr);      // second corner = 1/(pi*tr)
+  const I_load=5;
+  const A_m2=area_cm2*1e-4;
+
+  const padL=65,padR=20,padT=35,padB=50;
+  const gW=W-padL-padR,gH=H-padT-padB;
+
+  ctx.strokeStyle='#888'; ctx.lineWidth=1;
+  ctx.beginPath();
+  ctx.moveTo(padL,padT); ctx.lineTo(padL,padT+gH); ctx.lineTo(padL+gW,padT+gH);
+  ctx.stroke();
+
+  const fmin=1e4, fmax=5e8;
+  function xp(f){ return padL+(Math.log10(f)-Math.log10(fmin))/(Math.log10(fmax)-Math.log10(fmin))*gW; }
+  const dBmin=-80, dBmax=20;
+  function yp(db){ return padT+gH-(db-dBmin)/(dBmax-dBmin)*gH; }
+
+  // Grid
+  ctx.strokeStyle='#3334'; ctx.lineWidth=0.5;
+  [1e4,1e5,1e6,1e7,1e8,5e8].forEach(f=>{ctx.beginPath();ctx.moveTo(xp(f),padT);ctx.lineTo(xp(f),padT+gH);ctx.stroke();});
+  for(let db=dBmin;db<=dBmax;db+=10){ctx.beginPath();ctx.moveTo(padL,yp(db));ctx.lineTo(padL+gW,yp(db));ctx.stroke();}
+
+  const fg=isDark?'#aaa':'#555'; ctx.fillStyle=fg; ctx.font='10px Arial';
+  ['10k','100k','1M','10M','100M','500M'].forEach((s,i)=>{
+    const f=[1e4,1e5,1e6,1e7,1e8,5e8][i];
+    if(f<=fmax) ctx.fillText(s,xp(f)-10,padT+gH+13);
+  });
+  for(let db=dBmin;db<=dBmax;db+=10) ctx.fillText(db,padL-32,yp(db)+4);
+  ctx.fillStyle=isDark?'#ccc':'#333'; ctx.font='11px Arial';
+  ctx.fillText('Frequency (Hz)',padL+gW/2-40,H-5);
+  ctx.save(); ctx.translate(12,padT+gH/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('E-field dBµV/m @ 3m',0,0); ctx.restore();
+
+  // Trapezoidal wave EMI spectrum (simplified)
+  // E = 1.316e-14 * A * I * f^2 (below f1: flat; f1-f2: -20dB/dec; >f2: -40dB/dec)
+  // Normalise to first corner amplitude
+  const E_ref_f1 = 1.316e-14 * A_m2 * I_load * f1*f1;
+
+  function E_at_f(f){
+    // Trapezoidal spectrum envelope
+    if(f <= f1) return E_ref_f1 * (f/f1);
+    else if(f <= f2) return E_ref_f1 * 1.0;
+    else return E_ref_f1 * (f2/f) ;
+  }
+
+  // Draw spectrum
+  ctx.strokeStyle='#4a90d9'; ctx.lineWidth=2.5;
+  ctx.beginPath();
+  let first=true;
+  for(let lf=Math.log10(fmin);lf<=Math.log10(fmax);lf+=0.02){
+    const f=Math.pow(10,lf);
+    const E=E_at_f(f)*1e6; // µV/m
+    const dB=E>0?20*Math.log10(E):dBmin;
+    const clamped=Math.max(dBmin,Math.min(dBmax,dB));
+    if(first){ctx.moveTo(xp(f),yp(clamped));first=false;}
+    else ctx.lineTo(xp(f),yp(clamped));
+  }
+  ctx.stroke();
+
+  // FCC Class B limit line (150 µV/m = 43.5 dBµV/m at 30-230 MHz)
+  ctx.strokeStyle='#e53935'; ctx.lineWidth=1.5; ctx.setLineDash([6,3]);
+  const fcc_db=20*Math.log10(150); // 43.5 dBµV/m
+  ctx.beginPath(); ctx.moveTo(xp(3e7),yp(fcc_db)); ctx.lineTo(xp(fmax),yp(fcc_db)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle='#e53935'; ctx.font='10px Arial';
+  ctx.fillText('FCC Class B limit',xp(3e7)+4,yp(fcc_db)-3);
+
+  // Corner frequency markers
+  if(f1>=fmin&&f1<=fmax){
+    ctx.strokeStyle='#ff9800'; ctx.lineWidth=1; ctx.setLineDash([3,2]);
+    ctx.beginPath(); ctx.moveTo(xp(f1),padT); ctx.lineTo(xp(f1),padT+gH); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#ff9800'; ctx.font='10px Arial';
+    ctx.fillText('f₁='+(f1/1000).toFixed(1)+'kHz',xp(f1)-5,padT+12);
+  }
+  if(f2>=fmin&&f2<=fmax){
+    ctx.strokeStyle='#43a047'; ctx.lineWidth=1; ctx.setLineDash([3,2]);
+    ctx.beginPath(); ctx.moveTo(xp(f2),padT); ctx.lineTo(xp(f2),padT+gH); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#43a047'; ctx.font='10px Arial';
+    const f2str=f2>=1e6?(f2/1e6).toFixed(0)+'MHz':(f2/1000).toFixed(0)+'kHz';
+    ctx.fillText('f₂='+f2str,xp(f2)-5,padT+24);
+  }
+
+  ctx.fillStyle=isDark?'#e0e0e0':'#222'; ctx.font='bold 11px Arial';
+  ctx.fillText('EMI Spectrum — MOSFET Trapezoidal Switching Waveform',padL+2,padT-8);
+
+  // Compute E at 15MHz
+  const E15 = E_at_f(15e6)*1e6;
+  const E15_dB = 20*Math.log10(E15);
+  const margin = E15_dB - fcc_db;
+  const trNs = (tr*1e9).toFixed(1);
+
+  document.getElementById('info').innerHTML=
+    `R_g=<span>${Rg}Ω</span> → t_rise=<span>${trNs}ns</span> | ` +
+    `f₁=<span>${(f1/1000).toFixed(0)}kHz</span> | f₂=<span>${f2>=1e6?(f2/1e6).toFixed(0)+'MHz':(f2/1000).toFixed(0)+'kHz'}</span><br>` +
+    `E @ 15MHz = <span class="${margin>0?'warn':''}">${E15_dB.toFixed(1)} dBµV/m</span> | ` +
+    `FCC limit = 43.5 dBµV/m | Margin = <span class="${margin>0?'warn':''}">${margin>0?'+'+margin.toFixed(1):margin.toFixed(1)} dB</span> ` +
+    (margin>0?'<span class="warn">FAILS EMI!</span>':'<span style="color:#43a047">✓ PASSES</span>');
+}
+
+['Rg','fsw','area','Vdd'].forEach(id=>{
+  const el=document.getElementById(id);
+  const vl=document.getElementById(id+'V');
+  el.addEventListener('input',()=>{vl.textContent=el.value;draw();});
+});
+window.addEventListener('resize',draw);
+resizeCanvas(); draw();
+</script>
+</body>
+</html>
